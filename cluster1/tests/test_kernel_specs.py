@@ -5,6 +5,15 @@ import pytest
 from cluster1.data.kernels import KERNEL_SPECS, get_kernel_spec
 from cluster1.data.kernels.spec import KernelSpec
 from cluster1.data.prompts.prompt_contract import build_prompt
+from cluster1.validation.compile_check import CompileSpec
+
+
+class _FakeTorch:
+    float32 = object()
+
+    @staticmethod
+    def randn(*shape, dtype=None, device=None):
+        return {"shape": shape, "dtype": dtype, "device": device}
 
 
 class TestKernelSpecsPresent:
@@ -15,6 +24,7 @@ class TestKernelSpecsPresent:
     def test_spec_is_kernelspec(self, kernel_class: str):
         spec = get_kernel_spec(kernel_class)
         assert isinstance(spec, KernelSpec)
+        assert isinstance(spec.compile_spec, CompileSpec)
 
     @pytest.mark.parametrize("kernel_class", ["elementwise", "reduction", "matmul"])
     def test_three_dtype_keys(self, kernel_class: str):
@@ -50,6 +60,20 @@ class TestKernelSpecsPresent:
         )
 
     @pytest.mark.parametrize("kernel_class", ["elementwise", "reduction", "matmul"])
+    def test_compile_arg_builder_matches_launcher_signature(
+        self, kernel_class: str, monkeypatch
+    ):
+        spec = get_kernel_spec(kernel_class)
+        build_args = spec.compile_spec.build_args
+        monkeypatch.setitem(build_args.__globals__, "torch", _FakeTorch)
+
+        shape = spec.shapes_by_dtype["fp32"][0]
+        args, kwargs = build_args(shape, _FakeTorch.float32)
+
+        assert len(args) == len(spec.reference_signature.parameters)
+        assert kwargs == {}
+
+    @pytest.mark.parametrize("kernel_class", ["elementwise", "reduction", "matmul"])
     def test_reference_code_not_empty(self, kernel_class: str):
         spec = get_kernel_spec(kernel_class)
         assert len(spec.reference_code) > 50
@@ -70,3 +94,23 @@ class TestVerifiedProblemIds:
 
     def test_matmul_is_problem_1(self):
         assert get_kernel_spec("matmul").dataset_problem_id == 1
+
+
+class TestLockedReferenceSignatures:
+    def test_relu_signature_is_contract_exact(self):
+        spec = get_kernel_spec("elementwise")
+        assert spec.launcher_name + str(spec.reference_signature) == (
+            "relu(x: torch.Tensor) -> torch.Tensor"
+        )
+
+    def test_softmax_signature_is_contract_exact(self):
+        spec = get_kernel_spec("reduction")
+        assert spec.launcher_name + str(spec.reference_signature) == (
+            "softmax(x: torch.Tensor) -> torch.Tensor"
+        )
+
+    def test_matmul_signature_is_contract_exact(self):
+        spec = get_kernel_spec("matmul")
+        assert spec.launcher_name + str(spec.reference_signature) == (
+            "matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor"
+        )

@@ -8,9 +8,7 @@ from __future__ import annotations
 import inspect
 from typing import Any
 
-import torch
-
-from cluster1.data.kernels.spec import CompileSpec, KernelSpec
+from cluster1.data.kernels.spec import CompileSpec, KernelSpec, torch
 from cluster1.data.prompts.prompt_contract import (
     MATMUL_AUTOTUNE_CONFIGS,
     PROMPT_TEMPLATE,
@@ -45,8 +43,7 @@ def _build_matmul_args(
     M, N, K = shape
     a = torch.randn(M, K, dtype=dtype, device="cuda")
     b = torch.randn(K, N, dtype=dtype, device="cuda")
-    c = torch.empty(M, N, dtype=dtype, device="cuda")
-    return [a, b, c, M, N, K], {}
+    return [a, b], {}
 
 
 _MATMUL_SIGNATURE = inspect.Signature(
