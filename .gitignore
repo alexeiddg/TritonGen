@@ -12,7 +12,6 @@ build/
 .pytest_cache/
 
 # Experiment outputs — never commit raw results, only analysis summaries
-outputs/
 runs/
 experiments/results/
 
@@ -32,3 +31,4 @@ experiments/results/
 .claude
 .contracts
 _legacy
+docs

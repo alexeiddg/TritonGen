@@ -31,13 +31,12 @@ kernel-stmt-level1 ::= indent1 kernel-stmt-body nl | if-stmt-level1 | for-range-
 kernel-stmt-level2 ::= indent2 kernel-stmt-body nl | if-stmt-level2 | for-range-stmt-level2
 kernel-stmt-level3 ::= indent3 kernel-stmt-body nl
 
-kernel-stmt-body ::= kernel-assign-stmt | kernel-aug-assign-stmt | triton-call-stmt | kernel-expr-stmt
+kernel-stmt-body ::= kernel-assign-stmt | kernel-aug-assign-stmt | triton-call-stmt
 kernel-assign-stmt ::= target sp "=" sp kernel-expr
 kernel-aug-assign-stmt ::= target sp aug-op sp kernel-expr
 aug-op ::= "+=" | "-=" | "*=" | "/="
 wrapper-return ::= "return" (sp wrapper-expr)?
 triton-call-stmt ::= triton-core-call | triton-compute-call
-kernel-expr-stmt ::= kernel-expr
 
 target ::= ident target-postfix*
 target-postfix ::= "[" kernel-subscript-content "]" | "." ident
@@ -139,10 +138,9 @@ run-launch-wrapper ::= "def " ident "(" wrapper-param-list "):" nl
                        wrapper-return-stmt?
 
 wrapper-prelude-stmt ::= indent1 wrapper-stmt-body nl
-wrapper-stmt-body ::= wrapper-assign-stmt | wrapper-aug-assign-stmt | wrapper-expr-stmt
+wrapper-stmt-body ::= wrapper-assign-stmt | wrapper-aug-assign-stmt
 wrapper-assign-stmt ::= target sp "=" sp wrapper-expr
 wrapper-aug-assign-stmt ::= target sp aug-op sp wrapper-expr
-wrapper-expr-stmt ::= wrapper-expr
 wrapper-return-stmt ::= indent1 wrapper-return nl
 
 bracket-launch-stmt ::= indent1 ident "[" grid-expr "](" call-arg-list ")" nl
