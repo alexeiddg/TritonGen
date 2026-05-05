@@ -14,6 +14,8 @@ import importlib.util
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
+from cluster1.results.dataclass import CompileErrorType
+
 try:
     import torch as _torch
     _TORCH_DTYPE_MAP = {
@@ -33,7 +35,7 @@ except ImportError:
 @dataclass(frozen=True)
 class CompileResult:
     success: bool
-    error_type: Literal["CompilationError", "RuntimeError", "SignatureError", None]
+    error_type: CompileErrorType
     error_msg: str | None
     dtype: str
     n_shapes_tested: int
@@ -195,7 +197,7 @@ def check_compiles_all_dtypes(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _classify_error(exc: Exception) -> Literal["CompilationError", "RuntimeError"]:
+def _classify_error(exc: Exception) -> CompileErrorType:
     """Map an exception to the two allowed Triton error taxonomy labels."""
     try:
         import triton.compiler.errors as triton_errors

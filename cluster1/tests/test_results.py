@@ -1,0 +1,154 @@
+"""Tests for Phase 5: result dataclass, invariants, and JSONL logger."""
+
+from __future__ import annotations
+
+import json
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+
+from cluster1.results.dataclass import (
+    GenerationResult,
+    compute_unique_solution_hash,
+    validate_result_invariants,
+)
+from cluster1.results.logger import append_result_jsonl
+
+
+def _make_result(**overrides) -> GenerationResult:
+    defaults = {
+        "source": "import triton\n@triton.jit\ndef k(): pass",
+        "model_id": "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+        "grammar_active": True,
+        "kernel_class": "elementwise",
+        "kernel_name": "relu",
+        "dtype": "fp32",
+        "compile_success": True,
+        "compile_results_by_dtype": {"fp32": True, "fp16": True, "bf16": True},
+        "compile_error_type": None,
+        "compile_error_msg": None,
+        "masked_token_rate": 0.42,
+        "unique_solution_hash": "abc123",
+        "n_shapes_tested": 5,
+        "generation_seed": 0,
+        "temperature": 0.2,
+        "run_id": str(uuid.uuid4()),
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    defaults.update(overrides)
+    return GenerationResult(**defaults)
+
+
+# --- Task 5.6: schema tests ---
+
+def test_generation_result_has_all_required_fields():
+    result = _make_result()
+    field_names = {f.name for f in result.__dataclass_fields__.values()}
+
+    expected = {
+        "source", "model_id", "grammar_active", "kernel_class", "kernel_name",
+        "dtype", "compile_success", "compile_results_by_dtype",
+        "compile_error_type", "compile_error_msg",
+        "masked_token_rate", "unique_solution_hash", "n_shapes_tested",
+        "generation_seed", "temperature", "run_id", "timestamp_utc",
+    }
+    assert field_names == expected
+
+
+def test_compile_results_by_dtype_has_three_keys():
+    result = _make_result()
+    assert set(result.compile_results_by_dtype.keys()) == {"fp32", "fp16", "bf16"}
+
+
+def test_no_timing_fields():
+    result = _make_result()
+    for name in result.__dataclass_fields__:
+        assert not name.endswith("_time_s"), f"forbidden timing field: {name}"
+
+
+def test_no_numerical_correctness_fields():
+    result = _make_result()
+    forbidden = {"numerical_correct", "allclose", "reference_diff", "correctness"}
+    for name in result.__dataclass_fields__:
+        assert name not in forbidden, f"forbidden correctness field: {name}"
+
+
+# --- Task 5.6: invariant tests ---
+
+def test_invariant_grammar_off_with_masked_rate_raises():
+    result = _make_result(grammar_active=False, masked_token_rate=0.5)
+    with pytest.raises(ValueError, match="masked_token_rate must be None when grammar_active is False"):
+        validate_result_invariants(result)
+
+
+def test_invariant_grammar_on_with_no_masked_rate_raises():
+    result = _make_result(grammar_active=True, masked_token_rate=None)
+    with pytest.raises(ValueError, match="masked_token_rate must not be None when grammar_active is True"):
+        validate_result_invariants(result)
+
+
+def test_invariant_valid_grammar_on():
+    result = _make_result(grammar_active=True, masked_token_rate=0.3)
+    validate_result_invariants(result)
+
+
+def test_invariant_valid_grammar_off():
+    result = _make_result(grammar_active=False, masked_token_rate=None)
+    validate_result_invariants(result)
+
+
+# --- Task 5.3: unique solution hash ---
+
+def test_compute_unique_solution_hash_deterministic():
+    src = "x = 1 + 2\ny = x * 3"
+    h1 = compute_unique_solution_hash(src)
+    h2 = compute_unique_solution_hash(src)
+    assert h1 == h2
+    assert len(h1) == 64  # SHA256 hex
+
+
+def test_compute_unique_solution_hash_normalizes_whitespace():
+    src_a = "x  =  1\n\n\ny = 2"
+    src_b = "x = 1\ny = 2"
+    assert compute_unique_solution_hash(src_a) == compute_unique_solution_hash(src_b)
+
+
+def test_compute_unique_solution_hash_fallback_on_bad_syntax():
+    bad = "def f(: pass"
+    h = compute_unique_solution_hash(bad)
+    assert isinstance(h, str) and len(h) == 64
+
+
+# --- Task 5.4: JSONL logger ---
+
+def test_append_result_jsonl_creates_file(tmp_path: Path):
+    out = tmp_path / "sub" / "results.jsonl"
+    result = _make_result()
+    append_result_jsonl(out, result)
+    assert out.exists()
+    lines = out.read_text().strip().splitlines()
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["model_id"] == "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
+    assert record["kernel_class"] == "elementwise"
+
+
+def test_append_result_jsonl_appends(tmp_path: Path):
+    out = tmp_path / "results.jsonl"
+    append_result_jsonl(out, _make_result(kernel_name="relu"))
+    append_result_jsonl(out, _make_result(kernel_name="softmax", kernel_class="reduction"))
+    lines = out.read_text().strip().splitlines()
+    assert len(lines) == 2
+    assert json.loads(lines[0])["kernel_name"] == "relu"
+    assert json.loads(lines[1])["kernel_name"] == "softmax"
+
+
+def test_jsonl_roundtrip_all_fields(tmp_path: Path):
+    out = tmp_path / "results.jsonl"
+    result = _make_result()
+    append_result_jsonl(out, result)
+    record = json.loads(out.read_text().strip())
+    for field_name in result.__dataclass_fields__:
+        assert field_name in record, f"missing field in JSONL: {field_name}"
