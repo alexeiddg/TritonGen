@@ -8,9 +8,7 @@ from __future__ import annotations
 import inspect
 from typing import Any
 
-import torch
-
-from cluster1.data.kernels.spec import CompileSpec, KernelSpec
+from cluster1.data.kernels.spec import CompileSpec, KernelSpec, torch
 from cluster1.data.prompts.prompt_contract import (
     PROMPT_TEMPLATE,
     REDUCTION_AUTOTUNE_CONFIGS,
@@ -43,9 +41,7 @@ def _build_softmax_args(
     shape: tuple[int, ...], dtype: torch.dtype
 ) -> tuple[list[Any], dict[str, Any]]:
     x = torch.randn(shape, dtype=dtype, device="cuda")
-    output = torch.empty_like(x)
-    n_cols = shape[-1]
-    return [x, output, n_cols], {}
+    return [x], {}
 
 
 _SOFTMAX_SIGNATURE = inspect.Signature(

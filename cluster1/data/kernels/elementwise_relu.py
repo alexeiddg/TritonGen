@@ -8,9 +8,7 @@ from __future__ import annotations
 import inspect
 from typing import Any
 
-import torch
-
-from cluster1.data.kernels.spec import CompileSpec, KernelSpec
+from cluster1.data.kernels.spec import CompileSpec, KernelSpec, torch
 from cluster1.data.prompts.prompt_contract import (
     ELEMENTWISE_AUTOTUNE_CONFIGS,
     PROMPT_TEMPLATE,
@@ -43,9 +41,7 @@ def _build_relu_args(
     shape: tuple[int, ...], dtype: torch.dtype
 ) -> tuple[list[Any], dict[str, Any]]:
     x = torch.randn(shape, dtype=dtype, device="cuda")
-    n_elements = x.numel()
-    output = torch.empty_like(x)
-    return [x, output, n_elements], {}
+    return [x], {}
 
 
 _RELU_SIGNATURE = inspect.Signature(

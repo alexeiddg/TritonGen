@@ -2,16 +2,34 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Literal
+from typing import Any, Literal
+
+from cluster1.validation.compile_check import CompileSpec
 
 
-@dataclass(frozen=True)
-class CompileSpec:
-    """Validation spec for the compile gate — independent of dataset loading."""
+class _TorchStub:
+    class Tensor:
+        pass
 
-    launcher_name: str
-    reference_signature: inspect.Signature
-    build_args: Callable[[tuple[int, ...], "torch.dtype"], tuple[list[Any], dict[str, Any]]]
+    class dtype:
+        pass
+
+    Tensor.__module__ = "torch"
+    Tensor.__qualname__ = "Tensor"
+    dtype.__module__ = "torch"
+    dtype.__qualname__ = "dtype"
+
+    def __getattr__(self, name: str) -> Any:
+        raise RuntimeError(
+            "PyTorch is required for CUDA dummy launch argument construction. "
+            f"Attempted to access torch.{name} in an environment without torch."
+        )
+
+
+try:
+    import torch as torch
+except ImportError:
+    torch = _TorchStub()  # type: ignore[assignment]
 
 
 @dataclass(frozen=True)
