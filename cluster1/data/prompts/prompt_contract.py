@@ -49,9 +49,21 @@ MATMUL_AUTOTUNE_CONFIGS = [
 def _format_autotune_configs(configs: list[dict]) -> str:
     lines = []
     for cfg in configs:
-        parts = ", ".join(f"{k}={v}" for k, v in cfg.items())
-        lines.append(f"  triton.Config({{{parts}}})")
-    return "[\n" + ",\n".join(lines) + "\n]"
+        block_items = {
+            key: value
+            for key, value in cfg.items()
+            if key not in {"num_warps", "num_stages"}
+        }
+        block_parts = ", ".join(
+            f'"{key}": {value}' for key, value in block_items.items()
+        )
+        lines.append(
+            "        triton.Config("
+            f"{{{block_parts}}}, "
+            f"num_warps={cfg['num_warps']}, "
+            f"num_stages={cfg['num_stages']})"
+        )
+    return "[\n" + ",\n".join(lines) + "\n    ]"
 
 
 KERNEL_DESCRIPTIONS = {
