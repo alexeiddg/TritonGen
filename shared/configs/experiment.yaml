@@ -1,0 +1,35 @@
+# Shared experiment configuration
+# Override per-cluster using cluster-specific YAML if needed.
+
+# --- Model ---
+model:
+  development: "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
+  thesis: "Qwen/Qwen2.5-Coder-32B-Instruct"
+  secondary: "deepseek-ai/DeepSeek-Coder-V2-Instruct"
+
+# --- Generation ---
+generation:
+  temperature: 0.2
+  max_new_tokens: 1024
+  n_runs: 20            # minimum per (kernel_class × condition × dtype) cell
+
+# --- Dataset ---
+dataset:
+  id: "ScalingIntelligence/KernelBench"
+  split: "train"
+  level: 1
+
+# --- Dtypes tested per kernel ---
+dtypes: ["fp32", "fp16", "bf16"]
+
+# --- Kernel classes ---
+kernel_classes: ["elementwise", "reduction", "matmul"]
+
+# --- Hardware ---
+hardware:
+  smem_limit_bytes: 49152    # 48KB — A100 / H100 shared memory default
+  target_gpu: "A100"
+
+# --- Statistical reporting ---
+stats:
+  pass_at_k: [1, 5, 10]

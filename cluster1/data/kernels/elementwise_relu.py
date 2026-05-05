@@ -1,0 +1,85 @@
+"""KernelBench ReLU — elementwise kernel spec.
+
+Dataset: ScalingIntelligence/KernelBench, Level 1, Problem 19.
+"""
+
+from __future__ import annotations
+
+import inspect
+from typing import Any
+
+import torch
+
+from cluster1.data.kernels.spec import CompileSpec, KernelSpec
+from cluster1.data.prompts.prompt_contract import (
+    ELEMENTWISE_AUTOTUNE_CONFIGS,
+    PROMPT_TEMPLATE,
+)
+
+REFERENCE_CODE = """\
+import torch
+import torch.nn as nn
+
+class Model(nn.Module):
+    def __init__(self):
+        super(Model, self).__init__()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.relu(x)
+
+batch_size = 4096
+dim = 393216
+
+def get_inputs():
+    x = torch.rand(batch_size, dim)
+    return [x]
+
+def get_init_inputs():
+    return []
+"""
+
+
+def _build_relu_args(
+    shape: tuple[int, ...], dtype: torch.dtype
+) -> tuple[list[Any], dict[str, Any]]:
+    x = torch.randn(shape, dtype=dtype, device="cuda")
+    n_elements = x.numel()
+    output = torch.empty_like(x)
+    return [x, output, n_elements], {}
+
+
+_RELU_SIGNATURE = inspect.Signature(
+    parameters=[
+        inspect.Parameter("x", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=torch.Tensor),
+    ],
+    return_annotation=torch.Tensor,
+)
+
+_RELU_COMPILE_SPEC = CompileSpec(
+    launcher_name="relu",
+    reference_signature=_RELU_SIGNATURE,
+    build_args=_build_relu_args,
+)
+
+RELU_SPEC = KernelSpec(
+    name="relu",
+    kernel_class="elementwise",
+    launcher_name="relu",
+    reference_signature=_RELU_SIGNATURE,
+    compile_spec=_RELU_COMPILE_SPEC,
+    prompt_template=PROMPT_TEMPLATE,
+    autotune_configs=ELEMENTWISE_AUTOTUNE_CONFIGS,
+    shapes_by_dtype={
+        # (32,)         — smaller than min BLOCK_SIZE=64 (smaller-than-block)
+        # (100,)        — non-power-of-2, not divisible by 64 (non-divisible)
+        # (1024,)       — power-of-2, divisible
+        # (4096, 303)   — 2D, non-power-of-2 columns, not divisible by 64
+        # (4096, 393216)— 2D, large, 393216 = 3×2^17 (non-power-of-2)
+        "fp32": [(32,), (100,), (1024,), (4096, 303), (4096, 393216)],
+        "fp16": [(32,), (100,), (1024,), (4096, 303), (4096, 393216)],
+        "bf16": [(32,), (100,), (1024,), (4096, 303), (4096, 393216)],
+    },
+    dataset_id="ScalingIntelligence/KernelBench",
+    dataset_problem_id=19,
+    reference_code=REFERENCE_CODE,
+)

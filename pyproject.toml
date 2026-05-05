@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "tritongen"
+version = "0.1.0"
+description = "2³ factorial experiment on LLM control mechanisms for Triton GPU kernel generation"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.2",
+    "triton>=2.3",
+    "transformers>=4.40",
+    "xgrammar>=0.1",
+    "lark>=1.1",
+    "datasets>=2.18",
+    "pandas>=2.0",
+    "numpy>=1.26",
+    "pyyaml>=6.0",
+    "pytest>=8.0",
+    "jupyter>=1.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["cluster1*", "cluster2*", "cluster3*", "shared*"]
+exclude = ["_legacy*", "outputs*"]
+
+[tool.pytest.ini_options]
+testpaths = ["cluster1/tests", "cluster2/tests", "cluster3/tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = ["_legacy/", "outputs/"]
