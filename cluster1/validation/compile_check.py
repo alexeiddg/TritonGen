@@ -1,7 +1,7 @@
 """Compilation validation gate for Cluster 1.
 
 Performs actual Triton JIT compilation via dummy kernel launches.
-No timing, no numerical comparisons, no repair loops — Cluster 1 boundary.
+Cluster 1 stops at compile acceptance and does not add later-cluster logic.
 """
 
 from __future__ import annotations

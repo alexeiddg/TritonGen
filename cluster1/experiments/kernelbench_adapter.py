@@ -1,15 +1,8 @@
-"""Adapter to export Cluster 1 generation results into KernelBench's runs/ structure.
+"""Adapter to export Cluster 1 compile-passing sources into KernelBench layout.
 
-This enables running KernelBench's eval_from_generations.py with backend=triton
-as a Tier 2 diagnostic pass (correctness via fast_0) after the primary compile gate.
-
-Architecture:
-  - Pass 1 (Cluster 1 primary): check_compiles_all_dtypes() -> compile_success (pass@k)
-  - Pass 2 (diagnostic only): KernelBench eval -> fast_0 (correctness rate)
-
-Boundary rules:
-  - fast_0 is reported alongside pass@k but does NOT replace it
-  - fast_1, fast_2, speedup numbers are stored separately and NOT referenced in Cluster 1 analysis
+Cluster 1 stops at compile acceptance. This module only writes generated source
+files into KernelBench's runs/ directory shape for downstream clusters or
+external tooling; it does not create executable commands.
 """
 
 from __future__ import annotations
@@ -74,35 +67,3 @@ def _resolve_problem_id(result: "GenerationResult") -> int | None:
         "matmul": 1,
     }
     return mapping.get(result.kernel_class)
-
-
-def build_eval_command(
-    config: KernelBenchExportConfig,
-    num_gpu_devices: int = 1,
-    timeout: int = 300,
-) -> list[str]:
-    """Build the shell command to run KernelBench evaluation on exported runs."""
-    return [
-        "uv", "run", "python",
-        str(config.kernelbench_root / "scripts" / "eval_from_generations.py"),
-        f"run_name={config.run_name}",
-        "dataset_src=local",
-        f"level={config.level}",
-        "backend=triton",
-        f"num_gpu_devices={num_gpu_devices}",
-        f"timeout={timeout}",
-    ]
-
-
-def build_baseline_time_command(
-    kernelbench_root: Path,
-    hardware: str = "T4",
-) -> list[str]:
-    """Build command to generate baseline times for your specific hardware."""
-    return [
-        "uv", "run", "python",
-        str(kernelbench_root / "scripts" / "generate_baseline_time.py"),
-        "level=1",
-        f"hardware={hardware}",
-        "backend=triton",
-    ]
