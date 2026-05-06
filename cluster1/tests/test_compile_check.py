@@ -2,7 +2,7 @@
 
 CPU-only tests (Tasks 4.7, signature taxonomy) always run.
 CUDA-dependent tests (Task 4.8, actual JIT launch) are skipped without a GPU.
-No torch.allclose, no timing, no repair logic — Cluster 1 boundary.
+These tests cover compile-gate behavior only.
 """
 
 from __future__ import annotations

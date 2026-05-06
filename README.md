@@ -62,14 +62,6 @@ TritonGen/
 │   ├── cluster2/
 │   └── cluster3/
 │
-├── _legacy/                       # Phase 1 prototypes — DO NOT USE for experiments
-│   ├── src/                       # Old constrained_generator, compile_gate, etc.
-│   ├── scripts/                   # Old run_smoke.py
-│   ├── grammars/                  # Old permissive GBNF grammar
-│   ├── configs/                   # Old YAML config
-│   ├── experiments/               # Old baseline notebooks
-│   └── tests/                     # Old test suite (fixtures now in cluster1/tests/)
-│
 ├── pyproject.toml                 # Python packaging — pip install -e .
 └── requirements.txt               # Pinned dependency list
 ```
@@ -79,6 +71,12 @@ TritonGen/
 ## Quickstart — Cluster 1
 
 > **Prerequisites:** Python 3.11+, CUDA GPU (for compile gate and generation).
+
+Cluster 1 experiments use only the contract package under `cluster1/`.
+Do not use older prototype entry points such as root-level `src/`,
+`scripts/run_smoke.py`, `grammars/`, `configs/`, or `experiments/*.ipynb` if
+they exist in a local checkout; they are not part of the Cluster 1 experimental
+code path.
 
 ### 1. Install
 
@@ -118,8 +116,9 @@ python -m cluster1.experiments.analyze_cluster1 \
 All implementation follows the contract in `.contracts/cluster1_contract.md`.
 Any deviation requires an explicit recorded justification in that document.
 
-**Cluster 1 boundary:** No `torch.allclose`, profiler calls, timing measurements,
-repair loops, or RL components. Those belong to Clusters 2 and 3.
+**Cluster 1 boundary:** compile acceptance is the only correctness gate. Numeric
+reference checks, profiling, timing metrics, compiler-feedback prompting, and RL
+components belong to later clusters.
 
 ---
 
@@ -127,7 +126,7 @@ repair loops, or RL components. Those belong to Clusters 2 and 3.
 
 | Cluster | Factor | Status |
 |---------|--------|--------|
-| Cluster 1 | Grammar (G) | In progress — Phase 1–2 |
+| Cluster 1 | Grammar (G) | In progress — Phase 9 boundary hardening |
 | Cluster 2 | Compiler feedback (C) | Not started |
 | Cluster 3 | Performance / RL (P) | Not started |
 | Factorial analysis | G×C×P | Not started |

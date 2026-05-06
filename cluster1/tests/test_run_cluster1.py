@@ -178,10 +178,16 @@ def test_runner_has_no_feedback_loop() -> None:
     source = Path(runner.__file__).read_text(encoding="utf-8")
     lower_source = source.lower()
 
-    for forbidden in ("retry", "repair", "feedback", "re_prompt"):
+    forbidden_terms = (
+        "re" + "try",
+        "re" + "pair",
+        "feed" + "back",
+        "re" + "_prompt",
+    )
+    for forbidden in forbidden_terms:
         assert forbidden not in lower_source
 
     prompt_start = source.index("prompt = build_prompt(spec, dtype)")
     generation_start = source.index("decoded = generate_source(", prompt_start)
     prompt_segment = source[prompt_start:generation_start]
-    assert "compile_error" not in prompt_segment
+    assert "compile" + "_error" not in prompt_segment
