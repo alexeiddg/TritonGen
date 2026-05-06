@@ -29,7 +29,7 @@ include = ["cluster1*", "cluster2*", "cluster3*", "shared*"]
 exclude = ["_legacy*", "outputs*"]
 
 [tool.pytest.ini_options]
-testpaths = ["cluster1/tests", "cluster2/tests", "cluster3/tests"]
+testpaths = ["cluster1/tests", "cluster2/tests", "cluster3/tests", "shared/tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
