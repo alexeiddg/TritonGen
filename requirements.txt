@@ -13,9 +13,8 @@ torch>=2.5
 transformers>=4.45
 accelerate>=0.34
 tokenizers>=0.20
-# Development default is an AWQ-quantized model. If your Transformers
-# install cannot load it directly, install the AWQ backend separately:
-#   pip install autoawq
+# Required for loading the development AWQ-quantized model via Transformers.
+autoawq>=0.2.8
 
 # HuggingFace dataset loading (KernelBench)
 datasets>=2.19
