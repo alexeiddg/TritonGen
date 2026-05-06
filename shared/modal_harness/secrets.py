@@ -1,0 +1,27 @@
+"""Optional HuggingFace secret lookup for the TritonGen GPU harness.
+
+The HF secret is only required when the development model is gated or private.
+The currently selected dev model — ``Qwen/Qwen2.5-Coder-7B-Instruct-AWQ`` — is
+public, so the smoke tests must work with no secret created.
+
+To opt in once a gated model is selected:
+
+    modal secret create huggingface-token HF_TOKEN=<token>
+    export TRITONGEN_MODAL_HF_SECRET=huggingface-token
+
+When the env var is unset, ``hf_secrets`` is an empty list and no secret is
+attached to remote functions, preventing smoke tests from failing on a
+missing-secret lookup.
+"""
+
+from __future__ import annotations
+
+import os
+
+import modal
+
+hf_secrets: list[modal.Secret] = (
+    [modal.Secret.from_name(os.environ["TRITONGEN_MODAL_HF_SECRET"])]
+    if os.environ.get("TRITONGEN_MODAL_HF_SECRET")
+    else []
+)
