@@ -14,24 +14,18 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-# The full factorial label space. Reserved cells are NOT executed yet — see
-# the validator on RemoteCompileRequest.factor_cell.
-FactorCell = Literal[
-    "none",
-    "G",
-    "C",
-    "P",
-    "G+C",
-    "G+P",
-    "C+P",
-    "G+C+P",
-]
+from shared.factors.cells import FactorCell
+from shared.factors.registry import (
+    allowed_cells_for_cluster,
+    require_cell_allowed_for_cluster,
+)
+
 KernelClass = Literal["elementwise", "reduction", "matmul"]
 DTypeName = Literal["fp32", "fp16", "bf16"]
 
 # Cluster 1 immediate scope — anything outside this set is rejected at request
 # validation time so Cluster 2/3 control mechanisms cannot accidentally run.
-_SUPPORTED_FACTOR_CELLS: frozenset[str] = frozenset({"none", "G"})
+_SUPPORTED_FACTOR_CELLS = frozenset(allowed_cells_for_cluster("cluster1"))
 
 
 class RemoteGenerationRequest(BaseModel):
@@ -171,9 +165,10 @@ def dtype_name_to_bytes(dtype: DTypeName | str) -> int:
 
 
 def _validate_supported_factor_cell(v: str) -> str:
-    if v not in _SUPPORTED_FACTOR_CELLS:
+    try:
+        return require_cell_allowed_for_cluster("cluster1", v)
+    except ValueError as exc:
         raise ValueError(
             f"Unsupported factor_cell {v!r} — only 'none' and 'G' are "
             f"implemented. Cluster 2/3 modes are reserved."
-        )
-    return v
+        ) from exc

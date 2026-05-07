@@ -9,8 +9,10 @@ from pathlib import Path
 import pytest
 
 from cluster1.experiments.analyze_cluster1 import (
+    build_compile_summary_markdown,
     null_hypothesis_report,
     pass_at_k,
+    prompt_dtype_compile_success,
     summarize_results,
     unique_solution_rate,
 )
@@ -63,12 +65,214 @@ def test_summary_uses_compile_success_only(tmp_path: Path) -> None:
     assert bool(row["grammar_active"]) is False
     assert row["dtype"] == "fp32"
     assert row["n"] == 20
+    assert row["compile_success_scope"] == "all_dtype_strict"
     assert row["compile_successes"] == 5
     assert row["compile_failures"] == 15
+    assert row["compile@1"] == 5 / 20
+    assert row["prompt_dtype_compile_successes"] == 20
+    assert row["prompt_dtype_compile_failures"] == 0
+    assert row["prompt_dtype_compile_success_rate"] == 1.0
     assert row["pass@1"] == 5 / 20
     assert row["pass@5"] == pytest.approx(pass_at_k(20, 5, 5))
     assert row["pass@10"] == pytest.approx(pass_at_k(20, 5, 10))
     assert row["unique_solution_rate"] == 10 / 20
+
+
+def test_summary_distinguishes_strict_and_prompt_dtype_compile_success(
+    tmp_path: Path,
+) -> None:
+    jsonl_path = tmp_path / "mixed_dtype.jsonl"
+    rows = [
+        _make_record(
+            dtype="fp16",
+            compile_success=False,
+            compile_results_by_dtype={"fp32": True, "fp16": i < 7, "bf16": False},
+            compile_error_type="CompilationError",
+            compile_error_msg="bf16 failed",
+            generation_seed=i,
+        )
+        for i in range(20)
+    ]
+    _write_jsonl(jsonl_path, rows)
+
+    summary = summarize_results(jsonl_path)
+
+    row = summary.iloc[0]
+    assert row["compile_success_scope"] == "all_dtype_strict"
+    assert row["compile_successes"] == 0
+    assert row["compile_failures"] == 20
+    assert row["compile@1"] == 0.0
+    assert row["prompt_dtype_compile_successes"] == 7
+    assert row["prompt_dtype_compile_failures"] == 13
+    assert row["prompt_dtype_compile_success_rate"] == 7 / 20
+    assert row["pass@1"] == 0.0
+
+
+def test_baseline_only_compile_summary_markdown(tmp_path: Path) -> None:
+    jsonl_path = tmp_path / "baseline_n20.jsonl"
+    _write_jsonl(jsonl_path, _condition_rows(["baseline"], n=20))
+
+    markdown = build_compile_summary_markdown(
+        jsonl_path,
+        condition="baseline",
+        kernel_class="elementwise",
+        n=20,
+        validate=True,
+    )
+
+    assert "# Cluster 1 Compile-Only Summary" in markdown
+    assert "row_count: 60" in markdown
+    assert "expected_row_count: 60" in markdown
+    assert "compile_success_scope: all_dtype_strict" in markdown
+    assert "compile@1" in markdown
+    assert "prompt_dtype_compile_success_rate" in markdown
+    assert "pass@1" in markdown
+    assert "pass@5" in markdown
+    assert "pass@10" in markdown
+    assert "unique_solution_rate" in markdown
+    assert "No G rows found." in markdown
+    assert "comparison requires both baseline and G rows" in markdown
+    assert "| baseline | elementwise | fp32 | None |" in markdown
+
+
+def test_g_only_compile_summary_markdown(tmp_path: Path) -> None:
+    jsonl_path = tmp_path / "g_n20.jsonl"
+    _write_jsonl(jsonl_path, _condition_rows(["G"], n=20))
+
+    markdown = build_compile_summary_markdown(
+        jsonl_path,
+        condition="G",
+        kernel_class="elementwise",
+        n=20,
+        validate=True,
+    )
+
+    assert "row_count: 60" in markdown
+    assert "expected_conditions: ['G']" in markdown
+    assert "| G | elementwise | fp32 | 20 | 0.250000 | 0.250000 | 0.250000 |" in markdown
+    assert "comparison requires both baseline and G rows" in markdown
+
+
+def test_both_condition_compile_summary_markdown(tmp_path: Path) -> None:
+    jsonl_path = tmp_path / "both_n20.jsonl"
+    rows = _condition_rows(["baseline"], n=20, strict_success_cutoff=8)
+    rows.extend(_condition_rows(["G"], n=20, strict_success_cutoff=14))
+    _write_jsonl(jsonl_path, rows)
+
+    markdown = build_compile_summary_markdown(
+        jsonl_path,
+        condition="both",
+        kernel_class="elementwise",
+        n=20,
+        validate=True,
+    )
+
+    assert "row_count: 120" in markdown
+    assert "expected_row_count: 120" in markdown
+    assert "grammar ON eliminated 6 compile failure(s)" in markdown
+    assert "| baseline | elementwise | fp32 |" in markdown
+    assert "| G | elementwise | fp32 |" in markdown
+
+
+def test_summary_rejects_small_matrix_unless_explicit(tmp_path: Path) -> None:
+    jsonl_path = tmp_path / "small.jsonl"
+    _write_jsonl(jsonl_path, _condition_rows(["baseline"], n=1))
+
+    with pytest.raises(ValueError, match="expected at least 20 rows"):
+        build_compile_summary_markdown(jsonl_path)
+
+    markdown = build_compile_summary_markdown(
+        jsonl_path,
+        condition="baseline",
+        kernel_class="elementwise",
+        n=1,
+        allow_small_matrix=True,
+        validate=True,
+    )
+
+    assert "row_count: 3" in markdown
+    assert "pass@5" in markdown
+    assert "NA" in markdown
+
+
+def test_require_full_n20_is_fatal_without_validate_flag(tmp_path: Path) -> None:
+    jsonl_path = tmp_path / "small.jsonl"
+    _write_jsonl(jsonl_path, _condition_rows(["baseline"], n=1))
+
+    with pytest.raises(ValueError, match="--require-full-n20 requires --n 20"):
+        build_compile_summary_markdown(
+            jsonl_path,
+            condition="baseline",
+            kernel_class="elementwise",
+            n=1,
+            allow_small_matrix=True,
+            require_full_n20=True,
+        )
+
+
+def test_masked_token_summary_excludes_baseline_rows(tmp_path: Path) -> None:
+    jsonl_path = tmp_path / "both_masked.jsonl"
+    _write_jsonl(jsonl_path, _condition_rows(["baseline", "G"], n=20))
+
+    markdown = build_compile_summary_markdown(
+        jsonl_path,
+        condition="both",
+        kernel_class="elementwise",
+        n=20,
+        validate=True,
+    )
+    masked_section = markdown.split("## Masked Token Rate", maxsplit=1)[1].split(
+        "## Compile Error Types",
+        maxsplit=1,
+    )[0]
+
+    assert "| G | elementwise | fp32 |" in masked_section
+    assert "| baseline |" not in masked_section
+
+
+def test_compile_error_distribution_reported(tmp_path: Path) -> None:
+    jsonl_path = tmp_path / "errors.jsonl"
+    rows = _condition_rows(["baseline"], n=20)
+    rows[0].update(
+        compile_success=False,
+        compile_results_by_dtype={"fp32": False, "fp16": False, "bf16": False},
+        compile_error_type="CompilationError",
+        compile_error_msg="bad generated source",
+    )
+    _write_jsonl(jsonl_path, rows)
+
+    markdown = build_compile_summary_markdown(
+        jsonl_path,
+        condition="baseline",
+        kernel_class="elementwise",
+        n=20,
+        validate=True,
+    )
+
+    assert "## Compile Error Types" in markdown
+    assert "| baseline | elementwise | fp32 | CompilationError | 1 |" in markdown
+    assert "| baseline | elementwise | fp32 | None | 19 |" in markdown
+
+
+def test_prompt_dtype_compile_success_uses_row_dtype() -> None:
+    row = _make_result(
+        dtype="bf16",
+        compile_success=False,
+        compile_results_by_dtype={"fp32": True, "fp16": True, "bf16": False},
+    )
+
+    assert prompt_dtype_compile_success(row) is False
+
+
+def test_prompt_dtype_compile_success_requires_dtype_key() -> None:
+    row = _make_result(
+        dtype="bf16",
+        compile_success=False,
+        compile_results_by_dtype={"fp32": True, "fp16": True},
+    )
+
+    with pytest.raises(ValueError, match=r"compile_results_by_dtype\['bf16'\]"):
+        prompt_dtype_compile_success(row)
 
 
 def test_summary_requires_n20_per_group(tmp_path: Path) -> None:
@@ -112,6 +316,8 @@ def test_null_hypothesis_report_documents_eliminated_failures(tmp_path: Path) ->
     assert "pass@5" in markdown
     assert "pass@10" in markdown
     assert "unique_solution_rate" in markdown
+    assert "compile_success_scope" in markdown
+    assert "prompt_dtype_compile_successes" in markdown
     assert "grammar ON eliminated 6 compile failure(s)" in markdown
 
 
@@ -141,6 +347,41 @@ def _make_record(**overrides) -> dict[str, object]:
     }
     defaults.update(overrides)
     return defaults
+
+
+def _condition_rows(
+    conditions: list[str],
+    *,
+    n: int,
+    strict_success_cutoff: int | None = None,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    cutoff = n if strict_success_cutoff is None else strict_success_cutoff
+    for condition in conditions:
+        grammar_active = condition == "G"
+        for dtype in ("fp32", "fp16", "bf16"):
+            for seed in range(n):
+                compile_success = seed < cutoff
+                compile_results_by_dtype = (
+                    {"fp32": True, "fp16": True, "bf16": True}
+                    if compile_success
+                    else {"fp32": False, "fp16": False, "bf16": False}
+                )
+                rows.append(
+                    _make_record(
+                        grammar_active=grammar_active,
+                        masked_token_rate=0.25 if grammar_active else None,
+                        dtype=dtype,
+                        compile_success=compile_success,
+                        compile_results_by_dtype=compile_results_by_dtype,
+                        compile_error_type=None if compile_success else "RuntimeError",
+                        compile_error_msg=None if compile_success else "compile failed",
+                        unique_solution_hash=f"{condition}-{dtype}-{seed}",
+                        generation_seed=seed,
+                        run_id=f"{condition}-elementwise-{dtype}-{seed}",
+                    )
+                )
+    return rows
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:

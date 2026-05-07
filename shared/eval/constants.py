@@ -1,0 +1,31 @@
+"""Shared evaluation constants from the metric contract."""
+
+# Sampling
+MIN_SAMPLE_SIZE = 20
+PASS_K_VALUES = [1, 5, 10]
+
+# Timing
+WARMUP_ITERS = 25
+TIMING_ITERS = 100
+DEFAULT_CLOCK_MHZ = 1410
+
+# Repair
+REPAIR_BUDGET = 5
+REPAIR_CONVERGENCE_LEVEL = 2
+
+# Tolerance
+DEFAULT_ATOL = 1e-3
+DEFAULT_RTOL = 1e-3
+
+# Diversity
+DUPLICATE_THRESHOLD = 0.9
+
+# Statistical
+BOOTSTRAP_SAMPLES = 10000
+CI_LEVEL = 0.95
+SIGNIFICANCE_ALPHA = 0.05
+MULTIPLE_TESTING_METHOD = "holm"
+
+# fast@p thresholds
+FAST_P_VALUES = [0.0, 1.0, 1.2]
+FAST_TC_P_VALUES = [1.0, 1.2]
