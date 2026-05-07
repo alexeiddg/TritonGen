@@ -1,3 +1,6 @@
+"""Legacy invalid grammar fixture: generated source wrapped in markdown fences."""
+
+SOURCE = """\
 ```python
 import torch
 import triton
@@ -17,3 +20,4 @@ def add(x, y):
     add_kernel[(1,)](x, y, out, x.numel(), 1024)
     return out
 ```
+"""

@@ -1,3 +1,6 @@
+"""Legacy invalid grammar fixture: generated source prefixed with prose."""
+
+SOURCE = """\
 Here is the kernel you asked for:
 
 import torch
@@ -17,3 +20,4 @@ def add(x, y):
     out = torch.empty_like(x)
     add_kernel[(1,)](x, y, out, x.numel(), 1024)
     return out
+"""
