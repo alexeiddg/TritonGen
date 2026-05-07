@@ -30,9 +30,12 @@ class TritonGrammarLogitsProcessor(LogitsProcessor):
         self._matcher = None
         self._token_bitmask = None
         self._bitmask_vocab_size: int | None = None
-        self._grammar_vocab_size = _tokenizer_mask_vocab_size(tokenizer)
         self._accepted_length: int | None = None
         self._backend = getattr(compiled_grammar, "backend_grammar", compiled_grammar)
+        self._grammar_vocab_size = (
+            _compiled_grammar_vocab_size(self._backend)
+            or _tokenizer_mask_vocab_size(tokenizer)
+        )
         self._uses_fake_mask_api = _has_direct_mask_api(self._backend)
         if not self._uses_fake_mask_api:
             self._init_xgrammar_matcher()
@@ -52,7 +55,19 @@ class TritonGrammarLogitsProcessor(LogitsProcessor):
             self.prompt_length,
         )
         if hardware_allowed is not None:
-            allowed &= set(hardware_allowed)
+            hardware_allowed = set(hardware_allowed)
+            intersected = allowed & hardware_allowed
+            if intersected or grammar_allowed is None:
+                allowed = intersected
+
+        if not allowed and logits_vocab_size:
+            raise RuntimeError(
+                "grammar/hardware mask allowed zero tokens "
+                f"(grammar_allowed={len(grammar_allowed) if grammar_allowed is not None else 'all'}, "
+                f"hardware_allowed={len(hardware_allowed) if hardware_allowed is not None else 'all'}, "
+                f"logits_vocab_size={logits_vocab_size}, "
+                f"grammar_vocab_size={self._grammar_vocab_size})"
+            )
 
         masked = logits_vocab_size - len(allowed)
         self._masked_fractions.append(masked / logits_vocab_size if logits_vocab_size else 0.0)
@@ -212,6 +227,12 @@ def _tokenizer_mask_vocab_size(tokenizer) -> int | None:
     if vocab_size is None:
         return None
     return int(vocab_size)
+
+
+def _compiled_grammar_vocab_size(compiled_grammar) -> int | None:
+    tokenizer_info = getattr(compiled_grammar, "tokenizer_info", None)
+    vocab_size = getattr(tokenizer_info, "vocab_size", None)
+    return int(vocab_size) if vocab_size is not None else None
 
 
 def _first_sequence_token_ids(input_ids) -> list[int]:

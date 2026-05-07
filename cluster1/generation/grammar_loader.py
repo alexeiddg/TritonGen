@@ -93,20 +93,34 @@ def _build_xgrammar_grammar(xgr, grammar_text: str):
 
 
 def _build_tokenizer_info(xgr, tokenizer_id: str):
-    from transformers import AutoTokenizer
+    from transformers import AutoConfig, AutoTokenizer
 
     if not hasattr(xgr, "TokenizerInfo"):
         raise AttributeError("xgrammar.TokenizerInfo is unavailable")
 
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_id)
+    vocab_size = _model_vocab_size(AutoConfig, tokenizer_id)
     tokenizer_info = xgr.TokenizerInfo
     if hasattr(tokenizer_info, "from_huggingface"):
         try:
-            return tokenizer_info.from_huggingface(tokenizer_id)
-        except (TypeError, ValueError, AttributeError):
-            tokenizer = AutoTokenizer.from_pretrained(tokenizer_id)
+            if vocab_size is not None:
+                return tokenizer_info.from_huggingface(
+                    tokenizer,
+                    vocab_size=vocab_size,
+                )
+            return tokenizer_info.from_huggingface(tokenizer)
+        except TypeError:
             return tokenizer_info.from_huggingface(tokenizer)
 
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_id)
     if hasattr(tokenizer_info, "from_huggingface_tokenizer"):
         return tokenizer_info.from_huggingface_tokenizer(tokenizer)
     raise AttributeError("xgrammar.TokenizerInfo has no HuggingFace constructor")
+
+
+def _model_vocab_size(auto_config, tokenizer_id: str) -> int | None:
+    try:
+        config = auto_config.from_pretrained(tokenizer_id)
+    except Exception:
+        return None
+    vocab_size = getattr(config, "vocab_size", None)
+    return int(vocab_size) if vocab_size is not None else None

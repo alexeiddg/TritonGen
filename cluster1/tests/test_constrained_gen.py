@@ -183,16 +183,63 @@ def test_tokenizer_info_retries_with_tokenizer_object(monkeypatch) -> None:
         def from_pretrained(tokenizer_id: str):
             return {"tokenizer_id": tokenizer_id}
 
+    class FakeAutoConfig:
+        @staticmethod
+        def from_pretrained(tokenizer_id: str):
+            return types.SimpleNamespace(vocab_size=128)
+
     monkeypatch.setitem(
         sys.modules,
         "transformers",
-        types.SimpleNamespace(AutoTokenizer=FakeAutoTokenizer),
+        types.SimpleNamespace(
+            AutoConfig=FakeAutoConfig,
+            AutoTokenizer=FakeAutoTokenizer,
+        ),
     )
 
     tokenizer_info = grammar_loader._build_tokenizer_info(FakeXGrammar(), "model-id")
 
     assert tokenizer_info == "tokenizer-info"
     assert captured["tokenizer"] == {"tokenizer_id": "model-id"}
+
+
+def test_tokenizer_info_uses_model_config_vocab_size(monkeypatch) -> None:
+    captured = {}
+
+    class FakeTokenizerInfo:
+        @staticmethod
+        def from_huggingface(tokenizer, *, vocab_size=None):
+            captured["tokenizer"] = tokenizer
+            captured["vocab_size"] = vocab_size
+            return "tokenizer-info"
+
+    class FakeXGrammar:
+        TokenizerInfo = FakeTokenizerInfo
+
+    class FakeAutoTokenizer:
+        @staticmethod
+        def from_pretrained(tokenizer_id: str):
+            return {"tokenizer_id": tokenizer_id}
+
+    class FakeAutoConfig:
+        @staticmethod
+        def from_pretrained(tokenizer_id: str):
+            return types.SimpleNamespace(vocab_size=152064)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        types.SimpleNamespace(
+            AutoConfig=FakeAutoConfig,
+            AutoTokenizer=FakeAutoTokenizer,
+        ),
+    )
+
+    tokenizer_info = grammar_loader._build_tokenizer_info(FakeXGrammar(), "model-id")
+
+    assert tokenizer_info == "tokenizer-info"
+    assert captured["tokenizer"] == {"tokenizer_id": "model-id"}
+    assert captured["vocab_size"] == 152064
 
 
 def test_compile_xgrammar_wraps_text_with_grammar_object(monkeypatch) -> None:
@@ -379,6 +426,23 @@ def test_logits_processor_intersects_hardware_mask() -> None:
     assert scores[0][2] == -float("inf")
     assert scores[0][3] == 0.0
     assert processor.masked_token_rate() == 0.5
+
+
+def test_logits_processor_relaxes_conflicting_hardware_mask() -> None:
+    class ConflictingHardwareChecker:
+        def allowed_token_ids(self, *args, **kwargs):
+            return {3}
+
+    processor = TritonGrammarLogitsProcessor(
+        compiled_grammar=FakeCompiledGrammar(),
+        tokenizer=TokenMaskTokenizer(),
+        hardware_checker=ConflictingHardwareChecker(),
+    )
+    scores = [[0.0, 0.0, 0.0, 0.0]]
+
+    processor([[0]], scores)
+
+    assert scores[0] == [-float("inf"), 0.0, 0.0, -float("inf")]
 
 
 def test_hardware_mask_allows_split_numeric_prefix_tokens() -> None:
@@ -582,6 +646,26 @@ def test_logits_processor_uses_tokenizer_vocab_for_xgrammar_bitmask(monkeypatch)
     assert scores[0] == [-float("inf"), 0.0, -float("inf"), -float("inf")]
 
 
+def test_logits_processor_prefers_compiled_grammar_vocab_size(monkeypatch) -> None:
+    fake_xgrammar = FakeXGrammarModule()
+    monkeypatch.setitem(sys.modules, "xgrammar", fake_xgrammar)
+    tokenizer = TokenMaskTokenizer()
+    tokenizer.get_vocab = lambda: {"a": 0, "b": 1, "c": 2}
+    compiled = types.SimpleNamespace(
+        tokenizer_info=types.SimpleNamespace(vocab_size=4),
+    )
+    processor = TritonGrammarLogitsProcessor(
+        compiled_grammar=compiled,
+        tokenizer=tokenizer,
+    )
+    scores = [[0.0, 0.0, 0.0, 0.0]]
+
+    processor([[10, 11]], scores)
+
+    assert fake_xgrammar.allocate_calls[0] == (1, 4)
+    assert scores[0] == [-float("inf"), 0.0, -float("inf"), 0.0]
+
+
 def test_logits_processor_applies_xgrammar_mutating_none_bitmask(monkeypatch) -> None:
     fake_xgrammar = FakeXGrammarModule(fill_return=None)
     monkeypatch.setitem(sys.modules, "xgrammar", fake_xgrammar)
@@ -594,6 +678,20 @@ def test_logits_processor_applies_xgrammar_mutating_none_bitmask(monkeypatch) ->
     processor([[10, 11]], scores)
 
     assert scores[0] == [-float("inf"), 0.0, -float("inf"), 0.0]
+
+
+def test_logits_processor_rejects_empty_allowed_mask() -> None:
+    class EmptyGrammar:
+        def allowed_token_ids(self, input_ids):
+            return set()
+
+    processor = TritonGrammarLogitsProcessor(
+        compiled_grammar=EmptyGrammar(),
+        tokenizer=TokenMaskTokenizer(),
+    )
+
+    with pytest.raises(RuntimeError, match="allowed zero tokens"):
+        processor([[10, 11]], [[0.0, 0.0]])
 
 
 def test_hardware_records_sampled_block_assignments_for_later_masks() -> None:

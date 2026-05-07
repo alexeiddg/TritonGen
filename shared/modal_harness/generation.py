@@ -52,11 +52,15 @@ class RemoteGenerator:
             self.model_id,
             trust_remote_code=True,
         )
+        # ``transformers==4.47.1`` (pinned in ``llm_generation_image``)
+        # documents ``torch_dtype=`` for big-model loading. Newer releases
+        # document the renamed ``dtype=`` kwarg; stay on ``torch_dtype=``
+        # while this image pin holds.
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_id,
             device_map="auto",
             low_cpu_mem_usage=True,
-            dtype=torch.float16,
+            torch_dtype=torch.float16,
             trust_remote_code=True,
         )
         if hasattr(self.model, "eval"):

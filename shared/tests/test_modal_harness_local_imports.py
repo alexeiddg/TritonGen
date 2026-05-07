@@ -62,3 +62,14 @@ def test_shared_generation_does_not_load_heavy_deps() -> None:
     """
     leaked = _heavy_modules_after_import("shared.modal_harness.generation")
     assert not leaked, f"shared generation module pulled heavy modules: {leaked}"
+
+
+def test_run_cluster1_modal_does_not_load_heavy_deps() -> None:
+    """The Phase 5 Modal runner must be importable without the GPU stack.
+
+    All ``cluster1.data.kernels`` / ``cluster1.results`` / adapter imports
+    are deferred into function bodies so ``import
+    cluster1.experiments.run_cluster1_modal`` only pulls in stdlib + Modal.
+    """
+    leaked = _heavy_modules_after_import("cluster1.experiments.run_cluster1_modal")
+    assert not leaked, f"Phase 5 Modal runner pulled heavy modules: {leaked}"

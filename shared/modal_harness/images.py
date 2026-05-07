@@ -55,4 +55,5 @@ llm_generation_image = (
         }
     )
     .add_local_python_source("cluster1", "shared")
+    .add_local_dir("cluster1/grammar", "/root/cluster1/grammar")
 )
