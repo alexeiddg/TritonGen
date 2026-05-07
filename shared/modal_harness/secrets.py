@@ -20,6 +20,9 @@ import os
 
 import modal
 
+# Computed once at module import time. Changing TRITONGEN_MODAL_HF_SECRET
+# at runtime does NOT take effect — restart the process (or the Modal app)
+# after creating or rotating the secret.
 hf_secrets: list[modal.Secret] = (
     [modal.Secret.from_name(os.environ["TRITONGEN_MODAL_HF_SECRET"])]
     if os.environ.get("TRITONGEN_MODAL_HF_SECRET")

@@ -6,11 +6,13 @@ Cluster 1 stops at compile acceptance and does not add later-cluster logic.
 
 from __future__ import annotations
 
+import atexit
+import importlib.util
 import inspect
 import os
-import types
+import sys
 import tempfile
-import importlib.util
+import types
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
@@ -65,30 +67,87 @@ def load_generated_module(source: str) -> types.ModuleType:
 
     Raises ValueError with error_type hint 'SignatureError' on syntax/import
     failures so callers can map the exception to the right taxonomy.
+
+    Triton JIT may inspect the decorated kernel's Python source lazily on the
+    first dummy launch, so the backing file must stay on disk after import.
+
+    CLEANUP CONTRACT: every successful call here registers an ``atexit``
+    cleanup. Callers that use ``load_generated_module`` directly MUST invoke
+    ``cleanup_generated_module(module)`` — preferably in a ``finally`` block
+    — once Triton has finished any lazy source inspection. Otherwise the
+    ``atexit`` registry grows monotonically and temp ``.py`` files leak until
+    interpreter shutdown. ``check_compiles`` already does this for you.
     """
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".py")
+    module_name = f"_generated_kernel_{os.path.basename(tmp_path).replace('.', '_')}"
+    cleanup = _GeneratedModuleCleanup(module_name, tmp_path)
+    atexit.register(cleanup)
+
+    with os.fdopen(tmp_fd, "w", encoding="utf-8") as tmp:
+        tmp.write(source)
+
+    spec = importlib.util.spec_from_file_location(module_name, tmp_path)
+    if spec is None or spec.loader is None:
+        _run_generated_module_cleanup(cleanup)
+        raise ValueError("SignatureError: could not create module spec from generated source")
+
+    module = importlib.util.module_from_spec(spec)
+    setattr(module, "__tritongen_cleanup__", cleanup)
+    sys.modules[module_name] = module
     try:
-        with os.fdopen(tmp_fd, "w", encoding="utf-8") as tmp:
-            tmp.write(source)
-
-        spec = importlib.util.spec_from_file_location("_generated_kernel", tmp_path)
-        if spec is None or spec.loader is None:
-            raise ValueError("SignatureError: could not create module spec from generated source")
-
-        module = types.ModuleType("_generated_kernel")
-        try:
-            spec.loader.exec_module(module)  # type: ignore[union-attr]
-        except SyntaxError as exc:
-            raise ValueError(f"SignatureError: syntax error in generated source: {exc}") from exc
-        except Exception as exc:
-            raise ValueError(f"SignatureError: import error in generated source: {exc}") from exc
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
+        spec.loader.exec_module(module)  # type: ignore[union-attr]
+    except SyntaxError as exc:
+        _run_generated_module_cleanup(cleanup)
+        raise ValueError(f"SignatureError: syntax error in generated source: {exc}") from exc
+    except Exception as exc:
+        _run_generated_module_cleanup(cleanup)
+        raise ValueError(f"SignatureError: import error in generated source: {exc}") from exc
 
     return module
+
+
+class _GeneratedModuleCleanup:
+    def __init__(self, module_name: str, source_path: str) -> None:
+        self.module_name = module_name
+        self.source_path = source_path
+        self.active = True
+
+    def __call__(self) -> None:
+        if not self.active:
+            return
+        self.active = False
+        _cleanup_generated_module(self.module_name, self.source_path)
+
+
+def cleanup_generated_module(module: types.ModuleType) -> None:
+    """Remove a generated module and its temp source file."""
+    cleanup = getattr(module, "__tritongen_cleanup__", None)
+    if callable(cleanup):
+        _run_generated_module_cleanup(cleanup)
+        try:
+            atexit.unregister(cleanup)
+        except Exception:
+            pass
+        return
+
+    source_path = getattr(module, "__file__", "")
+    _cleanup_generated_module(module.__name__, source_path)
+
+
+def _run_generated_module_cleanup(cleanup: Callable[[], None]) -> None:
+    cleanup()
+    try:
+        atexit.unregister(cleanup)
+    except Exception:
+        pass
+
+
+def _cleanup_generated_module(module_name: str, source_path: str) -> None:
+    sys.modules.pop(module_name, None)
+    try:
+        os.unlink(source_path)
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +185,7 @@ def check_compiles(
 ) -> CompileResult:
     """Validate signature then trigger Triton JIT via dummy launches."""
     dtype_str = _dtype_str(dtype)
+    module: types.ModuleType | None = None
 
     # Step 1: load module and validate signature before any compilation attempt.
     try:
@@ -139,40 +199,43 @@ def check_compiles(
             n_shapes_tested=0,
         )
 
-    sig_error = validate_signature(module, spec)
-    if sig_error is not None:
-        return CompileResult(
-            success=False,
-            error_type="SignatureError",
-            error_msg=sig_error[:500],
-            dtype=dtype_str,
-            n_shapes_tested=0,
-        )
-
-    launcher = getattr(module, spec.launcher_name)
-
-    # Step 2: dummy launch for each shape to trigger Triton JIT.
-    for n_tested, shape in enumerate(shapes):
-        try:
-            args, kwargs = spec.build_args(shape, dtype)
-            launcher(*args, **kwargs)
-        except Exception as exc:
-            error_type = _classify_error(exc)
+    try:
+        sig_error = validate_signature(module, spec)
+        if sig_error is not None:
             return CompileResult(
                 success=False,
-                error_type=error_type,
-                error_msg=str(exc)[:500],
+                error_type="SignatureError",
+                error_msg=sig_error[:500],
                 dtype=dtype_str,
-                n_shapes_tested=n_tested,
+                n_shapes_tested=0,
             )
 
-    return CompileResult(
-        success=True,
-        error_type=None,
-        error_msg=None,
-        dtype=dtype_str,
-        n_shapes_tested=len(shapes),
-    )
+        launcher = getattr(module, spec.launcher_name)
+
+        # Step 2: dummy launch for each shape to trigger Triton JIT.
+        for n_tested, shape in enumerate(shapes):
+            try:
+                args, kwargs = spec.build_args(shape, dtype)
+                launcher(*args, **kwargs)
+            except Exception as exc:
+                error_type = _classify_error(exc)
+                return CompileResult(
+                    success=False,
+                    error_type=error_type,
+                    error_msg=str(exc)[:500],
+                    dtype=dtype_str,
+                    n_shapes_tested=n_tested,
+                )
+
+        return CompileResult(
+            success=True,
+            error_type=None,
+            error_msg=None,
+            dtype=dtype_str,
+            n_shapes_tested=len(shapes),
+        )
+    finally:
+        cleanup_generated_module(module)
 
 
 # ---------------------------------------------------------------------------

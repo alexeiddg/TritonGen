@@ -1,19 +1,15 @@
 """Modal image definitions for the TritonGen GPU harness.
 
-Phase 1–3 of the plan only requires ``triton_compile_image``. The generation
-image is deferred to Phase 4. The compile image is intentionally minimal so
-the first remote build is fast and the dependency surface for compile-only
-smoke tests stays small.
+``triton_compile_image`` is intentionally minimal so compile-only smoke tests
+keep a small dependency surface. ``llm_generation_image`` carries the heavier
+Hugging Face and constrained-decoding stack used by Phase 4 remote generation.
 
-DEPENDENCY PINS (open question — verify against a successful Modal build
-before depending on these for the M2/M3 full runs):
+The compile image pins are intentionally fixed for the Phase 3 smoke gate:
+``torch==2.8.0``, ``triton==3.4.0``, ``numpy==2.1.0``, and
+``pydantic==2.10.6``.
 
-The plan marks ``torch==2.8.0``, ``triton==3.4.0``, ``numpy==2.1.0``, and
-``pydantic==2.10.6`` as placeholders subject to verification. The local
-development host is a Mac with no CUDA/Triton, so versions cannot be verified
-against a working local install. The values below match the plan placeholders;
-if a build fails or the good-ReLU smoke fails with a cryptic dtype/runtime
-error, the most likely cause is a torch/triton mismatch.
+The generation image keeps ``autoawq==0.2.8`` paired with a compatible
+``transformers`` release. Do not pair AutoAWQ 0.2.8 with Transformers 4.56.0.
 """
 
 from __future__ import annotations
@@ -29,6 +25,34 @@ triton_compile_image = (
         "triton==3.4.0",
         "numpy==2.1.0",
         "pydantic==2.10.6",
+    )
+    .add_local_python_source("cluster1", "shared")
+)
+
+llm_generation_image = (
+    modal.Image.debian_slim(python_version=PYTHON_VERSION)
+    .uv_pip_install(
+        "torch==2.8.0",
+        "triton==3.4.0",
+        "numpy==2.1.0",
+        "pydantic==2.10.6",
+    )
+    .uv_pip_install(
+        "transformers==4.47.1",
+        "accelerate==1.2.1",
+        "tokenizers==0.21.1",
+        "autoawq==0.2.8",
+        "xgrammar==0.1.33",
+        "lark==1.2.2",
+        "huggingface_hub[hf_transfer]==0.34.0",
+        extra_options="--no-build-isolation",
+    )
+    .env(
+        {
+            "HF_HOME": "/cache/huggingface",
+            "HF_HUB_CACHE": "/cache/huggingface/hub",
+            "HF_HUB_ENABLE_HF_TRANSFER": "1",
+        }
     )
     .add_local_python_source("cluster1", "shared")
 )

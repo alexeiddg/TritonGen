@@ -1,9 +1,5 @@
 """Request/result schemas for the TritonGen Modal harness.
 
-Phase 1–3 scope: only the compile-side schemas are implemented. Generation
-schemas (``RemoteGenerationRequest`` / ``RemoteGenerationResult``) are
-deferred to Phase 4.
-
 Cluster boundary: Cluster 1 must never feed compile errors back to generation.
 The schemas reflect that — compile errors are *result fields*, not control
 signals. Reserved factor cells (``"C"``, ``"P"``, etc.) are accepted by the
@@ -16,7 +12,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # The full factorial label space. Reserved cells are NOT executed yet — see
 # the validator on RemoteCompileRequest.factor_cell.
@@ -38,6 +34,60 @@ DTypeName = Literal["fp32", "fp16", "bf16"]
 _SUPPORTED_FACTOR_CELLS: frozenset[str] = frozenset({"none", "G"})
 
 
+class RemoteGenerationRequest(BaseModel):
+    """Request for one remote model generation."""
+
+    factor_cell: FactorCell
+    kernel_class: KernelClass
+    kernel_name: str
+    dtype: DTypeName
+    prompt: str
+    model_id: str
+    grammar_active: bool
+    grammar_path: str = "cluster1/grammar/triton_kernel.gbnf"
+    max_new_tokens: int = 1024
+    temperature: float = 0.2
+    generation_seed: int | None = None
+    run_id: str
+
+    @field_validator("factor_cell")
+    @classmethod
+    def _reject_reserved_modes(cls, v: str) -> str:
+        return _validate_supported_factor_cell(v)
+
+    @model_validator(mode="after")
+    def _validate_factor_matches_grammar(self):
+        if self.factor_cell == "none" and self.grammar_active:
+            raise ValueError("factor_cell='none' requires grammar_active=False")
+        if self.factor_cell == "G" and not self.grammar_active:
+            raise ValueError("factor_cell='G' requires grammar_active=True")
+        return self
+
+
+class RemoteGenerationResult(BaseModel):
+    """Result for one remote model generation. No compile or timing fields."""
+
+    source: str
+    model_id: str
+    grammar_active: bool
+    masked_token_rate: float | None
+    generation_seed: int | None
+    temperature: float
+    run_id: str
+    modal_function_call_id: str | None = None
+    modal_input_id: str | None = None
+    error_type: str | None = None
+    error_msg: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_masked_rate(self):
+        if not self.grammar_active and self.masked_token_rate is not None:
+            raise ValueError("masked_token_rate must be None when grammar_active=False")
+        if self.grammar_active and self.masked_token_rate is None:
+            raise ValueError("masked_token_rate is required when grammar_active=True")
+        return self
+
+
 class RemoteCompileRequest(BaseModel):
     """Request for compile-only validation of generated Triton source.
 
@@ -56,16 +106,18 @@ class RemoteCompileRequest(BaseModel):
     @field_validator("factor_cell")
     @classmethod
     def _reject_reserved_modes(cls, v: str) -> str:
-        if v not in _SUPPORTED_FACTOR_CELLS:
-            raise ValueError(
-                f"Unsupported factor_cell {v!r} — only 'none' and 'G' are "
-                f"implemented. Cluster 2/3 modes are reserved."
-            )
-        return v
+        return _validate_supported_factor_cell(v)
 
 
 class RemoteCompileResult(BaseModel):
-    """Result of compile-only validation. No timing or profiling fields."""
+    """Result of compile-only validation. No timing or profiling fields.
+
+    ``factor_cell`` is populated by the harness from the originating
+    ``RemoteCompileRequest`` so each result row remains traceable to the
+    Cluster 1 condition that produced it. It is optional so direct test
+    fixtures and round-trip helpers can still build a result without a
+    request, and so older sidecar logs without the field stay parseable.
+    """
 
     compile_success: bool
     compile_results_by_dtype: dict[str, bool]
@@ -76,6 +128,52 @@ class RemoteCompileResult(BaseModel):
     stderr: str = ""
     traceback: str | None = None
     run_id: str
+    factor_cell: FactorCell | None = None
     modal_function_call_id: str | None = None
     modal_input_id: str | None = None
     metadata: dict = Field(default_factory=dict)
+
+
+class RemoteEvalResult(BaseModel):
+    """Remote generation plus compile result bridge for local JSONL logging."""
+
+    generation: RemoteGenerationResult
+    compile: RemoteCompileResult
+
+
+def remote_compile_result_to_cluster1_fields(
+    result: RemoteCompileResult | dict,
+) -> dict[str, object]:
+    """Return compile fields matching ``cluster1.results.GenerationResult``."""
+    if not isinstance(result, RemoteCompileResult):
+        result = RemoteCompileResult(**result)
+
+    error_msg = result.compile_error_msg
+    return {
+        "compile_success": result.compile_success,
+        "compile_results_by_dtype": dict(result.compile_results_by_dtype),
+        "compile_error_type": result.compile_error_type,
+        "compile_error_msg": error_msg[:500] if error_msg is not None else None,
+        "n_shapes_tested": result.n_shapes_tested,
+    }
+
+
+def dtype_name_to_bytes(dtype: DTypeName | str) -> int:
+    """Return scalar byte width for supported Cluster 1 dtype names."""
+    dtype_bytes = {
+        "fp32": 4,
+        "fp16": 2,
+        "bf16": 2,
+    }.get(dtype)
+    if dtype_bytes is None:
+        raise ValueError(f"unsupported dtype for hardware masks: {dtype!r}")
+    return dtype_bytes
+
+
+def _validate_supported_factor_cell(v: str) -> str:
+    if v not in _SUPPORTED_FACTOR_CELLS:
+        raise ValueError(
+            f"Unsupported factor_cell {v!r} — only 'none' and 'G' are "
+            f"implemented. Cluster 2/3 modes are reserved."
+        )
+    return v

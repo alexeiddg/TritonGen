@@ -24,22 +24,3 @@ def truncate_output(text: str, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
     half = max_chars // 2
     dropped = len(text) - max_chars
     return f"{text[:half]}\n... [truncated {dropped} chars] ...\n{text[-half:]}"
-
-
-def map_compile_error_type(exc: BaseException) -> str:
-    """Map a Python exception to the Cluster 1 compile-error taxonomy.
-
-    The taxonomy is fixed by ``cluster1.results.dataclass.CompileErrorType``:
-    ``CompilationError``, ``RuntimeError``, ``SignatureError``. Anything that
-    falls through is labeled ``UnknownError`` so the runner can flag it for
-    review without crashing the experiment loop.
-    """
-    exc_name = type(exc).__name__
-    msg = str(exc)
-    if "CompilationError" in exc_name:
-        return "CompilationError"
-    if exc_name == "SignatureError" or "signature" in msg.lower():
-        return "SignatureError"
-    if exc_name == "RuntimeError":
-        return "RuntimeError"
-    return "UnknownError"

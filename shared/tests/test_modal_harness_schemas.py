@@ -9,8 +9,16 @@ from __future__ import annotations
 
 import pytest
 
-from shared.modal_harness.errors import map_compile_error_type, truncate_output
-from shared.modal_harness.schemas import RemoteCompileRequest, RemoteCompileResult
+from shared.modal_harness.errors import truncate_output
+from shared.modal_harness.schemas import (
+    RemoteCompileRequest,
+    RemoteCompileResult,
+    RemoteEvalResult,
+    RemoteGenerationRequest,
+    RemoteGenerationResult,
+    dtype_name_to_bytes,
+    remote_compile_result_to_cluster1_fields,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -65,6 +73,105 @@ def test_request_round_trip_preserves_fields() -> None:
 
 
 # ---------------------------------------------------------------------------
+# RemoteGenerationRequest / RemoteGenerationResult
+# ---------------------------------------------------------------------------
+
+def _make_generation_request(**overrides):
+    base = dict(
+        factor_cell="none",
+        kernel_class="elementwise",
+        kernel_name="relu",
+        dtype="fp32",
+        prompt="write relu",
+        model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+        grammar_active=False,
+        run_id="test-run-id",
+    )
+    base.update(overrides)
+    return RemoteGenerationRequest(**base)
+
+
+def test_generation_request_baseline_mode() -> None:
+    req = _make_generation_request()
+    assert req.factor_cell == "none"
+    assert req.grammar_active is False
+
+
+def test_generation_request_g_mode() -> None:
+    req = _make_generation_request(factor_cell="G", grammar_active=True)
+    assert req.factor_cell == "G"
+    assert req.grammar_active is True
+
+
+@pytest.mark.parametrize("reserved", ["C", "P", "G+C", "G+P", "C+P", "G+C+P"])
+def test_generation_request_reserved_modes_rejected(reserved: str) -> None:
+    with pytest.raises(ValueError, match="only 'none' and 'G' are implemented"):
+        _make_generation_request(factor_cell=reserved)
+
+
+def test_generation_request_factor_cell_matches_grammar_flag() -> None:
+    with pytest.raises(ValueError, match="requires grammar_active=False"):
+        _make_generation_request(factor_cell="none", grammar_active=True)
+    with pytest.raises(ValueError, match="requires grammar_active=True"):
+        _make_generation_request(factor_cell="G", grammar_active=False)
+
+
+def test_generation_result_masked_rate_invariant() -> None:
+    baseline = RemoteGenerationResult(
+        source="@triton.jit",
+        model_id="model",
+        grammar_active=False,
+        masked_token_rate=None,
+        generation_seed=0,
+        temperature=0.2,
+        run_id="rid",
+    )
+    assert baseline.masked_token_rate is None
+
+    constrained = RemoteGenerationResult(
+        source="@triton.jit",
+        model_id="model",
+        grammar_active=True,
+        masked_token_rate=0.25,
+        generation_seed=0,
+        temperature=0.2,
+        run_id="rid",
+    )
+    assert constrained.masked_token_rate == 0.25
+
+
+def test_generation_result_rejects_wrong_masked_rate_shape() -> None:
+    with pytest.raises(ValueError, match="must be None"):
+        RemoteGenerationResult(
+            source="@triton.jit",
+            model_id="model",
+            grammar_active=False,
+            masked_token_rate=0.1,
+            generation_seed=0,
+            temperature=0.2,
+            run_id="rid",
+        )
+    with pytest.raises(ValueError, match="is required"):
+        RemoteGenerationResult(
+            source="@triton.jit",
+            model_id="model",
+            grammar_active=True,
+            masked_token_rate=None,
+            generation_seed=0,
+            temperature=0.2,
+            run_id="rid",
+        )
+
+
+def test_generation_dtype_bytes_for_hardware_masks() -> None:
+    assert dtype_name_to_bytes("fp32") == 4
+    assert dtype_name_to_bytes("fp16") == 2
+    assert dtype_name_to_bytes("bf16") == 2
+    with pytest.raises(ValueError, match="unsupported dtype"):
+        dtype_name_to_bytes("int8")
+
+
+# ---------------------------------------------------------------------------
 # RemoteCompileResult shape
 # ---------------------------------------------------------------------------
 
@@ -91,12 +198,67 @@ def test_result_round_trip() -> None:
         stderr="oops",
         traceback="Traceback ...",
         run_id="rid",
+        factor_cell="G",
         modal_function_call_id="fc-abc",
         modal_input_id="in-abc",
         metadata={"app_name": "tritongen-gpu-harness"},
     )
     rebuilt = RemoteCompileResult(**result.model_dump())
     assert rebuilt == result
+    assert rebuilt.factor_cell == "G"
+
+
+def test_result_factor_cell_defaults_to_none() -> None:
+    """Older sidecar logs without the field still parse cleanly."""
+    result = RemoteCompileResult(
+        compile_success=True,
+        compile_results_by_dtype={"fp32": True, "fp16": True, "bf16": True},
+        n_shapes_tested=3,
+        run_id="rid",
+    )
+    assert result.factor_cell is None
+
+
+def test_remote_eval_result_round_trip() -> None:
+    generation = RemoteGenerationResult(
+        source="@triton.jit",
+        model_id="model",
+        grammar_active=False,
+        masked_token_rate=None,
+        generation_seed=0,
+        temperature=0.2,
+        run_id="rid",
+    )
+    compile_result = RemoteCompileResult(
+        compile_success=True,
+        compile_results_by_dtype={"fp32": True, "fp16": True, "bf16": True},
+        n_shapes_tested=3,
+        run_id="rid",
+    )
+    result = RemoteEvalResult(generation=generation, compile=compile_result)
+    rebuilt = RemoteEvalResult(**result.model_dump())
+    assert rebuilt == result
+
+
+def test_remote_compile_result_to_cluster1_fields() -> None:
+    result = RemoteCompileResult(
+        compile_success=False,
+        compile_results_by_dtype={"fp32": False, "fp16": True, "bf16": True},
+        compile_error_type="RuntimeError",
+        compile_error_msg="x" * 600,
+        n_shapes_tested=2,
+        run_id="rid",
+    )
+
+    fields = remote_compile_result_to_cluster1_fields(result)
+
+    assert fields == {
+        "compile_success": False,
+        "compile_results_by_dtype": {"fp32": False, "fp16": True, "bf16": True},
+        "compile_error_type": "RuntimeError",
+        "compile_error_msg": "x" * 500,
+        "n_shapes_tested": 2,
+    }
 
 
 def test_result_has_no_timing_fields() -> None:
@@ -108,8 +270,9 @@ def test_result_has_no_timing_fields() -> None:
         "latency_ms",
         "speedup",
     }
-    fields = set(RemoteCompileResult.model_fields.keys())
-    assert forbidden.isdisjoint(fields)
+    for model in (RemoteCompileResult, RemoteGenerationResult):
+        fields = set(model.model_fields.keys())
+        assert forbidden.isdisjoint(fields)
 
 
 # ---------------------------------------------------------------------------
@@ -131,28 +294,3 @@ def test_truncate_output_long_text_keeps_head_and_tail() -> None:
 
 def test_truncate_output_empty_string() -> None:
     assert truncate_output("") == ""
-
-
-def test_map_compile_error_type_runtime_error() -> None:
-    assert map_compile_error_type(RuntimeError("boom")) == "RuntimeError"
-
-
-def test_map_compile_error_type_signature_keyword() -> None:
-    assert map_compile_error_type(ValueError("SignatureError: bad")) == "SignatureError"
-
-
-def test_map_compile_error_type_unknown_falls_back() -> None:
-    assert map_compile_error_type(ValueError("unrelated")) == "UnknownError"
-
-
-class _FakeCompilationError(Exception):
-    """Stand-in for triton.compiler.errors.CompilationError when Triton is absent."""
-
-
-def test_map_compile_error_type_compilation_error_by_name() -> None:
-    # The mapper checks the type name, so a class named "CompilationError"
-    # is enough — Triton does not need to be installed locally.
-    class CompilationError(Exception):
-        pass
-
-    assert map_compile_error_type(CompilationError("bad IR")) == "CompilationError"

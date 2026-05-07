@@ -20,6 +20,8 @@ dependencies = [
     "pandas>=2.0",
     "numpy>=1.26",
     "pyyaml>=6.0",
+    "pydantic>=2.10",
+    "modal>=1.0",
     "pytest>=8.0",
     "jupyter>=1.0",
 ]

@@ -94,13 +94,21 @@ class FakeXGrammarModule:
     def __init__(self, fill_return=True) -> None:
         self.last_matcher = None
         self.fill_return = fill_return
+        self.allocate_calls: list[tuple[int, int]] = []
 
     def allocate_token_bitmask(self, batch_size: int, vocab_size: int):
+        self.allocate_calls.append((batch_size, vocab_size))
         return [[0 for _ in range((vocab_size + 31) // 32)] for _ in range(batch_size)]
 
     def GrammarMatcher(self, compiled_grammar):  # noqa: N802 - mirrors xgrammar API.
         self.last_matcher = FakeXGrammarMatcher(compiled_grammar, self.fill_return)
         return self.last_matcher
+
+
+class FakeReversedXGrammarModule(FakeXGrammarModule):
+    def allocate_token_bitmask(self, vocab_size: int, batch_size: int):
+        self.allocate_calls.append((vocab_size, batch_size))
+        return [[0 for _ in range((vocab_size + 31) // 32)] for _ in range(batch_size)]
 
 
 class FakeXGrammarMatcher:
@@ -541,6 +549,37 @@ def test_logits_processor_uses_xgrammar_matcher_api(monkeypatch) -> None:
     assert first_scores[0] == [-float("inf"), 0.0, -float("inf"), 0.0]
     assert second_scores[0] == [-float("inf"), 0.0, -float("inf"), 0.0]
     assert fake_xgrammar.last_matcher.accepted_tokens == [3]
+
+
+def test_logits_processor_accepts_reversed_xgrammar_bitmask_args(monkeypatch) -> None:
+    fake_xgrammar = FakeReversedXGrammarModule()
+    monkeypatch.setitem(sys.modules, "xgrammar", fake_xgrammar)
+    processor = TritonGrammarLogitsProcessor(
+        compiled_grammar=object(),
+        tokenizer=TokenMaskTokenizer(),
+    )
+    scores = [[0.0, 0.0, 0.0, 0.0]]
+
+    processor([[10, 11]], scores)
+
+    assert scores[0] == [-float("inf"), 0.0, -float("inf"), 0.0]
+
+
+def test_logits_processor_uses_tokenizer_vocab_for_xgrammar_bitmask(monkeypatch) -> None:
+    fake_xgrammar = FakeXGrammarModule()
+    monkeypatch.setitem(sys.modules, "xgrammar", fake_xgrammar)
+    tokenizer = TokenMaskTokenizer()
+    tokenizer.get_vocab = lambda: {"a": 0, "b": 1, "c": 2}
+    processor = TritonGrammarLogitsProcessor(
+        compiled_grammar=object(),
+        tokenizer=tokenizer,
+    )
+    scores = [[0.0, 0.0, 0.0, 0.0]]
+
+    processor([[10, 11]], scores)
+
+    assert fake_xgrammar.allocate_calls[0] == (1, 3)
+    assert scores[0] == [-float("inf"), 0.0, -float("inf"), -float("inf")]
 
 
 def test_logits_processor_applies_xgrammar_mutating_none_bitmask(monkeypatch) -> None:

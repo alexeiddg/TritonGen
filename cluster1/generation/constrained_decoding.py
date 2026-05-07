@@ -30,6 +30,7 @@ class TritonGrammarLogitsProcessor(LogitsProcessor):
         self._matcher = None
         self._token_bitmask = None
         self._bitmask_vocab_size: int | None = None
+        self._grammar_vocab_size = _tokenizer_mask_vocab_size(tokenizer)
         self._accepted_length: int | None = None
         self._backend = getattr(compiled_grammar, "backend_grammar", compiled_grammar)
         self._uses_fake_mask_api = _has_direct_mask_api(self._backend)
@@ -37,9 +38,9 @@ class TritonGrammarLogitsProcessor(LogitsProcessor):
             self._init_xgrammar_matcher()
 
     def __call__(self, input_ids, scores):
-        vocab_size = _vocab_size_from_scores(scores)
-        allowed = set(range(vocab_size))
-        grammar_allowed = self._grammar_allowed_token_ids(input_ids, scores, vocab_size)
+        logits_vocab_size = _vocab_size_from_scores(scores)
+        allowed = set(range(logits_vocab_size))
+        grammar_allowed = self._grammar_allowed_token_ids(input_ids, scores, logits_vocab_size)
         if grammar_allowed is not None:
             allowed &= grammar_allowed
 
@@ -47,15 +48,15 @@ class TritonGrammarLogitsProcessor(LogitsProcessor):
             self.hardware_checker,
             self.tokenizer,
             input_ids,
-            vocab_size,
+            logits_vocab_size,
             self.prompt_length,
         )
         if hardware_allowed is not None:
             allowed &= set(hardware_allowed)
 
-        masked = vocab_size - len(allowed)
-        self._masked_fractions.append(masked / vocab_size if vocab_size else 0.0)
-        _apply_disallowed(scores, allowed, vocab_size)
+        masked = logits_vocab_size - len(allowed)
+        self._masked_fractions.append(masked / logits_vocab_size if logits_vocab_size else 0.0)
+        _apply_disallowed(scores, allowed, logits_vocab_size)
         return scores
 
     def masked_token_rate(self) -> float:
@@ -77,7 +78,7 @@ class TritonGrammarLogitsProcessor(LogitsProcessor):
         self._xgr = xgr
         self._matcher = xgr.GrammarMatcher(self._backend)
 
-    def _grammar_allowed_token_ids(self, input_ids, scores, vocab_size: int) -> set[int]:
+    def _grammar_allowed_token_ids(self, input_ids, scores, logits_vocab_size: int) -> set[int]:
         if self._uses_fake_mask_api:
             direct_allowed = _direct_allowed_token_ids(self._backend, input_ids, scores)
             if direct_allowed is None:
@@ -85,11 +86,13 @@ class TritonGrammarLogitsProcessor(LogitsProcessor):
             return direct_allowed
 
         self._accept_generated_tokens(input_ids)
-        self._ensure_token_bitmask(vocab_size)
+        grammar_vocab_size = self._grammar_vocab_size or logits_vocab_size
+        grammar_vocab_size = min(grammar_vocab_size, logits_vocab_size)
+        self._ensure_token_bitmask(grammar_vocab_size)
         need_apply = self._matcher.fill_next_token_bitmask(self._token_bitmask)
         if need_apply is False:
-            return set(range(vocab_size))
-        return _allowed_from_bitmask(self._token_bitmask, vocab_size)
+            return set(range(grammar_vocab_size))
+        return _allowed_from_bitmask(self._token_bitmask, grammar_vocab_size)
 
     def _accept_generated_tokens(self, input_ids) -> None:
         token_ids = _first_sequence_token_ids(input_ids)
@@ -108,7 +111,7 @@ class TritonGrammarLogitsProcessor(LogitsProcessor):
             return
         if not hasattr(self._xgr, "allocate_token_bitmask"):
             raise RuntimeError("xgrammar.allocate_token_bitmask is unavailable")
-        self._token_bitmask = self._xgr.allocate_token_bitmask(1, vocab_size)
+        self._token_bitmask = _allocate_token_bitmask(self._xgr, vocab_size)
         self._bitmask_vocab_size = vocab_size
 
 
@@ -167,6 +170,48 @@ def _allowed_from_bitmask(bitmask, vocab_size: int) -> set[int]:
         if int(row[word_index]) & (1 << bit_index):
             allowed.add(token_id)
     return allowed
+
+
+def _allocate_token_bitmask(xgr, vocab_size: int):
+    """Allocate a token bitmask across XGrammar API argument-order variants."""
+    buffer_size = (vocab_size + 31) // 32
+    last_bitmask = None
+    for args in ((1, vocab_size), (vocab_size, 1)):
+        bitmask = xgr.allocate_token_bitmask(*args)
+        if _bitmask_buffer_width(bitmask) == buffer_size:
+            return bitmask
+        last_bitmask = bitmask
+    return last_bitmask
+
+
+def _bitmask_buffer_width(bitmask) -> int | None:
+    shape = getattr(bitmask, "shape", None)
+    if shape is not None and len(shape) >= 2:
+        return int(shape[1])
+    try:
+        first_row = bitmask[0]
+    except Exception:
+        return None
+    try:
+        return len(first_row)
+    except TypeError:
+        return None
+
+
+def _tokenizer_mask_vocab_size(tokenizer) -> int | None:
+    get_vocab = getattr(tokenizer, "get_vocab", None)
+    if callable(get_vocab):
+        try:
+            vocab = get_vocab()
+        except Exception:
+            vocab = None
+        if vocab:
+            return max(int(token_id) for token_id in vocab.values()) + 1
+
+    vocab_size = getattr(tokenizer, "vocab_size", None)
+    if vocab_size is None:
+        return None
+    return int(vocab_size)
 
 
 def _first_sequence_token_ids(input_ids) -> list[int]:

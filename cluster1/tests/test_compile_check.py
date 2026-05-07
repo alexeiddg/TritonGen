@@ -8,6 +8,7 @@ These tests cover compile-gate behavior only.
 from __future__ import annotations
 
 import inspect
+import sys
 import pytest
 
 from cluster1.validation.compile_check import (
@@ -15,6 +16,7 @@ from cluster1.validation.compile_check import (
     CompileSpec,
     check_compiles,
     check_compiles_all_dtypes,
+    cleanup_generated_module,
     load_generated_module,
     validate_signature,
 )
@@ -41,6 +43,10 @@ def _sig(*param_names: str) -> inspect.Signature:
         for name in param_names
     ]
     return inspect.Signature(params)
+
+
+def _generated_module_names() -> set[str]:
+    return {name for name in sys.modules if name.startswith("_generated_kernel_")}
 
 
 _VALID_SOURCE = """\
@@ -124,7 +130,18 @@ def test_compile_result_none_error_msg() -> None:
 
 def test_load_generated_module_imports_valid_source() -> None:
     module = load_generated_module(_SIMPLE_SOURCE)
-    assert hasattr(module, "relu")
+    try:
+        assert hasattr(module, "relu")
+    finally:
+        cleanup_generated_module(module)
+
+
+def test_load_generated_module_keeps_source_inspectable() -> None:
+    module = load_generated_module(_SIMPLE_SOURCE)
+    try:
+        assert inspect.getsource(module.relu).strip() == _SIMPLE_SOURCE.strip()
+    finally:
+        cleanup_generated_module(module)
 
 
 def test_load_generated_module_raises_on_syntax_error() -> None:
@@ -139,23 +156,32 @@ def test_load_generated_module_raises_on_syntax_error() -> None:
 def test_validate_signature_matches() -> None:
     module = load_generated_module(_SIMPLE_SOURCE)
     spec = _make_spec("relu", _sig("x"))
-    assert validate_signature(module, spec) is None
+    try:
+        assert validate_signature(module, spec) is None
+    finally:
+        cleanup_generated_module(module)
 
 
 def test_validate_signature_wrong_params() -> None:
     module = load_generated_module(_SIMPLE_SOURCE)
     spec = _make_spec("relu", _sig("x", "y"))
-    error = validate_signature(module, spec)
-    assert error is not None
-    assert "mismatch" in error
+    try:
+        error = validate_signature(module, spec)
+        assert error is not None
+        assert "mismatch" in error
+    finally:
+        cleanup_generated_module(module)
 
 
 def test_validate_signature_missing_launcher() -> None:
     module = load_generated_module(_MISSING_LAUNCHER_SOURCE)
     spec = _make_spec("relu", _sig("x"))
-    error = validate_signature(module, spec)
-    assert error is not None
-    assert "not found" in error
+    try:
+        error = validate_signature(module, spec)
+        assert error is not None
+        assert "not found" in error
+    finally:
+        cleanup_generated_module(module)
 
 
 # ---------------------------------------------------------------------------
@@ -217,6 +243,20 @@ def test_signature_error_on_missing_launcher() -> None:
     assert result.error_type == "SignatureError"
     assert result.success is False
     assert result.n_shapes_tested == 0
+
+
+def test_check_compiles_cleans_generated_module_after_launch() -> None:
+    def build_args(shape, dtype):
+        return ["x"], {}
+
+    spec = CompileSpec("relu", _sig("x"), build_args)
+    before = _generated_module_names()
+
+    result = check_compiles(_SIMPLE_SOURCE, spec, "fp32", [(32,), (64,)])
+
+    assert result.success is True
+    assert result.n_shapes_tested == 2
+    assert _generated_module_names() == before
 
 
 # ---------------------------------------------------------------------------
