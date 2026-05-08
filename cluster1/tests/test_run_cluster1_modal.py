@@ -7,6 +7,7 @@ roundtrip itself is exercised by the smoke command, not unit tests.
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +15,7 @@ import pytest
 
 from cluster1.data.kernels import get_kernel_spec
 from cluster1.experiments import run_cluster1_modal as runner
+from cluster1.experiments.validate_cluster1_results import validate_cluster1_results
 from cluster1.results.dataclass import (
     GenerationResult,
     validate_result_invariants,
@@ -349,6 +351,9 @@ def _make_args(tmp_path: Path, **overrides) -> SimpleNamespace:
         compile_backend="modal",
         generation_backend="modal",
         fail_fast=False,
+        overwrite=False,
+        append=False,
+        resume=False,
     )
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -378,6 +383,106 @@ def _patch_adapters(monkeypatch, *, generation, compile_) -> dict:
     return calls
 
 
+def _read_metadata(output: Path) -> dict:
+    return json.loads(runner._metadata_path(output).read_text(encoding="utf-8"))
+
+
+def _existing_result(
+    *,
+    factor_cell: str = "none",
+    dtype: str = "fp32",
+    seed: int = 0,
+    model_id: str = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+    temperature: float = 0.2,
+) -> GenerationResult:
+    spec = get_kernel_spec("elementwise")
+    grammar_active = factor_cell == "G"
+    return GenerationResult(
+        source=_FAKE_SOURCE,
+        model_id=model_id,
+        grammar_active=grammar_active,
+        kernel_class=spec.kernel_class,
+        kernel_name=spec.name,
+        dtype=dtype,
+        compile_success=True,
+        compile_results_by_dtype={"fp32": True, "fp16": True, "bf16": True},
+        compile_error_type=None,
+        compile_error_msg=None,
+        masked_token_rate=0.42 if grammar_active else None,
+        unique_solution_hash="hash",
+        n_shapes_tested=len(spec.shapes_by_dtype[dtype]),
+        generation_seed=seed,
+        temperature=temperature,
+        run_id=runner.make_run_id(
+            factor_cell=factor_cell,
+            kernel_class=spec.kernel_class,
+            kernel_name=spec.name,
+            dtype=dtype,
+            seed=seed,
+        ),
+        timestamp_utc="2026-05-08T00:00:00+00:00",
+    )
+
+
+def _write_existing_results(path: Path, rows: list[GenerationResult]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "".join(json.dumps(asdict(row)) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+
+def _write_resume_metadata(
+    output: Path,
+    *,
+    condition: str = "baseline",
+    kernel_class: str = "elementwise",
+    n: int = 1,
+    model_id: str = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+    expected_rows: int = 3,
+    status: str = "failed_partial",
+    dataset_id: str = "ScalingIntelligence/KernelBench",
+    temperature: float = 0.2,
+    max_new_tokens: int = 64,
+) -> None:
+    runner._metadata_path(output).write_text(
+        json.dumps(
+            {
+                "output_path": str(output),
+                "condition": condition,
+                "kernel_class": kernel_class,
+                "n": n,
+                "model_id": model_id,
+                "expected_rows": expected_rows,
+                "written_rows": 2,
+                "infrastructure_failures": 1,
+                "status": status,
+                "started_at_utc": "2026-05-08T00:00:00+00:00",
+                "finished_at_utc": "2026-05-08T00:01:00+00:00",
+                "git_commit": "test",
+                "run_config": {
+                    "condition": condition,
+                    "kernel_class": kernel_class,
+                    "n": n,
+                    "output": str(output),
+                    "model_id": model_id,
+                    "dataset_id": dataset_id,
+                    "temperature": temperature,
+                    "max_new_tokens": max_new_tokens,
+                    "compile_backend": "modal",
+                    "generation_backend": "modal",
+                    "fail_fast": False,
+                    "overwrite": False,
+                    "append": False,
+                    "resume": False,
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def test_run_writes_three_rows_for_elementwise_baseline_n1(
     monkeypatch, tmp_path
 ) -> None:
@@ -400,6 +505,160 @@ def test_run_writes_three_rows_for_elementwise_baseline_n1(
         assert row["compile_success"] is True
         assert row["grammar_active"] is False
         assert row["masked_token_rate"] is None
+
+
+def test_existing_output_without_mode_fails_before_remote_adapters(
+    monkeypatch, tmp_path
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    output = tmp_path / "out.jsonl"
+    output.write_text("stale row\n", encoding="utf-8")
+
+    args = _make_args(tmp_path, output=str(output))
+    with pytest.raises(runner.OutputPreflightError, match="Output exists"):
+        runner._run(args=args)
+
+    assert calls["generate"] == []
+    assert calls["compile"] == []
+    assert output.read_text(encoding="utf-8") == "stale row\n"
+
+
+def test_overwrite_removes_existing_output_and_sidecar(monkeypatch, tmp_path) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    output = tmp_path / "out.jsonl"
+    output.write_text("stale row\n", encoding="utf-8")
+    runner._metadata_path(output).write_text(
+        json.dumps({"status": "stale"}) + "\n",
+        encoding="utf-8",
+    )
+
+    args = _make_args(tmp_path, output=str(output), overwrite=True)
+    rows = runner._run(args=args)
+
+    assert rows == 3
+    lines = output.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 3
+    assert "stale row" not in output.read_text(encoding="utf-8")
+    metadata = _read_metadata(output)
+    assert metadata["status"] == "completed"
+    assert metadata["written_rows"] == 3
+
+
+def test_overwrite_does_not_delete_existing_files_before_dataset_validation(
+    monkeypatch, tmp_path
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    output = tmp_path / "out.jsonl"
+    meta_path = runner._metadata_path(output)
+    output.write_text("existing results\n", encoding="utf-8")
+    meta_path.write_text(json.dumps({"status": "completed"}) + "\n", encoding="utf-8")
+
+    args = _make_args(
+        tmp_path,
+        output=str(output),
+        overwrite=True,
+        dataset_id="typo-dataset",
+    )
+    with pytest.raises(ValueError, match="dataset_id"):
+        runner._run(args=args)
+
+    assert calls["generate"] == []
+    assert calls["compile"] == []
+    assert output.read_text(encoding="utf-8") == "existing results\n"
+    assert meta_path.read_text(encoding="utf-8") == '{"status": "completed"}\n'
+
+
+def test_append_allows_existing_output(monkeypatch, tmp_path) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    output = tmp_path / "out.jsonl"
+    output.write_text("stale row\n", encoding="utf-8")
+
+    args = _make_args(tmp_path, output=str(output), append=True)
+    rows = runner._run(args=args)
+
+    assert rows == 3
+    assert len(calls["generate"]) == 3
+    lines = output.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "stale row"
+    assert len(lines) == 4
+    metadata = _read_metadata(output)
+    assert metadata["run_config"]["append"] is True
+    assert metadata["status"] == "completed"
+
+
+def test_append_requires_existing_output_trailing_newline(
+    monkeypatch, tmp_path
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    output = tmp_path / "out.jsonl"
+    output.write_text("stale row without newline", encoding="utf-8")
+
+    args = _make_args(tmp_path, output=str(output), append=True)
+    with pytest.raises(runner.OutputPreflightError, match="trailing newline"):
+        runner._run(args=args)
+
+    assert calls["generate"] == []
+    assert calls["compile"] == []
+    assert output.read_text(encoding="utf-8") == "stale row without newline"
+
+
+def test_overwrite_and_append_together_fail_before_remote_adapters(
+    monkeypatch, tmp_path
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    args = _make_args(tmp_path, overwrite=True, append=True)
+
+    with pytest.raises(runner.OutputPreflightError, match="mutually exclusive"):
+        runner._run(args=args)
+
+    assert calls["generate"] == []
+    assert calls["compile"] == []
+
+
+@pytest.mark.parametrize("mode", ["overwrite", "append"])
+def test_resume_is_mutually_exclusive_with_write_modes(
+    monkeypatch, tmp_path, mode: str
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    args = _make_args(tmp_path, resume=True, **{mode: True})
+
+    with pytest.raises(runner.OutputPreflightError, match="mutually exclusive"):
+        runner._run(args=args)
+
+    assert calls["generate"] == []
+    assert calls["compile"] == []
+
+
+def test_metadata_records_running_then_completed(monkeypatch, tmp_path) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    observed_statuses: list[str] = []
+    original_write = runner._write_run_metadata
+
+    def spy_write(path, metadata):
+        observed_statuses.append(metadata["status"])
+        original_write(path, metadata)
+
+    monkeypatch.setattr(runner, "_write_run_metadata", spy_write)
+    args = _make_args(tmp_path)
+
+    runner._run(args=args)
+
+    assert observed_statuses[0] == "running"
+    assert observed_statuses[-1] == "completed"
+    metadata = _read_metadata(Path(args.output))
+    assert metadata["status"] == "completed"
+    assert metadata["expected_rows"] == 3
+    assert metadata["written_rows"] == 3
+    assert metadata["infrastructure_failures"] == 0
+    assert metadata["finished_at_utc"] is not None
 
 
 def test_run_invalid_backend_rejected(monkeypatch, tmp_path) -> None:
@@ -431,8 +690,14 @@ def test_run_generation_adapter_failure_exits_nonzero_after_continuing(
     assert excinfo.value.code == 1
     # 3 cells attempted, 1 failed, 2 valid rows written.
     assert n_calls["value"] == 3
-    lines = Path(args.output).read_text().splitlines()
+    output = Path(args.output)
+    lines = output.read_text().splitlines()
     assert len(lines) == 2
+    metadata = _read_metadata(output)
+    assert metadata["status"] == "failed_partial"
+    assert metadata["expected_rows"] == 3
+    assert metadata["written_rows"] == 2
+    assert metadata["infrastructure_failures"] == 1
 
 
 def test_run_compile_adapter_failure_exits_nonzero_after_continuing(
@@ -457,8 +722,13 @@ def test_run_compile_adapter_failure_exits_nonzero_after_continuing(
 
     assert excinfo.value.code == 1
     assert n_calls["value"] == 3
-    lines = Path(args.output).read_text().splitlines()
+    output = Path(args.output)
+    lines = output.read_text().splitlines()
     assert len(lines) == 2
+    metadata = _read_metadata(output)
+    assert metadata["status"] == "failed_partial"
+    assert metadata["written_rows"] == 2
+    assert metadata["infrastructure_failures"] == 1
 
 
 def test_run_remote_compile_failure_row_exits_zero(monkeypatch, tmp_path) -> None:
@@ -474,6 +744,223 @@ def test_run_remote_compile_failure_row_exits_zero(monkeypatch, tmp_path) -> Non
     assert len(lines) == 3
     assert {row["compile_success"] for row in lines} == {False}
     assert {row["compile_error_type"] for row in lines} == {"SignatureError"}
+
+
+def test_resume_requires_metadata_sidecar_for_non_empty_output(
+    monkeypatch, tmp_path
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    output = tmp_path / "out.jsonl"
+    _write_existing_results(output, [_existing_result(dtype="fp32")])
+
+    args = _make_args(tmp_path, output=str(output), resume=True)
+    with pytest.raises(runner.OutputPreflightError, match="metadata sidecar"):
+        runner._run(args=args)
+
+    assert calls["generate"] == []
+    assert calls["compile"] == []
+
+
+def test_resume_requires_existing_output_trailing_newline(
+    monkeypatch, tmp_path
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    output = tmp_path / "out.jsonl"
+    row_text = json.dumps(asdict(_existing_result(dtype="fp32")))
+    output.write_text(row_text, encoding="utf-8")
+    _write_resume_metadata(output)
+
+    args = _make_args(tmp_path, output=str(output), resume=True)
+    with pytest.raises(runner.OutputPreflightError, match="trailing newline"):
+        runner._run(args=args)
+
+    assert calls["generate"] == []
+    assert calls["compile"] == []
+    assert output.read_text(encoding="utf-8") == row_text
+
+
+def test_resume_fails_when_existing_run_id_does_not_match_cell(
+    monkeypatch, tmp_path
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    output = tmp_path / "out.jsonl"
+    row = _existing_result(dtype="fp32")
+    wrong_run_id_row = GenerationResult(
+        **dict(asdict(row), run_id="stale-or-hand-copied-run-id")
+    )
+    _write_existing_results(output, [wrong_run_id_row])
+    _write_resume_metadata(output)
+
+    args = _make_args(tmp_path, output=str(output), resume=True)
+    with pytest.raises(ValueError, match="outside this resume run"):
+        runner._run(args=args)
+
+    assert calls["generate"] == []
+    assert calls["compile"] == []
+
+
+@pytest.mark.parametrize(
+    "bad_fields, match",
+    [
+        (
+            {"compile_results_by_dtype": {"fp32": True, "fp16": True}},
+            "missing compile_results_by_dtype keys",
+        ),
+        (
+            {
+                "compile_success": True,
+                "compile_results_by_dtype": {
+                    "fp32": True,
+                    "fp16": False,
+                    "bf16": True,
+                },
+            },
+            "strict all-dtype acceptance=False",
+        ),
+    ],
+)
+def test_resume_fails_on_invalid_existing_compile_fields_before_remote_calls(
+    monkeypatch, tmp_path, bad_fields: dict, match: str
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    output = tmp_path / "out.jsonl"
+    bad_row = GenerationResult(
+        **dict(asdict(_existing_result(dtype="fp32")), **bad_fields)
+    )
+    _write_existing_results(
+        output,
+        [
+            bad_row,
+            _existing_result(dtype="fp16"),
+        ],
+    )
+    original_contents = output.read_text(encoding="utf-8")
+    _write_resume_metadata(output)
+
+    args = _make_args(tmp_path, output=str(output), resume=True)
+    with pytest.raises(ValueError, match=match):
+        runner._run(args=args)
+
+    assert calls["generate"] == []
+    assert calls["compile"] == []
+    assert output.read_text(encoding="utf-8") == original_contents
+
+
+def test_resume_skips_existing_rows_and_writes_only_missing(
+    monkeypatch, tmp_path
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    output = tmp_path / "out.jsonl"
+    _write_existing_results(
+        output,
+        [
+            _existing_result(dtype="fp32"),
+            _existing_result(dtype="fp16"),
+        ],
+    )
+    _write_resume_metadata(output)
+
+    args = _make_args(tmp_path, output=str(output), resume=True)
+    rows = runner._run(args=args)
+
+    assert rows == 1
+    assert [call["dtype"] for call in calls["generate"]] == ["bf16"]
+    assert len(calls["compile"]) == 1
+    assert len(output.read_text(encoding="utf-8").splitlines()) == 3
+
+
+def test_resume_metadata_records_skipped_and_newly_written(
+    monkeypatch, tmp_path
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    output = tmp_path / "out.jsonl"
+    _write_existing_results(
+        output,
+        [
+            _existing_result(dtype="fp32"),
+            _existing_result(dtype="fp16"),
+        ],
+    )
+    _write_resume_metadata(output)
+
+    args = _make_args(tmp_path, output=str(output), resume=True)
+    runner._run(args=args)
+
+    metadata = _read_metadata(output)
+    assert metadata["status"] == "completed"
+    assert metadata["resume"] is True
+    assert metadata["existing_rows_loaded"] == 2
+    assert metadata["skipped_rows"] == 2
+    assert metadata["newly_written_rows"] == 1
+    assert metadata["written_rows"] == 3
+
+
+def test_resume_final_output_validates_to_expected_count(
+    monkeypatch, tmp_path
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    output = tmp_path / "out.jsonl"
+    _write_existing_results(
+        output,
+        [
+            _existing_result(dtype="fp32"),
+            _existing_result(dtype="fp16"),
+        ],
+    )
+    _write_resume_metadata(output)
+
+    args = _make_args(tmp_path, output=str(output), resume=True)
+    runner._run(args=args)
+
+    report = validate_cluster1_results(
+        output,
+        condition="baseline",
+        kernel_class="elementwise",
+        n=1,
+    )
+    assert report.passed
+    assert report.row_count == 3
+
+
+def test_resume_fails_on_duplicate_existing_row_identities(
+    monkeypatch, tmp_path
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    output = tmp_path / "out.jsonl"
+    row = _existing_result(dtype="fp32")
+    duplicate = GenerationResult(**dict(asdict(row)))
+    _write_existing_results(output, [row, duplicate])
+    _write_resume_metadata(output)
+
+    args = _make_args(tmp_path, output=str(output), resume=True)
+    with pytest.raises(ValueError, match="duplicate existing row identity"):
+        runner._run(args=args)
+
+    assert calls["generate"] == []
+    assert calls["compile"] == []
+
+
+def test_resume_fails_on_corrupt_existing_row(monkeypatch, tmp_path) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    output = tmp_path / "out.jsonl"
+    output.write_text("{not json\n", encoding="utf-8")
+    _write_resume_metadata(output)
+
+    args = _make_args(tmp_path, output=str(output), resume=True)
+    with pytest.raises(ValueError, match="invalid JSON"):
+        runner._run(args=args)
+
+    assert calls["generate"] == []
+    assert calls["compile"] == []
 
 
 def test_run_expected_row_count_mismatch_exits_nonzero(
