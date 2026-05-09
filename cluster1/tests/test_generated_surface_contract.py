@@ -10,7 +10,7 @@ import pytest
 
 from cluster1.data.kernels import get_kernel_spec
 from cluster1.data.kernels.spec import torch as spec_torch
-from cluster1.grammar.test_grammar_acceptance import BAD_KERNELS
+from cluster1.grammar.acceptance_fixtures import BAD_KERNELS
 from cluster1.grammar.triton_kernel_validator import accepts_source
 from cluster1.validation.compile_check import (
     cleanup_generated_module,

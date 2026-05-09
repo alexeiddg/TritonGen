@@ -5,6 +5,8 @@
 # - Required fixed-order imports.
 # - Optional fixed-space @triton.autotune before @triton.jit.
 # - Triton-namespaced calls are whitelisted; arbitrary tl.* calls are not callable.
+# - Wrapper structure is scoped to the selected Cluster 1 families only:
+#   ReLU, Softmax, and GEMM. This is not a universal Triton grammar.
 # - Python indentation is represented by explicit 4-space levels to support nested
 #   if/for blocks without context-sensitive indent/dedent tokens.
 
@@ -136,36 +138,85 @@ string-list ::= "[" str-literal (", " str-literal)* "]"
 launch-wrapper ::= relu-launch-wrapper | softmax-launch-wrapper | matmul-launch-wrapper
 
 relu-launch-wrapper ::= "def relu(x: torch.Tensor) -> torch.Tensor:" nl
-                        relu-prelude-stmt*
+                        wrapper-gap
                         relu-output-allocation-stmt
-                        relu-prelude-stmt*
-                        grid-prelude-stmt
+                        wrapper-gap
+                        relu-n-elements-binding-stmt
+                        wrapper-gap
+                        relu-block-size-binding-stmt
+                        wrapper-gap
+                        relu-grid-prelude-stmt
+                        wrapper-gap
                         relu-bracket-launch-stmt
+                        wrapper-gap
                         relu-return-stmt
 
 softmax-launch-wrapper ::= "def softmax(x: torch.Tensor) -> torch.Tensor:" nl
-                           softmax-prelude-stmt*
+                           wrapper-gap
                            softmax-output-allocation-stmt
-                           softmax-prelude-stmt*
-                           grid-prelude-stmt
+                           wrapper-gap
+                           softmax-n-rows-binding-stmt
+                           wrapper-gap
+                           softmax-n-cols-binding-stmt
+                           wrapper-gap
+                           softmax-block-size-binding-stmt
+                           wrapper-gap
+                           softmax-grid-prelude-stmt
+                           wrapper-gap
                            softmax-bracket-launch-stmt
+                           wrapper-gap
                            softmax-return-stmt
 
 matmul-launch-wrapper ::= "def matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:" nl
-                          matmul-prelude-stmt*
+                          wrapper-gap
+                          matmul-m-binding-stmt
+                          wrapper-gap
+                          matmul-k-binding-stmt
+                          wrapper-gap
+                          matmul-n-binding-stmt
+                          wrapper-gap
                           matmul-output-allocation-stmt
-                          matmul-prelude-stmt*
-                          grid-prelude-stmt
+                          wrapper-gap
+                          matmul-block-m-binding-stmt
+                          wrapper-gap
+                          matmul-block-n-binding-stmt
+                          wrapper-gap
+                          matmul-block-k-binding-stmt
+                          wrapper-gap
+                          matmul-grid-prelude-stmt
+                          wrapper-gap
                           matmul-bracket-launch-stmt
+                          wrapper-gap
                           matmul-return-stmt
 
 bracket-launch-wrapper ::= relu-launch-wrapper | softmax-launch-wrapper | matmul-launch-wrapper
 
+wrapper-gap ::= blank-lines
 wrapper-prelude-stmt ::= indent1 wrapper-stmt-body nl
 grid-prelude-stmt ::= indent1 "grid" sp "=" sp grid-tuple-expr nl
 relu-output-allocation-stmt ::= indent1 "out" sp "=" sp "torch.empty_like(x)" nl
 softmax-output-allocation-stmt ::= indent1 "out" sp "=" sp "torch.empty_like(x)" nl
-matmul-output-allocation-stmt ::= indent1 "c" sp "=" sp torch-empty-call nl
+matmul-output-allocation-stmt ::= indent1 "c" sp "=" sp matmul-output-allocation-call nl
+relu-n-elements-binding-stmt ::= indent1 "n_elements" sp "=" sp "x.numel()" nl
+relu-block-size-binding-stmt ::= indent1 "BLOCK_SIZE" sp "=" sp block-size-literal nl
+softmax-n-rows-binding-stmt ::= indent1 "n_rows" sp "=" sp "x.shape[0]" nl
+softmax-n-cols-binding-stmt ::= indent1 "n_cols" sp "=" sp "x.shape[1]" nl
+softmax-block-size-binding-stmt ::= indent1 "BLOCK_SIZE" sp "=" sp block-size-literal nl
+matmul-m-binding-stmt ::= indent1 "M" sp "=" sp "a.shape[0]" nl
+matmul-k-binding-stmt ::= indent1 "K" sp "=" sp matmul-k-dimension-source nl
+matmul-n-binding-stmt ::= indent1 "N" sp "=" sp "b.shape[1]" nl
+matmul-block-m-binding-stmt ::= indent1 "BLOCK_M" sp "=" sp matmul-block-mn-literal nl
+matmul-block-n-binding-stmt ::= indent1 "BLOCK_N" sp "=" sp matmul-block-mn-literal nl
+matmul-block-k-binding-stmt ::= indent1 "BLOCK_K" sp "=" sp matmul-block-k-literal nl
+relu-grid-prelude-stmt ::= indent1 "grid" sp "=" sp "(triton.cdiv(n_elements, BLOCK_SIZE),)" nl
+softmax-grid-prelude-stmt ::= indent1 "grid" sp "=" sp "(n_rows,)" nl
+matmul-grid-prelude-stmt ::= indent1 "grid" sp "=" sp "(triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))" nl
+matmul-output-allocation-call ::= "torch.empty((M, N), device=" matmul-tensor-source ".device, dtype=" matmul-tensor-source ".dtype)"
+matmul-k-dimension-source ::= "a.shape[1]" | "b.shape[0]"
+matmul-tensor-source ::= "a" | "b"
+block-size-literal ::= "64" | "128" | "256" | "512"
+matmul-block-mn-literal ::= "32" | "64" | "128"
+matmul-block-k-literal ::= "32" | "64"
 relu-prelude-stmt ::= indent1 relu-prelude-target sp "=" sp wrapper-expr nl
                   | indent1 relu-prelude-target sp aug-op sp wrapper-expr nl
 softmax-prelude-stmt ::= indent1 softmax-prelude-target sp "=" sp wrapper-expr nl

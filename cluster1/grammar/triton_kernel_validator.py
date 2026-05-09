@@ -143,7 +143,7 @@ def validate_grammar_file(
         lark_compiles = False
 
     try:
-        from cluster1.grammar.test_grammar_acceptance import BAD_KERNELS, GOOD_KERNELS
+        from cluster1.grammar.acceptance_fixtures import BAD_KERNELS, GOOD_KERNELS
 
         n_accept_cases = len(GOOD_KERNELS)
         n_reject_cases = len(BAD_KERNELS)

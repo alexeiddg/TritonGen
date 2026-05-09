@@ -21,6 +21,41 @@ GOOD_KERNELS: dict[str, str] = {
     "relu": _RELU,
     "softmax": _SOFTMAX,
     "matmul": _MATMUL,
+    "relu_block_size_64": _RELU.replace(
+        "    BLOCK_SIZE = 256\n",
+        "    BLOCK_SIZE = 64\n",
+        1,
+    ),
+    "relu_wrapper_blank_lines": _RELU.replace(
+        "    out = torch.empty_like(x)\n"
+        "    n_elements = x.numel()\n"
+        "    BLOCK_SIZE = 256\n"
+        "    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)\n"
+        "    _relu_kernel[grid](x, out, n_elements, BLOCK_SIZE)\n"
+        "    return out\n",
+        "    out = torch.empty_like(x)\n"
+        "\n"
+        "    n_elements = x.numel()\n"
+        "\n"
+        "    BLOCK_SIZE = 256\n"
+        "\n"
+        "    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)\n"
+        "\n"
+        "    _relu_kernel[grid](x, out, n_elements, BLOCK_SIZE)\n"
+        "\n"
+        "    return out\n",
+        1,
+    ),
+    "softmax_block_size_256": _SOFTMAX.replace(
+        "    BLOCK_SIZE = 512\n",
+        "    BLOCK_SIZE = 256\n",
+        1,
+    ),
+    "matmul_k_from_b_shape": _MATMUL.replace(
+        "    K = a.shape[1]\n",
+        "    K = b.shape[0]\n",
+        1,
+    ),
     "relu_autotuned": _RELU.replace(
         "@triton.jit",
         '@triton.autotune(configs=[triton.Config({"BLOCK_SIZE": 256}, num_warps=4, num_stages=3)], key=["n_elements"])\n@triton.jit',
@@ -156,6 +191,75 @@ class Model(torch.nn.Module):
     "undefined_name_in_wrapper_prelude": _RELU.replace(
         "    n_elements = x.numel()\n",
         "    n_elements = foo\n",
+        1,
+    ),
+    "relu_missing_dimension_extraction": _RELU.replace(
+        "    n_elements = x.numel()\n",
+        "",
+        1,
+    ),
+    "relu_wrong_dimension_binding_type": _RELU.replace(
+        "    n_elements = x.numel()\n",
+        "    n_elements = x\n",
+        1,
+    ),
+    "relu_arbitrary_wrapper_expression": _RELU.replace(
+        "    n_elements = x.numel()\n",
+        "    n_elements = x.to(tl.float32)\n",
+        1,
+    ),
+    "relu_invalid_prelude_ordering": _RELU.replace(
+        "    out = torch.empty_like(x)\n"
+        "    n_elements = x.numel()\n",
+        "    n_elements = x.numel()\n"
+        "    out = torch.empty_like(x)\n",
+        1,
+    ),
+    "relu_missing_return": _RELU.replace(
+        "    return out\n",
+        "",
+        1,
+    ),
+    "relu_wrong_launch_argument_ordering": _RELU.replace(
+        "_relu_kernel[grid](x, out, n_elements, BLOCK_SIZE)",
+        "_relu_kernel[grid](x, out, BLOCK_SIZE, n_elements)",
+        1,
+    ),
+    "relu_undefined_grid_variable": _RELU.replace(
+        "    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)\n",
+        "    grid = (foo,)\n",
+        1,
+    ),
+    "softmax_missing_shape_extraction": _SOFTMAX.replace(
+        "    n_cols = x.shape[1]\n",
+        "",
+        1,
+    ),
+    "softmax_wrong_shape_binding_type": _SOFTMAX.replace(
+        "    n_cols = x.shape[1]\n",
+        "    n_cols = x\n",
+        1,
+    ),
+    "softmax_invalid_prelude_ordering": _SOFTMAX.replace(
+        "    n_rows = x.shape[0]\n"
+        "    n_cols = x.shape[1]\n",
+        "    n_cols = x.shape[1]\n"
+        "    n_rows = x.shape[0]\n",
+        1,
+    ),
+    "matmul_missing_dimension_extraction": _MATMUL.replace(
+        "    K = a.shape[1]\n",
+        "",
+        1,
+    ),
+    "matmul_wrong_dimension_binding_type": _MATMUL.replace(
+        "    M = a.shape[0]\n",
+        "    M = a\n",
+        1,
+    ),
+    "matmul_invalid_grid_construction": _MATMUL.replace(
+        "    grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))\n",
+        "    grid = (triton.cdiv(N, BLOCK_M), triton.cdiv(M, BLOCK_N))\n",
         1,
     ),
     "missing_output_allocation": _RELU.replace(

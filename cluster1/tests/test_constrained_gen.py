@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import ast
+import inspect
 import sys
 import types
+from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
 
+from cluster1.data.kernels import get_kernel_spec
 from cluster1.constraints.hardware_checker import HardwareChecker
 from cluster1.generation import grammar_loader
 from cluster1.generation.constrained_decoding import TritonGrammarLogitsProcessor
 from cluster1.generation.constrained_gen import generate_source
-from cluster1.grammar.test_grammar_acceptance import GOOD_KERNELS
+from cluster1.grammar.acceptance_fixtures import GOOD_KERNELS
 from cluster1.grammar.triton_kernel_validator import accepts_source
+from shared.eval.levels.level0_parse import check_signature
 
 
 class FakeTokenizer:
@@ -42,6 +48,77 @@ class MappingTokenizer(FakeTokenizer):
 
     def decode(self, token_ids, skip_special_tokens: bool = True) -> str:
         return "".join(self.tokens[token_id] for token_id in token_ids)
+
+
+class CompletionTokenizer(FakeTokenizer):
+    eos_token_id = 500
+    pad_token_id = 0
+
+    def __init__(self, chunks: list[str]) -> None:
+        super().__init__(input_ids=[[101, 102]])
+        self.chunks = chunks
+
+    @property
+    def vocab_size(self) -> int:
+        return self.eos_token_id + 1
+
+    def get_vocab(self) -> dict[str, int]:
+        vocab = {f"chunk_{index}": index for index in range(len(self.chunks))}
+        vocab["<eos>"] = self.eos_token_id
+        return vocab
+
+    def decode(self, token_ids, skip_special_tokens: bool = True) -> str:
+        output: list[str] = []
+        for token_id in token_ids:
+            if token_id == self.eos_token_id and skip_special_tokens:
+                continue
+            output.append(self.chunks[token_id])
+        return "".join(output)
+
+
+class CompletionGrammar:
+    def __init__(self, *, prompt_len: int, n_chunks: int, eos_token_id: int) -> None:
+        self.prompt_len = prompt_len
+        self.n_chunks = n_chunks
+        self.eos_token_id = eos_token_id
+        self.allowed_history: list[set[int]] = []
+
+    def allowed_token_ids(self, input_ids):
+        generated_len = len(input_ids[0]) - self.prompt_len
+        if generated_len < self.n_chunks:
+            allowed = {generated_len}
+        else:
+            allowed = {self.eos_token_id}
+        self.allowed_history.append(allowed)
+        return allowed
+
+
+class EosSeekingModel:
+    def __init__(self, tokenizer: CompletionTokenizer) -> None:
+        self.tokenizer = tokenizer
+        self.calls: list[dict] = []
+        self.selected_tokens: list[int] = []
+        self.eos_scores_after_mask: list[float] = []
+
+    def generate(self, **kwargs):
+        self.calls.append(kwargs)
+        sequence = list(kwargs["input_ids"][0])
+        processors = kwargs.get("logits_processor", [])
+
+        for _ in range(kwargs["max_new_tokens"]):
+            scores = [[0.0 for _ in range(self.tokenizer.vocab_size)]]
+            scores[0][self.tokenizer.eos_token_id] = 10.0
+            for processor in processors:
+                processor([sequence], scores)
+
+            self.eos_scores_after_mask.append(scores[0][self.tokenizer.eos_token_id])
+            token_id = max(range(self.tokenizer.vocab_size), key=lambda index: scores[0][index])
+            self.selected_tokens.append(token_id)
+            sequence.append(token_id)
+            if token_id == self.tokenizer.eos_token_id:
+                break
+
+        return [sequence]
 
 
 class FakeCompiledGrammar:
@@ -162,6 +239,166 @@ class FakeXGrammarCompilerModule:
         @staticmethod
         def from_ebnf(grammar_text: str, root_rule_name: str = "root"):
             return {"grammar_text": grammar_text, "root_rule_name": root_rule_name}
+
+
+@dataclass(frozen=True)
+class CanonicalCompletionCase:
+    name: str
+    kernel_class: str
+    source: str
+    signature: str
+    allocation: str
+    grid: str
+    bracket_launch: str
+    return_stmt: str
+
+
+CANONICAL_COMPLETION_CASES = [
+    CanonicalCompletionCase(
+        name="relu",
+        kernel_class="elementwise",
+        source=GOOD_KERNELS["relu"],
+        signature="def relu(x: torch.Tensor) -> torch.Tensor:",
+        allocation="    out = torch.empty_like(x)\n",
+        grid="    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)\n",
+        bracket_launch="    _relu_kernel[grid](x, out, n_elements, BLOCK_SIZE)\n",
+        return_stmt="    return out\n",
+    ),
+    CanonicalCompletionCase(
+        name="softmax",
+        kernel_class="reduction",
+        source=GOOD_KERNELS["softmax"],
+        signature="def softmax(x: torch.Tensor) -> torch.Tensor:",
+        allocation="    out = torch.empty_like(x)\n",
+        grid="    grid = (n_rows,)\n",
+        bracket_launch="    _softmax_kernel[grid](x, out, n_cols, BLOCK_SIZE)\n",
+        return_stmt="    return out\n",
+    ),
+    CanonicalCompletionCase(
+        name="matmul",
+        kernel_class="matmul",
+        source=GOOD_KERNELS["matmul"],
+        signature="def matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:",
+        allocation="    c = torch.empty((M, N), device=a.device, dtype=a.dtype)\n",
+        grid="    grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))\n",
+        bracket_launch=(
+            "    _matmul_kernel[grid](a, b, c, M, N, K, BLOCK_M, BLOCK_N, BLOCK_K)\n"
+        ),
+        return_stmt="    return c\n",
+    ),
+]
+
+
+MEASURED_QWEN_GOLDEN_TOKEN_LENGTHS = {
+    "relu": 199,
+    "softmax": 240,
+    "matmul": 487,
+}
+
+
+@pytest.mark.parametrize("case", CANONICAL_COMPLETION_CASES)
+def test_deterministic_constrained_generation_reaches_full_module_boundary(
+    case: CanonicalCompletionCase,
+) -> None:
+    decoded, model, grammar = _generate_eos_seeking_completion(case)
+
+    assert decoded.source == case.source
+    assert accepts_source(decoded.source)
+    _assert_full_canonical_module(decoded.source, case)
+    assert model.selected_tokens[-1] == model.tokenizer.eos_token_id
+    assert all(score == -float("inf") for score in model.eos_scores_after_mask[:-1])
+    assert model.eos_scores_after_mask[-1] == 10.0
+    assert all(
+        model.tokenizer.eos_token_id not in allowed
+        for allowed in grammar.allowed_history[:-1]
+    )
+    assert grammar.allowed_history[-1] == {model.tokenizer.eos_token_id}
+
+
+def test_deterministic_completion_regression_fails_when_budget_ends_before_launcher() -> None:
+    case = CANONICAL_COMPLETION_CASES[0]
+    helper_only_chunks = case.source.split("\ndef relu", maxsplit=1)[0].splitlines(
+        keepends=True,
+    )
+    decoded, model, _ = _generate_eos_seeking_completion(
+        case,
+        max_new_tokens=len(helper_only_chunks),
+    )
+
+    assert decoded.source == "".join(helper_only_chunks)
+    assert "def relu(x: torch.Tensor) -> torch.Tensor:" not in decoded.source
+    assert model.tokenizer.eos_token_id not in model.selected_tokens
+    assert not accepts_source(decoded.source)
+
+
+def test_generation_token_budgets_cover_measured_canonical_modules() -> None:
+    current_default = inspect.signature(generate_source).parameters["max_new_tokens"].default
+    smoke_max_new_tokens = _smoke_generation_max_new_tokens()
+
+    assert MEASURED_QWEN_GOLDEN_TOKEN_LENGTHS["relu"] > 128
+    assert max(MEASURED_QWEN_GOLDEN_TOKEN_LENGTHS.values()) <= smoke_max_new_tokens
+    assert max(MEASURED_QWEN_GOLDEN_TOKEN_LENGTHS.values()) <= current_default
+
+
+def _generate_eos_seeking_completion(
+    case: CanonicalCompletionCase,
+    *,
+    max_new_tokens: int | None = None,
+):
+    chunks = case.source.splitlines(keepends=True)
+    tokenizer = CompletionTokenizer(chunks)
+    model = EosSeekingModel(tokenizer)
+    grammar = CompletionGrammar(
+        prompt_len=2,
+        n_chunks=len(chunks),
+        eos_token_id=tokenizer.eos_token_id,
+    )
+    decoded = generate_source(
+        prompt=f"Generate a canonical {case.name} Triton module.",
+        model=model,
+        tokenizer=tokenizer,
+        grammar_active=True,
+        compiled_grammar=grammar,
+        max_new_tokens=max_new_tokens if max_new_tokens is not None else len(chunks) + 1,
+        temperature=0.2,
+        seed=0,
+    )
+    return decoded, model, grammar
+
+
+def _assert_full_canonical_module(source: str, case: CanonicalCompletionCase) -> None:
+    assert source.startswith("import torch\nimport triton\nimport triton.language as tl\n\n")
+    assert f"@triton.jit\ndef _{case.name}_kernel" in source
+    assert case.signature in source
+    assert case.allocation in source
+    assert case.grid in source
+    assert case.bracket_launch in source
+    assert case.return_stmt in source
+
+    tree = ast.parse(source)
+    functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
+    assert [node.name for node in functions] == [f"_{case.name}_kernel", case.name]
+
+    ok, error = check_signature(source, get_kernel_spec(case.kernel_class))
+    assert ok, error
+
+
+def _smoke_generation_max_new_tokens() -> int:
+    smoke_path = Path(__file__).parents[2] / "shared" / "modal_harness" / "smoke.py"
+    tree = ast.parse(smoke_path.read_text(encoding="utf-8"))
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(
+            isinstance(target, ast.Name)
+            and target.id == "GENERATION_SMOKE_MAX_NEW_TOKENS"
+            for target in node.targets
+        ):
+            continue
+        value = ast.literal_eval(node.value)
+        assert isinstance(value, int)
+        return value
+    raise AssertionError("GENERATION_SMOKE_MAX_NEW_TOKENS not found")
 
 
 def test_tokenizer_info_retries_with_tokenizer_object(monkeypatch) -> None:

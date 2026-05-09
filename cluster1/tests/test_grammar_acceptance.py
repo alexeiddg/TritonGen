@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from cluster1.grammar.test_grammar_acceptance import BAD_KERNELS, GOOD_KERNELS
+from cluster1.grammar.acceptance_fixtures import BAD_KERNELS, GOOD_KERNELS
 from cluster1.grammar.triton_kernel_validator import accepts_source
 
 

@@ -12,7 +12,7 @@ from cluster1.data.prompts.prompt_contract import (
     REDUCTION_AUTOTUNE_CONFIGS,
     _format_autotune_configs,
 )
-from cluster1.grammar.test_grammar_acceptance import BAD_KERNELS, GOOD_KERNELS
+from cluster1.grammar.acceptance_fixtures import BAD_KERNELS, GOOD_KERNELS
 from cluster1.grammar.triton_kernel_validator import (
     DEFAULT_GBNF_PATH,
     _compile_lark_parser,
@@ -236,6 +236,94 @@ def test_actual_gbnf_rejects_validator_mismatch_wrapper_forms(bad_name: str) -> 
 
 
 @pytest.mark.parametrize(
+    "good_name",
+    [
+        "relu_block_size_64",
+        "relu_wrapper_blank_lines",
+        "softmax_block_size_256",
+        "matmul_k_from_b_shape",
+    ],
+)
+def test_scope_hardening_preserves_family_level_wrapper_variation(
+    good_name: str,
+) -> None:
+    parser = _compile_lark_parser(DEFAULT_GBNF_PATH.read_text(encoding="utf-8"))
+    source = GOOD_KERNELS[good_name]
+
+    parser.parse(source)
+    assert accepts_source(source)
+
+
+@pytest.mark.parametrize(
+    "bad_name,case",
+    [
+        ("relu_missing_dimension_extraction", "missing dimension extraction"),
+        ("relu_wrong_dimension_binding_type", "wrong variable binding type"),
+        ("relu_undefined_grid_variable", "undefined grid variable"),
+        ("relu_arbitrary_wrapper_expression", "arbitrary wrapper expression"),
+        ("relu_invalid_prelude_ordering", "invalid wrapper prelude ordering"),
+        ("relu_missing_return", "missing return"),
+        ("relu_wrong_launch_argument_ordering", "wrong launch argument ordering"),
+        ("softmax_missing_shape_extraction", "missing softmax shape extraction"),
+        ("softmax_wrong_shape_binding_type", "wrong softmax binding type"),
+        ("softmax_invalid_prelude_ordering", "invalid softmax prelude ordering"),
+        ("matmul_missing_dimension_extraction", "missing GEMM dimension extraction"),
+        ("matmul_wrong_dimension_binding_type", "wrong GEMM binding type"),
+        ("matmul_invalid_grid_construction", "noncanonical GEMM grid construction"),
+    ],
+)
+def test_scope_hardened_wrapper_parser_rejects_noncanonical_forms(
+    bad_name: str,
+    case: str,
+) -> None:
+    parser = _compile_lark_parser(DEFAULT_GBNF_PATH.read_text(encoding="utf-8"))
+
+    with pytest.raises(Exception):
+        parser.parse(BAD_KERNELS[bad_name])
+    assert not accepts_source(BAD_KERNELS[bad_name]), case
+
+
+@pytest.mark.parametrize(
+    "name,source",
+    [
+        *[(name, GOOD_KERNELS[name]) for name in [
+            "relu_block_size_64",
+            "relu_wrapper_blank_lines",
+            "softmax_block_size_256",
+            "matmul_k_from_b_shape",
+        ]],
+        *[(name, BAD_KERNELS[name]) for name in [
+            "relu_missing_dimension_extraction",
+            "relu_wrong_dimension_binding_type",
+            "relu_undefined_grid_variable",
+            "relu_arbitrary_wrapper_expression",
+            "relu_invalid_prelude_ordering",
+            "relu_missing_return",
+            "relu_wrong_launch_argument_ordering",
+            "softmax_missing_shape_extraction",
+            "softmax_wrong_shape_binding_type",
+            "softmax_invalid_prelude_ordering",
+            "matmul_missing_dimension_extraction",
+            "matmul_wrong_dimension_binding_type",
+            "matmul_invalid_grid_construction",
+        ]],
+    ],
+)
+def test_parser_and_semantic_validator_agree_on_scope_hardening_fixtures(
+    name: str,
+    source: str,
+) -> None:
+    parser = _compile_lark_parser(DEFAULT_GBNF_PATH.read_text(encoding="utf-8"))
+    try:
+        parser.parse(source)
+        parser_accepts = True
+    except Exception:
+        parser_accepts = False
+
+    assert parser_accepts == accepts_source(source), name
+
+
+@pytest.mark.parametrize(
     "bad_name",
     [
         "relu_missing_launch_tail",
@@ -262,6 +350,28 @@ def test_semantic_validator_rejects_bad_launch_args(bad_name: str) -> None:
 )
 def test_semantic_validator_rejects_bad_helper_signatures(bad_name: str) -> None:
     assert not _semantic_accepts(ast.parse(BAD_KERNELS[bad_name]))
+
+
+@pytest.mark.parametrize(
+    "name,source",
+    [
+        ("relu", GOOD_KERNELS["relu"]),
+        ("softmax", GOOD_KERNELS["softmax"]),
+        ("matmul", GOOD_KERNELS["matmul"]),
+    ],
+)
+def test_actual_gbnf_rejects_incomplete_canonical_module_boundaries(
+    name: str,
+    source: str,
+) -> None:
+    incomplete_prefixes = {
+        "imports_only": source.split("@triton.jit", maxsplit=1)[0],
+        "helper_only": source.split(f"\ndef {name}", maxsplit=1)[0] + "\n",
+        "before_return": source.rsplit("    return ", maxsplit=1)[0] + "\n",
+    }
+
+    for boundary, prefix in incomplete_prefixes.items():
+        assert not accepts_source(prefix), boundary
 
 
 @pytest.mark.parametrize("name,source", GOOD_KERNELS.items())

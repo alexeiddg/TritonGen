@@ -9,6 +9,16 @@ The KernelBench `Model` class surface is future adapter work. It must be added
 through an explicit KernelBench adapter later, not mixed implicitly into Cluster
 1 generation, grammar validation, or compile validation.
 
+## Grammar v1 Scope
+
+The Cluster 1 grammar v1 is a scoped experimental grammar for the current
+evaluation subset only: ReLU, Softmax, and GEMM. Grammar acceptance is intended
+to imply canonical-surface acceptance for those selected kernel families.
+
+This is not a universal Triton grammar and must not be described as one. Future
+KernelBench expansion requires explicit grammar generalization beyond these
+family-specific wrappers.
+
 ## Canonical Module Shape
 
 Every generated Cluster 1 source must be one complete Python module with no

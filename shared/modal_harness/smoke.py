@@ -26,7 +26,10 @@ from shared.modal_harness.images import triton_compile_image
 from shared.modal_harness.schemas import RemoteCompileRequest
 
 DEFAULT_GENERATION_MODEL_ID = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
-GENERATION_SMOKE_MAX_NEW_TOKENS = 128
+# Qwen tokenizer measurements for canonical Cluster 1 modules:
+# relu=199, softmax=240, matmul=487. Keep the smoke below the evaluation
+# default of 1024 while still allowing a complete canonical module.
+GENERATION_SMOKE_MAX_NEW_TOKENS = 512
 
 # A minimal but real Triton kernel matching the locked KernelBench ReLU
 # signature ``relu(x: torch.Tensor) -> torch.Tensor``. Annotations match the
