@@ -30,6 +30,7 @@ outputs/
 .idea/
 .vscode/
 .claude
-.contracts
+.contracts/*
+!.contracts/cluster1_generated_surface.md
 _legacy
 docs

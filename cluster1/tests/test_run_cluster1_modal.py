@@ -731,6 +731,38 @@ def test_run_compile_adapter_failure_exits_nonzero_after_continuing(
     assert metadata["infrastructure_failures"] == 1
 
 
+def test_run_compile_recursion_error_is_infrastructure_failure(
+    monkeypatch, tmp_path
+) -> None:
+    """A RecursionError from the adapter is not a structured compile row."""
+    generation, compile_ = _baseline_remote_pair()
+    n_calls = {"value": 0}
+
+    def fake_compile(**kwargs):
+        n_calls["value"] += 1
+        if n_calls["value"] == 2:
+            raise RecursionError("modal adapter recursion")
+        return compile_
+
+    monkeypatch.setattr(runner, "generate_source_modal", lambda **kw: generation)
+    monkeypatch.setattr(runner, "check_compiles_modal", fake_compile)
+
+    args = _make_args(tmp_path)
+    with pytest.raises(SystemExit) as excinfo:
+        runner._run(args=args)
+
+    assert excinfo.value.code == 1
+    assert n_calls["value"] == 3
+    output = Path(args.output)
+    lines = [json.loads(line) for line in output.read_text().splitlines()]
+    assert len(lines) == 2
+    assert {row["compile_error_type"] for row in lines} == {None}
+    metadata = _read_metadata(output)
+    assert metadata["status"] == "failed_partial"
+    assert metadata["written_rows"] == 2
+    assert metadata["infrastructure_failures"] == 1
+
+
 def test_run_remote_compile_failure_row_exits_zero(monkeypatch, tmp_path) -> None:
     """A structured compile failure is a valid result row, not infra failure."""
     generation, compile_ = _compile_failure_pair()

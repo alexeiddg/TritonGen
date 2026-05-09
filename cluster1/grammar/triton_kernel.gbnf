@@ -1,8 +1,8 @@
 # Cluster 1 Phase 1 grammar for raw Triton Python kernels.
 #
 # Scope:
-# - Exactly one Triton JIT kernel and exactly one launch wrapper.
-# - Optional fixed-order imports.
+# - Exactly one private Triton JIT kernel and exactly one public launch wrapper.
+# - Required fixed-order imports.
 # - Optional fixed-space @triton.autotune before @triton.jit.
 # - Triton-namespaced calls are whitelisted; arbitrary tl.* calls are not callable.
 # - Python indentation is represented by explicit 4-space levels to support nested
@@ -10,17 +10,25 @@
 
 root ::= module
 
-module ::= optional-imports decorator-block kernel-function blank-lines launch-wrapper trailing-ws
-
-optional-imports ::= imports | ""
 imports ::= "import torch" nl
             "import triton" nl
             "import triton.language as tl" nl
             blank-lines
 
+module ::= imports canonical-kernel-module trailing-ws
+canonical-kernel-module ::= relu-module | softmax-module | matmul-module
+
+relu-module ::= decorator-block relu-kernel-function blank-lines relu-launch-wrapper
+softmax-module ::= decorator-block softmax-kernel-function blank-lines softmax-launch-wrapper
+matmul-module ::= decorator-block matmul-kernel-function blank-lines matmul-launch-wrapper
+
 decorator-block ::= autotune-decorator? "@triton.jit" nl
 
-kernel-function ::= "def " ident "(" kernel-param-list "):" nl kernel-body
+kernel-function ::= "def " private-kernel-name "(" kernel-param-list "):" nl kernel-body
+private-kernel-name ::= "_relu_kernel" | "_softmax_kernel" | "_matmul_kernel"
+relu-kernel-function ::= "def _relu_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):" nl kernel-body
+softmax-kernel-function ::= "def _softmax_kernel(x_ptr, out_ptr, n_cols: tl.constexpr, BLOCK_SIZE: tl.constexpr):" nl kernel-body
+matmul-kernel-function ::= "def _matmul_kernel(a_ptr, b_ptr, c_ptr, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr):" nl kernel-body
 
 # The first kernel statement must bind tl.program_id(...), so kernels missing
 # tl.program_id are syntactically rejected in Phase 1.
@@ -39,7 +47,7 @@ wrapper-return ::= "return" (sp wrapper-expr)?
 triton-call-stmt ::= triton-core-call | triton-compute-call
 
 target ::= ident target-postfix*
-target-postfix ::= "[" kernel-subscript-content "]" | "." ident
+target-postfix ::= "[" kernel-subscript-content "]"
 
 # Task 1.2: Core Triton calls. tl.constexpr is annotation-only and is not a call.
 triton-core-call ::= tl-load-call | tl-store-call | tl-arange-call | tl-program-id-call | tl-zeros-call | tl-full-call
@@ -125,34 +133,62 @@ matmul-block-config ::= "triton.Config({\"BLOCK_M\": 32, \"BLOCK_N\": 32, \"BLOC
 string-list ::= "[" str-literal (", " str-literal)* "]"
 
 # Task 1.6: Required launch wrapper. A plain kernel(...) call is not a wrapper.
-launch-wrapper ::= bracket-launch-wrapper | run-launch-wrapper
+launch-wrapper ::= relu-launch-wrapper | softmax-launch-wrapper | matmul-launch-wrapper
 
-bracket-launch-wrapper ::= "def " ident "(" wrapper-param-list "):" nl
-                           wrapper-prelude-stmt*
-                           bracket-launch-stmt
-                           wrapper-return-stmt?
+relu-launch-wrapper ::= "def relu(x: torch.Tensor) -> torch.Tensor:" nl
+                        relu-prelude-stmt*
+                        relu-output-allocation-stmt
+                        relu-prelude-stmt*
+                        grid-prelude-stmt
+                        relu-bracket-launch-stmt
+                        relu-return-stmt
 
-run-launch-wrapper ::= "def " ident "(" wrapper-param-list "):" nl
-                       wrapper-prelude-stmt*
-                       run-launch-stmt
-                       wrapper-return-stmt?
+softmax-launch-wrapper ::= "def softmax(x: torch.Tensor) -> torch.Tensor:" nl
+                           softmax-prelude-stmt*
+                           softmax-output-allocation-stmt
+                           softmax-prelude-stmt*
+                           grid-prelude-stmt
+                           softmax-bracket-launch-stmt
+                           softmax-return-stmt
+
+matmul-launch-wrapper ::= "def matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:" nl
+                          matmul-prelude-stmt*
+                          matmul-output-allocation-stmt
+                          matmul-prelude-stmt*
+                          grid-prelude-stmt
+                          matmul-bracket-launch-stmt
+                          matmul-return-stmt
+
+bracket-launch-wrapper ::= relu-launch-wrapper | softmax-launch-wrapper | matmul-launch-wrapper
 
 wrapper-prelude-stmt ::= indent1 wrapper-stmt-body nl
+grid-prelude-stmt ::= indent1 "grid" sp "=" sp grid-tuple-expr nl
+relu-output-allocation-stmt ::= indent1 "out" sp "=" sp "torch.empty_like(x)" nl
+softmax-output-allocation-stmt ::= indent1 "out" sp "=" sp "torch.empty_like(x)" nl
+matmul-output-allocation-stmt ::= indent1 "c" sp "=" sp torch-empty-call nl
+relu-prelude-stmt ::= indent1 relu-prelude-target sp "=" sp wrapper-expr nl
+                  | indent1 relu-prelude-target sp aug-op sp wrapper-expr nl
+softmax-prelude-stmt ::= indent1 softmax-prelude-target sp "=" sp wrapper-expr nl
+                     | indent1 softmax-prelude-target sp aug-op sp wrapper-expr nl
+matmul-prelude-stmt ::= indent1 matmul-prelude-target sp "=" sp wrapper-expr nl
+                    | indent1 matmul-prelude-target sp aug-op sp wrapper-expr nl
+relu-prelude-target ::= "n_elements" | "BLOCK_SIZE"
+softmax-prelude-target ::= "n_rows" | "n_cols" | "BLOCK_SIZE"
+matmul-prelude-target ::= "M" | "N" | "K" | "BLOCK_M" | "BLOCK_N" | "BLOCK_K"
 wrapper-stmt-body ::= wrapper-assign-stmt | wrapper-aug-assign-stmt
 wrapper-assign-stmt ::= target sp "=" sp wrapper-expr
 wrapper-aug-assign-stmt ::= target sp aug-op sp wrapper-expr
 wrapper-return-stmt ::= indent1 wrapper-return nl
+relu-return-stmt ::= indent1 "return out" nl
+softmax-return-stmt ::= indent1 "return out" nl
+matmul-return-stmt ::= indent1 "return c" nl
 
-bracket-launch-stmt ::= indent1 ident "[" grid-expr "](" call-arg-list ")" nl
-run-launch-stmt ::= indent1 ident ".run(" run-call-arg-list ")" nl
+bracket-launch-stmt ::= relu-bracket-launch-stmt | softmax-bracket-launch-stmt | matmul-bracket-launch-stmt
+relu-bracket-launch-stmt ::= indent1 "_relu_kernel" "[" grid-expr "](x, out, n_elements, BLOCK_SIZE)" nl
+softmax-bracket-launch-stmt ::= indent1 "_softmax_kernel" "[" grid-expr "](x, out, n_cols, BLOCK_SIZE)" nl
+matmul-bracket-launch-stmt ::= indent1 "_matmul_kernel" "[" grid-expr "](a, b, c, M, N, K, BLOCK_M, BLOCK_N, BLOCK_K)" nl
 
-grid-expr ::= ident | wrapper-tuple-expr
-run-call-arg-list ::= "grid=" wrapper-expr
-                    | "grid=" wrapper-expr ", " keyword-arg-list
-                    | positional-arg-list ", grid=" wrapper-expr
-                    | positional-arg-list ", grid=" wrapper-expr ", " keyword-arg-list
-                    | positional-arg-list ", " keyword-arg-list ", grid=" wrapper-expr
-                    | keyword-arg-list ", grid=" wrapper-expr
+grid-expr ::= "grid"
 
 # Parameters.
 kernel-param-list ::= kernel-param ("," sp kernel-param)* | ""
@@ -174,8 +210,8 @@ kernel-comparison-expr ::= kernel-add-expr (sp cmp-op sp kernel-add-expr)?
 cmp-op ::= "<=" | ">=" | "==" | "!=" | "<" | ">"
 kernel-add-expr ::= kernel-mul-expr (sp add-op sp kernel-mul-expr)*
 add-op ::= "+" | "-"
-kernel-mul-expr ::= kernel-unary-expr (sp mul-op sp kernel-unary-expr)*
-mul-op ::= "//" | "*" | "/" | "%" | "@"
+kernel-mul-expr ::= kernel-unary-expr (sp kernel-mul-op sp kernel-unary-expr)*
+kernel-mul-op ::= "//" | "*" | "/" | "%" | "@"
 kernel-unary-expr ::= unary-op? kernel-primary
 unary-op ::= "-" | "+" | "~"
 
@@ -184,7 +220,7 @@ kernel-primary-base ::= triton-core-call
                       | triton-compute-call
                       | kernel-atom kernel-atom-postfix*
 
-kernel-atom-postfix ::= "[" kernel-subscript-content "]" | "." ident
+kernel-atom-postfix ::= "[" kernel-subscript-content "]"
 cast-postfix ::= ".to(" dtype ")"
 
 kernel-atom ::= literal | ident | dtype | constexpr-annotation | kernel-tuple-expr | kernel-list-expr | kernel-paren-expr
@@ -196,8 +232,10 @@ wrapper-bool-and-expr ::= wrapper-bitwise-expr (sp "and" sp wrapper-bitwise-expr
 wrapper-bitwise-expr ::= wrapper-comparison-expr (sp bitwise-op sp wrapper-comparison-expr)*
 wrapper-comparison-expr ::= wrapper-add-expr (sp cmp-op sp wrapper-add-expr)?
 wrapper-add-expr ::= wrapper-mul-expr (sp add-op sp wrapper-mul-expr)*
-wrapper-mul-expr ::= wrapper-unary-expr (sp mul-op sp wrapper-unary-expr)*
-wrapper-unary-expr ::= unary-op? wrapper-primary
+wrapper-mul-expr ::= wrapper-unary-expr (sp wrapper-mul-op sp wrapper-unary-expr)*
+wrapper-mul-op ::= "//" | "*" | "%"
+wrapper-unary-expr ::= wrapper-unary-op? wrapper-primary
+wrapper-unary-op ::= "-" | "+"
 
 wrapper-primary ::= wrapper-primary-base
 wrapper-primary-base ::= runtime-call
@@ -213,12 +251,31 @@ runtime-call ::= torch-empty-like-call
                | tensor-to-call
                | builtin-minmax-call
 
-torch-empty-like-call ::= "torch.empty_like(" wrapper-expr ")"
-torch-empty-call ::= "torch.empty(" wrapper-expr (", device=" wrapper-expr)? (", dtype=" wrapper-expr)? ")"
+torch-empty-like-call ::= "torch.empty_like(" tensor-source-expr ")"
+torch-empty-call ::= "torch.empty(" wrapper-shape-expr ", device=" tensor-device-expr ", dtype=" tensor-dtype-expr ")"
 triton-cdiv-call ::= "triton.cdiv(" wrapper-expr ", " wrapper-expr ")"
 tensor-numel-call ::= ident ".numel()"
 tensor-to-call ::= ident ".to(" dtype ")"
 builtin-minmax-call ::= ("max" | "min") "(" wrapper-expr ", " wrapper-expr ")"
+tensor-source-expr ::= tensor-source-ident
+tensor-source-ident ::= "x" | "a" | "b"
+tensor-device-expr ::= tensor-source-ident ".device"
+tensor-dtype-expr ::= tensor-source-ident ".dtype"
+
+grid-tuple-expr ::= "(" wrapper-dim-expr "," ")"
+                  | "(" wrapper-dim-expr ", " wrapper-dim-expr (", " wrapper-dim-expr)* ","? ")"
+wrapper-shape-expr ::= wrapper-dim-expr | wrapper-shape-tuple
+wrapper-shape-tuple ::= "(" wrapper-dim-expr "," ")"
+                      | "(" wrapper-dim-expr ", " wrapper-dim-expr (", " wrapper-dim-expr)* ","? ")"
+wrapper-dim-expr ::= wrapper-dim-add-expr
+wrapper-dim-add-expr ::= wrapper-dim-mul-expr (sp add-op sp wrapper-dim-mul-expr)*
+wrapper-dim-mul-expr ::= wrapper-dim-unary-expr (sp wrapper-mul-op sp wrapper-dim-unary-expr)*
+wrapper-dim-unary-expr ::= wrapper-unary-op? wrapper-dim-primary
+wrapper-dim-primary ::= int-literal | wrapper-dim-ident | triton-dim-cdiv-call | tensor-numel-call | builtin-dim-minmax-call | wrapper-shape-subscript | "(" wrapper-dim-expr ")"
+wrapper-dim-ident ::= "n_elements" | "n_rows" | "n_cols" | "M" | "N" | "K" | "BLOCK_SIZE" | "BLOCK_M" | "BLOCK_N" | "BLOCK_K"
+triton-dim-cdiv-call ::= "triton.cdiv(" wrapper-dim-expr ", " wrapper-dim-expr ")"
+builtin-dim-minmax-call ::= ("max" | "min") "(" wrapper-dim-expr ", " wrapper-dim-expr ")"
+wrapper-shape-subscript ::= tensor-source-ident ".shape[" int-literal "]"
 
 call-arg-list ::= wrapper-call-arg-list
 wrapper-call-arg-list ::= positional-arg-list (", " keyword-arg-list)?

@@ -11,17 +11,30 @@ if TYPE_CHECKING:
     from cluster1.data.kernels.spec import KernelSpec
 
 PROMPT_TEMPLATE = """\
-You are a Triton GPU kernel engineer. Write a complete, valid Triton kernel.
+You are a Triton GPU kernel engineer. Write a complete Python module.
 
-Function signature: {signature}
+Public launcher signature: def {signature}:
+Private Triton helper name: {helper_name}
 Kernel description: {description}
 Input dtype: {dtype}  |  Device: CUDA
 
-Use the following autotune configs exactly:
+Required module surface:
+- Start with exactly these imports:
+  import torch
+  import triton
+  import triton.language as tl
+- Define one private @triton.jit helper named {helper_name}.
+- Define one public Python launcher named exactly {launcher_name}.
+- The public launcher signature must be exactly: def {signature}:
+- The public launcher must allocate the output tensor.
+- The public launcher must define an explicit grid.
+- The public launcher must launch {helper_name} with bracket syntax.
+- The public launcher must return the output tensor.
+
+Allowed block configurations:
 {autotune_configs}
 
-Return ONLY the kernel code. No explanation. No markdown. No comments.
-Start your response with @triton.autotune or @triton.jit.
+Return ONLY the Python module. No explanation. No markdown fences. No prose.
 """
 
 ELEMENTWISE_AUTOTUNE_CONFIGS = [
@@ -80,12 +93,15 @@ def build_prompt(spec: "KernelSpec", dtype: str) -> str:
     sig_str = str(spec.reference_signature)
     launcher = spec.launcher_name
     signature_line = f"{launcher}{sig_str}"
+    helper_name = f"_{launcher}_kernel"
 
     description = KERNEL_DESCRIPTIONS.get(spec.name, f"Implements {spec.name} kernel.")
     configs_str = _format_autotune_configs(spec.autotune_configs)
 
     return PROMPT_TEMPLATE.format(
         signature=signature_line,
+        launcher_name=launcher,
+        helper_name=helper_name,
         description=description,
         dtype=dtype,
         autotune_configs=configs_str,

@@ -52,6 +52,52 @@ ALLOWED_TL_CALLS = frozenset(
     }
 )
 
+CANONICAL_LAUNCHER_PARAMS = {
+    "relu": ("x",),
+    "softmax": ("x",),
+    "matmul": ("a", "b"),
+}
+
+CANONICAL_HELPERS = {
+    launcher_name: f"_{launcher_name}_kernel"
+    for launcher_name in CANONICAL_LAUNCHER_PARAMS
+}
+
+CANONICAL_HELPER_PARAMS = {
+    "relu": (
+        ("x_ptr", None),
+        ("out_ptr", None),
+        ("n_elements", None),
+        ("BLOCK_SIZE", ("tl", "constexpr")),
+    ),
+    "softmax": (
+        ("x_ptr", None),
+        ("out_ptr", None),
+        ("n_cols", ("tl", "constexpr")),
+        ("BLOCK_SIZE", ("tl", "constexpr")),
+    ),
+    "matmul": (
+        ("a_ptr", None),
+        ("b_ptr", None),
+        ("c_ptr", None),
+        ("M", ("tl", "constexpr")),
+        ("N", ("tl", "constexpr")),
+        ("K", ("tl", "constexpr")),
+        ("BLOCK_M", ("tl", "constexpr")),
+        ("BLOCK_N", ("tl", "constexpr")),
+        ("BLOCK_K", ("tl", "constexpr")),
+    ),
+}
+
+CANONICAL_LAUNCH_ARGS = {
+    "relu": ("x", "out", "n_elements", "BLOCK_SIZE"),
+    "softmax": ("x", "out", "n_cols", "BLOCK_SIZE"),
+    "matmul": ("a", "b", "c", "M", "N", "K", "BLOCK_M", "BLOCK_N", "BLOCK_K"),
+}
+
+DIMENSION_BINOPS = (ast.Add, ast.Sub, ast.Mult, ast.FloorDiv, ast.Mod)
+DIMENSION_UNARYOPS = (ast.UAdd, ast.USub)
+
 PROMPT_AUTOTUNE_CONFIGS = (
     ELEMENTWISE_AUTOTUNE_CONFIGS + REDUCTION_AUTOTUNE_CONFIGS + MATMUL_AUTOTUNE_CONFIGS
 )
@@ -404,11 +450,13 @@ def _semantic_accepts(tree: ast.Module) -> bool:
         return False
 
     kernel_fn, wrapper_fn = functions
+    if not _canonical_function_pair(kernel_fn, wrapper_fn):
+        return False
     if not _decorators_are_valid(kernel_fn):
         return False
     if not _kernel_contains_program_id(kernel_fn):
         return False
-    if not _wrapper_launches_with_grid(wrapper_fn, kernel_fn.name):
+    if not _wrapper_surface_contract_is_valid(wrapper_fn, kernel_fn.name):
         return False
 
     if not _function_statements_are_valid(kernel_fn, in_kernel=True):
@@ -434,15 +482,23 @@ def _semantic_accepts(tree: ast.Module) -> bool:
 
 
 def _imports_are_valid(tree: ast.Module) -> bool:
-    non_import_seen = False
-    for node in tree.body:
+    if len(tree.body) < 3:
+        return False
+    required = [
+        [("torch", None)],
+        [("triton", None)],
+        [("triton.language", "tl")],
+    ]
+    for node, expected in zip(tree.body[:3], required, strict=True):
+        if not isinstance(node, ast.Import):
+            return False
+        imports = [(alias.name, alias.asname) for alias in node.names]
+        if imports != expected:
+            return False
+
+    for node in tree.body[3:]:
         if isinstance(node, (ast.Import, ast.ImportFrom)):
-            if non_import_seen:
-                return False
-            if not _is_allowed_import(node):
-                return False
-        else:
-            non_import_seen = True
+            return False
     return True
 
 
@@ -455,6 +511,81 @@ def _is_allowed_import(node: ast.AST) -> bool:
             [("triton.language", "tl")],
         ]
     return False
+
+
+def _canonical_function_pair(
+    kernel_fn: ast.FunctionDef,
+    wrapper_fn: ast.FunctionDef,
+) -> bool:
+    expected_helper = CANONICAL_HELPERS.get(wrapper_fn.name)
+    if expected_helper is None or kernel_fn.name != expected_helper:
+        return False
+    if not kernel_fn.name.startswith("_") or not kernel_fn.name.endswith("_kernel"):
+        return False
+    return _wrapper_signature_is_exact(wrapper_fn) and _helper_signature_is_exact(
+        kernel_fn,
+        wrapper_fn.name,
+    )
+
+
+def _wrapper_signature_is_exact(wrapper_fn: ast.FunctionDef) -> bool:
+    expected_params = CANONICAL_LAUNCHER_PARAMS.get(wrapper_fn.name)
+    if expected_params is None:
+        return False
+    if wrapper_fn.args.posonlyargs or wrapper_fn.args.kwonlyargs:
+        return False
+    if wrapper_fn.args.vararg is not None or wrapper_fn.args.kwarg is not None:
+        return False
+    if tuple(arg.arg for arg in wrapper_fn.args.args) != expected_params:
+        return False
+    if not all(_annotation_is_torch_tensor(arg.annotation) for arg in wrapper_fn.args.args):
+        return False
+    return _annotation_is_torch_tensor(wrapper_fn.returns)
+
+
+def _helper_signature_is_exact(
+    kernel_fn: ast.FunctionDef,
+    launcher_name: str,
+) -> bool:
+    expected_params = CANONICAL_HELPER_PARAMS.get(launcher_name)
+    if expected_params is None:
+        return False
+    if kernel_fn.args.posonlyargs or kernel_fn.args.kwonlyargs:
+        return False
+    if kernel_fn.args.vararg is not None or kernel_fn.args.kwarg is not None:
+        return False
+    if kernel_fn.args.defaults or kernel_fn.args.kw_defaults:
+        return False
+    if len(kernel_fn.args.args) != len(expected_params):
+        return False
+
+    for arg, (expected_name, expected_annotation) in zip(
+        kernel_fn.args.args,
+        expected_params,
+        strict=True,
+    ):
+        if arg.arg != expected_name:
+            return False
+        if expected_annotation is None:
+            if arg.annotation is not None:
+                return False
+            continue
+        if tuple(_attribute_chain(arg.annotation)) != expected_annotation:
+            return False
+
+    return kernel_fn.returns is None
+
+
+def _annotation_is_torch_tensor(node: ast.AST | None) -> bool:
+    return _attribute_chain(node) == ["torch", "Tensor"]
+
+
+def _attribute_chain(node: ast.AST | None) -> list[str]:
+    if isinstance(node, ast.Name):
+        return [node.id]
+    if isinstance(node, ast.Attribute):
+        return [*_attribute_chain(node.value), node.attr]
+    return []
 
 
 def _decorators_are_valid(kernel_fn: ast.FunctionDef) -> bool:
@@ -534,19 +665,494 @@ def _kernel_contains_program_id(kernel_fn: ast.FunctionDef) -> bool:
     )
 
 
-def _wrapper_launches_with_grid(wrapper_fn: ast.FunctionDef, kernel_name: str) -> bool:
-    return any(_is_grid_launch(node, kernel_name) for node in ast.walk(wrapper_fn))
-
-
 def _is_grid_launch(node: ast.AST, kernel_name: str) -> bool:
     if not isinstance(node, ast.Call):
         return False
     func = node.func
     if isinstance(func, ast.Subscript) and _is_name(func.value, kernel_name):
         return True
-    if isinstance(func, ast.Attribute) and func.attr == "run" and _is_name(func.value, kernel_name):
-        return any(kw.arg == "grid" for kw in node.keywords)
     return False
+
+
+def _wrapper_surface_contract_is_valid(
+    wrapper_fn: ast.FunctionDef,
+    kernel_name: str,
+) -> bool:
+    launch_stmt = _find_grid_launch_stmt(wrapper_fn, kernel_name)
+    if launch_stmt is None:
+        return False
+    launch_index, launch = launch_stmt
+    if not _wrapper_names_are_defined(wrapper_fn, kernel_name):
+        return False
+    if not _wrapper_runtime_allocations_are_valid(wrapper_fn):
+        return False
+    if not _launch_uses_valid_grid(launch, wrapper_fn, launch_index):
+        return False
+    if not _launch_args_are_exact(launch, wrapper_fn.name):
+        return False
+
+    returned_name = _returned_name(wrapper_fn)
+    if returned_name is None:
+        return False
+    if returned_name not in _launch_argument_names(launch):
+        return False
+    return _latest_binding_is_allocated_output(
+        wrapper_fn,
+        returned_name,
+        before_index=launch_index,
+    )
+
+
+def _find_grid_launch_stmt(
+    wrapper_fn: ast.FunctionDef,
+    kernel_name: str,
+) -> tuple[int, ast.Call] | None:
+    matches: list[tuple[int, ast.Call]] = []
+    for index, stmt in enumerate(wrapper_fn.body):
+        if isinstance(stmt, ast.Expr) and _is_grid_launch(stmt.value, kernel_name):
+            matches.append((index, stmt.value))
+    if len(matches) != 1:
+        return None
+    return matches[0]
+
+
+def _launch_uses_valid_grid(
+    launch: ast.Call,
+    wrapper_fn: ast.FunctionDef,
+    launch_index: int,
+) -> bool:
+    func = launch.func
+    if not isinstance(func, ast.Subscript):
+        return False
+
+    grid_expr = func.slice
+    return (
+        isinstance(grid_expr, ast.Name)
+        and grid_expr.id == "grid"
+        and _latest_binding_is_grid_tuple(
+            wrapper_fn,
+            before_index=launch_index,
+        )
+    )
+
+
+def _launch_args_are_exact(launch: ast.Call, launcher_name: str) -> bool:
+    expected_args = CANONICAL_LAUNCH_ARGS.get(launcher_name)
+    if expected_args is None or launch.keywords:
+        return False
+    return (
+        len(launch.args) == len(expected_args)
+        and all(isinstance(arg, ast.Name) for arg in launch.args)
+        and tuple(arg.id for arg in launch.args if isinstance(arg, ast.Name)) == expected_args
+    )
+
+
+def _latest_binding_is_allocated_output(
+    wrapper_fn: ast.FunctionDef,
+    name: str,
+    *,
+    before_index: int,
+) -> bool:
+    binding = _latest_binding_before(wrapper_fn, name, before_index=before_index)
+    if binding is None:
+        return False
+    binding_index, value = binding
+    if not isinstance(value, ast.Call):
+        return False
+    if not _expression_names_are_defined(wrapper_fn, value, before_index=binding_index):
+        return False
+    if _is_attr_name(value.func, "torch", "empty_like"):
+        return _call_is_valid_empty_like_allocation(
+            wrapper_fn,
+            value,
+            before_index=binding_index,
+        )
+    if _is_attr_name(value.func, "torch", "empty"):
+        return _call_is_valid_empty_allocation(
+            wrapper_fn,
+            value,
+            before_index=binding_index,
+        )
+    return False
+
+
+def _wrapper_runtime_allocations_are_valid(wrapper_fn: ast.FunctionDef) -> bool:
+    for index, stmt in enumerate(wrapper_fn.body):
+        for node in ast.walk(stmt):
+            if not isinstance(node, ast.Call):
+                continue
+            if _is_attr_name(node.func, "torch", "empty_like"):
+                if not _call_is_valid_empty_like_allocation(
+                    wrapper_fn,
+                    node,
+                    before_index=index,
+                ):
+                    return False
+                continue
+            if _is_attr_name(
+                node.func,
+                "torch",
+                "empty",
+            ) and not _call_is_valid_empty_allocation(
+                wrapper_fn,
+                node,
+                before_index=index,
+            ):
+                return False
+    return True
+
+
+def _call_is_valid_empty_like_allocation(
+    wrapper_fn: ast.FunctionDef,
+    call: ast.Call,
+    *,
+    before_index: int,
+) -> bool:
+    return (
+        len(call.args) == 1
+        and not call.keywords
+        and _expression_is_tensor_like(wrapper_fn, call.args[0], before_index=before_index)
+    )
+
+
+def _call_is_valid_empty_allocation(
+    wrapper_fn: ast.FunctionDef,
+    call: ast.Call,
+    *,
+    before_index: int,
+) -> bool:
+    kwargs: dict[str, ast.AST] = {}
+    for keyword in call.keywords:
+        if keyword.arg is None or keyword.arg in kwargs:
+            return False
+        kwargs[keyword.arg] = keyword.value
+
+    return (
+        len(call.args) == 1
+        and set(kwargs) == {"device", "dtype"}
+        and _expression_is_dimension_shape(wrapper_fn, call.args[0], before_index=before_index)
+        and _expression_is_tensor_attribute(
+            wrapper_fn,
+            kwargs["device"],
+            "device",
+            before_index=before_index,
+        )
+        and _expression_is_tensor_attribute(
+            wrapper_fn,
+            kwargs["dtype"],
+            "dtype",
+            before_index=before_index,
+        )
+    )
+
+
+def _latest_binding_is_grid_tuple(
+    wrapper_fn: ast.FunctionDef,
+    *,
+    before_index: int,
+) -> bool:
+    binding = _latest_binding_before(wrapper_fn, "grid", before_index=before_index)
+    if binding is None:
+        return False
+    binding_index, value = binding
+    return (
+        isinstance(value, ast.Tuple)
+        and bool(value.elts)
+        and _expression_names_are_defined(wrapper_fn, value, before_index=binding_index)
+        and all(
+            _expression_is_dimension_like(wrapper_fn, element, before_index=binding_index)
+            for element in value.elts
+        )
+    )
+
+
+def _latest_binding_before(
+    wrapper_fn: ast.FunctionDef,
+    name: str,
+    *,
+    before_index: int,
+) -> tuple[int, ast.AST] | None:
+    latest: tuple[int, ast.AST] | None = None
+    for index, stmt in enumerate(wrapper_fn.body[:before_index]):
+        if isinstance(stmt, ast.Assign) and name in _assigned_names(stmt.targets):
+            latest = (index, stmt.value)
+        elif isinstance(stmt, ast.AugAssign) and _target_is_name(stmt.target, name):
+            latest = (index, stmt)
+    return latest
+
+
+def _expression_names_are_defined(
+    wrapper_fn: ast.FunctionDef,
+    expression: ast.AST,
+    *,
+    before_index: int,
+) -> bool:
+    defined_names = _defined_wrapper_names_before(wrapper_fn, before_index=before_index)
+    return _referenced_names(expression) <= defined_names
+
+
+def _wrapper_names_are_defined(wrapper_fn: ast.FunctionDef, kernel_name: str) -> bool:
+    defined_names = _initial_wrapper_names(wrapper_fn) | {kernel_name}
+    for stmt in wrapper_fn.body:
+        if isinstance(stmt, ast.Assign):
+            if not _assignment_target_names(stmt.targets) <= defined_names:
+                return False
+            if not _referenced_names(stmt.value) <= defined_names:
+                return False
+            defined_names.update(_assigned_names(stmt.targets))
+            continue
+        if isinstance(stmt, ast.AugAssign):
+            if not _referenced_names(stmt.target) <= defined_names:
+                return False
+            if not _referenced_names(stmt.value) <= defined_names:
+                return False
+            continue
+        if isinstance(stmt, ast.Expr):
+            if not _referenced_names(stmt.value) <= defined_names:
+                return False
+            continue
+        if isinstance(stmt, ast.Return):
+            if stmt.value is not None and not _referenced_names(stmt.value) <= defined_names:
+                return False
+            continue
+    return True
+
+
+def _defined_wrapper_names_before(
+    wrapper_fn: ast.FunctionDef,
+    *,
+    before_index: int,
+) -> set[str]:
+    names = _initial_wrapper_names(wrapper_fn)
+    for stmt in wrapper_fn.body[:before_index]:
+        if isinstance(stmt, ast.Assign):
+            names.update(_assigned_names(stmt.targets))
+        elif isinstance(stmt, ast.AugAssign) and isinstance(stmt.target, ast.Name):
+            if stmt.target.id in names:
+                names.add(stmt.target.id)
+    return names
+
+
+def _expression_is_tensor_like(
+    wrapper_fn: ast.FunctionDef,
+    expression: ast.AST,
+    *,
+    before_index: int,
+) -> bool:
+    return isinstance(expression, ast.Name) and _name_is_tensor_like(
+        wrapper_fn,
+        expression.id,
+        before_index=before_index,
+    )
+
+
+def _name_is_tensor_like(
+    wrapper_fn: ast.FunctionDef,
+    name: str,
+    *,
+    before_index: int,
+) -> bool:
+    if name in _wrapper_parameter_names(wrapper_fn):
+        return True
+    binding = _latest_binding_before(wrapper_fn, name, before_index=before_index)
+    if binding is None:
+        return False
+    binding_index, value = binding
+    if isinstance(value, ast.Call) and _is_attr_name(value.func, "torch", "empty_like"):
+        return _call_is_valid_empty_like_allocation(
+            wrapper_fn,
+            value,
+            before_index=binding_index,
+        )
+    if isinstance(value, ast.Call) and _is_attr_name(value.func, "torch", "empty"):
+        return _call_is_valid_empty_allocation(
+            wrapper_fn,
+            value,
+            before_index=binding_index,
+        )
+    return False
+
+
+def _expression_is_dimension_shape(
+    wrapper_fn: ast.FunctionDef,
+    expression: ast.AST,
+    *,
+    before_index: int,
+) -> bool:
+    if isinstance(expression, ast.Tuple):
+        return bool(expression.elts) and all(
+            _expression_is_dimension_like(wrapper_fn, element, before_index=before_index)
+            for element in expression.elts
+        )
+    return _expression_is_dimension_like(wrapper_fn, expression, before_index=before_index)
+
+
+def _expression_is_tensor_attribute(
+    wrapper_fn: ast.FunctionDef,
+    expression: ast.AST,
+    attr_name: str,
+    *,
+    before_index: int,
+) -> bool:
+    return (
+        isinstance(expression, ast.Attribute)
+        and expression.attr == attr_name
+        and _expression_is_tensor_like(
+            wrapper_fn,
+            expression.value,
+            before_index=before_index,
+        )
+    )
+
+
+def _expression_is_dimension_like(
+    wrapper_fn: ast.FunctionDef,
+    expression: ast.AST,
+    *,
+    before_index: int,
+) -> bool:
+    if isinstance(expression, ast.Constant):
+        return isinstance(expression.value, int) and not isinstance(expression.value, bool)
+    if isinstance(expression, ast.Name):
+        return _name_is_dimension_like(wrapper_fn, expression.id, before_index=before_index)
+    if isinstance(expression, ast.BinOp):
+        return isinstance(expression.op, DIMENSION_BINOPS) and _expression_is_dimension_like(
+            wrapper_fn,
+            expression.left,
+            before_index=before_index,
+        ) and _expression_is_dimension_like(
+            wrapper_fn,
+            expression.right,
+            before_index=before_index,
+        )
+    if isinstance(expression, ast.UnaryOp):
+        return isinstance(expression.op, DIMENSION_UNARYOPS) and _expression_is_dimension_like(
+            wrapper_fn,
+            expression.operand,
+            before_index=before_index,
+        )
+    if isinstance(expression, ast.Subscript):
+        return _expression_is_shape_subscript(wrapper_fn, expression, before_index=before_index)
+    if isinstance(expression, ast.Call):
+        return _call_is_dimension_like(wrapper_fn, expression, before_index=before_index)
+    return False
+
+
+def _name_is_dimension_like(
+    wrapper_fn: ast.FunctionDef,
+    name: str,
+    *,
+    before_index: int,
+) -> bool:
+    binding = _latest_binding_before(wrapper_fn, name, before_index=before_index)
+    if binding is None:
+        return False
+    binding_index, value = binding
+    return _expression_is_dimension_like(wrapper_fn, value, before_index=binding_index)
+
+
+def _expression_is_shape_subscript(
+    wrapper_fn: ast.FunctionDef,
+    expression: ast.Subscript,
+    *,
+    before_index: int,
+) -> bool:
+    return (
+        isinstance(expression.value, ast.Attribute)
+        and expression.value.attr == "shape"
+        and _expression_is_tensor_like(
+            wrapper_fn,
+            expression.value.value,
+            before_index=before_index,
+        )
+        and isinstance(expression.slice, ast.Constant)
+        and isinstance(expression.slice.value, int)
+        and not isinstance(expression.slice.value, bool)
+    )
+
+
+def _call_is_dimension_like(
+    wrapper_fn: ast.FunctionDef,
+    call: ast.Call,
+    *,
+    before_index: int,
+) -> bool:
+    if _is_attr_name(call.func, "triton", "cdiv"):
+        return len(call.args) == 2 and not call.keywords and all(
+            _expression_is_dimension_like(wrapper_fn, arg, before_index=before_index)
+            for arg in call.args
+        )
+    if isinstance(call.func, ast.Attribute) and call.func.attr == "numel":
+        return (
+            not call.args
+            and not call.keywords
+            and _expression_is_tensor_like(wrapper_fn, call.func.value, before_index=before_index)
+        )
+    if isinstance(call.func, ast.Name) and call.func.id in {"max", "min"}:
+        return len(call.args) == 2 and not call.keywords and all(
+            _expression_is_dimension_like(wrapper_fn, arg, before_index=before_index)
+            for arg in call.args
+        )
+    return False
+
+
+def _wrapper_parameter_names(wrapper_fn: ast.FunctionDef) -> set[str]:
+    return {
+        arg.arg
+        for arg in (
+            [*wrapper_fn.args.posonlyargs]
+            + [*wrapper_fn.args.args]
+            + [*wrapper_fn.args.kwonlyargs]
+        )
+    }
+
+
+def _initial_wrapper_names(wrapper_fn: ast.FunctionDef) -> set[str]:
+    names = _wrapper_parameter_names(wrapper_fn)
+    names.update({"torch", "triton", "tl", "max", "min"})
+    return names
+
+
+def _referenced_names(node: ast.AST) -> set[str]:
+    return {
+        child.id
+        for child in ast.walk(node)
+        if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load)
+    }
+
+
+def _assignment_target_names(targets: list[ast.expr]) -> set[str]:
+    names: set[str] = set()
+    for target in targets:
+        names.update(_referenced_names(target))
+    return names
+
+
+def _returned_name(wrapper_fn: ast.FunctionDef) -> str | None:
+    for stmt in wrapper_fn.body:
+        if isinstance(stmt, ast.Return) and isinstance(stmt.value, ast.Name):
+            return stmt.value.id
+    return None
+
+
+def _launch_argument_names(launch: ast.Call) -> set[str]:
+    names = {arg.id for arg in launch.args if isinstance(arg, ast.Name)}
+    for keyword in launch.keywords:
+        if isinstance(keyword.value, ast.Name):
+            names.add(keyword.value.id)
+    return names
+
+
+def _assigned_names(targets: list[ast.expr]) -> set[str]:
+    names: set[str] = set()
+    for target in targets:
+        if isinstance(target, ast.Name):
+            names.add(target.id)
+    return names
+
+
+def _target_is_name(target: ast.expr, name: str) -> bool:
+    return isinstance(target, ast.Name) and target.id == name
 
 
 def _function_statements_are_valid(function: ast.FunctionDef, *, in_kernel: bool) -> bool:
@@ -631,10 +1237,10 @@ def _valid_non_tl_call(
     if _is_attr_name(node.func, "torch", "empty_like"):
         return len(node.args) == 1 and not node.keywords
     if _is_attr_name(node.func, "torch", "empty"):
-        return len(node.args) == 1 and {kw.arg for kw in node.keywords} <= {
-            "device",
-            "dtype",
-        }
+        return (
+            len(node.args) == 1
+            and {kw.arg for kw in node.keywords} == {"device", "dtype"}
+        )
     if isinstance(node.func, ast.Attribute) and node.func.attr == "numel":
         return not node.args and not node.keywords and isinstance(node.func.value, ast.Name)
     if isinstance(node.func, ast.Attribute) and node.func.attr == "to":
@@ -655,7 +1261,7 @@ def _valid_non_tl_call(
         and node.func.attr == "run"
         and _is_name(node.func.value, kernel_name)
     ):
-        return any(kw.arg == "grid" for kw in node.keywords)
+        return False
     if (
         isinstance(node.func, ast.Attribute)
         and node.func.attr == "run"

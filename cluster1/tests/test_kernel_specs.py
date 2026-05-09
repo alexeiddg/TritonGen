@@ -60,6 +60,24 @@ class TestKernelSpecsPresent:
         )
 
     @pytest.mark.parametrize("kernel_class", ["elementwise", "reduction", "matmul"])
+    def test_build_prompt_describes_function_launcher_surface(self, kernel_class: str):
+        spec = get_kernel_spec(kernel_class)
+        prompt = build_prompt(spec, "fp32")
+        helper_name = f"_{spec.launcher_name}_kernel"
+        signature = f"def {spec.launcher_name}{spec.reference_signature}:"
+
+        assert "Write a complete Python module" in prompt
+        assert "import torch" in prompt
+        assert "import triton" in prompt
+        assert "import triton.language as tl" in prompt
+        assert f"Define one private @triton.jit helper named {helper_name}" in prompt
+        assert f"Define one public Python launcher named exactly {spec.launcher_name}" in prompt
+        assert signature in prompt
+        assert "bracket syntax" in prompt
+        assert "No markdown fences" in prompt
+        assert "Start your response with @triton.autotune or @triton.jit" not in prompt
+
+    @pytest.mark.parametrize("kernel_class", ["elementwise", "reduction", "matmul"])
     def test_compile_arg_builder_matches_launcher_signature(
         self, kernel_class: str, monkeypatch
     ):

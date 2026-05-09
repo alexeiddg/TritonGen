@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+
 import pytest
 
 from cluster1.data.prompts.prompt_contract import (
@@ -14,6 +16,7 @@ from cluster1.grammar.test_grammar_acceptance import BAD_KERNELS, GOOD_KERNELS
 from cluster1.grammar.triton_kernel_validator import (
     DEFAULT_GBNF_PATH,
     _compile_lark_parser,
+    _semantic_accepts,
     accepts_source,
     validate_grammar_file,
 )
@@ -22,7 +25,7 @@ from cluster1.grammar.triton_kernel_validator import (
 def test_validator_compiles_actual_gbnf() -> None:
     report = validate_grammar_file()
     assert report.lark_compiles, "\n".join(report.errors)
-    assert report.n_accept_cases >= 10
+    assert report.n_accept_cases >= 5
     assert report.n_reject_cases >= 10
 
 
@@ -64,7 +67,7 @@ import triton.language as tl
     key=["n_elements"],
 )
 @triton.jit
-def relu_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def _relu_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
@@ -72,12 +75,12 @@ def relu_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     out = tl.where(x > 0.0, x, 0.0)
     tl.store(out_ptr + offsets, out, mask=mask)
 
-def relu(x):
+def relu(x: torch.Tensor) -> torch.Tensor:
     out = torch.empty_like(x)
     n_elements = x.numel()
     BLOCK_SIZE = 64
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    relu_kernel[grid](x, out, n_elements, BLOCK_SIZE)
+    _relu_kernel[grid](x, out, n_elements, BLOCK_SIZE)
     return out
 """
 
@@ -119,7 +122,7 @@ import triton.language as tl
     key=["n_elements"],
 )
 @triton.jit
-def relu_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def _relu_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
@@ -127,12 +130,12 @@ def relu_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     out = tl.where(x > 0.0, x, 0.0)
     tl.store(out_ptr + offsets, out, mask=mask)
 
-def relu(x):
+def relu(x: torch.Tensor) -> torch.Tensor:
     out = torch.empty_like(x)
     n_elements = x.numel()
     BLOCK_SIZE = 64
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    relu_kernel[grid](x, out, n_elements, BLOCK_SIZE)
+    _relu_kernel[grid](x, out, n_elements, BLOCK_SIZE)
     return out
 """
 
@@ -158,7 +161,7 @@ import triton.language as tl
 
 @triton.autotune(configs=[{bad_config}], key=["n_elements"])
 @triton.jit
-def relu_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def _relu_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
@@ -166,12 +169,12 @@ def relu_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     out = tl.where(x > 0.0, x, 0.0)
     tl.store(out_ptr + offsets, out, mask=mask)
 
-def relu(x):
+def relu(x: torch.Tensor) -> torch.Tensor:
     out = torch.empty_like(x)
     n_elements = x.numel()
     BLOCK_SIZE = 64
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-    relu_kernel[grid](x, out, n_elements, BLOCK_SIZE)
+    _relu_kernel[grid](x, out, n_elements, BLOCK_SIZE)
     return out
 """
 
@@ -183,8 +186,8 @@ def relu(x):
     "source",
     [
         GOOD_KERNELS["relu"].replace(
-            "relu_kernel[grid](x, out, n_elements, BLOCK_SIZE)",
-            "relu_kernel[grid](BLOCK_SIZE=BLOCK_SIZE, x)",
+            "_relu_kernel[grid](x, out, n_elements, BLOCK_SIZE)",
+            "_relu_kernel[grid](BLOCK_SIZE=BLOCK_SIZE, x)",
         ),
         GOOD_KERNELS["relu"].replace(
             "grid = (triton.cdiv(n_elements, BLOCK_SIZE),)",
@@ -197,6 +200,68 @@ def test_actual_gbnf_rejects_python_invalid_wrapper_syntax(source: str) -> None:
 
     with pytest.raises(Exception):
         parser.parse(source)
+
+
+@pytest.mark.parametrize(
+    "bad_name",
+    [
+        "missing_output_allocation",
+        "launch_uses_input_not_output",
+        "relu_missing_launch_tail",
+        "relu_wrong_launch_tail",
+        "softmax_missing_launch_tail",
+        "matmul_missing_launch_tail",
+        "return_input_after_allocation",
+        "unused_output_allocation",
+        "reassigned_output_after_allocation",
+        "torch_empty_tensor_shape",
+        "torch_empty_missing_device_dtype",
+        "torch_empty_like_invalid_empty_source",
+        "relu_helper_missing_args",
+        "relu_helper_missing_constexpr",
+        "relu_helper_wrong_output_name",
+        "softmax_helper_missing_args",
+        "softmax_helper_missing_constexpr",
+        "matmul_helper_missing_args",
+        "matmul_helper_wrong_ptr_name",
+        "grid_float_division",
+        "grid_matmul_operator",
+    ],
+)
+def test_actual_gbnf_rejects_validator_mismatch_wrapper_forms(bad_name: str) -> None:
+    parser = _compile_lark_parser(DEFAULT_GBNF_PATH.read_text(encoding="utf-8"))
+
+    with pytest.raises(Exception):
+        parser.parse(BAD_KERNELS[bad_name])
+
+
+@pytest.mark.parametrize(
+    "bad_name",
+    [
+        "relu_missing_launch_tail",
+        "relu_wrong_launch_tail",
+        "softmax_missing_launch_tail",
+        "matmul_missing_launch_tail",
+    ],
+)
+def test_semantic_validator_rejects_bad_launch_args(bad_name: str) -> None:
+    assert not _semantic_accepts(ast.parse(BAD_KERNELS[bad_name]))
+
+
+@pytest.mark.parametrize(
+    "bad_name",
+    [
+        "relu_helper_missing_args",
+        "relu_helper_missing_constexpr",
+        "relu_helper_wrong_output_name",
+        "softmax_helper_missing_args",
+        "softmax_helper_missing_constexpr",
+        "matmul_helper_missing_args",
+        "matmul_helper_wrong_ptr_name",
+    ],
+)
+def test_semantic_validator_rejects_bad_helper_signatures(bad_name: str) -> None:
+    assert not _semantic_accepts(ast.parse(BAD_KERNELS[bad_name]))
 
 
 @pytest.mark.parametrize("name,source", GOOD_KERNELS.items())
