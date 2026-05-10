@@ -45,8 +45,8 @@ def test_validator_rejects_malformed_gbnf_text(tmp_path) -> None:
 
 def test_acceptance_uses_actual_gbnf_behavior(tmp_path) -> None:
     tightened = DEFAULT_GBNF_PATH.read_text(encoding="utf-8").replace(
-        " | tl-where-call",
-        "",
+        'relu-where-call ::= "tl.where(x > "',
+        'relu-where-call ::= "tl.not_where(x > "',
         1,
     )
     grammar_path = tmp_path / "triton_kernel.gbnf"
@@ -240,6 +240,7 @@ def test_actual_gbnf_rejects_validator_mismatch_wrapper_forms(bad_name: str) -> 
     [
         "relu_block_size_64",
         "relu_wrapper_blank_lines",
+        "relu_where_out_assignment",
         "softmax_block_size_256",
         "matmul_k_from_b_shape",
     ],
@@ -252,6 +253,108 @@ def test_scope_hardening_preserves_family_level_wrapper_variation(
 
     parser.parse(source)
     assert accepts_source(source)
+
+
+@pytest.mark.parametrize(
+    "good_name",
+    [
+        "relu",
+        "relu_where_out_assignment",
+    ],
+)
+def test_relu_elementwise_positive_expressions_are_accepted(good_name: str) -> None:
+    parser = _compile_lark_parser(DEFAULT_GBNF_PATH.read_text(encoding="utf-8"))
+    source = GOOD_KERNELS[good_name]
+
+    parser.parse(source)
+    assert accepts_source(source)
+
+
+@pytest.mark.parametrize(
+    "bad_name",
+    [
+        "relu_tl_max_scalar_axis",
+        "relu_tl_max_x_axis",
+        "relu_tl_sum_x_axis",
+        "relu_tl_dot_x_x",
+        "relu_tl_atomic_add",
+        "relu_tl_exp_x",
+        "relu_tl_log_x",
+        "relu_tl_sqrt_x",
+        "relu_arbitrary_tl_call",
+    ],
+)
+def test_relu_rejects_non_relu_tl_compute_calls(
+    bad_name: str,
+) -> None:
+    parser = _compile_lark_parser(DEFAULT_GBNF_PATH.read_text(encoding="utf-8"))
+
+    with pytest.raises(Exception):
+        parser.parse(BAD_KERNELS[bad_name])
+    assert not accepts_source(BAD_KERNELS[bad_name])
+
+
+@pytest.mark.parametrize(
+    "bad_name",
+    [
+        "relu_bare_x_compute",
+        "relu_x_plus_one_compute",
+        "relu_x_times_x_compute",
+        "relu_scalar_zero_compute",
+        "relu_boolean_compute",
+    ],
+)
+def test_relu_rejects_non_relu_atom_and_arithmetic_compute(
+    bad_name: str,
+) -> None:
+    parser = _compile_lark_parser(DEFAULT_GBNF_PATH.read_text(encoding="utf-8"))
+
+    with pytest.raises(Exception):
+        parser.parse(BAD_KERNELS[bad_name])
+    assert not accepts_source(BAD_KERNELS[bad_name])
+
+
+@pytest.mark.parametrize(
+    "name,required_calls",
+    [
+        ("softmax", ("tl.max", "tl.sum")),
+        ("matmul", ("tl.dot",)),
+    ],
+)
+def test_softmax_and_gemm_family_ops_remain_accepted(
+    name: str,
+    required_calls: tuple[str, ...],
+) -> None:
+    parser = _compile_lark_parser(DEFAULT_GBNF_PATH.read_text(encoding="utf-8"))
+    source = GOOD_KERNELS[name]
+
+    for call in required_calls:
+        assert call in source
+    parser.parse(source)
+    assert accepts_source(source)
+
+
+@pytest.mark.parametrize(
+    "bad_name",
+    [
+        "softmax_duplicate_mask_keyword",
+        "softmax_uses_undefined_n_rows_in_kernel",
+        "softmax_python_min_subscript",
+        "softmax_pointer_slice_assignment",
+        "softmax_negative_tensor_index_mask",
+        "softmax_missing_store",
+        "matmul_program_id_tuple_subscript",
+        "matmul_missing_store",
+    ],
+)
+def test_observed_softmax_gemm_compile_failures_rejected_locally(
+    bad_name: str,
+) -> None:
+    parser = _compile_lark_parser(DEFAULT_GBNF_PATH.read_text(encoding="utf-8"))
+
+    with pytest.raises(Exception):
+        parser.parse(BAD_KERNELS[bad_name])
+    assert not accepts_source(BAD_KERNELS[bad_name])
 
 
 @pytest.mark.parametrize(
@@ -289,6 +392,7 @@ def test_scope_hardened_wrapper_parser_rejects_noncanonical_forms(
         *[(name, GOOD_KERNELS[name]) for name in [
             "relu_block_size_64",
             "relu_wrapper_blank_lines",
+            "relu_where_out_assignment",
             "softmax_block_size_256",
             "matmul_k_from_b_shape",
         ]],
@@ -306,6 +410,28 @@ def test_scope_hardened_wrapper_parser_rejects_noncanonical_forms(
             "matmul_missing_dimension_extraction",
             "matmul_wrong_dimension_binding_type",
             "matmul_invalid_grid_construction",
+            "relu_tl_max_scalar_axis",
+            "relu_tl_max_x_axis",
+            "relu_tl_sum_x_axis",
+            "relu_tl_dot_x_x",
+            "relu_tl_atomic_add",
+            "relu_tl_exp_x",
+            "relu_tl_log_x",
+            "relu_tl_sqrt_x",
+            "relu_bare_x_compute",
+            "relu_x_plus_one_compute",
+            "relu_x_times_x_compute",
+            "relu_scalar_zero_compute",
+            "relu_boolean_compute",
+            "relu_arbitrary_tl_call",
+            "softmax_duplicate_mask_keyword",
+            "softmax_uses_undefined_n_rows_in_kernel",
+            "softmax_python_min_subscript",
+            "softmax_pointer_slice_assignment",
+            "softmax_negative_tensor_index_mask",
+            "softmax_missing_store",
+            "matmul_program_id_tuple_subscript",
+            "matmul_missing_store",
         ]],
     ],
 )

@@ -49,6 +49,7 @@ from shared.modal_harness.app import app
 # ``test_run_cluster1_modal_does_not_load_heavy_deps`` probe locks that in.
 from cluster1.generation.modal_generate import generate_source_modal  # noqa: E402
 from cluster1.validation.modal_compile_check import check_compiles_modal  # noqa: E402
+from shared.modal_harness.generation import DEFAULT_GENERATION_GPU  # noqa: E402
 
 DEFAULT_MODEL_ID = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
 DEFAULT_DATASET_ID = "ScalingIntelligence/KernelBench"
@@ -770,6 +771,7 @@ def _run_one_cell(
     temperature: float,
     max_new_tokens: int,
     run_id: str,
+    modal_generation_gpu: str = DEFAULT_GENERATION_GPU,
 ):
     from cluster1.data.prompts.prompt_contract import build_prompt
 
@@ -786,6 +788,7 @@ def _run_one_cell(
         temperature=temperature,
         max_new_tokens=max_new_tokens,
         run_id=run_id,
+        modal_generation_gpu=modal_generation_gpu,
     )
     compile_ = check_compiles_modal(
         source=generation.source,
@@ -951,6 +954,11 @@ def _run(*, args) -> int:
                     temperature=args.temperature,
                     max_new_tokens=args.max_new_tokens,
                     run_id=run_id,
+                    modal_generation_gpu=getattr(
+                        args,
+                        "modal_generation_gpu",
+                        DEFAULT_GENERATION_GPU,
+                    ),
                 )
                 validate_result_invariants(result)
                 append_result_jsonl(output, result)
@@ -1050,6 +1058,7 @@ def main(
     dataset_id: str = DEFAULT_DATASET_ID,
     temperature: float = 0.2,
     max_new_tokens: int = 1024,
+    modal_generation_gpu: str = DEFAULT_GENERATION_GPU,
     compile_backend: str = "modal",
     generation_backend: str = "modal",
     fail_fast: bool = False,
@@ -1066,6 +1075,7 @@ def main(
         dataset_id=dataset_id,
         temperature=temperature,
         max_new_tokens=max_new_tokens,
+        modal_generation_gpu=modal_generation_gpu,
         compile_backend=compile_backend,
         generation_backend=generation_backend,
         fail_fast=fail_fast,

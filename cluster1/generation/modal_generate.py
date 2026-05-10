@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from shared.modal_harness.generation import RemoteGenerator
+from shared.modal_harness.generation import (
+    DEFAULT_GENERATION_GPU,
+    remote_generator_for_gpu,
+)
 from shared.modal_harness.schemas import RemoteGenerationRequest, RemoteGenerationResult
 
 
@@ -18,6 +21,7 @@ def generate_source_modal(
     temperature: float,
     max_new_tokens: int,
     run_id: str,
+    modal_generation_gpu: str = DEFAULT_GENERATION_GPU,
 ) -> RemoteGenerationResult:
     factor_cell = "G" if grammar_active else "none"
     req = RemoteGenerationRequest(
@@ -33,5 +37,6 @@ def generate_source_modal(
         max_new_tokens=max_new_tokens,
         run_id=run_id,
     )
-    result_dict = RemoteGenerator(model_id=model_id).generate_one.remote(req.model_dump())
+    generator_cls = remote_generator_for_gpu(modal_generation_gpu)
+    result_dict = generator_cls(model_id=model_id).generate_one.remote(req.model_dump())
     return RemoteGenerationResult(**result_dict)

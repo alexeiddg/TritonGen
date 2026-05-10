@@ -5,6 +5,8 @@
 # - Required fixed-order imports.
 # - Optional fixed-space @triton.autotune before @triton.jit.
 # - Triton-namespaced calls are whitelisted; arbitrary tl.* calls are not callable.
+# - Cluster 1 helpers use family-scoped bodies so reduction, matmul, atomic,
+#   Python slicing, and incomplete kernels cannot drift across families.
 # - Wrapper structure is scoped to the selected Cluster 1 families only:
 #   ReLU, Softmax, and GEMM. This is not a universal Triton grammar.
 # - Python indentation is represented by explicit 4-space levels to support nested
@@ -28,12 +30,68 @@ decorator-block ::= autotune-decorator? "@triton.jit" nl
 
 kernel-function ::= "def " private-kernel-name "(" kernel-param-list "):" nl kernel-body
 private-kernel-name ::= "_relu_kernel" | "_softmax_kernel" | "_matmul_kernel"
-relu-kernel-function ::= "def _relu_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):" nl kernel-body
-softmax-kernel-function ::= "def _softmax_kernel(x_ptr, out_ptr, n_cols: tl.constexpr, BLOCK_SIZE: tl.constexpr):" nl kernel-body
-matmul-kernel-function ::= "def _matmul_kernel(a_ptr, b_ptr, c_ptr, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr):" nl kernel-body
+relu-kernel-function ::= "def _relu_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):" nl relu-kernel-body
+softmax-kernel-function ::= "def _softmax_kernel(x_ptr, out_ptr, n_cols: tl.constexpr, BLOCK_SIZE: tl.constexpr):" nl softmax-kernel-body
+matmul-kernel-function ::= "def _matmul_kernel(a_ptr, b_ptr, c_ptr, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr):" nl matmul-kernel-body
 
 # The first kernel statement must bind tl.program_id(...), so kernels missing
 # tl.program_id are syntactically rejected in Phase 1.
+relu-kernel-body ::= relu-program-id-assignment
+                     relu-offsets-assignment
+                     relu-mask-assignment
+                     relu-load-assignment
+                     relu-compute-store-tail
+relu-program-id-assignment ::= indent1 "pid" sp "=" sp tl-program-id-call nl
+relu-offsets-assignment ::= indent1 "offsets" sp "=" sp "pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)" nl
+relu-mask-assignment ::= indent1 "mask" sp "=" sp "offsets < n_elements" nl
+relu-load-assignment ::= indent1 "x" sp "=" sp relu-load-input-call nl
+relu-compute-store-tail ::= relu-y-compute-stmt relu-y-store-stmt | relu-out-compute-stmt relu-out-store-stmt
+relu-y-compute-stmt ::= indent1 "y" sp "=" sp relu-where-call nl
+relu-out-compute-stmt ::= indent1 "out" sp "=" sp relu-where-call nl
+relu-y-store-stmt ::= indent1 "tl.store(out_ptr + offsets, y, mask=mask)" nl
+relu-out-store-stmt ::= indent1 "tl.store(out_ptr + offsets, out, mask=mask)" nl
+
+softmax-kernel-body ::= softmax-program-id-assignment
+                        softmax-offsets-assignment
+                        softmax-mask-assignment
+                        softmax-load-assignment
+                        softmax-shifted-assignment
+                        softmax-numer-assignment
+                        softmax-denom-assignment
+                        softmax-out-assignment
+                        softmax-store-stmt
+softmax-program-id-assignment ::= indent1 "row" sp "=" sp tl-program-id-axis0-call nl
+softmax-offsets-assignment ::= indent1 "offsets" sp "=" sp "tl.arange(0, BLOCK_SIZE)" nl
+softmax-mask-assignment ::= indent1 "mask" sp "=" sp "offsets < n_cols" nl
+softmax-load-assignment ::= indent1 "x" sp "=" sp "tl.load(x_ptr + row * n_cols + offsets, mask=mask, other=-1000000000.0)" nl
+softmax-shifted-assignment ::= indent1 "shifted" sp "=" sp "x - tl.max(x, axis=0)" nl
+softmax-numer-assignment ::= indent1 "numer" sp "=" sp "tl.exp(shifted)" nl
+softmax-denom-assignment ::= indent1 "denom" sp "=" sp "tl.sum(numer, axis=0)" nl
+softmax-out-assignment ::= indent1 "out" sp "=" sp "numer / denom" nl
+softmax-store-stmt ::= indent1 "tl.store(out_ptr + row * n_cols + offsets, out, mask=mask)" nl
+
+matmul-kernel-body ::= matmul-pid-m-assignment
+                       matmul-pid-n-assignment
+                       matmul-offs-m-assignment
+                       matmul-offs-n-assignment
+                       matmul-offs-k-assignment
+                       matmul-acc-assignment
+                       matmul-k-loop
+                       matmul-mask-assignment
+                       matmul-store-stmt
+matmul-pid-m-assignment ::= indent1 "pid_m" sp "=" sp tl-program-id-axis0-call nl
+matmul-pid-n-assignment ::= indent1 "pid_n" sp "=" sp tl-program-id-axis1-call nl
+matmul-offs-m-assignment ::= indent1 "offs_m" sp "=" sp "pid_m * BLOCK_M + tl.arange(0, BLOCK_M)" nl
+matmul-offs-n-assignment ::= indent1 "offs_n" sp "=" sp "pid_n * BLOCK_N + tl.arange(0, BLOCK_N)" nl
+matmul-offs-k-assignment ::= indent1 "offs_k" sp "=" sp "tl.arange(0, BLOCK_K)" nl
+matmul-acc-assignment ::= indent1 "acc" sp "=" sp "tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)" nl
+matmul-k-loop ::= indent1 "for k in range(0, K, BLOCK_K):" nl
+                  indent2 "a = tl.load(a_ptr + offs_m[:, None] * K + (k + offs_k)[None, :], mask=(offs_m[:, None] < M) & ((k + offs_k)[None, :] < K), other=0.0)" nl
+                  indent2 "b = tl.load(b_ptr + (k + offs_k)[:, None] * N + offs_n[None, :], mask=((k + offs_k)[:, None] < K) & (offs_n[None, :] < N), other=0.0)" nl
+                  indent2 "acc += tl.dot(a, b, allow_tf32=True)" nl
+matmul-mask-assignment ::= indent1 "mask" sp "=" sp "(offs_m[:, None] < M) & (offs_n[None, :] < N)" nl
+matmul-store-stmt ::= indent1 "tl.store(c_ptr + offs_m[:, None] * N + offs_n[None, :], acc, mask=mask)" nl
+
 kernel-body ::= program-id-assignment kernel-stmt-level1+
 program-id-assignment ::= indent1 target sp "=" sp tl-program-id-call nl
 
@@ -67,6 +125,8 @@ tl-arange-call ::= "tl.arange(" kernel-expr ", " kernel-expr ")"
 tl-program-id-call ::= "tl.program_id(" program-id-axis ")"
                      | "tl.program_id(axis=" program-id-axis ")"
 program-id-axis ::= "0" | "1" | "2"
+tl-program-id-axis0-call ::= "tl.program_id(0)" | "tl.program_id(axis=0)"
+tl-program-id-axis1-call ::= "tl.program_id(1)" | "tl.program_id(axis=1)"
 
 tl-zeros-call ::= "tl.zeros(" kernel-shape-tuple ", dtype=" dtype ")"
 tl-full-call ::= "tl.full(" kernel-shape-tuple ", " kernel-expr ", dtype=" dtype ")"
@@ -88,6 +148,15 @@ tl-exp-call ::= "tl.exp(" kernel-expr ")"
 tl-log-call ::= "tl.log(" kernel-expr ")"
 tl-sqrt-call ::= "tl.sqrt(" kernel-expr ")"
 tl-where-call ::= "tl.where(" kernel-expr ", " kernel-expr ", " kernel-expr ")"
+
+# ReLU compute is deliberately canonical: only load x, compute ReLU with
+# tl.where(x > 0, x, 0), then store. The Softmax/GEMM bodies above are also
+# family-scoped to require valid vectorized loads, reductions/dot, and stores.
+relu-load-input-call ::= "tl.load(x_ptr + offsets, mask=mask)"
+                       | "tl.load(x_ptr + offsets, mask=mask, other=" relu-zero-literal ")"
+
+relu-where-call ::= "tl.where(x > " relu-zero-literal ", x, " relu-zero-literal ")"
+relu-zero-literal ::= "0" | "0.0"
 
 # Task 1.4: Control flow. Level-specific suites avoid empty indentation tokens
 # and support at least two nested for/if levels inside a kernel.

@@ -24,10 +24,13 @@ from shared.modal_harness.schemas import (
 from shared.modal_harness.secrets import hf_secrets
 from shared.modal_harness.volumes import hf_cache_volume
 
+DEFAULT_GENERATION_GPU = "L40S"
+SUPPORTED_GENERATION_GPUS = frozenset({"L40S", "L4", "A10G"})
+
 
 @app.cls(
     image=llm_generation_image,
-    gpu="L40S",
+    gpu=DEFAULT_GENERATION_GPU,
     memory=32768,
     cpu=8.0,
     timeout=900,
@@ -122,6 +125,16 @@ class RemoteGenerator:
             modal_input_id=input_id,
         )
         return result.model_dump()
+
+
+def remote_generator_for_gpu(gpu: str = DEFAULT_GENERATION_GPU):
+    """Return the RemoteGenerator class configured for the requested GPU."""
+    if gpu not in SUPPORTED_GENERATION_GPUS:
+        allowed = ", ".join(sorted(SUPPORTED_GENERATION_GPUS))
+        raise ValueError(f"unsupported generation GPU {gpu!r}; allowed: {allowed}")
+    if gpu == DEFAULT_GENERATION_GPU:
+        return RemoteGenerator
+    return RemoteGenerator.with_options(gpu=gpu)
 
 
 def _resolve_grammar_path(grammar_path: str) -> str:

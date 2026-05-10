@@ -46,6 +46,13 @@ GOOD_KERNELS: dict[str, str] = {
         "    return out\n",
         1,
     ),
+    "relu_where_out_assignment": _RELU.replace(
+        "    y = tl.where(x > 0.0, x, 0.0)\n"
+        "    tl.store(out_ptr + offsets, y, mask=mask)\n",
+        "    out = tl.where(x > 0, x, 0)\n"
+        "    tl.store(out_ptr + offsets, out, mask=mask)\n",
+        1,
+    ),
     "softmax_block_size_256": _SOFTMAX.replace(
         "    BLOCK_SIZE = 512\n",
         "    BLOCK_SIZE = 256\n",
@@ -133,6 +140,50 @@ class Model(torch.nn.Module):
         "def _softmax_kernel(x_ptr, out_ptr, n_cols, BLOCK_SIZE: tl.constexpr):",
         1,
     ),
+    "softmax_duplicate_mask_keyword": _SOFTMAX.replace(
+        "    x = tl.load(x_ptr + row * n_cols + offsets, mask=mask, other=-1000000000.0)\n",
+        "    x = tl.load(x_ptr + row * n_cols + offsets, mask=mask, mask=True)\n",
+        1,
+    ),
+    "softmax_uses_undefined_n_rows_in_kernel": _SOFTMAX.replace(
+        "    x = tl.load(x_ptr + row * n_cols + offsets, mask=mask, other=-1000000000.0)\n",
+        "    x = tl.load(x_ptr + row * n_cols + offsets, mask=row < n_rows, other=-1000000000.0)\n",
+        1,
+    ),
+    "softmax_python_min_subscript": _SOFTMAX.replace(
+        "    offsets = tl.arange(0, BLOCK_SIZE)\n"
+        "    mask = offsets < n_cols\n",
+        "    col_start = row * BLOCK_SIZE\n"
+        "    col_end = min[col_start + BLOCK_SIZE, n_cols]\n",
+        1,
+    ),
+    "softmax_pointer_slice_assignment": _SOFTMAX.replace(
+        "    x = tl.load(x_ptr + row * n_cols + offsets, mask=mask, other=-1000000000.0)\n"
+        "    shifted = x - tl.max(x, axis=0)\n"
+        "    numer = tl.exp(shifted)\n"
+        "    denom = tl.sum(numer, axis=0)\n"
+        "    out = numer / denom\n"
+        "    tl.store(out_ptr + row * n_cols + offsets, out, mask=mask)\n",
+        "    x_row = x_ptr[row * n_cols:row * n_cols + BLOCK_SIZE]\n"
+        "    max_val = tl.max(x_row, axis=0)\n"
+        "    out_row = tl.exp(x_row - max_val)\n"
+        "    out_ptr[row * n_cols:row * n_cols + BLOCK_SIZE] = out_row\n",
+        1,
+    ),
+    "softmax_negative_tensor_index_mask": _SOFTMAX.replace(
+        "mask=mask, other=-1000000000.0",
+        "mask=offsets < (n_cols * offsets[-1]), other=-1000000000.0",
+        1,
+    ).replace(
+        "mask=mask)",
+        "mask=offsets < (n_cols * offsets[-1]))",
+        1,
+    ),
+    "softmax_missing_store": _SOFTMAX.replace(
+        "    tl.store(out_ptr + row * n_cols + offsets, out, mask=mask)\n",
+        "",
+        1,
+    ),
     "matmul_helper_missing_args": _MATMUL.replace(
         "def _matmul_kernel(a_ptr, b_ptr, c_ptr, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr):",
         "def _matmul_kernel(a_ptr):",
@@ -141,6 +192,21 @@ class Model(torch.nn.Module):
     "matmul_helper_wrong_ptr_name": _MATMUL.replace(
         "def _matmul_kernel(a_ptr, b_ptr, c_ptr, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr):",
         "def _matmul_kernel(a_ptr, b_ptr, out_ptr, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr):",
+        1,
+    ),
+    "matmul_program_id_tuple_subscript": _MATMUL.replace(
+        "    pid_m = tl.program_id(axis=0)\n"
+        "    pid_n = tl.program_id(axis=1)\n"
+        "    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)\n"
+        "    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)\n",
+        "    pid = tl.program_id(0)\n"
+        "    i = pid[0] * BLOCK_M + tl.arange(0, BLOCK_M)\n"
+        "    j = pid[1] * BLOCK_N + tl.arange(0, BLOCK_N)\n",
+        1,
+    ),
+    "matmul_missing_store": _MATMUL.replace(
+        "    tl.store(c_ptr + offs_m[:, None] * N + offs_n[None, :], acc, mask=mask)\n",
+        "",
         1,
     ),
     "wrong_arity_store": _RELU.replace(
@@ -161,6 +227,76 @@ class Model(torch.nn.Module):
     "tl_attribute_value": _RELU.replace(
         "tl.where(x > 0.0, x, 0.0)",
         "tl.maximum_zeroed_out",
+        1,
+    ),
+    "relu_tl_max_scalar_axis": _RELU.replace(
+        "tl.where(x > 0.0, x, 0.0)",
+        "tl.max(0, axis=0)",
+        1,
+    ),
+    "relu_tl_max_x_axis": _RELU.replace(
+        "tl.where(x > 0.0, x, 0.0)",
+        "tl.max(x, axis=0)",
+        1,
+    ),
+    "relu_tl_sum_x_axis": _RELU.replace(
+        "tl.where(x > 0.0, x, 0.0)",
+        "tl.sum(x, axis=0)",
+        1,
+    ),
+    "relu_tl_dot_x_x": _RELU.replace(
+        "tl.where(x > 0.0, x, 0.0)",
+        "tl.dot(x, x)",
+        1,
+    ),
+    "relu_tl_atomic_add": _RELU.replace(
+        "tl.where(x > 0.0, x, 0.0)",
+        "tl.atomic_add(out_ptr + offsets, x, mask=mask)",
+        1,
+    ),
+    "relu_tl_exp_x": _RELU.replace(
+        "tl.where(x > 0.0, x, 0.0)",
+        "tl.exp(x)",
+        1,
+    ),
+    "relu_tl_log_x": _RELU.replace(
+        "tl.where(x > 0.0, x, 0.0)",
+        "tl.log(x)",
+        1,
+    ),
+    "relu_tl_sqrt_x": _RELU.replace(
+        "tl.where(x > 0.0, x, 0.0)",
+        "tl.sqrt(x)",
+        1,
+    ),
+    "relu_bare_x_compute": _RELU.replace(
+        "tl.where(x > 0.0, x, 0.0)",
+        "x",
+        1,
+    ),
+    "relu_x_plus_one_compute": _RELU.replace(
+        "tl.where(x > 0.0, x, 0.0)",
+        "x + 1",
+        1,
+    ),
+    "relu_x_times_x_compute": _RELU.replace(
+        "tl.where(x > 0.0, x, 0.0)",
+        "x * x",
+        1,
+    ),
+    "relu_scalar_zero_compute": _RELU.replace(
+        "tl.where(x > 0.0, x, 0.0)",
+        "0.0",
+        1,
+    ),
+    "relu_boolean_compute": _RELU.replace(
+        "tl.where(x > 0.0, x, 0.0)",
+        "x > 0.0",
+        1,
+    ),
+    "relu_arbitrary_tl_call": _RELU.replace(
+        "tl.where(x > 0.0, x, 0.0)",
+        "tl.arbitrary_attribute(x)",
         1,
     ),
     "invalid_program_id_axis": _RELU.replace(

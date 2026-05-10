@@ -348,6 +348,7 @@ def _make_args(tmp_path: Path, **overrides) -> SimpleNamespace:
         dataset_id="ScalingIntelligence/KernelBench",
         temperature=0.2,
         max_new_tokens=64,
+        modal_generation_gpu=runner.DEFAULT_GENERATION_GPU,
         compile_backend="modal",
         generation_backend="modal",
         fail_fast=False,
@@ -469,6 +470,7 @@ def _write_resume_metadata(
                     "dataset_id": dataset_id,
                     "temperature": temperature,
                     "max_new_tokens": max_new_tokens,
+                    "modal_generation_gpu": runner.DEFAULT_GENERATION_GPU,
                     "compile_backend": "modal",
                     "generation_backend": "modal",
                     "fail_fast": False,
@@ -505,6 +507,21 @@ def test_run_writes_three_rows_for_elementwise_baseline_n1(
         assert row["compile_success"] is True
         assert row["grammar_active"] is False
         assert row["masked_token_rate"] is None
+
+
+def test_run_passes_modal_generation_gpu_to_generation_adapter(
+    monkeypatch, tmp_path
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    args = _make_args(tmp_path, modal_generation_gpu="L4")
+
+    runner._run(args=args)
+
+    assert len(calls["generate"]) == 3
+    assert {call["modal_generation_gpu"] for call in calls["generate"]} == {"L4"}
+    metadata = _read_metadata(Path(args.output))
+    assert metadata["run_config"]["modal_generation_gpu"] == "L4"
 
 
 def test_existing_output_without_mode_fails_before_remote_adapters(

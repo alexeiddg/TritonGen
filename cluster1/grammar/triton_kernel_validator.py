@@ -52,6 +52,45 @@ ALLOWED_TL_CALLS = frozenset(
     }
 )
 
+RELU_ELEMENTWISE_TL_CALLS = frozenset(
+    {
+        "load",
+        "store",
+        "arange",
+        "program_id",
+        "where",
+    }
+)
+
+SOFTMAX_KERNEL_BODY_STMTS = (
+    "row = tl.program_id(axis=0)",
+    "offsets = tl.arange(0, BLOCK_SIZE)",
+    "mask = offsets < n_cols",
+    "x = tl.load(x_ptr + row * n_cols + offsets, mask=mask, other=-1000000000.0)",
+    "shifted = x - tl.max(x, axis=0)",
+    "numer = tl.exp(shifted)",
+    "denom = tl.sum(numer, axis=0)",
+    "out = numer / denom",
+    "tl.store(out_ptr + row * n_cols + offsets, out, mask=mask)",
+)
+
+MATMUL_KERNEL_BODY_STMTS = (
+    "pid_m = tl.program_id(axis=0)",
+    "pid_n = tl.program_id(axis=1)",
+    "offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)",
+    "offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)",
+    "offs_k = tl.arange(0, BLOCK_K)",
+    "acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)",
+    """\
+for k in range(0, K, BLOCK_K):
+    a = tl.load(a_ptr + offs_m[:, None] * K + (k + offs_k)[None, :], mask=(offs_m[:, None] < M) & ((k + offs_k)[None, :] < K), other=0.0)
+    b = tl.load(b_ptr + (k + offs_k)[:, None] * N + offs_n[None, :], mask=((k + offs_k)[:, None] < K) & (offs_n[None, :] < N), other=0.0)
+    acc += tl.dot(a, b, allow_tf32=True)
+""",
+    "mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)",
+    "tl.store(c_ptr + offs_m[:, None] * N + offs_n[None, :], acc, mask=mask)",
+)
+
 CANONICAL_LAUNCHER_PARAMS = {
     "relu": ("x",),
     "softmax": ("x",),
@@ -463,6 +502,12 @@ def _semantic_accepts(tree: ast.Module) -> bool:
         return False
     if not _function_statements_are_valid(wrapper_fn, in_kernel=False):
         return False
+    if wrapper_fn.name == "relu" and not _relu_kernel_body_is_valid(kernel_fn):
+        return False
+    if wrapper_fn.name == "softmax" and not _softmax_kernel_body_is_valid(kernel_fn):
+        return False
+    if wrapper_fn.name == "matmul" and not _matmul_kernel_body_is_valid(kernel_fn):
+        return False
 
     return _all_calls_are_valid(
         kernel_fn,
@@ -470,6 +515,7 @@ def _semantic_accepts(tree: ast.Module) -> bool:
         allow_tl_calls=True,
         allow_runtime_calls=False,
         allow_kernel_launch=False,
+        allowed_tl_calls=_allowed_kernel_tl_calls(wrapper_fn.name),
     ) and (
         _all_calls_are_valid(
             wrapper_fn,
@@ -478,6 +524,137 @@ def _semantic_accepts(tree: ast.Module) -> bool:
             allow_runtime_calls=True,
             allow_kernel_launch=True,
         )
+    )
+
+
+def _allowed_kernel_tl_calls(launcher_name: str) -> frozenset[str]:
+    if launcher_name == "relu":
+        return RELU_ELEMENTWISE_TL_CALLS
+    return ALLOWED_TL_CALLS
+
+
+def _relu_kernel_body_is_valid(kernel_fn: ast.FunctionDef) -> bool:
+    store_calls: list[tuple[int, ast.Call]] = []
+    for index, stmt in enumerate(kernel_fn.body):
+        if not isinstance(stmt, ast.Expr) or not isinstance(stmt.value, ast.Call):
+            continue
+        if _tl_call_name(stmt.value.func) == "store":
+            store_calls.append((index, stmt.value))
+
+    if len(store_calls) != 1:
+        return False
+
+    store_index, store_call = store_calls[0]
+    if len(store_call.args) < 2:
+        return False
+    return _relu_store_value_is_valid(
+        store_call.args[1],
+        kernel_fn,
+        before_index=store_index,
+    )
+
+
+def _relu_store_value_is_valid(
+    value: ast.AST,
+    kernel_fn: ast.FunctionDef,
+    *,
+    before_index: int,
+) -> bool:
+    if _is_relu_where_call(value):
+        return True
+    if not isinstance(value, ast.Name):
+        return False
+
+    binding = _latest_kernel_name_binding_before(
+        kernel_fn,
+        value.id,
+        before_index=before_index,
+    )
+    return binding is not None and _is_relu_where_call(binding)
+
+
+def _softmax_kernel_body_is_valid(kernel_fn: ast.FunctionDef) -> bool:
+    return _function_body_matches(kernel_fn, SOFTMAX_KERNEL_BODY_STMTS)
+
+
+def _matmul_kernel_body_is_valid(kernel_fn: ast.FunctionDef) -> bool:
+    return _function_body_matches(kernel_fn, MATMUL_KERNEL_BODY_STMTS)
+
+
+def _function_body_matches(
+    function: ast.FunctionDef,
+    expected_statements: tuple[str, ...],
+) -> bool:
+    if len(function.body) != len(expected_statements):
+        return False
+    return all(
+        _ast_nodes_match(observed, _parse_single_stmt(expected))
+        for observed, expected in zip(function.body, expected_statements, strict=True)
+    )
+
+
+@lru_cache(maxsize=32)
+def _parse_single_stmt(source: str) -> ast.stmt:
+    module = ast.parse(source)
+    if len(module.body) != 1:
+        raise ValueError(f"expected one statement: {source!r}")
+    return module.body[0]
+
+
+def _ast_nodes_match(left: ast.AST, right: ast.AST) -> bool:
+    return ast.dump(left, include_attributes=False) == ast.dump(
+        right,
+        include_attributes=False,
+    )
+
+
+def _latest_kernel_name_binding_before(
+    kernel_fn: ast.FunctionDef,
+    name: str,
+    *,
+    before_index: int,
+) -> ast.AST | None:
+    latest: ast.AST | None = None
+    for stmt in kernel_fn.body[:before_index]:
+        if not isinstance(stmt, ast.Assign):
+            continue
+        if any(_target_is_name(target, name) for target in stmt.targets):
+            latest = stmt.value
+    return latest
+
+
+def _is_relu_where_call(value: ast.AST) -> bool:
+    if not isinstance(value, ast.Call):
+        return False
+    if _tl_call_name(value.func) != "where":
+        return False
+    if len(value.args) != 3 or value.keywords:
+        return False
+
+    condition, true_value, false_value = value.args
+    return (
+        _is_relu_positive_condition(condition)
+        and _is_name(true_value, "x")
+        and _literal_zero(false_value)
+    )
+
+
+def _is_relu_positive_condition(value: ast.AST) -> bool:
+    return (
+        isinstance(value, ast.Compare)
+        and _is_name(value.left, "x")
+        and len(value.ops) == 1
+        and isinstance(value.ops[0], ast.Gt)
+        and len(value.comparators) == 1
+        and _literal_zero(value.comparators[0])
+    )
+
+
+def _literal_zero(value: ast.AST) -> bool:
+    return (
+        isinstance(value, ast.Constant)
+        and not isinstance(value.value, bool)
+        and value.value == 0
     )
 
 
@@ -1196,6 +1373,7 @@ def _all_calls_are_valid(
     allow_tl_calls: bool,
     allow_runtime_calls: bool,
     allow_kernel_launch: bool,
+    allowed_tl_calls: frozenset[str] = ALLOWED_TL_CALLS,
 ) -> bool:
     for node in ast.walk(node_root):
         if not isinstance(node, ast.Call):
@@ -1204,7 +1382,7 @@ def _all_calls_are_valid(
         if tl_name is not None:
             if not allow_tl_calls:
                 return False
-            if tl_name not in ALLOWED_TL_CALLS:
+            if tl_name not in allowed_tl_calls:
                 return False
             if not _valid_tl_call_shape(tl_name, node):
                 return False
