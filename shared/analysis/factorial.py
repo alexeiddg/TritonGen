@@ -2,16 +2,18 @@
 2^3 Factorial analysis across all three clusters.
 
 The experiment is a 2³ full-factorial design:
-  G (Grammar constraint)   — Cluster 1
-  C (Compiler feedback)    — Cluster 2
-  P (Performance feedback) — Cluster 3
+  G (Grammar constraint)   - Cluster 1
+  C (Test-driven feedback) - Cluster 2
+  P (Compiler/profiler)    - Cluster 3
 
 This module combines per-cluster JSONL result files and computes:
   - Main effects: G, C, P on pass@k
-  - Two-way interactions: G×C, G×P, C×P
-  - Three-way interaction: G×C×P (additive vs interference)
+  - Two-way interactions: G*C, G*P, C*P
+  - Three-way interaction: G*C*P (additive vs interference)
 
 Results feed directly into the thesis's interaction-effect hypothesis.
+Callers should filter to a single scale_tier, normally paper, before computing
+reportable summaries. Mixed-scale summaries are diagnostics only.
 """
 from __future__ import annotations
 

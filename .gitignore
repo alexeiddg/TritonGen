@@ -31,6 +31,8 @@ outputs/
 .vscode/
 .claude
 .contracts/*
-!.contracts/cluster1_generated_surface.md
+!.contracts/README.md
+!.contracts/research/
+!.contracts/research/**
 _legacy
 docs

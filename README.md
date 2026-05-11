@@ -2,22 +2,75 @@
 
 **2³ Factorial Experiment: LLM Control Mechanisms for Triton GPU Kernel Generation**
 
-Thesis project investigating whether grammar constraints, compiler feedback, and
-performance feedback compose additively or interfere when stacked as LLM control
-mechanisms. The experiment is a full 2³ factorial design across three factors.
+Thesis project investigating whether grammar constraints, test-driven feedback,
+and compiler/profiler repair compose additively or interfere when stacked as
+inference-time LLM control mechanisms for Triton-only kernel generation. The
+experiment keeps model weights fixed and varies only the external inference
+scaffolding.
 
 ---
 
 ## Research Design
 
-| Factor | Label | Cluster | Mechanism |
+| Mechanism | Schema label | Cluster | Scope |
 |--------|-------|---------|-----------|
-| Grammar constraint | G | Cluster 1 | XGrammar CFG-constrained decoding |
-| Compiler feedback | C | Cluster 2 | Compiler error → LLM repair loop |
-| Performance feedback | P | Cluster 3 | Profiler reward → RL policy |
+| Grammar constraints | G | Cluster 1 | Task-agnostic grammar plus the current template-grammar upper-bound control |
+| Test-driven feedback | C | Cluster 2 | PyTorch reference tests and numerical failure traces -> LLM repair loop |
+| Compiler/profiler repair | P | Cluster 3 | Triton compiler errors, runtime traces, and benchmark/profiler feedback -> LLM repair loop |
 
 **Central question:** Do G, C, P compose additively, or do interaction effects
-(G×C, G×P, C×P, G×C×P) emerge?
+(G*C, G*P, C*P, G*C*P) emerge?
+
+The core experiment generates and evaluates Triton kernels only. It does not
+generate raw CUDA/C++, CUTLASS, CuTe, or custom DSL kernels, and it does not
+fine-tune or RL-train the model.
+
+## Revised Thesis Claim
+
+Working claim:
+
+> Inference-time control mechanisms for LLM-generated Triton kernels - grammar
+> constraints, test-driven feedback, and compiler/profiler repair - make
+> non-additive contributions to functional correctness. Task-agnostic grammar
+> constraints provide minimal lift over no constraint alone; published
+> grammar-constrained decoding successes are substantially attributable to
+> task-specific grammar encoding rather than syntactic enforcement.
+> Test-driven feedback is expected to dominate as the strongest single
+> inference-time mechanism, and combining it with compiler feedback is expected
+> to yield the best correctness-per-iteration ratio without model fine-tuning.
+
+Cluster 1's current `180/180` result is therefore a control, not the main
+grammar result. It is the template-grammar upper bound: a measurement of what
+happens when the grammar is allowed to encode the task family. The real grammar
+condition for the paper is the planned task-agnostic Triton grammar, compared
+against both no-control baseline and this upper bound.
+
+The publishable contradiction is the distinction between syntactic guidance and
+task encoding. If task-aware grammars explain most of the gain, then the
+standard grammar-constrained decoding story is incomplete for Triton kernels.
+
+---
+
+## Scale Policy
+
+Run scale is explicit project metadata. The source of truth is
+`.contracts/research/scale_policy.md`.
+
+| Tier | Purpose | Typical run | Claim status |
+|------|---------|-------------|--------------|
+| `smoke` | Verify the path works end to end | 1 kernel, 1 condition, `n=1`, fast development model | Infrastructure pass/fail only |
+| `development` | Iterate on prompts, grammars, repair templates, and harness behavior | 3 kernels, active conditions, `n=3..5`, fast development model | Directional indicators only |
+| `paper` | Produce reported results | target 6-9 balanced kernels, full factorial where applicable, `n=20`, larger model | Paper evidence |
+
+Development-scale data is preserved for reproducibility but is not paper
+evidence. Paper-scale runs must use frozen prompts, grammars, seed schedule,
+kernel set, eval gates, and artifact manifests. Future artifact filenames should
+include the scale tier, kernel count, sample count, and model alias.
+
+The current strict Cluster 1 grammar is a special control. It remains frozen as
+`template_upper_bound` on the original three-kernel subset. The larger
+paper-scale G condition should use the planned task-agnostic Triton grammar
+unless a future contract explicitly adds a new task-aware upper-bound control.
 
 ---
 
@@ -26,10 +79,17 @@ mechanisms. The experiment is a full 2³ factorial design across three factors.
 ```
 TritonGen/
 ├── .contracts/                    # Binding design contracts (source of truth)
-│   ├── cluster1_contract.md       # Grammar constraint spec (LOCKED)
-│   └── cluster1_plan.md           # Phase-by-phase implementation plan
+│   ├── README.md                  # Research-facing vs agentic-doc boundary
+│   ├── research/                  # Paper-safe methodology/design docs
+│   │   ├── research_scope.md      # Thesis scope, factors, non-goals
+│   │   ├── scale_policy.md        # Smoke/development/paper scale rules
+│   │   ├── eval_metrics.md        # Shared eval metric/schema design
+│   │   └── cluster1_generated_surface.md
+│   │                              # Generated-code surface for Cluster 1
+│   └── agentic/                   # Local/internal implementation notes, gitignored
 │
 ├── cluster1/                      # G-factor: Grammar-Constrained Generation
+│   ├── README.md                  # Cluster 1 scope and template upper-bound framing
 │   ├── grammar/                   # triton_kernel.gbnf + Lark validator
 │   ├── constraints/               # Hardware checker (smem, power-of-2)
 │   ├── generation/                # XGrammar constrained decoding
@@ -45,10 +105,10 @@ TritonGen/
 │           ├── valid_kernels/     # Known-good Triton kernels
 │           └── invalid_kernels/   # Known-bad rejection fixtures
 │
-├── cluster2/                      # C-factor: Compiler Feedback (NOT STARTED)
+├── cluster2/                      # C-factor: Test-Driven Feedback (NOT STARTED)
 │   └── README.md                  # Scope, boundary rules, C1 dependencies
 │
-├── cluster3/                      # P-factor: RL / Performance Feedback (NOT STARTED)
+├── cluster3/                      # P-factor: Compiler/Profiler Repair (NOT STARTED)
 │   └── README.md                  # Scope, boundary rules, C1+C2 dependencies
 │
 ├── shared/                        # Cross-cluster infrastructure
@@ -153,7 +213,7 @@ The shared Modal harness is the execution substrate for that work. It owns the
 single `modal.App` named `tritongen-gpu-harness`, the generation and compile
 images, the Hugging Face cache volume, optional Hugging Face secret lookup, and
 the request/result schemas used to keep Cluster 1 separate from later compiler
-feedback and performance-feedback work.
+test-driven feedback and compiler/profiler repair work.
 
 Modal is not currently training or fine-tuning a model. It is running remote
 inference with the AWQ 7B development model and remote compile validation. For
@@ -184,7 +244,8 @@ Frozen artifact integrity: baseline has 180 rows, G has 180 rows, and the
 combined comparison has 360 rows, with `n=20` per condition/kernel-family/dtype
 cell. The JSONL artifacts validate, the combined analyzer passes, both final
 sidecars report zero infrastructure failures, and both sidecars confirm
-`modal_generation_gpu == "L4"`.
+`modal_generation_gpu == "L4"`. These artifacts are the frozen three-kernel
+template-control subset. They are not the final paper-scale factorial run.
 
 Cluster 1 demonstrates that, for a scoped three-family Triton subset,
 grammar-constrained decoding eliminates the dominant structural failure mode of
@@ -251,20 +312,24 @@ Cluster 1 boundary.
 
 ---
 
-## Contract compliance
+## Contract Compliance
 
-All implementation follows the contract in `.contracts/cluster1_contract.md`.
-Any deviation requires an explicit recorded justification in that document.
+Research-facing methodology is documented in
+`.contracts/research/research_scope.md`,
+`.contracts/research/scale_policy.md`, and
+`.contracts/research/cluster1_generated_surface.md`. Internal agent execution
+notes may exist under `.contracts/agentic/`, but they are not paper-facing
+methodology and are ignored by default.
 
 **Cluster 1 boundary:** compile acceptance is the only correctness gate. Numeric
-reference checks, profiling, timing metrics, compiler-feedback prompting, and RL
-components belong to later clusters.
+reference checks, test-driven repair, compiler/profiler repair, timing metrics,
+and speedup reporting belong to later clusters.
 
 The Modal path preserves the same boundary. Remote generation returns source and
 grammar diagnostics; remote compile returns pass/fail, per-dtype compile
 results, and bounded error text. Compile errors are never fed back into the
 prompt in Cluster 1, and no timing, profiler, numerical-correctness, repair, or
-reward fields are present in the shared Cluster 1 schemas.
+performance-score fields are present in the shared Cluster 1 schemas.
 
 ---
 
@@ -272,11 +337,11 @@ reward fields are present in the shared Cluster 1 schemas.
 
 | Cluster | Factor | Status |
 |---------|--------|--------|
-| Cluster 1 | Grammar (G) | Frozen — final L4 compile-only comparison is baseline 0/180 vs G 180/180 |
-| Shared Modal infra | GPU execution | Stable for Cluster 1 freeze — remote generation and compile-only validation |
-| Cluster 2 | Compiler feedback (C) | Not started |
-| Cluster 3 | Performance / RL (P) | Not started |
-| Factorial analysis | G×C×P | Not started |
+| Cluster 1 | Grammar (G) | Frozen - final L4 compile-only comparison is baseline 0/180 vs G 180/180 |
+| Shared Modal infra | GPU execution | Stable for Cluster 1 freeze - remote generation and compile-only validation |
+| Cluster 2 | Test-driven feedback (C) | Not started - contract TBD |
+| Cluster 3 | Compiler/profiler repair (P) | Not started - contract TBD |
+| Factorial analysis | G*C*P | Not started |
 
 ---
 

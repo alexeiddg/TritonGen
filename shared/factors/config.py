@@ -11,7 +11,12 @@ from shared.factors.cells import FactorCell, factor_cell_parts
 
 @dataclass(frozen=True)
 class FactorConfig:
-    """Boolean expansion of one factorial condition."""
+    """Boolean expansion of one factorial condition.
+
+    Historical field names are kept for schema compatibility:
+    ``compiler_feedback`` represents the C/test-driven feedback factor, and
+    ``performance_feedback`` represents the P/compiler-profiler repair factor.
+    """
 
     grammar: bool
     compiler_feedback: bool

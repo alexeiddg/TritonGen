@@ -11,7 +11,31 @@ model:
 generation:
   temperature: 0.2
   max_new_tokens: 1024
-  n_runs: 20            # minimum per (kernel_class × condition × dtype) cell
+  n_runs: 20            # paper scale per (kernel_class x condition x dtype) cell
+
+# --- Scale tiers ---
+# Source of truth: .contracts/research/scale_policy.md
+scale:
+  default_tier: "smoke"
+  tiers:
+    smoke:
+      kernel_count: 1
+      sample_size: 1
+      model_key: "development"
+      claim_status: "infrastructure_pass_fail_only"
+    development:
+      kernel_count: 3
+      sample_size_min: 3
+      sample_size_max: 5
+      model_key: "development"
+      claim_status: "directional_indicators_only"
+    paper:
+      kernel_count_min: 6
+      kernel_count_max: 9
+      sample_size: 20
+      model_key: "thesis"
+      optional_secondary_model_key: "secondary"
+      claim_status: "reportable_paper_evidence"
 
 # --- Dataset ---
 dataset:
