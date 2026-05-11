@@ -106,10 +106,14 @@ python -m cluster1.experiments.run_cluster1 \
 ### 4. Modal experiment run (active shared GPU path)
 
 Cluster 1 is currently being run through the shared Modal harness. Generation
-uses the heavier LLM image on L40S GPUs, while compile-only validation uses a
-separate Triton image on L4 GPUs. The local process remains light: the Modal
-runner and adapters intentionally defer `torch`, `transformers`, `xgrammar`,
-and `autoawq` imports until execution inside the remote container.
+uses the heavier LLM image and can be selected per run with
+`--modal-generation-gpu`; compile-only validation uses a separate Triton image
+on L4 GPUs. The final frozen Cluster 1 baseline and G artifacts used
+`--modal-generation-gpu L4`. The Modal app UI may still show the generation
+class default `L40S`, but the artifact sidecars record the actual per-run GPU
+override. The local process remains light: the Modal runner and adapters
+intentionally defer `torch`, `transformers`, `xgrammar`, and `autoawq` imports
+until execution inside the remote container.
 
 The active test model is `Qwen/Qwen2.5-Coder-7B-Instruct-AWQ`. This is the
 development model for Cluster 1 because it is small enough to load quickly,
@@ -126,6 +130,7 @@ modal run -m cluster1.experiments.run_cluster1_modal \
   --kernel-class all \
   --n 20 \
   --model-id Qwen/Qwen2.5-Coder-7B-Instruct-AWQ \
+  --modal-generation-gpu L4 \
   --output outputs/cluster1/modal_results.jsonl
 ```
 
@@ -141,11 +146,10 @@ python -m cluster1.experiments.analyze_cluster1 \
 
 ## Current Pipeline Status
 
-The current active work is Cluster 1 plus the shared Modal GPU infrastructure.
-Cluster 1 is the grammar-factor experiment: it compares baseline generation
-against grammar-constrained generation while holding the model, prompt,
-temperature, token budget, dtype, seed schedule, and kernel task fixed. The
-shared Modal harness is the execution substrate for that work. It owns the
+Cluster 1 is frozen. It is the grammar-factor experiment: it compares baseline
+generation against grammar-constrained generation while holding the model,
+prompt, temperature, token budget, dtype, seed schedule, and kernel task fixed.
+The shared Modal harness is the execution substrate for that work. It owns the
 single `modal.App` named `tritongen-gpu-harness`, the generation and compile
 images, the Hugging Face cache volume, optional Hugging Face secret lookup, and
 the request/result schemas used to keep Cluster 1 separate from later compiler
@@ -165,6 +169,45 @@ them as feedback.
 Cluster 2 and Cluster 3 remain out of the active execution path. Their
 factor cells (`C`, `P`, `G+C`, `G+P`, `C+P`, `G+C+P`) are reserved in the
 schema vocabulary but rejected by validation until those clusters are built.
+
+Frozen Cluster 1 result: the final controlled L4 compile-only comparison uses
+`outputs/cluster1/baseline_repaired_l4_n20.jsonl` and
+`outputs/cluster1/final_g_l4_n20.jsonl`, combined as
+`outputs/cluster1/final_none_vs_g_l4_n20.jsonl`. The final headline is baseline
+0/180 compile successes versus G 180/180 compile successes. Under G, ReLU,
+Softmax, and GEMM each reached 60/60 compile acceptance. This remains a
+compile-acceptance result only: it makes no numerical-correctness,
+performance/speedup, memory-safety, or universal Triton grammar claim. Baseline
+failures remain `SignatureError` under unconstrained generation.
+
+Frozen artifact integrity: baseline has 180 rows, G has 180 rows, and the
+combined comparison has 360 rows, with `n=20` per condition/kernel-family/dtype
+cell. The JSONL artifacts validate, the combined analyzer passes, both final
+sidecars report zero infrastructure failures, and both sidecars confirm
+`modal_generation_gpu == "L4"`.
+
+Cluster 1 demonstrates that, for a scoped three-family Triton subset,
+grammar-constrained decoding eliminates the dominant structural failure mode of
+the unconstrained baseline. Under the repaired canonical function-launcher
+contract, the unconstrained condition achieved 0/180 compile acceptance, while
+the grammar-constrained condition achieved 180/180. These results support
+grammar constraints as a structural validity control, while leaving numerical
+correctness and performance to later clusters.
+
+Paper-ready Cluster 1 claim: on the scoped ReLU/Softmax/GEMM KernelBench subset,
+grammar-constrained decoding improved compile acceptance from 0/180 to 180/180
+under a controlled compile-only evaluation.
+
+Claim boundary: these results are not evidence of numerical correctness,
+speedup, memory safety, general KernelBench performance, high-quality Triton
+generation in the broad sense, or full G/C/P interaction effects. The grammar is
+family-scoped and highly restrictive, so the result should be framed as
+structured compile acceptance, not general Triton generation. The high
+masked-token rates support that caveat.
+
+Cluster 1 does not need to be reopened unless the study later decides to expand
+the problem set, test another model, change the grammar/prompt/validator again,
+or change the metric beyond compile acceptance.
 
 ---
 
@@ -229,8 +272,8 @@ reward fields are present in the shared Cluster 1 schemas.
 
 | Cluster | Factor | Status |
 |---------|--------|--------|
-| Cluster 1 | Grammar (G) | In progress — Modal GPU runner and boundary hardening |
-| Shared Modal infra | GPU execution | In progress — remote generation and compile-only validation |
+| Cluster 1 | Grammar (G) | Frozen — final L4 compile-only comparison is baseline 0/180 vs G 180/180 |
+| Shared Modal infra | GPU execution | Stable for Cluster 1 freeze — remote generation and compile-only validation |
 | Cluster 2 | Compiler feedback (C) | Not started |
 | Cluster 3 | Performance / RL (P) | Not started |
 | Factorial analysis | G×C×P | Not started |
