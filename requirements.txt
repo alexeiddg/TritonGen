@@ -22,6 +22,8 @@ datasets>=2.19
 # Config + IO
 pyyaml>=6.0
 pydantic>=2.10
+pandas>=2.0
+matplotlib>=3.8
 
 # Modal remote execution harness
 modal>=1.0
