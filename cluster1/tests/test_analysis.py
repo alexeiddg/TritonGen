@@ -62,7 +62,7 @@ def test_summary_uses_compile_success_only(tmp_path: Path) -> None:
     assert len(summary) == 1
     row = summary.iloc[0]
     assert row["kernel_class"] == "elementwise"
-    assert bool(row["grammar_active"]) is False
+    assert row["grammar_variant"] is None
     assert row["dtype"] == "fp32"
     assert row["n"] == 20
     assert row["compile_success_scope"] == "all_dtype_strict"
@@ -132,7 +132,7 @@ def test_baseline_only_compile_summary_markdown(tmp_path: Path) -> None:
     assert "unique_solution_rate" in markdown
     assert "No G rows found." in markdown
     assert "comparison requires both baseline and G rows" in markdown
-    assert "| baseline | elementwise | fp32 | None |" in markdown
+    assert "| baseline | None | elementwise | fp32 | None |" in markdown
 
 
 def test_g_only_compile_summary_markdown(tmp_path: Path) -> None:
@@ -149,7 +149,10 @@ def test_g_only_compile_summary_markdown(tmp_path: Path) -> None:
 
     assert "row_count: 60" in markdown
     assert "expected_conditions: ['G']" in markdown
-    assert "| G | elementwise | fp32 | 20 | 0.250000 | 0.250000 | 0.250000 |" in markdown
+    assert (
+        "| G | template_upper_bound | elementwise | fp32 | 20 | "
+        "0.250000 | 0.250000 | 0.250000 |"
+    ) in markdown
     assert "comparison requires both baseline and G rows" in markdown
 
 
@@ -169,9 +172,9 @@ def test_both_condition_compile_summary_markdown(tmp_path: Path) -> None:
 
     assert "row_count: 120" in markdown
     assert "expected_row_count: 120" in markdown
-    assert "grammar ON eliminated 6 compile failure(s)" in markdown
-    assert "| baseline | elementwise | fp32 |" in markdown
-    assert "| G | elementwise | fp32 |" in markdown
+    assert "G[template_upper_bound] eliminated 6 compile failure(s)" in markdown
+    assert "| baseline | None | elementwise | fp32 |" in markdown
+    assert "| G | template_upper_bound | elementwise | fp32 |" in markdown
 
 
 def test_summary_rejects_small_matrix_unless_explicit(tmp_path: Path) -> None:
@@ -226,7 +229,7 @@ def test_masked_token_summary_excludes_baseline_rows(tmp_path: Path) -> None:
         maxsplit=1,
     )[0]
 
-    assert "| G | elementwise | fp32 |" in masked_section
+    assert "| G | template_upper_bound | elementwise | fp32 |" in masked_section
     assert "| baseline |" not in masked_section
 
 
@@ -250,8 +253,8 @@ def test_compile_error_distribution_reported(tmp_path: Path) -> None:
     )
 
     assert "## Compile Error Types" in markdown
-    assert "| baseline | elementwise | fp32 | CompilationError | 1 |" in markdown
-    assert "| baseline | elementwise | fp32 | None | 19 |" in markdown
+    assert "| baseline | None | elementwise | fp32 | CompilationError | 1 |" in markdown
+    assert "| baseline | None | elementwise | fp32 | None | 19 |" in markdown
 
 
 def test_prompt_dtype_compile_success_uses_row_dtype() -> None:
@@ -318,7 +321,42 @@ def test_null_hypothesis_report_documents_eliminated_failures(tmp_path: Path) ->
     assert "unique_solution_rate" in markdown
     assert "compile_success_scope" in markdown
     assert "prompt_dtype_compile_successes" in markdown
-    assert "grammar ON eliminated 6 compile failure(s)" in markdown
+    assert "G[template_upper_bound] eliminated 6 compile failure(s)" in markdown
+
+
+def test_summary_groups_by_condition_variant_kernel_and_dtype(tmp_path: Path) -> None:
+    jsonl_path = tmp_path / "variants.jsonl"
+    rows = [
+        _make_record(
+            grammar_active=True,
+            grammar_variant="template_upper_bound",
+            masked_token_rate=0.25,
+            unique_solution_hash=f"template-{i}",
+            generation_seed=i,
+            run_id=f"template-{i}",
+        )
+        for i in range(20)
+    ]
+    rows.extend(
+        _make_record(
+            grammar_active=True,
+            grammar_variant="task_agnostic",
+            masked_token_rate=0.35,
+            unique_solution_hash=f"task-{i}",
+            generation_seed=i,
+            run_id=f"task-{i}",
+        )
+        for i in range(20)
+    )
+    _write_jsonl(jsonl_path, rows)
+
+    summary = summarize_results(jsonl_path)
+
+    assert len(summary) == 2
+    assert set(summary["grammar_variant"]) == {
+        "template_upper_bound",
+        "task_agnostic",
+    }
 
 
 def _make_result(**overrides) -> GenerationResult:
@@ -330,6 +368,7 @@ def _make_record(**overrides) -> dict[str, object]:
         "source": "import triton\n@triton.jit\ndef k(): pass",
         "model_id": "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
         "grammar_active": False,
+        "grammar_variant": None,
         "kernel_class": "elementwise",
         "kernel_name": "relu",
         "dtype": "fp32",
@@ -346,6 +385,8 @@ def _make_record(**overrides) -> dict[str, object]:
         "timestamp_utc": "2026-05-05T00:00:00+00:00",
     }
     defaults.update(overrides)
+    if defaults["grammar_active"] is True and defaults["grammar_variant"] is None:
+        defaults["grammar_variant"] = "template_upper_bound"
     return defaults
 
 
@@ -370,6 +411,9 @@ def _condition_rows(
                 rows.append(
                     _make_record(
                         grammar_active=grammar_active,
+                        grammar_variant=(
+                            "template_upper_bound" if grammar_active else None
+                        ),
                         masked_token_rate=0.25 if grammar_active else None,
                         dtype=dtype,
                         compile_success=compile_success,

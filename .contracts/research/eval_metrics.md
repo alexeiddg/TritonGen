@@ -47,9 +47,10 @@ This table is authoritative. Do not use a single global tolerance.
 | Elementwise    | ReLU, GELU, Sigmoid, Tanh | 1e-5 | 1e-5 | 1e-3 | 1e-3 |
 | Reduction      | Softmax, LayerNorm, Sum, Mean | 1e-4 | 1e-4 | 1e-2 | 1e-2 |
 | MatMul         | GEMM, BatchedGEMM | 1e-3 | 1e-3 | 5e-2 | 5e-2 |
+| Convolution    | Conv1d, Conv2d, DepthwiseConv | 1e-3 | 1e-3 | 5e-2 | 5e-2 |
 | Fused          | MatMul+GELU+Bias, Attention | 1e-3 | 1e-3 | 5e-2 | 5e-2 |
 
-Implementation: store as a `dict[str, dict[str, float]]` in `shared/eval/tolerances.py`. The key is `kernel_class` (from KernelBench problem metadata), the values are `{atol_fp32, rtol_fp32, atol_fp16, rtol_fp16}`.
+Implementation: store as a `dict[str, dict[str, float]]` in `shared/eval/tolerances.py`. The key is `kernel_class` (from KernelBench problem metadata), the values are `{atol_fp32, rtol_fp32, atol_fp16, rtol_fp16}`. Convolution has its own class rather than inheriting MatMul defaults because its access patterns and numerical behavior differ from GEMM.
 
 **Fused-kernel caution:** Cluster 2+ correctness checks may need fused-op tolerances that are no tighter than the reference path's own observed variance. Before final fused-kernel reporting, run the PyTorch reference repeatedly on a fixed seed/input set and record `reference_variance_max_abs` / `reference_variance_max_rel`. If reference variance exceeds the table tolerance, either widen the fused tolerance with a recorded justification or exclude that fused problem from the Level 2 analysis. This calibration is a correctness-contract concern only; Cluster 1 must not run reference comparisons.
 
@@ -163,7 +164,7 @@ def pass_at_k(n: int, c: int, k: int) -> float:
     return 1.0 - comb(n - c, k) / comb(n, k)
 ```
 
-- **Sample size:** n = 20 per (kernel, condition) cell. Non-negotiable minimum.
+- **Sample size:** n = 20 per (kernel, condition) cell for paper-scale runs. Smoke and development runs use the scale-tier policy in Section 5.2 and are not valid sources for reported paper claims.
 - **Owner:** Cluster 2 primary metric (Level 2 correctness), but Cluster 1 reports `pass@1` at Level 1 (compile-only) as `compile@1`.
 - **Report:** `pass@1`, `pass@5`, `pass@10` in all results tables. Three points show the curve shape.
 
@@ -181,6 +182,19 @@ S_tc = median(torch_compile_times) / median(generated_kernel_times)
 - **Aggregation:** Geometric mean across kernels within a condition. Never arithmetic mean for ratios.
 - **Owner:** Cluster 3 primary metric.
 - **Also report:** `S_eager = median(eager_times) / median(kernel_times)` as the "low bar."
+
+#### 2.1.3.1 Spurious-Speedup Audit
+
+- **Definition:** Defensive audit proving that speedup metrics are gated by Level 2 correctness.
+- **Formula:**
+
+```
+spurious_speedup_rate =
+  count((speedup_vs_compile > 1.0 OR speedup_vs_eager > 1.0) AND functional_success == False) / count(total)
+```
+
+- **Expected value:** Always `0.0` by construction. Nonzero means the pipeline measured or retained a speedup for a functionally incorrect kernel and the analyzer output must be treated as invalid until the gate is fixed.
+- **Report:** Every analyzer output should include this value, even when all Level 4 metrics are otherwise omitted.
 
 #### 2.1.4 `fast@p` (KernelBench-aligned)
 
@@ -355,14 +369,15 @@ class EvalResult:
     # ── Identity ──
     kernel_id: int                          # KernelBench problem_id
     kernel_name: str                        # KernelBench problem name
-    kernel_class: str                       # "elementwise" | "reduction" | "matmul" | "fused" | "architecture"
+    kernel_class: str                       # "elementwise" | "reduction" | "matmul" | "convolution" | "fused" | "architecture"
     kernelbench_level: int                  # 1, 2, or 3 (KernelBench difficulty level)
-    condition: str                          # Factorial condition label, e.g. "G", "C", "G+C", "G+C+P", "baseline"
+    condition: str                          # Factorial condition label, e.g. "none", "G", "C", "G+C", "G+C+P"
     sample_index: int                       # 0..n-1 within the (kernel, condition) cell
     model_id: str                           # Model identifier, e.g. "qwen3-coder-480b"
     run_id: str                             # Unique run identifier for reproducibility
     scale_tier: str                         # "smoke" | "development" | "paper"
     sample_cell_key: str                    # Stable key for the n-sample cell
+    grammar_variant: Optional[str] = None   # None | "template_upper_bound" | "task_agnostic"
 
     # ── Metadata ──
     timestamp: str = ""                     # ISO 8601
@@ -442,6 +457,17 @@ class EvalResult:
     def from_dict(cls, d: dict) -> "EvalResult":
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 ```
+
+`grammar_variant` is a subcondition of factor `G`, not a new factorial factor.
+Use `None` for baseline and non-grammar rows. Use `"template_upper_bound"` for
+the Cluster 1 template-instantiation control and `"task_agnostic"` for the
+grammar-constrained condition intended to represent general grammar guidance.
+
+Current KernelBench scope is Level 1 only. `kernelbench_level` remains in the
+schema because the dataset defines Levels 1, 2, and 3, but Levels 2 (fused
+operators) and 3 (full model architectures) are out of scope for this factorial
+study. Expanding beyond Level 1 requires explicit grammar coverage and tolerance
+tables for the new operator families before results can be compared.
 
 ---
 
@@ -532,7 +558,7 @@ def get_gpu_info() -> dict:
     }
 ```
 
-**Run reference and generated kernel in the same process, back-to-back.** Never time them in separate processes — thermal state and GPU scheduler context change between processes.
+**Run reference and generated Triton kernel through PyTorch in the same process, back-to-back.** Never time them in separate processes — thermal state and GPU scheduler context change between processes.
 
 ### 4.2 Compile Check (Level 1) — Triton-Specific
 
@@ -752,8 +778,8 @@ A "cell" is one stable sample identity. At minimum this is
 `(kernel_id, condition)`. If dtype, grammar variant, prompt version, or model is
 varied inside a run, those fields are part of the cell identity too. Paper-scale
 cells have `n=20` `EvalResult` records. Smoke and development cells use the
-  smaller sample sizes defined in `.contracts/research/scale_policy.md` and
-  must not be mixed into paper-scale aggregates.
+smaller sample sizes defined in Section 5.2 and must not be mixed into
+paper-scale aggregates.
 
 ```python
 @dataclass
@@ -762,6 +788,8 @@ class CellSummary:
     kernel_id: int
     kernel_class: str
     condition: str
+    scale_tier: str
+    grammar_variant: Optional[str]
     n_samples: int
 
     # Correctness
@@ -789,6 +817,8 @@ class CellSummary:
     failure_distribution: dict      # {failure_code: count}
     unique_ratio_source: float      # textual diversity
     unique_ratio_ast: float         # structural diversity
+    spurious_speedup_rate: float    # must be 0.0 when Level 2 gating is enforced
+    interpretation_flags: list[str] # non-fatal analyzer warnings
 
     # Cost
     mean_tokens_total: float        # input + output
@@ -799,7 +829,44 @@ class CellSummary:
     pass1_ci_upper: float
 ```
 
-### 5.2 Bootstrap Confidence Intervals
+### 5.2 Scale Tiers and Aggregation Policy
+
+Every `EvalResult` and `RunConfig` must carry a `scale_tier`:
+
+- **smoke:** `n=1`; infrastructure verification only. Smoke results must never be used for design claims.
+- **development:** `n=3` to `n=5`; design iteration and directional indicators only.
+- **paper:** `n=20`; frozen run and the sole source of reported claims.
+
+Aggregation must reject mixed-scale inputs by default. A cell summary, factorial
+model, or paper table cannot combine smoke, development, and paper records unless
+the caller opts into a diagnostic mixed-scale mode that is visibly labeled as
+non-paper output.
+
+### 5.3 Grammar-Variant Validity and Interpretation
+
+`grammar_variant` is valid only when the grammar factor `G` is active. Baseline
+and non-grammar conditions use `None`.
+
+- `"task_agnostic"` may be used for conditions containing `G` when the run is testing general grammar-constrained decoding.
+- `"template_upper_bound"` may be used only for `G` and `G+C`. The `G+C` case tests whether test-driven feedback helps even when grammar already forces canonical template-shaped solutions.
+- `"template_upper_bound"` must not be combined with `P`. Compiler/profiler repair on top of an already-converged template solution is methodologically ambiguous and should be rejected by the runner.
+
+Analyzer output should include an interpretation flag, not an error, when:
+
+```python
+grammar_variant == "template_upper_bound" and unique_ratio_ast < 0.1
+```
+
+The flag text should be:
+
+```
+this cell shows mode collapse — interpret as template instantiation control, not as evidence of grammar-constrained generation
+```
+
+This codifies the Cluster 1 interpretation rule: the template upper bound is a
+control condition, not evidence that a task-agnostic grammar improves generation.
+
+### 5.4 Bootstrap Confidence Intervals
 
 ```python
 import numpy as np
@@ -823,7 +890,7 @@ def bootstrap_ci(
     return float(np.quantile(samples, alpha)), float(np.quantile(samples, 1 - alpha))
 ```
 
-### 5.3 Cross-Condition Statistical Comparison — Categorical Metrics
+### 5.5 Cross-Condition Statistical Comparison — Categorical Metrics
 
 Use Fisher's exact test for categorical pass/fail metrics such as `compile@1`, `pass@1`, `safe@1`, `fast@p`, and `fast_tc@p`. Do not use this test for continuous speedup distributions.
 
@@ -879,7 +946,7 @@ def compute_pairwise_significance(
     return results
 ```
 
-### 5.4 Cross-Condition Statistical Comparison — Speedup Metrics
+### 5.6 Cross-Condition Statistical Comparison — Speedup Metrics
 
 Use Mann-Whitney U tests for continuous speedup distributions (`speedup_vs_eager`, `speedup_vs_compile`, `S_tc`) because speedups are ratio-valued, skewed, and usually non-normal. Only include Level 2+ passing samples with finite speedup values.
 
@@ -932,7 +999,7 @@ def compute_speedup_significance(
     ]
 ```
 
-### 5.5 Factorial Interaction Analysis
+### 5.7 Factorial Interaction Analysis
 
 The central thesis question is answered by fitting factorial models over the eight canonical cells: `none`, `G`, `C`, `P`, `G+C`, `G+P`, `C+P`, and `G+C+P`. Main effects alone answer whether each mechanism helps in isolation; interaction terms answer whether mechanisms compose additively or interfere.
 
@@ -971,7 +1038,7 @@ result = run_eval_pipeline(source, kernel_spec, RunConfig(
     max_level=1,
     enable_sanitizer=False,
     enable_timing=False,
-    condition="G" or "baseline",
+    condition="G" or "none",
 ))
 ```
 
@@ -1074,8 +1141,8 @@ shared/
 class RunConfig:
     """Configuration for an evaluation run. Each cluster sets this differently."""
 
+    condition: str                      # "none" | "G" | "C" | "P" | "G+C" | "G+P" | "C+P" | "G+C+P"
     scale_tier: str = "smoke"           # "smoke" | "development" | "paper"
-    condition: str                      # "baseline" | "G" | "C" | "P" | "G+C" | "G+P" | "C+P" | "G+C+P"
     max_level: int = 4                  # Highest level to evaluate (1 for C1, 2 for C2, 4 for C3)
     enable_sanitizer: bool = False      # Level 3 gate
     enable_timing: bool = False         # Level 4 gate
@@ -1097,6 +1164,11 @@ class RunConfig:
 mixed-scale inputs by default. Development-scale reports may exist as explicitly
 labeled diagnostics, but paper tables must be generated only from `paper`
 records.
+
+`grammar_variant` is required when the grammar factor is active and omitted
+otherwise. The variant is part of the cell identity but does not change the
+factor label: `template_upper_bound` under `G` is still condition `G`, with the
+variant recorded as a subcondition.
 
 ---
 
@@ -1123,14 +1195,14 @@ The `reporting/tables.py` module reads `cell_summaries.json` and produces:
 **Table 1: Correctness by Condition and Kernel Class**
 
 ```
-| Condition | Elementwise pass@1 | Reduction pass@1 | MatMul pass@1 | Aggregate pass@1 |
-|-----------|-------------------|------------------|---------------|------------------|
-| baseline  | 0.XX (±0.XX)      | 0.XX (±0.XX)     | 0.XX (±0.XX)  | 0.XX (±0.XX)     |
-| G         | 0.XX (±0.XX)      | 0.XX (±0.XX)     | 0.XX (±0.XX)  | 0.XX (±0.XX)     |
-| C         | ...               | ...              | ...           | ...              |
-| G+C       | ...               | ...              | ...           | ...              |
-| P         | ...               | ...              | ...           | ...              |
-| G+C+P     | ...               | ...              | ...           | ...              |
+| Condition | Elementwise pass@1 | Reduction pass@1 | MatMul pass@1 | Convolution pass@1 | Aggregate pass@1 |
+|-----------|-------------------|------------------|---------------|---------------------|------------------|
+| none      | 0.XX (±0.XX)      | 0.XX (±0.XX)     | 0.XX (±0.XX)  | 0.XX (±0.XX)        | 0.XX (±0.XX)     |
+| G         | 0.XX (±0.XX)      | 0.XX (±0.XX)     | 0.XX (±0.XX)  | 0.XX (±0.XX)        | 0.XX (±0.XX)     |
+| C         | ...               | ...              | ...           | ...                 | ...              |
+| G+C       | ...               | ...              | ...           | ...                 | ...              |
+| P         | ...               | ...              | ...           | ...                 | ...              |
+| G+C+P     | ...               | ...              | ...           | ...                 | ...              |
 ```
 
 **Table 2: Performance (Level 4, Cluster 3 only)**
@@ -1190,9 +1262,28 @@ def preflight_check(run_config: RunConfig) -> list[str]:
         except Exception as e:
             failures.append(f"torch.compile baseline broken: {e}")
 
-    # 6. Sample size meets minimum
-    if run_config.sample_size < 20:
-        failures.append(f"Sample size {run_config.sample_size} < 20 minimum")
+    # 6. Sample size meets scale-tier minimum
+    if run_config.scale_tier == "paper":
+        if run_config.sample_size < 20:
+            failures.append(f"Paper sample size {run_config.sample_size} < 20 minimum")
+    elif run_config.scale_tier == "development":
+        if run_config.sample_size < 3:
+            failures.append(f"Development sample size {run_config.sample_size} < 3 minimum")
+    elif run_config.scale_tier == "smoke":
+        pass
+    else:
+        failures.append(f"Unknown scale_tier: {run_config.scale_tier}")
+
+    # 7. Grammar variant is a valid subcondition of factor G
+    valid_variants = {None, "task_agnostic", "template_upper_bound"}
+    if run_config.grammar_variant not in valid_variants:
+        failures.append(f"Unknown grammar_variant: {run_config.grammar_variant}")
+
+    active_factors = set(run_config.condition.split("+")) if run_config.condition not in {"none", "baseline"} else set()
+    if run_config.grammar_variant is not None and "G" not in active_factors:
+        failures.append("grammar_variant requires condition containing G")
+    if run_config.grammar_variant == "template_upper_bound" and run_config.condition not in {"G", "G+C"}:
+        failures.append("template_upper_bound is valid only for G and G+C")
 
     return failures
 ```
@@ -1205,8 +1296,11 @@ def preflight_check(run_config: RunConfig) -> list[str]:
 # shared/eval/constants.py
 
 # Sampling
-MIN_SAMPLE_SIZE = 20          # n per (kernel, condition) cell
-PASS_K_VALUES = [1, 5, 10]   # Report these k values
+SMOKE_SAMPLE_SIZE = 1                 # infrastructure verification only
+DEVELOPMENT_MIN_SAMPLE_SIZE = 3       # design iteration lower bound
+DEVELOPMENT_MAX_SAMPLE_SIZE = 5       # design iteration upper bound
+PAPER_MIN_SAMPLE_SIZE = 20            # n per (kernel, condition) cell for reported claims
+PASS_K_VALUES = [1, 5, 10]            # Report these k values
 
 # Timing
 WARMUP_ITERS = 25            # Before measurement
@@ -1263,7 +1357,7 @@ def load_kernel_spec(problem_id: int, level: int = 1) -> KernelSpec:
         name=row["name"],
         level=row["level"],
         reference_code=row["code"],
-        kernel_class=classify_kernel(row["name"]),  # "elementwise" | "reduction" | "matmul" | etc.
+        kernel_class=classify_kernel(row["name"]),  # "elementwise" | "reduction" | "matmul" | "convolution" | etc.
     )
 
 def classify_kernel(name: str) -> str:
@@ -1273,10 +1367,17 @@ def classify_kernel(name: str) -> str:
         return "elementwise"
     if any(kw in name_lower for kw in ["softmax", "layernorm", "layer_norm", "sum", "mean", "norm", "reduce"]):
         return "reduction"
-    if any(kw in name_lower for kw in ["matmul", "matrix_mul", "gemm", "linear", "conv"]):
+    if any(kw in name_lower for kw in ["conv", "convolution"]):
+        return "convolution"
+    if any(kw in name_lower for kw in ["matmul", "matrix_mul", "gemm", "linear"]):
         return "matmul"
     return "fused"  # Default for Level 2+ fused ops
 ```
+
+Convolution is deliberately separate from MatMul. If convolution problems enter
+the study later, they must use the `convolution` tolerance row and should be
+reported as their own class because their memory access patterns differ from
+GEMM-style kernels.
 
 **KernelBench's own evaluator** is run separately as a post-hoc diagnostic (see Cluster 1 contract). Its `fast_0`, `fast_1`, `fast_2` results are stored in `results/{run_id}/kernelbench/` and never referenced by Cluster 1 analysis code.
 

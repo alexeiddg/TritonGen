@@ -20,8 +20,10 @@ from cluster1.constraints.hardware_checker import HardwareChecker
 from cluster1.generation.constrained_gen import generate_source
 from cluster1.generation.grammar_loader import load_compiled_grammar
 from cluster1.results.dataclass import (
+    DEFAULT_GRAMMAR_VARIANT,
     GenerationResult,
     compute_unique_solution_hash,
+    grammar_variant_for_cell,
     validate_result_invariants,
 )
 from cluster1.results.logger import append_result_jsonl
@@ -31,6 +33,7 @@ from cluster1.validation.compile_check import CompileResult, check_compiles_all_
 DEFAULT_MODEL_ID = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
 DEFAULT_DATASET_ID = "ScalingIntelligence/KernelBench"
 DEFAULT_GRAMMAR_PATH = Path("cluster1/grammar/triton_kernel.gbnf")
+SUPPORTED_GRAMMAR_VARIANTS = ("template_upper_bound", "task_agnostic")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -54,6 +57,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--n", type=int, default=20)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--grammar-path", type=Path, default=DEFAULT_GRAMMAR_PATH)
+    parser.add_argument(
+        "--grammar-variant",
+        choices=SUPPORTED_GRAMMAR_VARIANTS,
+        default=DEFAULT_GRAMMAR_VARIANT,
+    )
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--max-new-tokens", type=int, default=1024)
     return parser.parse_args(argv)
@@ -113,6 +121,11 @@ def run_one_generation(
 
     prompt = build_prompt(spec, dtype)
     hardware_checker = HardwareChecker() if grammar_active else None
+    grammar_variant = grammar_variant_for_cell(
+        factor_cell="G" if grammar_active else "none",
+        grammar_active=grammar_active,
+        grammar_variant=args.grammar_variant if grammar_active else None,
+    )
     decoded = generate_source(
         prompt=prompt,
         model=model,
@@ -136,6 +149,7 @@ def run_one_generation(
         source=decoded.source,
         model_id=args.model_id,
         grammar_active=grammar_active,
+        grammar_variant=grammar_variant,
         kernel_class=spec.kernel_class,
         kernel_name=spec.name,
         dtype=dtype,
@@ -171,6 +185,7 @@ def _compile_result_for_dtype(
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    _validate_grammar_variant_run_path(args)
     kernel_classes = _selected_kernel_classes(args.kernel_class)
     _validate_dataset_id(kernel_classes, args.dataset_id)
 
@@ -218,6 +233,18 @@ def _validate_dataset_id(kernel_classes: list[str], dataset_id: str) -> None:
 
 def _needs_grammar(condition: str) -> bool:
     return condition in {"G", "both"}
+
+
+def _validate_grammar_variant_run_path(args: argparse.Namespace) -> None:
+    if (
+        args.condition in {"G", "both"}
+        and args.grammar_variant == "task_agnostic"
+        and Path(args.grammar_path) == DEFAULT_GRAMMAR_PATH
+    ):
+        raise ValueError(
+            "grammar_variant='task_agnostic' requires an explicit task-agnostic "
+            "grammar path; the task-agnostic grammar is not implemented yet."
+        )
 
 
 if __name__ == "__main__":

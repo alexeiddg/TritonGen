@@ -8,10 +8,17 @@ from dataclasses import dataclass, fields
 from itertools import product
 from pathlib import Path
 
-from cluster1.results.dataclass import GenerationResult, validate_result_invariants
+from cluster1.results.dataclass import (
+    DEFAULT_GRAMMAR_VARIANT,
+    VALID_GRAMMAR_VARIANTS,
+    GenerationResult,
+    generation_result_record_for_deserialization,
+    validate_result_invariants,
+)
 
 
 CONDITIONS = ("baseline", "G")
+DEFAULT_EXPECTED_GRAMMAR_VARIANTS = (DEFAULT_GRAMMAR_VARIANT,)
 KERNEL_CLASSES = ("elementwise", "reduction", "matmul")
 DTYPES = ("fp32", "fp16", "bf16")
 FULL_SAMPLE_SIZE = 20
@@ -20,6 +27,7 @@ FULL_SAMPLE_SIZE = 20
 @dataclass(frozen=True)
 class CellIdentity:
     condition: str
+    grammar_variant: str | None
     kernel_class: str
     dtype: str
     seed: int
@@ -27,6 +35,7 @@ class CellIdentity:
     def label(self) -> str:
         return (
             f"condition={self.condition} "
+            f"grammar_variant={self.grammar_variant} "
             f"kernel_class={self.kernel_class} "
             f"dtype={self.dtype} seed={self.seed}"
         )
@@ -39,6 +48,8 @@ class Cluster1ValidationReport:
     expected_row_count: int
     expected_conditions: tuple[str, ...]
     observed_conditions: tuple[str, ...]
+    expected_grammar_variants: tuple[str | None, ...]
+    observed_grammar_variants: tuple[str | None, ...]
     expected_kernel_classes: tuple[str, ...]
     observed_kernel_classes: tuple[str, ...]
     expected_dtypes: tuple[str, ...]
@@ -90,6 +101,11 @@ class Cluster1ValidationReport:
                 f"observed={list(self.observed_kernel_classes)}"
             ),
             (
+                "grammar_variant_coverage: "
+                f"expected={list(self.expected_grammar_variants)} "
+                f"observed={list(self.observed_grammar_variants)}"
+            ),
+            (
                 "dtype_coverage: "
                 f"expected={list(self.expected_dtypes)} "
                 f"observed={list(self.observed_dtypes)}"
@@ -126,14 +142,20 @@ def validate_cluster1_results(
     condition: str,
     kernel_class: str,
     n: int,
+    grammar_variants: tuple[str, ...] = DEFAULT_EXPECTED_GRAMMAR_VARIANTS,
     require_full_n20: bool = False,
     allow_duplicate_identities: bool = False,
 ) -> Cluster1ValidationReport:
     expected_conditions = _expected_conditions(condition)
+    expected_grammar_variants = _expected_grammar_variants(
+        expected_conditions,
+        grammar_variants,
+    )
     expected_kernel_classes = _expected_kernel_classes(kernel_class)
     expected_dtypes = DTYPES
     expected_identities = _expected_identities(
         expected_conditions,
+        grammar_variants,
         expected_kernel_classes,
         expected_dtypes,
         n,
@@ -171,6 +193,7 @@ def validate_cluster1_results(
         )
 
     observed_conditions_set: set[str] = set()
+    observed_grammar_variants_set: set[str | None] = set()
     observed_kernel_classes_set: set[str] = set()
     observed_dtypes_set: set[str] = set()
     observed_expected_identities: set[CellIdentity] = set()
@@ -180,6 +203,7 @@ def validate_cluster1_results(
         row_label = _row_label(row_number, row)
         condition_label = _condition_for_row(row)
         observed_conditions_set.add(condition_label)
+        observed_grammar_variants_set.add(row.grammar_variant)
         observed_kernel_classes_set.add(row.kernel_class)
         observed_dtypes_set.add(row.dtype)
 
@@ -231,6 +255,10 @@ def validate_cluster1_results(
         expected_row_count=expected_row_count,
         expected_conditions=expected_conditions,
         observed_conditions=tuple(sorted(observed_conditions_set)),
+        expected_grammar_variants=expected_grammar_variants,
+        observed_grammar_variants=tuple(
+            sorted(observed_grammar_variants_set, key=_variant_sort_key)
+        ),
         expected_kernel_classes=expected_kernel_classes,
         observed_kernel_classes=tuple(sorted(observed_kernel_classes_set)),
         expected_dtypes=expected_dtypes,
@@ -267,6 +295,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--n", type=int, required=True)
     parser.add_argument(
+        "--grammar-variant",
+        action="append",
+        choices=VALID_GRAMMAR_VARIANTS,
+        dest="grammar_variants",
+        help=(
+            "Expected G grammar variant. May be repeated. Defaults to "
+            "template_upper_bound."
+        ),
+    )
+    parser.add_argument(
         "--require-full-n20",
         action="store_true",
         help="Require --n 20 for full Cluster 1 sample-size validation.",
@@ -286,6 +324,7 @@ def main(argv: list[str] | None = None) -> int:
         condition=args.condition,
         kernel_class=args.kernel_class,
         n=args.n,
+        grammar_variants=tuple(args.grammar_variants or DEFAULT_EXPECTED_GRAMMAR_VARIANTS),
         require_full_n20=args.require_full_n20,
         allow_duplicate_identities=args.allow_duplicate_identities,
     )
@@ -317,6 +356,7 @@ def _load_generation_results(
                     f"{input_path}:{line_number} expected JSON object"
                 )
                 continue
+            record = generation_result_record_for_deserialization(record)
 
             keys = set(record)
             missing = sorted(field_names - keys)
@@ -373,23 +413,56 @@ def _expected_kernel_classes(kernel_class: str) -> tuple[str, ...]:
     raise ValueError(f"unknown kernel_class: {kernel_class!r}")
 
 
+def _expected_grammar_variants(
+    expected_conditions: tuple[str, ...],
+    grammar_variants: tuple[str, ...],
+) -> tuple[str | None, ...]:
+    variants: list[str | None] = []
+    if "baseline" in expected_conditions:
+        variants.append(None)
+    if "G" in expected_conditions:
+        _validate_expected_grammar_variants(grammar_variants)
+        variants.extend(grammar_variants)
+    return tuple(variants)
+
+
+def _validate_expected_grammar_variants(grammar_variants: tuple[str, ...]) -> None:
+    if not grammar_variants:
+        raise ValueError("at least one grammar variant is required for G validation")
+    invalid = sorted(set(grammar_variants) - set(VALID_GRAMMAR_VARIANTS))
+    if invalid:
+        allowed = ", ".join(VALID_GRAMMAR_VARIANTS)
+        raise ValueError(
+            f"invalid grammar variant(s): {', '.join(invalid)}; expected {allowed}"
+        )
+
+
 def _expected_identities(
     expected_conditions: tuple[str, ...],
+    grammar_variants: tuple[str, ...],
     expected_kernel_classes: tuple[str, ...],
     expected_dtypes: tuple[str, ...],
     n: int,
 ) -> set[CellIdentity]:
     if n <= 0:
         return set()
-    return {
-        CellIdentity(condition, kernel_class, dtype, seed)
-        for condition, kernel_class, dtype, seed in product(
-            expected_conditions,
+    identities: set[CellIdentity] = set()
+    if "G" in expected_conditions:
+        _validate_expected_grammar_variants(grammar_variants)
+    for condition in expected_conditions:
+        variants: tuple[str | None, ...] = (
+            (None,) if condition == "baseline" else grammar_variants
+        )
+        for grammar_variant, kernel_class, dtype, seed in product(
+            variants,
             expected_kernel_classes,
             expected_dtypes,
             range(n),
-        )
-    }
+        ):
+            identities.add(
+                CellIdentity(condition, grammar_variant, kernel_class, dtype, seed)
+            )
+    return identities
 
 
 def _condition_for_row(row: GenerationResult) -> str:
@@ -409,6 +482,7 @@ def _identity_for_row(
         return None
     return CellIdentity(
         condition=condition,
+        grammar_variant=row.grammar_variant,
         kernel_class=row.kernel_class,
         dtype=row.dtype,
         seed=row.generation_seed,
@@ -474,8 +548,18 @@ def _row_label(row_number: int, row: GenerationResult) -> str:
     )
 
 
-def _identity_sort_key(identity: CellIdentity) -> tuple[str, str, str, int]:
-    return (identity.condition, identity.kernel_class, identity.dtype, identity.seed)
+def _variant_sort_key(variant: str | None) -> tuple[int, str]:
+    return (0, "") if variant is None else (1, variant)
+
+
+def _identity_sort_key(identity: CellIdentity) -> tuple[str, tuple[int, str], str, str, int]:
+    return (
+        identity.condition,
+        _variant_sort_key(identity.grammar_variant),
+        identity.kernel_class,
+        identity.dtype,
+        identity.seed,
+    )
 
 
 if __name__ == "__main__":

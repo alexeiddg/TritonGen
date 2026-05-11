@@ -22,6 +22,7 @@ def _make_result(**overrides) -> GenerationResult:
         "source": "import triton\n@triton.jit\ndef k(): pass",
         "model_id": "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
         "grammar_active": True,
+        "grammar_variant": "template_upper_bound",
         "kernel_class": "elementwise",
         "kernel_name": "relu",
         "dtype": "fp32",
@@ -48,7 +49,7 @@ def test_generation_result_has_all_required_fields():
     field_names = {f.name for f in result.__dataclass_fields__.values()}
 
     expected = {
-        "source", "model_id", "grammar_active", "kernel_class", "kernel_name",
+        "source", "model_id", "grammar_active", "grammar_variant", "kernel_class", "kernel_name",
         "dtype", "compile_success", "compile_results_by_dtype",
         "compile_error_type", "compile_error_msg",
         "masked_token_rate", "unique_solution_hash", "n_shapes_tested",
@@ -78,14 +79,24 @@ def test_no_numerical_correctness_fields():
 # --- Task 5.6: invariant tests ---
 
 def test_invariant_grammar_off_with_masked_rate_raises():
-    result = _make_result(grammar_active=False, masked_token_rate=0.5)
-    with pytest.raises(ValueError, match="masked_token_rate must be None when grammar_active is False"):
+    result = _make_result(
+        grammar_active=False,
+        grammar_variant=None,
+        masked_token_rate=0.5,
+    )
+    with pytest.raises(
+        ValueError,
+        match="masked_token_rate must be None when grammar_active is False",
+    ):
         validate_result_invariants(result)
 
 
 def test_invariant_grammar_on_with_no_masked_rate_raises():
     result = _make_result(grammar_active=True, masked_token_rate=None)
-    with pytest.raises(ValueError, match="masked_token_rate must not be None when grammar_active is True"):
+    with pytest.raises(
+        ValueError,
+        match="masked_token_rate must not be None when grammar_active is True",
+    ):
         validate_result_invariants(result)
 
 
@@ -95,8 +106,24 @@ def test_invariant_valid_grammar_on():
 
 
 def test_invariant_valid_grammar_off():
-    result = _make_result(grammar_active=False, masked_token_rate=None)
+    result = _make_result(grammar_active=False, grammar_variant=None, masked_token_rate=None)
     validate_result_invariants(result)
+
+
+def test_invariant_grammar_off_with_variant_raises():
+    result = _make_result(
+        grammar_active=False,
+        grammar_variant="template_upper_bound",
+        masked_token_rate=None,
+    )
+    with pytest.raises(ValueError, match="grammar_variant must be None"):
+        validate_result_invariants(result)
+
+
+def test_invariant_grammar_on_with_invalid_variant_raises():
+    result = _make_result(grammar_active=True, grammar_variant="bogus")
+    with pytest.raises(ValueError, match="grammar_variant must be one of"):
+        validate_result_invariants(result)
 
 
 # --- Task 5.3: unique solution hash ---

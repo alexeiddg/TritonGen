@@ -32,17 +32,19 @@ from shared.modal_harness.schemas import (
 
 
 def test_baseline_maps_to_none_factor_cell_and_grammar_off() -> None:
-    assert runner._grammar_conditions("baseline") == [("none", False)]
+    assert runner._grammar_conditions("baseline") == [("none", False, None)]
 
 
 def test_g_maps_to_g_factor_cell_and_grammar_on() -> None:
-    assert runner._grammar_conditions("G") == [("G", True)]
+    assert runner._grammar_conditions("G") == [
+        ("G", True, "template_upper_bound")
+    ]
 
 
 def test_both_expands_baseline_then_g() -> None:
     assert runner._grammar_conditions("both") == [
-        ("none", False),
-        ("G", True),
+        ("none", False, None),
+        ("G", True, "template_upper_bound"),
     ]
 
 
@@ -57,10 +59,19 @@ def test_iter_experiment_cells_both_yields_baseline_then_g() -> None:
     the kernel→condition→dtype→seed iteration order."""
     cells = list(runner.iter_experiment_cells(["elementwise"], "both", n=1))
     factor_cells = [factor for _, factor, *_ in cells]
-    grammar_flags = [grammar for *_, grammar, _, _ in cells]
+    grammar_flags = [cell[2] for cell in cells]
+    grammar_variants = [cell[3] for cell in cells]
 
     assert factor_cells == ["none", "none", "none", "G", "G", "G"]
     assert grammar_flags == [False, False, False, True, True, True]
+    assert grammar_variants == [
+        None,
+        None,
+        None,
+        "template_upper_bound",
+        "template_upper_bound",
+        "template_upper_bound",
+    ]
     # And one row per dtype per condition.
     dtypes = [dtype for *_, dtype, _ in cells]
     assert dtypes == ["fp32", "fp16", "bf16", "fp32", "fp16", "bf16"]
@@ -138,6 +149,69 @@ def test_make_run_id_distinguishes_factor_cell() -> None:
     assert none_id != g_id
 
 
+def test_make_run_id_distinguishes_grammar_variant() -> None:
+    template_id = runner.make_run_id(
+        factor_cell="G",
+        grammar_variant="template_upper_bound",
+        kernel_class="elementwise",
+        kernel_name="relu",
+        dtype="fp32",
+        seed=0,
+    )
+    task_agnostic_id = runner.make_run_id(
+        factor_cell="G",
+        grammar_variant="task_agnostic",
+        kernel_class="elementwise",
+        kernel_name="relu",
+        dtype="fp32",
+        seed=0,
+    )
+    assert template_id != task_agnostic_id
+
+
+def test_resume_identity_distinguishes_grammar_variant() -> None:
+    spec = get_kernel_spec("elementwise")
+    run_id_template = runner.make_run_id(
+        factor_cell="G",
+        grammar_variant="template_upper_bound",
+        kernel_class=spec.kernel_class,
+        kernel_name=spec.name,
+        dtype="fp32",
+        seed=0,
+    )
+    run_id_task = runner.make_run_id(
+        factor_cell="G",
+        grammar_variant="task_agnostic",
+        kernel_class=spec.kernel_class,
+        kernel_name=spec.name,
+        dtype="fp32",
+        seed=0,
+    )
+
+    template_identity = runner._resume_identity_for_cell(
+        spec=spec,
+        factor_cell="G",
+        grammar_variant="template_upper_bound",
+        dtype="fp32",
+        seed=0,
+        temperature=0.2,
+        model_id="model",
+        run_id=run_id_template,
+    )
+    task_identity = runner._resume_identity_for_cell(
+        spec=spec,
+        factor_cell="G",
+        grammar_variant="task_agnostic",
+        dtype="fp32",
+        seed=0,
+        temperature=0.2,
+        model_id="model",
+        run_id=run_id_task,
+    )
+
+    assert template_identity != task_identity
+
+
 # ---------------------------------------------------------------------------
 # Remote → GenerationResult conversion
 # ---------------------------------------------------------------------------
@@ -151,6 +225,7 @@ def _baseline_remote_pair() -> tuple[RemoteGenerationResult, RemoteCompileResult
         source=_FAKE_SOURCE,
         model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
         grammar_active=False,
+        grammar_variant=None,
         masked_token_rate=None,
         generation_seed=0,
         temperature=0.2,
@@ -171,6 +246,7 @@ def _g_remote_pair() -> tuple[RemoteGenerationResult, RemoteCompileResult]:
         source=_FAKE_SOURCE,
         model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
         grammar_active=True,
+        grammar_variant="template_upper_bound",
         masked_token_rate=0.42,
         generation_seed=0,
         temperature=0.2,
@@ -193,6 +269,7 @@ def _compile_failure_pair() -> tuple[RemoteGenerationResult, RemoteCompileResult
         source=_FAKE_SOURCE,
         model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
         grammar_active=False,
+        grammar_variant=None,
         masked_token_rate=None,
         generation_seed=0,
         temperature=0.2,
@@ -232,6 +309,7 @@ def test_conversion_baseline_produces_valid_generation_result() -> None:
     assert result.kernel_name == "relu"
     assert result.dtype == "fp32"
     assert result.grammar_active is False
+    assert result.grammar_variant is None
     assert result.masked_token_rate is None
     assert result.compile_success is True
     assert result.compile_results_by_dtype == {
@@ -265,6 +343,7 @@ def test_conversion_g_failure_produces_valid_failed_row() -> None:
 
     validate_result_invariants(result)
     assert result.grammar_active is True
+    assert result.grammar_variant == "template_upper_bound"
     assert result.masked_token_rate == 0.42
     assert result.compile_success is False
     assert result.compile_error_type == "CompilationError"
@@ -346,6 +425,8 @@ def _make_args(tmp_path: Path, **overrides) -> SimpleNamespace:
         output=str(tmp_path / "out.jsonl"),
         model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
         dataset_id="ScalingIntelligence/KernelBench",
+        grammar_variant="template_upper_bound",
+        grammar_path=runner.DEFAULT_GRAMMAR_PATH,
         temperature=0.2,
         max_new_tokens=64,
         modal_generation_gpu=runner.DEFAULT_GENERATION_GPU,
@@ -395,13 +476,17 @@ def _existing_result(
     seed: int = 0,
     model_id: str = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
     temperature: float = 0.2,
+    grammar_variant: str | None = None,
 ) -> GenerationResult:
     spec = get_kernel_spec("elementwise")
     grammar_active = factor_cell == "G"
+    if grammar_active and grammar_variant is None:
+        grammar_variant = "template_upper_bound"
     return GenerationResult(
         source=_FAKE_SOURCE,
         model_id=model_id,
         grammar_active=grammar_active,
+        grammar_variant=grammar_variant if grammar_active else None,
         kernel_class=spec.kernel_class,
         kernel_name=spec.name,
         dtype=dtype,
@@ -416,6 +501,7 @@ def _existing_result(
         temperature=temperature,
         run_id=runner.make_run_id(
             factor_cell=factor_cell,
+            grammar_variant=grammar_variant if grammar_active else None,
             kernel_class=spec.kernel_class,
             kernel_name=spec.name,
             dtype=dtype,
@@ -440,6 +526,8 @@ def _write_resume_metadata(
     kernel_class: str = "elementwise",
     n: int = 1,
     model_id: str = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+    grammar_variant: str = "template_upper_bound",
+    grammar_path: str = runner.DEFAULT_GRAMMAR_PATH,
     expected_rows: int = 3,
     status: str = "failed_partial",
     dataset_id: str = "ScalingIntelligence/KernelBench",
@@ -454,6 +542,7 @@ def _write_resume_metadata(
                 "kernel_class": kernel_class,
                 "n": n,
                 "model_id": model_id,
+                "grammar_variant": grammar_variant,
                 "expected_rows": expected_rows,
                 "written_rows": 2,
                 "infrastructure_failures": 1,
@@ -468,6 +557,8 @@ def _write_resume_metadata(
                     "output": str(output),
                     "model_id": model_id,
                     "dataset_id": dataset_id,
+                    "grammar_variant": grammar_variant,
+                    "grammar_path": grammar_path,
                     "temperature": temperature,
                     "max_new_tokens": max_new_tokens,
                     "modal_generation_gpu": runner.DEFAULT_GENERATION_GPU,
@@ -506,7 +597,39 @@ def test_run_writes_three_rows_for_elementwise_baseline_n1(
     for row in lines:
         assert row["compile_success"] is True
         assert row["grammar_active"] is False
+        assert row["grammar_variant"] is None
         assert row["masked_token_rate"] is None
+
+
+def test_run_writes_template_upper_bound_for_g_by_default(
+    monkeypatch, tmp_path
+) -> None:
+    generation, compile_ = _g_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    args = _make_args(tmp_path, condition="G")
+
+    rows = runner._run(args=args)
+
+    assert rows == 3
+    assert {call["grammar_variant"] for call in calls["generate"]} == {
+        "template_upper_bound"
+    }
+    lines = [json.loads(line) for line in Path(args.output).read_text().splitlines()]
+    assert {row["grammar_variant"] for row in lines} == {"template_upper_bound"}
+
+
+def test_task_agnostic_schema_path_requires_explicit_grammar_path(
+    monkeypatch, tmp_path
+) -> None:
+    generation, compile_ = _g_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    args = _make_args(tmp_path, condition="G", grammar_variant="task_agnostic")
+
+    with pytest.raises(ValueError, match="task-agnostic grammar_path"):
+        runner._run(args=args)
+
+    assert calls["generate"] == []
+    assert calls["compile"] == []
 
 
 def test_run_passes_modal_generation_gpu_to_generation_adapter(
@@ -521,6 +644,8 @@ def test_run_passes_modal_generation_gpu_to_generation_adapter(
     assert len(calls["generate"]) == 3
     assert {call["modal_generation_gpu"] for call in calls["generate"]} == {"L4"}
     metadata = _read_metadata(Path(args.output))
+    assert metadata["grammar_variant"] == "template_upper_bound"
+    assert metadata["run_config"]["grammar_variant"] == "template_upper_bound"
     assert metadata["run_config"]["modal_generation_gpu"] == "L4"
 
 

@@ -21,6 +21,7 @@ from cluster1.experiments.validate_cluster1_results import (
     validate_cluster1_results,
 )
 from cluster1.results.dataclass import GenerationResult
+from cluster1.results.dataclass import generation_result_record_for_deserialization
 from shared.eval.metrics.pass_at_k import compile_at_1, pass_at_k
 
 
@@ -57,18 +58,24 @@ def summarize_results(
 
     rows = _load_jsonl_rows(jsonl_path)
     records: list[dict[str, object]] = []
-    groups: dict[tuple[str, str, bool, str], list[GenerationResult]] = {}
+    groups: dict[tuple[str, str | None, str, str], list[GenerationResult]] = {}
     for row in rows:
         key = (
             _condition_for_row(row),
+            row.grammar_variant,
             row.kernel_class,
-            row.grammar_active,
             row.dtype,
         )
         groups.setdefault(key, []).append(row)
 
-    for (condition, kernel_class, grammar_active, dtype), group_rows in sorted(
-        groups.items()
+    for (condition, grammar_variant, kernel_class, dtype), group_rows in sorted(
+        groups.items(),
+        key=lambda item: (
+            item[0][0],
+            "" if item[0][1] is None else item[0][1],
+            item[0][2],
+            item[0][3],
+        ),
     ):
         n = len(group_rows)
         if not allow_small_matrix and n < min_group_size:
@@ -76,8 +83,9 @@ def summarize_results(
                 "expected at least "
                 f"{min_group_size} rows for "
                 f"condition={condition!r}, "
+                f"grammar_variant={grammar_variant!r}, "
                 f"kernel_class={kernel_class!r}, "
-                f"grammar_active={grammar_active!r}, dtype={dtype!r}; got {n}"
+                f"dtype={dtype!r}; got {n}"
             )
 
         correct = sum(1 for row in group_rows if row.compile_success)
@@ -96,8 +104,8 @@ def summarize_results(
         records.append(
             {
                 "condition": condition,
+                "grammar_variant": grammar_variant,
                 "kernel_class": kernel_class,
-                "grammar_active": grammar_active,
                 "dtype": dtype,
                 "n": n,
                 "compile_success_scope": COMPILE_SUCCESS_SCOPE,
@@ -268,6 +276,7 @@ def _load_jsonl_rows(jsonl_path: Path) -> list[GenerationResult]:
             if not line.strip():
                 continue
             record = json.loads(line)
+            record = generation_result_record_for_deserialization(record)
             result_fields = {key: record[key] for key in field_names if key in record}
             missing = field_names - set(result_fields)
             if missing:
@@ -310,30 +319,41 @@ def _null_hypothesis_lines(summary: pd.DataFrame) -> list[str]:
         ["kernel_class", "dtype"],
         sort=True,
     ):
-        by_condition = {str(row.condition): row for row in group.itertuples(index=False)}
-        off = by_condition.get("baseline")
-        on = by_condition.get("G")
+        baseline_rows = [
+            row
+            for row in group.itertuples(index=False)
+            if str(row.condition) == "baseline"
+        ]
+        g_rows = [
+            row for row in group.itertuples(index=False) if str(row.condition) == "G"
+        ]
+        off = baseline_rows[0] if baseline_rows else None
         label = f"`kernel_class={kernel_class}`, `dtype={dtype}`"
-        if off is None or on is None:
+        if off is None or not g_rows:
             lines.append(
                 f"- {label}: comparison requires both baseline and G rows; "
                 f"observed {len(group)} condition group(s)."
             )
             continue
 
-        off_failures = int(off.compile_failures)
-        on_failures = int(on.compile_failures)
-        eliminated = off_failures - on_failures
-        if off_failures > 0 and eliminated > 0:
-            lines.append(
-                f"- {label}: grammar ON eliminated {eliminated} compile failure(s) "
-                f"({off_failures} OFF failures vs {on_failures} ON failures)."
-            )
-        else:
-            lines.append(
-                f"- Anomaly for {label}: OFF failures={off_failures}, "
-                f"ON failures={on_failures}. DoD #7 requires documentation."
-            )
+        for on in g_rows:
+            variant = on.grammar_variant
+            variant_label = f"G[{variant}]"
+            off_failures = int(off.compile_failures)
+            on_failures = int(on.compile_failures)
+            eliminated = off_failures - on_failures
+            if off_failures > 0 and eliminated > 0:
+                lines.append(
+                    f"- {label}: {variant_label} eliminated {eliminated} "
+                    f"compile failure(s) ({off_failures} OFF failures vs "
+                    f"{on_failures} ON failures)."
+                )
+            else:
+                lines.append(
+                    f"- Anomaly for {label}, {variant_label}: "
+                    f"OFF failures={off_failures}, ON failures={on_failures}. "
+                    "DoD #7 requires documentation."
+                )
     return lines
 
 
@@ -375,7 +395,7 @@ def _run_shape_lines(
     lines = [f"row_count: {len(rows)}"]
     actual_cells = sorted(
         {
-            (_condition_for_row(row), row.kernel_class, row.dtype)
+            (_condition_for_row(row), row.grammar_variant, row.kernel_class, row.dtype)
             for row in rows
         }
     )
@@ -390,6 +410,8 @@ def _run_shape_lines(
             f"expected_row_count: {validation_report.expected_row_count}",
             f"expected_conditions: {list(validation_report.expected_conditions)}",
             f"actual_conditions: {list(validation_report.observed_conditions)}",
+            f"expected_grammar_variants: {list(validation_report.expected_grammar_variants)}",
+            f"actual_grammar_variants: {list(validation_report.observed_grammar_variants)}",
             f"expected_kernel_classes: {list(validation_report.expected_kernel_classes)}",
             f"actual_kernel_classes: {list(validation_report.observed_kernel_classes)}",
             f"expected_dtypes: {list(validation_report.expected_dtypes)}",
@@ -407,11 +429,11 @@ def _masked_token_rate_markdown(rows: list[GenerationResult]) -> str:
     if not g_rows:
         return "No G rows found."
 
-    groups: dict[tuple[str, str], list[float]] = {}
+    groups: dict[tuple[str | None, str, str], list[float]] = {}
     for row in g_rows:
         if row.masked_token_rate is None:
             continue
-        groups.setdefault((row.kernel_class, row.dtype), []).append(
+        groups.setdefault((row.grammar_variant, row.kernel_class, row.dtype), []).append(
             row.masked_token_rate
         )
 
@@ -419,13 +441,20 @@ def _masked_token_rate_markdown(rows: list[GenerationResult]) -> str:
         return "No non-null G masked_token_rate values found."
 
     lines = [
-        "| condition | kernel_class | dtype | n | mean | min | max |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| condition | grammar_variant | kernel_class | dtype | n | mean | min | max |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
-    for (kernel_class, dtype), values in sorted(groups.items()):
+    for (grammar_variant, kernel_class, dtype), values in sorted(
+        groups.items(),
+        key=lambda item: (
+            "" if item[0][0] is None else item[0][0],
+            item[0][1],
+            item[0][2],
+        ),
+    ):
         mean = sum(values) / len(values)
         lines.append(
-            "| G | "
+            f"| G | {grammar_variant} | "
             f"{kernel_class} | {dtype} | {len(values)} | "
             f"{mean:.6f} | {min(values):.6f} | {max(values):.6f} |"
         )
@@ -436,19 +465,41 @@ def _compile_error_distribution_markdown(rows: list[GenerationResult]) -> str:
     if not rows:
         return "No result rows found."
 
-    counts: dict[tuple[str, str, str, str], int] = {}
+    counts: dict[tuple[str, str | None, str, str, str], int] = {}
     for row in rows:
         error_type = row.compile_error_type or "None"
-        key = (_condition_for_row(row), row.kernel_class, row.dtype, error_type)
+        key = (
+            _condition_for_row(row),
+            row.grammar_variant,
+            row.kernel_class,
+            row.dtype,
+            error_type,
+        )
         counts[key] = counts.get(key, 0) + 1
 
     lines = [
-        "| condition | kernel_class | dtype | compile_error_type | count |",
-        "| --- | --- | --- | --- | --- |",
+        "| condition | grammar_variant | kernel_class | dtype | compile_error_type | count |",
+        "| --- | --- | --- | --- | --- | --- |",
     ]
-    for (condition, kernel_class, dtype, error_type), count in sorted(counts.items()):
+    for (
+        condition,
+        grammar_variant,
+        kernel_class,
+        dtype,
+        error_type,
+    ), count in sorted(
+        counts.items(),
+        key=lambda item: (
+            item[0][0],
+            "" if item[0][1] is None else item[0][1],
+            item[0][2],
+            item[0][3],
+            item[0][4],
+        ),
+    ):
         lines.append(
-            f"| {condition} | {kernel_class} | {dtype} | {error_type} | {count} |"
+            f"| {condition} | {grammar_variant} | {kernel_class} | {dtype} | "
+            f"{error_type} | {count} |"
         )
     return "\n".join(lines)
 

@@ -30,6 +30,7 @@ def test_parse_args_defaults(tmp_path: Path) -> None:
     assert args.n == 20
     assert args.output == output
     assert args.grammar_path == runner.DEFAULT_GRAMMAR_PATH
+    assert args.grammar_variant == "template_upper_bound"
     assert args.temperature == 0.2
     assert args.max_new_tokens == 1024
 
@@ -59,6 +60,7 @@ def test_run_one_generation_assembles_generation_result(monkeypatch: pytest.Monk
     spec = runner.get_kernel_spec("elementwise")
     args = SimpleNamespace(
         model_id="fake/model",
+        grammar_variant="template_upper_bound",
         max_new_tokens=128,
         temperature=0.2,
     )
@@ -100,6 +102,7 @@ def test_run_one_generation_assembles_generation_result(monkeypatch: pytest.Monk
 
     assert result.model_id == "fake/model"
     assert result.grammar_active is True
+    assert result.grammar_variant == "template_upper_bound"
     assert result.kernel_class == "elementwise"
     assert result.kernel_name == "relu"
     assert result.dtype == "fp16"

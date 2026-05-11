@@ -247,6 +247,7 @@ def _make_generation_result(**overrides) -> GenerationResult:
         "source": "import triton\n@triton.jit\ndef k(): pass",
         "model_id": "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
         "grammar_active": False,
+        "grammar_variant": None,
         "kernel_class": "elementwise",
         "kernel_name": "relu",
         "dtype": "fp32",
@@ -263,4 +264,6 @@ def _make_generation_result(**overrides) -> GenerationResult:
         "timestamp_utc": "2026-05-05T00:00:00+00:00",
     }
     defaults.update(overrides)
+    if defaults["grammar_active"] is True and defaults["grammar_variant"] is None:
+        defaults["grammar_variant"] = "template_upper_bound"
     return GenerationResult(**defaults)

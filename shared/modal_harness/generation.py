@@ -117,6 +117,7 @@ class RemoteGenerator:
             source=decoded.source,
             model_id=req.model_id,
             grammar_active=req.grammar_active,
+            grammar_variant=req.grammar_variant,
             masked_token_rate=decoded.masked_token_rate if req.grammar_active else None,
             generation_seed=decoded.generation_seed,
             temperature=decoded.temperature,

@@ -8,6 +8,8 @@ from shared.modal_harness.generation import (
 )
 from shared.modal_harness.schemas import RemoteGenerationRequest, RemoteGenerationResult
 
+DEFAULT_GRAMMAR_PATH = "cluster1/grammar/triton_kernel.gbnf"
+
 
 def generate_source_modal(
     *,
@@ -21,6 +23,8 @@ def generate_source_modal(
     temperature: float,
     max_new_tokens: int,
     run_id: str,
+    grammar_variant: str | None = None,
+    grammar_path: str = DEFAULT_GRAMMAR_PATH,
     modal_generation_gpu: str = DEFAULT_GENERATION_GPU,
 ) -> RemoteGenerationResult:
     factor_cell = "G" if grammar_active else "none"
@@ -32,6 +36,8 @@ def generate_source_modal(
         prompt=prompt,
         model_id=model_id,
         grammar_active=grammar_active,
+        grammar_variant=grammar_variant,
+        grammar_path=grammar_path,
         generation_seed=generation_seed,
         temperature=temperature,
         max_new_tokens=max_new_tokens,

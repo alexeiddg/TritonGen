@@ -47,7 +47,16 @@ from shared.modal_harness.app import app
 # / xgrammar / autoawq at module top), so eager-importing them here
 # satisfies hydration without breaking the local-import contract; the
 # ``test_run_cluster1_modal_does_not_load_heavy_deps`` probe locks that in.
-from cluster1.generation.modal_generate import generate_source_modal  # noqa: E402
+from cluster1.generation.modal_generate import (  # noqa: E402
+    DEFAULT_GRAMMAR_PATH,
+    generate_source_modal,
+)
+from cluster1.results.dataclass import (  # noqa: E402
+    DEFAULT_GRAMMAR_VARIANT,
+    VALID_GRAMMAR_VARIANTS,
+    generation_result_record_for_deserialization,
+    grammar_variant_for_cell,
+)
 from cluster1.validation.modal_compile_check import check_compiles_modal  # noqa: E402
 from shared.modal_harness.generation import DEFAULT_GENERATION_GPU  # noqa: E402
 
@@ -55,6 +64,7 @@ DEFAULT_MODEL_ID = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
 DEFAULT_DATASET_ID = "ScalingIntelligence/KernelBench"
 SUPPORTED_BACKENDS: frozenset[str] = frozenset({"modal"})
 SUPPORTED_CONDITIONS: tuple[str, ...] = ("baseline", "G", "both")
+SUPPORTED_GRAMMAR_VARIANTS: tuple[str, ...] = VALID_GRAMMAR_VARIANTS
 SUPPORTED_KERNEL_CLASSES: tuple[str, ...] = (
     "elementwise",
     "reduction",
@@ -93,6 +103,7 @@ class OutputPreflightError(ValueError):
 class ResumeIdentity:
     run_id: str
     condition: str
+    grammar_variant: str | None
     kernel_class: str
     kernel_name: str
     dtype: str
@@ -103,6 +114,7 @@ class ResumeIdentity:
     def label(self) -> str:
         return (
             f"run_id={self.run_id} condition={self.condition} "
+            f"grammar_variant={self.grammar_variant} "
             f"kernel={self.kernel_class}/{self.kernel_name} "
             f"dtype={self.dtype} seed={self.generation_seed} "
             f"temperature={self.temperature} model_id={self.model_id}"
@@ -174,6 +186,7 @@ def _build_initial_metadata(
         "output_path": str(output),
         "condition": args.condition,
         "kernel_class": args.kernel_class,
+        "grammar_variant": args.grammar_variant,
         "n": args.n,
         "model_id": args.model_id,
         "expected_rows": expected_rows,
@@ -361,6 +374,8 @@ def _validate_resume_metadata(
         "model_id": args.model_id,
         "expected_rows": expected_rows,
     }
+    if "grammar_variant" in metadata:
+        expected_values["grammar_variant"] = args.grammar_variant
     mismatches = [
         f"{key}: metadata={metadata.get(key)!r} requested={expected!r}"
         for key, expected in expected_values.items()
@@ -375,12 +390,19 @@ def _validate_resume_metadata(
 
     run_config = metadata.get("run_config")
     if isinstance(run_config, dict):
-        for key in ("dataset_id", "temperature", "max_new_tokens"):
-            if key in run_config and run_config[key] != getattr(args, key):
+        for key in (
+            "dataset_id",
+            "temperature",
+            "max_new_tokens",
+            "grammar_variant",
+            "grammar_path",
+        ):
+            requested = getattr(args, key, None)
+            if key in run_config and run_config[key] != requested:
                 raise OutputPreflightError(
                     f"Cannot resume because metadata run_config {key}="
                     f"{run_config[key]!r} does not match requested "
-                    f"{getattr(args, key)!r}."
+                    f"{requested!r}."
                 )
 
 
@@ -403,18 +425,54 @@ def _validate_resume_manifest_if_needed(
     )
 
 
-def _grammar_conditions(condition: str) -> list[tuple[str, bool]]:
-    """Return ``[(factor_cell, grammar_active), ...]`` for one --condition."""
+def _grammar_conditions(
+    condition: str,
+    grammar_variant: str | None = DEFAULT_GRAMMAR_VARIANT,
+) -> list[tuple[str, bool, str | None]]:
+    """Return ``[(factor_cell, grammar_active, grammar_variant), ...]``."""
     if condition == "baseline":
-        return [("none", False)]
+        return [("none", False, None)]
     if condition == "G":
-        return [("G", True)]
+        return [
+            (
+                "G",
+                True,
+                grammar_variant_for_cell(
+                    factor_cell="G",
+                    grammar_active=True,
+                    grammar_variant=grammar_variant,
+                ),
+            )
+        ]
     if condition == "both":
-        return [("none", False), ("G", True)]
+        return _grammar_conditions("baseline") + _grammar_conditions(
+            "G",
+            grammar_variant=grammar_variant,
+        )
     raise ValueError(
         f"unknown condition {condition!r}. Cluster 1 Modal runner accepts: "
         "baseline, G, both."
     )
+
+
+def _validate_grammar_variant_request(
+    *,
+    condition: str,
+    grammar_variant: str,
+    grammar_path: str,
+) -> None:
+    if grammar_variant not in SUPPORTED_GRAMMAR_VARIANTS:
+        allowed = ", ".join(SUPPORTED_GRAMMAR_VARIANTS)
+        raise ValueError(f"--grammar-variant={grammar_variant!r} not in [{allowed}]")
+    if (
+        condition in {"G", "both"}
+        and grammar_variant == "task_agnostic"
+        and grammar_path == DEFAULT_GRAMMAR_PATH
+    ):
+        raise ValueError(
+            "grammar_variant='task_agnostic' requires an explicit task-agnostic "
+            "grammar_path; the task-agnostic grammar is not implemented yet."
+        )
 
 
 def _validate_backends(*, compile_backend: str, generation_backend: str) -> None:
@@ -454,9 +512,10 @@ def iter_experiment_cells(
     kernel_classes: list[str],
     condition: str,
     n: int,
+    grammar_variant: str | None = DEFAULT_GRAMMAR_VARIANT,
     dtypes: tuple[str, ...] = SUPPORTED_DTYPES,
-) -> Iterator[tuple[Any, str, bool, str, int]]:
-    """Yield ``(spec, factor_cell, grammar_active, dtype, seed)`` cells.
+) -> Iterator[tuple[Any, str, bool, str | None, str, int]]:
+    """Yield ``(spec, factor_cell, grammar_active, variant, dtype, seed)`` cells.
 
     Iteration order matches the local runner: kernel → condition → dtype → seed.
     """
@@ -465,25 +524,31 @@ def iter_experiment_cells(
     selected_classes = (
         list(KERNEL_SPECS) if kernel_classes == ["all"] else kernel_classes
     )
-    factor_pairs = _grammar_conditions(condition)
+    factor_pairs = _grammar_conditions(condition, grammar_variant=grammar_variant)
     for kernel_class in selected_classes:
         spec = get_kernel_spec(kernel_class)
-        for factor_cell, grammar_active in factor_pairs:
+        for factor_cell, grammar_active, grammar_variant in factor_pairs:
             for dtype in dtypes:
                 for seed in range(n):
-                    yield spec, factor_cell, grammar_active, dtype, seed
+                    yield spec, factor_cell, grammar_active, grammar_variant, dtype, seed
 
 
 def _expected_row_count(
     kernel_classes: list[str],
     condition: str,
     n: int,
+    grammar_variant: str | None = DEFAULT_GRAMMAR_VARIANT,
     dtypes: tuple[str, ...] = SUPPORTED_DTYPES,
 ) -> int:
     selected_classes = (
         list(_kernel_specs_by_class()) if kernel_classes == ["all"] else kernel_classes
     )
-    return len(selected_classes) * len(_grammar_conditions(condition)) * len(dtypes) * n
+    return (
+        len(selected_classes)
+        * len(_grammar_conditions(condition, grammar_variant=grammar_variant))
+        * len(dtypes)
+        * n
+    )
 
 
 def _kernel_specs_by_class() -> dict[str, Any]:
@@ -495,13 +560,21 @@ def _kernel_specs_by_class() -> dict[str, Any]:
 def make_run_id(
     *,
     factor_cell: str,
+    grammar_variant: str | None = None,
     kernel_class: str,
     kernel_name: str,
     dtype: str,
     seed: int,
 ) -> str:
     """Deterministic run_id for a given experiment cell."""
-    key = f"{factor_cell}/{kernel_class}/{kernel_name}/{dtype}/{seed}"
+    grammar_active = factor_cell == "G"
+    resolved_variant = grammar_variant_for_cell(
+        factor_cell=factor_cell,
+        grammar_active=grammar_active,
+        grammar_variant=grammar_variant,
+    )
+    variant_part = f"/{resolved_variant}" if resolved_variant is not None else ""
+    key = f"{factor_cell}{variant_part}/{kernel_class}/{kernel_name}/{dtype}/{seed}"
     return str(uuid.uuid5(RUN_ID_NAMESPACE, key))
 
 
@@ -517,6 +590,7 @@ def _resume_identity_for_cell(
     *,
     spec,
     factor_cell: str,
+    grammar_variant: str | None,
     dtype: str,
     seed: int,
     temperature: float,
@@ -526,6 +600,7 @@ def _resume_identity_for_cell(
     return ResumeIdentity(
         run_id=run_id,
         condition=_condition_label_for_factor_cell(factor_cell),
+        grammar_variant=grammar_variant,
         kernel_class=spec.kernel_class,
         kernel_name=spec.name,
         dtype=dtype,
@@ -552,6 +627,7 @@ def _resume_identity_for_result(result, *, row_label: str) -> ResumeIdentity:
     return ResumeIdentity(
         run_id=result.run_id,
         condition=_condition_label_for_result(result),
+        grammar_variant=result.grammar_variant,
         kernel_class=result.kernel_class,
         kernel_name=result.kernel_name,
         dtype=result.dtype,
@@ -626,6 +702,7 @@ def _load_resume_identities(output: Path) -> dict[ResumeIdentity, Any]:
                 raise ValueError(f"{row_label} invalid JSON: {exc}") from exc
             if not isinstance(record, dict):
                 raise ValueError(f"{row_label} expected JSON object")
+            record = generation_result_record_for_deserialization(record)
             keys = set(record)
             missing = sorted(field_names - keys)
             extra = sorted(keys - field_names)
@@ -703,6 +780,7 @@ def remote_results_to_generation_result(
         source=generation.source,
         model_id=model_id,
         grammar_active=grammar_active,
+        grammar_variant=generation.grammar_variant,
         kernel_class=spec.kernel_class,
         kernel_name=spec.name,
         dtype=dtype,
@@ -729,6 +807,7 @@ def _build_progress_line(result, factor_cell: str) -> str:
     error = result.compile_error_type or "none"
     return (
         f"run_id={result.run_id} condition={condition} "
+        f"grammar_variant={result.grammar_variant} "
         f"kernel={result.kernel_class}/{result.kernel_name} "
         f"dtype={result.dtype} seed={result.generation_seed} "
         f"compile={'true' if result.compile_success else 'false'} "
@@ -740,6 +819,7 @@ def _build_failure_line(
     *,
     run_id: str,
     factor_cell: str,
+    grammar_variant: str | None,
     kernel_class: str,
     kernel_name: str,
     dtype: str,
@@ -749,6 +829,7 @@ def _build_failure_line(
     condition = "G" if factor_cell == "G" else "baseline"
     return (
         f"run_id={run_id} condition={condition} "
+        f"grammar_variant={grammar_variant} "
         f"kernel={kernel_class}/{kernel_name} "
         f"dtype={dtype} seed={seed} "
         f"compile=false error={type(exc).__name__}: {exc}"
@@ -765,12 +846,14 @@ def _run_one_cell(
     spec,
     factor_cell: str,
     grammar_active: bool,
+    grammar_variant: str | None,
     dtype: str,
     seed: int,
     model_id: str,
     temperature: float,
     max_new_tokens: int,
     run_id: str,
+    grammar_path: str,
     modal_generation_gpu: str = DEFAULT_GENERATION_GPU,
 ):
     from cluster1.data.prompts.prompt_contract import build_prompt
@@ -784,6 +867,8 @@ def _run_one_cell(
         kernel_name=spec.name,
         dtype=dtype,
         grammar_active=grammar_active,
+        grammar_variant=grammar_variant,
+        grammar_path=grammar_path,
         generation_seed=seed,
         temperature=temperature,
         max_new_tokens=max_new_tokens,
@@ -842,6 +927,11 @@ def _run(*, args) -> int:
                 f"--kernel-class={args.kernel_class!r} not in "
                 f"{list(SUPPORTED_KERNEL_CLASSES)}"
             )
+        _validate_grammar_variant_request(
+            condition=args.condition,
+            grammar_variant=args.grammar_variant,
+            grammar_path=args.grammar_path,
+        )
 
         overwrite = bool(getattr(args, "overwrite", False))
         append = bool(getattr(args, "append", False))
@@ -861,12 +951,14 @@ def _run(*, args) -> int:
             kernel_classes,
             args.condition,
             args.n,
+            grammar_variant=args.grammar_variant,
         )
         cells = list(
             iter_experiment_cells(
                 kernel_classes,
                 args.condition,
                 args.n,
+                grammar_variant=args.grammar_variant,
             )
         )
         if overwrite:
@@ -881,9 +973,10 @@ def _run(*, args) -> int:
                 args=args,
                 expected_rows=requested_rows,
             )
-            for spec, factor_cell, _, dtype, seed in cells:
+            for spec, factor_cell, _, grammar_variant, dtype, seed in cells:
                 expected_run_id = make_run_id(
                     factor_cell=factor_cell,
+                    grammar_variant=grammar_variant,
                     kernel_class=spec.kernel_class,
                     kernel_name=spec.name,
                     dtype=dtype,
@@ -893,6 +986,7 @@ def _run(*, args) -> int:
                     _resume_identity_for_cell(
                         spec=spec,
                         factor_cell=factor_cell,
+                        grammar_variant=grammar_variant,
                         dtype=dtype,
                         seed=seed,
                         temperature=args.temperature,
@@ -924,9 +1018,10 @@ def _run(*, args) -> int:
             metadata["written_rows"] = len(existing_identities)
         _write_run_metadata(meta_path, metadata)
 
-        for spec, factor_cell, grammar_active, dtype, seed in cells:
+        for spec, factor_cell, grammar_active, grammar_variant, dtype, seed in cells:
             run_id = make_run_id(
                 factor_cell=factor_cell,
+                grammar_variant=grammar_variant,
                 kernel_class=spec.kernel_class,
                 kernel_name=spec.name,
                 dtype=dtype,
@@ -935,6 +1030,7 @@ def _run(*, args) -> int:
             identity = _resume_identity_for_cell(
                 spec=spec,
                 factor_cell=factor_cell,
+                grammar_variant=grammar_variant,
                 dtype=dtype,
                 seed=seed,
                 temperature=args.temperature,
@@ -948,12 +1044,14 @@ def _run(*, args) -> int:
                     spec=spec,
                     factor_cell=factor_cell,
                     grammar_active=grammar_active,
+                    grammar_variant=grammar_variant,
                     dtype=dtype,
                     seed=seed,
                     model_id=args.model_id,
                     temperature=args.temperature,
                     max_new_tokens=args.max_new_tokens,
                     run_id=run_id,
+                    grammar_path=args.grammar_path,
                     modal_generation_gpu=getattr(
                         args,
                         "modal_generation_gpu",
@@ -985,6 +1083,7 @@ def _run(*, args) -> int:
                     _build_failure_line(
                         run_id=run_id,
                         factor_cell=factor_cell,
+                        grammar_variant=grammar_variant,
                         kernel_class=spec.kernel_class,
                         kernel_name=spec.name,
                         dtype=dtype,
@@ -1056,6 +1155,8 @@ def main(
     output: str,
     model_id: str = DEFAULT_MODEL_ID,
     dataset_id: str = DEFAULT_DATASET_ID,
+    grammar_variant: str = DEFAULT_GRAMMAR_VARIANT,
+    grammar_path: str = DEFAULT_GRAMMAR_PATH,
     temperature: float = 0.2,
     max_new_tokens: int = 1024,
     modal_generation_gpu: str = DEFAULT_GENERATION_GPU,
@@ -1073,6 +1174,8 @@ def main(
         output=output,
         model_id=model_id,
         dataset_id=dataset_id,
+        grammar_variant=grammar_variant,
+        grammar_path=grammar_path,
         temperature=temperature,
         max_new_tokens=max_new_tokens,
         modal_generation_gpu=modal_generation_gpu,

@@ -30,7 +30,11 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.ticker import PercentFormatter
 
-from cluster1.results.dataclass import GenerationResult, validate_result_invariants
+from cluster1.results.dataclass import (
+    GenerationResult,
+    generation_result_record_for_deserialization,
+    validate_result_invariants,
+)
 from shared.eval.metrics.pass_at_k import pass_at_k
 
 
@@ -55,6 +59,7 @@ def load_generation_results(jsonl_path: Path = ARTIFACT_PATH) -> list[Generation
             if not line.strip():
                 continue
             record = json.loads(line)
+            record = generation_result_record_for_deserialization(record)
             result_fields = {key: record[key] for key in field_names if key in record}
             missing = field_names - set(result_fields)
             if missing:
@@ -74,6 +79,10 @@ def results_to_dataframe(rows: list[GenerationResult]) -> pd.DataFrame:
         return df
 
     df["condition"] = df["grammar_active"].map({False: "baseline", True: "G"})
+    df["grammar_variant"] = df["grammar_variant"].where(
+        df["grammar_variant"].notna(),
+        None,
+    )
     df["condition"] = pd.Categorical(df["condition"], CONDITIONS, ordered=True)
     df["kernel_class"] = pd.Categorical(df["kernel_class"], KERNEL_CLASSES, ordered=True)
     df["dtype"] = pd.Categorical(df["dtype"], DTYPES, ordered=True)

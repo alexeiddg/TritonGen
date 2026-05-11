@@ -14,6 +14,12 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from cluster1.results.dataclass import (
+    DEFAULT_GRAMMAR_VARIANT,
+    GrammarVariant,
+    grammar_variant_for_cell,
+    validate_grammar_variant_invariants,
+)
 from shared.factors.cells import FactorCell
 from shared.factors.registry import (
     allowed_cells_for_cluster,
@@ -38,6 +44,7 @@ class RemoteGenerationRequest(BaseModel):
     prompt: str
     model_id: str
     grammar_active: bool
+    grammar_variant: GrammarVariant | None = None
     grammar_path: str = "cluster1/grammar/triton_kernel.gbnf"
     max_new_tokens: int = 1024
     temperature: float = 0.2
@@ -51,10 +58,11 @@ class RemoteGenerationRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_factor_matches_grammar(self):
-        if self.factor_cell == "none" and self.grammar_active:
-            raise ValueError("factor_cell='none' requires grammar_active=False")
-        if self.factor_cell == "G" and not self.grammar_active:
-            raise ValueError("factor_cell='G' requires grammar_active=True")
+        self.grammar_variant = grammar_variant_for_cell(
+            factor_cell=self.factor_cell,
+            grammar_active=self.grammar_active,
+            grammar_variant=self.grammar_variant,
+        )
         return self
 
 
@@ -64,6 +72,7 @@ class RemoteGenerationResult(BaseModel):
     source: str
     model_id: str
     grammar_active: bool
+    grammar_variant: GrammarVariant | None = None
     masked_token_rate: float | None
     generation_seed: int | None
     temperature: float
@@ -75,6 +84,12 @@ class RemoteGenerationResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_masked_rate(self):
+        if self.grammar_active and self.grammar_variant is None:
+            self.grammar_variant = DEFAULT_GRAMMAR_VARIANT
+        validate_grammar_variant_invariants(
+            grammar_active=self.grammar_active,
+            grammar_variant=self.grammar_variant,
+        )
         if not self.grammar_active and self.masked_token_rate is not None:
             raise ValueError("masked_token_rate must be None when grammar_active=False")
         if self.grammar_active and self.masked_token_rate is None:

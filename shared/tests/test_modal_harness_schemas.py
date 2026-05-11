@@ -95,12 +95,23 @@ def test_generation_request_baseline_mode() -> None:
     req = _make_generation_request()
     assert req.factor_cell == "none"
     assert req.grammar_active is False
+    assert req.grammar_variant is None
 
 
 def test_generation_request_g_mode() -> None:
     req = _make_generation_request(factor_cell="G", grammar_active=True)
     assert req.factor_cell == "G"
     assert req.grammar_active is True
+    assert req.grammar_variant == "template_upper_bound"
+
+
+def test_generation_request_task_agnostic_variant_accepted() -> None:
+    req = _make_generation_request(
+        factor_cell="G",
+        grammar_active=True,
+        grammar_variant="task_agnostic",
+    )
+    assert req.grammar_variant == "task_agnostic"
 
 
 @pytest.mark.parametrize("reserved", ["C", "P", "G+C", "G+P", "C+P", "G+C+P"])
@@ -114,6 +125,21 @@ def test_generation_request_factor_cell_matches_grammar_flag() -> None:
         _make_generation_request(factor_cell="none", grammar_active=True)
     with pytest.raises(ValueError, match="requires grammar_active=True"):
         _make_generation_request(factor_cell="G", grammar_active=False)
+    with pytest.raises(ValueError, match="requires grammar_variant=None"):
+        _make_generation_request(
+            factor_cell="none",
+            grammar_active=False,
+            grammar_variant="template_upper_bound",
+        )
+
+
+def test_generation_request_invalid_grammar_variant_rejected() -> None:
+    with pytest.raises(ValueError):
+        _make_generation_request(
+            factor_cell="G",
+            grammar_active=True,
+            grammar_variant="bogus",
+        )
 
 
 def test_generation_result_masked_rate_invariant() -> None:
@@ -121,6 +147,7 @@ def test_generation_result_masked_rate_invariant() -> None:
         source="@triton.jit",
         model_id="model",
         grammar_active=False,
+        grammar_variant=None,
         masked_token_rate=None,
         generation_seed=0,
         temperature=0.2,
@@ -132,12 +159,14 @@ def test_generation_result_masked_rate_invariant() -> None:
         source="@triton.jit",
         model_id="model",
         grammar_active=True,
+        grammar_variant="template_upper_bound",
         masked_token_rate=0.25,
         generation_seed=0,
         temperature=0.2,
         run_id="rid",
     )
     assert constrained.masked_token_rate == 0.25
+    assert constrained.grammar_variant == "template_upper_bound"
 
 
 def test_generation_result_rejects_wrong_masked_rate_shape() -> None:
@@ -146,6 +175,7 @@ def test_generation_result_rejects_wrong_masked_rate_shape() -> None:
             source="@triton.jit",
             model_id="model",
             grammar_active=False,
+            grammar_variant=None,
             masked_token_rate=0.1,
             generation_seed=0,
             temperature=0.2,
@@ -156,6 +186,7 @@ def test_generation_result_rejects_wrong_masked_rate_shape() -> None:
             source="@triton.jit",
             model_id="model",
             grammar_active=True,
+            grammar_variant="template_upper_bound",
             masked_token_rate=None,
             generation_seed=0,
             temperature=0.2,
@@ -224,6 +255,7 @@ def test_remote_eval_result_round_trip() -> None:
         source="@triton.jit",
         model_id="model",
         grammar_active=False,
+        grammar_variant=None,
         masked_token_rate=None,
         generation_seed=0,
         temperature=0.2,
