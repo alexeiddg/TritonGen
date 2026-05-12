@@ -1,94 +1,46 @@
-# Cluster 2 - Test-Driven Feedback Loop (C-factor)
+# Cluster 2 - Correctness Feedback Control
 
-**Status: NOT STARTED - contract TBD**
+**Status:** Phase 0 metadata/hash surfaces started.
 
-Cluster 2 research scope is governed by
-`.contracts/research/research_scope.md` and
-`.contracts/research/scale_policy.md`. Detailed internal execution notes may
-exist under `.contracts/agentic/`, but those notes are not paper-facing
-methodology.
+Cluster 2 is a controlled study of correctness-feedback control for Triton
+kernel generation on the three locked Cluster 1 KernelBench Level 1 archetypes:
+ReLU/pointwise, Softmax/reduction, and GEMM/tiled matmul.
 
 ## Scope
 
-Cluster 2 owns the C-factor as correctness/test-driven feedback for Triton-only
-generation. It repairs candidates until they pass PyTorch reference tests, or
-until a fixed repair budget is exhausted.
+- Primary comparison: `C` versus frozen Cluster 1 `none` replay controls.
+- Secondary comparison: `G+C` versus frozen Cluster 1 `G` replay controls.
+- New generation conditions: only `C` and `G+C`.
+- Replay-only controls: `none` and `G`.
+- Equal attempts means equal candidate-source count, not token cost, wall time,
+  or GPU cost.
 
-The loop is centered on Level 2 functional correctness:
+Template replay controls are frozen from:
 
-- shape mismatches;
-- NaN/Inf outputs;
-- numerical allclose failures;
-- max absolute and relative error summaries;
-- per-shape failure traces.
+- `outputs/cluster1/baseline_repaired_l4_n20.jsonl`
+- `outputs/cluster1/final_g_l4_n20.jsonl`
 
-Level 0 parse/surface and Level 1 compile checks remain gates because tests
-cannot run until source is valid and compilable. Cluster 2 may record those
-failures, but compiler-specific repair strategy belongs to Cluster 3.
+The task-agnostic G paper path is blocked until an `n=20` artifact is frozen and
+the Phase -1 manifests are refreshed.
 
-It implements the repair loop:
+## Phase 0 Surfaces
 
-1. Generate a Triton kernel (optionally with grammar constraint)
-2. Evaluate through the shared eval pipeline up to Level 2
-3. Feed structured failure feedback back to the LLM
-4. Repeat up to N repair iterations
-5. Log the final result and the per-iteration repair trace
+Phase 0 adds only metadata and source-hash helpers:
 
-The standard repair budget is 5 repair attempts after the initial generation.
+- `shared/eval/content_hashes.py`
+- `shared/eval/correctness_shapes.py`
+- tracked Phase -1 manifests under `cluster2/contracts/`
 
-## Scale policy
+It does not add Cluster 2 runtime orchestration, repair loops, Modal generation,
+or correctness execution.
 
-Cluster 2 must follow `.contracts/research/scale_policy.md`.
+## Boundaries
 
-Build C at smoke scale first:
-
-```text
-one kernel, condition C, n=1, development model
-```
-
-After the Level 2 correctness loop runs end to end, promote to development
-scale:
-
-```text
-three kernels, active C conditions, n=3..5, development model
-```
-
-Cluster 2 paper-scale runs are not allowed until the repair loop is stable at
-development scale. Paper-scale data must use the frozen paper kernel set, seed
-schedule, prompts, feedback templates, and model. Development-scale repair
-results are directional indicators only and must not be mixed into paper result
-tables.
-
-## Factorial conditions
-
-| Condition | Grammar (G) | Test-driven feedback (C) |
-|-----------|-------------|-------------------------|
-| C         | OFF         | ON                      |
-| G+C       | ON          | ON                      |
-
-Cluster 2 reads Cluster 1 `none` and `G` artifacts for comparison. It does not
-need to rerun them unless a reproducibility run explicitly requires it.
-
-## Boundary rules
-
-- **IN SCOPE:** PyTorch reference tests, tolerance-aware numerical comparison,
-  correctness feedback, structured re-prompt construction, bounded repair loop
-  orchestration, per-attempt result logging.
-- **OUT OF SCOPE:** compiler-specific repair strategy, performance timing,
-  profiler feedback, speedup reporting, RL/model fine-tuning,
-  CUDA/C++/CUTLASS/CuTe generation.
-
-## Dependencies
-
-- `cluster1.validation.compile_check` - compile gate
-- `cluster1.generation.modal_generate` - shared remote generation adapter
-- `cluster1.data.kernels` - same three KernelBench kernel specs
-- `shared.eval` - Level 0/1/2 gated evaluation
-- `shared.modal_harness` - remote generation, compile, and correctness checks
-
-## Contract
-
-The formal Cluster 2 research contract is TBD. Until then, do not expand the
-research scope beyond `.contracts/research/research_scope.md` and
-`.contracts/research/scale_policy.md`; use internal agentic notes only as
-implementation guidance.
+- Do not edit Cluster 1 generation, grammar, prompt, result, runner, analyzer, or
+  Modal entry-point files.
+- Do not edit `shared/modal_harness/generation.py`,
+  `shared/modal_harness/schemas.py`, or `shared/modal_harness/smoke.py`.
+- Do not regenerate `none` or `G`; replay them from frozen Cluster 1 artifacts.
+- Do not add timing, profiling, speedup, or performance fields to C2 JSONL rows.
+- Do not claim fixed resolved model/tokenizer revisions for replay controls when
+  frozen Cluster 1 artifacts record those revisions as unavailable.

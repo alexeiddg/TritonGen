@@ -1,0 +1,393 @@
+{
+  "schema_version": 1,
+  "created_at_utc": "2026-05-12T22:05:12.216041+00:00",
+  "phase": "-1",
+  "goal": "Freeze and fingerprint Cluster 1 replay controls before Cluster 2 Phase 0.",
+  "scope": {
+    "implemented": "manifests only",
+    "cluster2_logic_implemented": false,
+    "cluster1_source_edited": false,
+    "files_not_edited_by_contract": [
+      "shared/modal_harness/generation.py",
+      "shared/modal_harness/schemas.py",
+      "shared/modal_harness/smoke.py",
+      "cluster1 generation code",
+      "cluster1 grammar code/files",
+      "cluster1 prompt code",
+      "cluster1 validation code",
+      "cluster1 result code"
+    ]
+  },
+  "git": {
+    "current_head": "e197500a59669eb05e138f44218b2e9f5d9e91bc",
+    "tags_created_by_this_phase_minus1_run": [],
+    "status_short_before_phase_minus1_manifest_generation": "",
+    "status_short_after_manifest_generation": "?? cluster2/contracts/"
+  },
+  "source_contract_hashes": {
+    "cluster2_plan": {
+      "path": ".contracts/agentic/cluster2_integrated_agent_plan.md",
+      "sha256": "75fa584e4359b3d3d2f72e2d32ab4106a28a09c81b98d923661cf8b849b06531",
+      "hash_record_path": "cluster2/contracts/cluster2_plan_hash.txt"
+    },
+    "cluster1_contract": {
+      "path": ".contracts/agentic/cluster1_contract.md",
+      "sha256": "a70d827852e74d05efa0981d3b74b48da3f8302370c440a72504fa9e3bd3b992"
+    },
+    "cluster1_plan": {
+      "path": ".contracts/agentic/cluster1_plan.md",
+      "sha256": "cb3d4d240a476fb52e5bab2515c75a39023f958cdcec2d14b698942aa6cac16a"
+    }
+  },
+  "frozen_cluster1_artifacts_manifest": {
+    "path": "cluster2/contracts/frozen_cluster1_artifacts_manifest.json",
+    "sha256": "62623129c113e945925fa0b0d7c1d4d8790b77afd7c258eab09c1a40c448222c"
+  },
+  "planned_cluster2_cells": {
+    "locked_kernel_classes": [
+      {
+        "kernel_class": "elementwise",
+        "kernel_name": "relu",
+        "archetype": "elementwise/ReLU",
+        "launcher_name": "relu",
+        "dataset_id": "ScalingIntelligence/KernelBench",
+        "dataset_problem_id": 19
+      },
+      {
+        "kernel_class": "reduction",
+        "kernel_name": "softmax",
+        "archetype": "reduction/Softmax",
+        "launcher_name": "softmax",
+        "dataset_id": "ScalingIntelligence/KernelBench",
+        "dataset_problem_id": 23
+      },
+      {
+        "kernel_class": "matmul",
+        "kernel_name": "gemm",
+        "archetype": "matmul/GEMM",
+        "launcher_name": "matmul",
+        "dataset_id": "ScalingIntelligence/KernelBench",
+        "dataset_problem_id": 1
+      }
+    ],
+    "required_dtypes": [
+      "fp32",
+      "fp16",
+      "bf16"
+    ],
+    "replay_controls": [
+      "none",
+      "G"
+    ],
+    "new_generation_conditions_deferred_to_later_phases": [
+      "C",
+      "G+C"
+    ],
+    "scale_requirements": {
+      "locked_kernel_classes": [
+        {
+          "kernel_class": "elementwise",
+          "kernel_name": "relu",
+          "archetype": "elementwise/ReLU",
+          "launcher_name": "relu",
+          "dataset_id": "ScalingIntelligence/KernelBench",
+          "dataset_problem_id": 19
+        },
+        {
+          "kernel_class": "reduction",
+          "kernel_name": "softmax",
+          "archetype": "reduction/Softmax",
+          "launcher_name": "softmax",
+          "dataset_id": "ScalingIntelligence/KernelBench",
+          "dataset_problem_id": 23
+        },
+        {
+          "kernel_class": "matmul",
+          "kernel_name": "gemm",
+          "archetype": "matmul/GEMM",
+          "launcher_name": "matmul",
+          "dataset_id": "ScalingIntelligence/KernelBench",
+          "dataset_problem_id": 1
+        }
+      ],
+      "required_dtypes": [
+        "fp32",
+        "fp16",
+        "bf16"
+      ],
+      "development": {
+        "required_rows_per_kernel_dtype_condition": 5,
+        "source": ".contracts/research/scale_policy.md development n=3..5; Phase -1 uses n=5 as the development sufficiency check"
+      },
+      "paper": {
+        "required_rows_per_kernel_dtype_condition": 20,
+        "source": ".contracts/research/scale_policy.md paper n=20"
+      },
+      "equal_attempt_replay_window": {
+        "repair_budget": 5,
+        "candidate_sources_per_replay_cell": 6,
+        "source": ".contracts/agentic/cluster2_integrated_agent_plan.md equal-attempts definition"
+      }
+    }
+  },
+  "cluster1_invariants": {
+    "kernel_specs": {
+      "path": "cluster1/data/kernels/__init__.py",
+      "keys_order": [
+        "elementwise",
+        "reduction",
+        "matmul"
+      ],
+      "keys_order_hash": "cce8d68fd31cefde0e5968792a233b6305192530b20d23e9c67e926305d789f4",
+      "expected_keys_order": [
+        "elementwise",
+        "reduction",
+        "matmul"
+      ],
+      "passed": true,
+      "locked_specs": [
+        {
+          "kernel_class": "elementwise",
+          "kernel_name": "relu",
+          "archetype": "elementwise/ReLU",
+          "launcher_name": "relu",
+          "dataset_id": "ScalingIntelligence/KernelBench",
+          "dataset_problem_id": 19
+        },
+        {
+          "kernel_class": "reduction",
+          "kernel_name": "softmax",
+          "archetype": "reduction/Softmax",
+          "launcher_name": "softmax",
+          "dataset_id": "ScalingIntelligence/KernelBench",
+          "dataset_problem_id": 23
+        },
+        {
+          "kernel_class": "matmul",
+          "kernel_name": "gemm",
+          "archetype": "matmul/GEMM",
+          "launcher_name": "matmul",
+          "dataset_id": "ScalingIntelligence/KernelBench",
+          "dataset_problem_id": 1
+        }
+      ]
+    },
+    "prompt_hashes": {
+      "path": "cluster1/data/prompts/prompt_contract.py",
+      "hash_method": "sha256(utf8 build_prompt(spec, dtype))",
+      "records": [
+        {
+          "kernel_class": "elementwise",
+          "kernel_name": "relu",
+          "dtype": "fp32",
+          "prompt_sha256": "76eb9d064610e428095c402366771d6e6e42a19413815409a7bebb9e6f252109"
+        },
+        {
+          "kernel_class": "elementwise",
+          "kernel_name": "relu",
+          "dtype": "fp16",
+          "prompt_sha256": "721223e5cfe06541478f7445302fbab0e6b087ef4e4a252e91df85afbaa02811"
+        },
+        {
+          "kernel_class": "elementwise",
+          "kernel_name": "relu",
+          "dtype": "bf16",
+          "prompt_sha256": "65ec0229452ba20b7eb57e81f1fc9e31e41cd0b4f8fb92f56732fd02215c47d5"
+        },
+        {
+          "kernel_class": "reduction",
+          "kernel_name": "softmax",
+          "dtype": "fp32",
+          "prompt_sha256": "54173e538f5326f8041af08dc7f98139995941ca62fc7cf73638864c467df6f1"
+        },
+        {
+          "kernel_class": "reduction",
+          "kernel_name": "softmax",
+          "dtype": "fp16",
+          "prompt_sha256": "aea55c148a4015f912e96a864969b8e0faa7a843d5da381d73d7f3822341e05c"
+        },
+        {
+          "kernel_class": "reduction",
+          "kernel_name": "softmax",
+          "dtype": "bf16",
+          "prompt_sha256": "78fea549ae0f7dfe3c63885bf1b96e07b3cbc693faaa23994cd3558a9cd43938"
+        },
+        {
+          "kernel_class": "matmul",
+          "kernel_name": "gemm",
+          "dtype": "fp32",
+          "prompt_sha256": "d9b7518e2a0076d7db3ef101a7f101f3f5fdbc18882f4d9ceb02684522f8ccd4"
+        },
+        {
+          "kernel_class": "matmul",
+          "kernel_name": "gemm",
+          "dtype": "fp16",
+          "prompt_sha256": "b16423435142b1551e34282d8b26ff8a6075a4f5ed2eb5dcaf948cf2fe7a157c"
+        },
+        {
+          "kernel_class": "matmul",
+          "kernel_name": "gemm",
+          "dtype": "bf16",
+          "prompt_sha256": "6dbe960fb2a22494c19286c1d0fbe02a46c7df3d5f2b308b043a6b4bdfee259b"
+        }
+      ]
+    },
+    "GenerationResult": {
+      "path": "cluster1/results/dataclass.py",
+      "field_list": [
+        "source",
+        "model_id",
+        "grammar_active",
+        "grammar_variant",
+        "kernel_class",
+        "kernel_name",
+        "dtype",
+        "compile_success",
+        "compile_results_by_dtype",
+        "compile_error_type",
+        "compile_error_msg",
+        "masked_token_rate",
+        "unique_solution_hash",
+        "n_shapes_tested",
+        "generation_seed",
+        "temperature",
+        "run_id",
+        "timestamp_utc"
+      ],
+      "field_list_hash_method": "sha256(canonical_json(field_names))",
+      "field_list_sha256": "2207684dc28755436661997e5ba5f66f79026ef9d43ae451509229490269a2f7"
+    },
+    "modal_generation": {
+      "DEFAULT_GENERATION_GPU": "L40S",
+      "default_generation_gpu_passed": true,
+      "RemoteGenerator.generate_one": {
+        "path": "shared/modal_harness/generation.py",
+        "lines": {
+          "start": 81,
+          "end": 129
+        },
+        "source_sha256": "83a5a0c90a4a14f6e7bf8246282fa095dc6c7871e07bc2c376e5ab69fce1995c"
+      }
+    },
+    "analyzer_replay_checks": [
+      {
+        "input_path": "outputs/cluster1/baseline_repaired_l4_n20.jsonl",
+        "condition": "baseline",
+        "n": 20,
+        "grammar_variants": [
+          "template_upper_bound"
+        ],
+        "require_full_n20": true,
+        "passed": true,
+        "row_count": 180,
+        "expected_row_count": 180,
+        "missing_cells_count": 0,
+        "unexpected_cells_count": 0,
+        "duplicate_identities_count": 0,
+        "row_count_failures": [],
+        "sample_size_failures": []
+      },
+      {
+        "input_path": "outputs/cluster1/final_g_l4_n20.jsonl",
+        "condition": "G",
+        "n": 20,
+        "grammar_variants": [
+          "template_upper_bound"
+        ],
+        "require_full_n20": true,
+        "passed": true,
+        "row_count": 180,
+        "expected_row_count": 180,
+        "missing_cells_count": 0,
+        "unexpected_cells_count": 0,
+        "duplicate_identities_count": 0,
+        "row_count_failures": [],
+        "sample_size_failures": []
+      },
+      {
+        "input_path": "outputs/cluster1/task_agnostic_g_all_n5_l4_rerun.jsonl",
+        "condition": "G",
+        "n": 5,
+        "grammar_variants": [
+          "task_agnostic"
+        ],
+        "require_full_n20": false,
+        "passed": true,
+        "row_count": 45,
+        "expected_row_count": 45,
+        "missing_cells_count": 0,
+        "unexpected_cells_count": 0,
+        "duplicate_identities_count": 0,
+        "row_count_failures": [],
+        "sample_size_failures": []
+      },
+      {
+        "input_path": "outputs/cluster1/final_none_vs_g_l4_n20.jsonl",
+        "condition": "both",
+        "n": 20,
+        "grammar_variants": [
+          "template_upper_bound"
+        ],
+        "require_full_n20": true,
+        "passed": true,
+        "row_count": 360,
+        "expected_row_count": 360,
+        "missing_cells_count": 0,
+        "unexpected_cells_count": 0,
+        "duplicate_identities_count": 0,
+        "row_count_failures": [],
+        "sample_size_failures": []
+      }
+    ],
+    "passed": true
+  },
+  "sufficiency_summary": {
+    "none_control": {
+      "artifact_id": "none_baseline_n20_l4",
+      "sufficient_for_development": true,
+      "sufficient_for_paper": true,
+      "grammar_active_check_passed": true
+    },
+    "g_template_upper_bound_control": {
+      "artifact_id": "g_template_upper_bound_n20_l4",
+      "sufficient_for_development": true,
+      "sufficient_for_paper": true,
+      "grammar_active_check_passed": true
+    },
+    "g_task_agnostic_control": {
+      "artifact_id": "g_task_agnostic_n5_l4_rerun",
+      "sufficient_for_development_n5": true,
+      "sufficient_for_paper_n20": false,
+      "paper_coverage_failure_missing_frozen_control_count": 9,
+      "paper_n20_pending": true
+    }
+  },
+  "phase0_gate": {
+    "cluster1_invariants_passed": true,
+    "selected_template_controls_sufficient": true,
+    "task_agnostic_paper_controls_sufficient": false,
+    "allowed_to_begin_phase0_for_v5_template_upper_bound_path": true,
+    "paper_task_agnostic_path_blocked_until_n20_artifact_is_frozen": true,
+    "overall_note": "Phase 0 may begin for the current Cluster 2 v5 template-upper-bound replay path. Any task-agnostic paper-scale G replay remains blocked until the n=20 artifact is available and this manifest is updated."
+  },
+  "pre_registered_analysis_plan": {
+    "primary_comparison": "C vs frozen none replay control",
+    "secondary_comparison": "G+C vs frozen G replay control",
+    "estimator": "per-cell Bernoulli convergence/pass-within-N with bootstrap confidence intervals",
+    "bootstrap_resamples": 10000,
+    "alpha": 0.05,
+    "tail": "two-sided",
+    "multiple_comparison_correction": "none; one primary comparison",
+    "paper_sample_size_per_kernel_dtype_condition": 20,
+    "dtypes": [
+      "fp32",
+      "fp16",
+      "bf16"
+    ],
+    "locked_kernel_classes": [
+      "elementwise",
+      "reduction",
+      "matmul"
+    ]
+  }
+}
