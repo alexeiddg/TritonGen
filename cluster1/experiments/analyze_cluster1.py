@@ -18,6 +18,8 @@ import pandas as pd
 
 from cluster1.experiments.validate_cluster1_results import (
     Cluster1ValidationReport,
+    DEFAULT_EXPECTED_GRAMMAR_VARIANTS,
+    GRAMMAR_VARIANT_CHOICES,
     validate_cluster1_results,
 )
 from cluster1.results.dataclass import GenerationResult
@@ -128,6 +130,7 @@ def null_hypothesis_report(
     output_markdown: Path,
     *,
     condition: str | None = None,
+    grammar_variants: tuple[str, ...] = DEFAULT_EXPECTED_GRAMMAR_VARIANTS,
     kernel_class: str | None = None,
     n: int | None = None,
     allow_small_matrix: bool = False,
@@ -139,6 +142,7 @@ def null_hypothesis_report(
     markdown = build_compile_summary_markdown(
         jsonl_path,
         condition=condition,
+        grammar_variants=grammar_variants,
         kernel_class=kernel_class,
         n=n,
         allow_small_matrix=allow_small_matrix,
@@ -153,6 +157,7 @@ def build_compile_summary_markdown(
     jsonl_path: Path,
     *,
     condition: str | None = None,
+    grammar_variants: tuple[str, ...] = DEFAULT_EXPECTED_GRAMMAR_VARIANTS,
     kernel_class: str | None = None,
     n: int | None = None,
     allow_small_matrix: bool = False,
@@ -164,6 +169,7 @@ def build_compile_summary_markdown(
     validation_report = _maybe_validate(
         jsonl_path,
         condition=condition,
+        grammar_variants=grammar_variants,
         kernel_class=kernel_class,
         n=n,
         validate=validate,
@@ -228,6 +234,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--condition", choices=("baseline", "G", "both"))
     parser.add_argument(
+        "--grammar-variant",
+        action="append",
+        choices=GRAMMAR_VARIANT_CHOICES,
+        dest="grammar_variants",
+        help=(
+            "Expected G grammar variant for validation. Use 'both' to expect "
+            "every active grammar variant. May be repeated. Defaults to "
+            "template_upper_bound."
+        ),
+    )
+    parser.add_argument(
         "--kernel-class",
         choices=("elementwise", "reduction", "matmul", "all"),
     )
@@ -259,6 +276,9 @@ def main(argv: list[str] | None = None) -> int:
         args.input,
         args.output,
         condition=args.condition,
+        grammar_variants=tuple(
+            args.grammar_variants or DEFAULT_EXPECTED_GRAMMAR_VARIANTS
+        ),
         kernel_class=args.kernel_class,
         n=args.n,
         allow_small_matrix=args.allow_small_matrix,
@@ -361,6 +381,7 @@ def _maybe_validate(
     jsonl_path: Path,
     *,
     condition: str | None,
+    grammar_variants: tuple[str, ...],
     kernel_class: str | None,
     n: int | None,
     validate: bool,
@@ -377,6 +398,7 @@ def _maybe_validate(
     report = validate_cluster1_results(
         jsonl_path,
         condition=condition,
+        grammar_variants=grammar_variants,
         kernel_class=kernel_class,
         n=n,
         require_full_n20=require_full_n20,

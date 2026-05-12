@@ -7,8 +7,11 @@ from shared.modal_harness.generation import (
     remote_generator_for_gpu,
 )
 from shared.modal_harness.schemas import RemoteGenerationRequest, RemoteGenerationResult
-
-DEFAULT_GRAMMAR_PATH = "cluster1/grammar/triton_kernel.gbnf"
+from cluster1.generation.grammar_variants import (
+    DEFAULT_GRAMMAR_PATH,
+    grammar_path_for_cell,
+)
+from cluster1.results.dataclass import grammar_variant_for_cell
 
 
 def generate_source_modal(
@@ -24,10 +27,24 @@ def generate_source_modal(
     max_new_tokens: int,
     run_id: str,
     grammar_variant: str | None = None,
-    grammar_path: str = DEFAULT_GRAMMAR_PATH,
+    grammar_path: str | None = None,
     modal_generation_gpu: str = DEFAULT_GENERATION_GPU,
 ) -> RemoteGenerationResult:
     factor_cell = "G" if grammar_active else "none"
+    resolved_variant = grammar_variant_for_cell(
+        factor_cell=factor_cell,
+        grammar_active=grammar_active,
+        grammar_variant=grammar_variant if grammar_active else None,
+    )
+    resolved_grammar_path = grammar_path_for_cell(
+        grammar_active=grammar_active,
+        grammar_variant=resolved_variant,
+    )
+    if grammar_path != resolved_grammar_path and grammar_path is not None:
+        raise ValueError(
+            "grammar_path is selected by grammar_variant; expected "
+            f"{resolved_grammar_path!r}, got {grammar_path!r}"
+        )
     req = RemoteGenerationRequest(
         factor_cell=factor_cell,
         kernel_class=kernel_class,
@@ -36,8 +53,8 @@ def generate_source_modal(
         prompt=prompt,
         model_id=model_id,
         grammar_active=grammar_active,
-        grammar_variant=grammar_variant,
-        grammar_path=grammar_path,
+        grammar_variant=resolved_variant,
+        grammar_path=resolved_grammar_path,
         generation_seed=generation_seed,
         temperature=temperature,
         max_new_tokens=max_new_tokens,

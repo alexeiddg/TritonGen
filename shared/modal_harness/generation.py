@@ -93,6 +93,7 @@ class RemoteGenerator:
         compiled_grammar = None
         hardware_checker = None
         if req.grammar_active:
+            assert req.grammar_path is not None
             compiled_grammar = load_compiled_grammar(
                 _resolve_grammar_path(req.grammar_path),
                 req.model_id,

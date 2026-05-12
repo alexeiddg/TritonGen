@@ -35,9 +35,32 @@ def test_baseline_maps_to_none_factor_cell_and_grammar_off() -> None:
     assert runner._grammar_conditions("baseline") == [("none", False, None)]
 
 
+def test_baseline_ignores_grammar_variant() -> None:
+    assert runner._grammar_conditions("baseline", grammar_variant="both") == [
+        ("none", False, None)
+    ]
+    assert runner._grammar_conditions(
+        "baseline",
+        grammar_variant="task_agnostic",
+    ) == [("none", False, None)]
+
+
 def test_g_maps_to_g_factor_cell_and_grammar_on() -> None:
     assert runner._grammar_conditions("G") == [
         ("G", True, "template_upper_bound")
+    ]
+
+
+def test_g_task_agnostic_maps_to_g_factor_cell_and_grammar_on() -> None:
+    assert runner._grammar_conditions("G", grammar_variant="task_agnostic") == [
+        ("G", True, "task_agnostic")
+    ]
+
+
+def test_g_grammar_variant_both_expands_to_both_g_variants() -> None:
+    assert runner._grammar_conditions("G", grammar_variant="both") == [
+        ("G", True, "template_upper_bound"),
+        ("G", True, "task_agnostic"),
     ]
 
 
@@ -46,6 +69,17 @@ def test_both_expands_baseline_then_g() -> None:
         ("none", False, None),
         ("G", True, "template_upper_bound"),
     ]
+
+
+def test_condition_both_with_variant_both_does_not_duplicate_baseline() -> None:
+    cells = runner._grammar_conditions("both", grammar_variant="both")
+
+    assert cells == [
+        ("none", False, None),
+        ("G", True, "template_upper_bound"),
+        ("G", True, "task_agnostic"),
+    ]
+    assert sum(1 for factor_cell, *_ in cells if factor_cell == "none") == 1
 
 
 @pytest.mark.parametrize("condition", ["C", "P", "G+C", "G+P", "C+P", "G+C+P", ""])
@@ -85,6 +119,21 @@ def test_iter_experiment_cells_baseline_elementwise_n1_yields_three_rows() -> No
     assert len(cells) == 3
     seeds = {seed for *_, seed in cells}
     assert seeds == {0}
+
+
+def test_grammar_path_mapping_by_variant() -> None:
+    assert (
+        runner.grammar_path_for_cell(grammar_active=False, grammar_variant=None)
+        is None
+    )
+    assert runner.grammar_path_for_cell(
+        grammar_active=True,
+        grammar_variant="template_upper_bound",
+    ) == "cluster1/grammar/triton_kernel.gbnf"
+    assert runner.grammar_path_for_cell(
+        grammar_active=True,
+        grammar_variant="task_agnostic",
+    ) == "cluster1/grammar/triton_kernel_agnostic.gbnf"
 
 
 # ---------------------------------------------------------------------------
@@ -241,12 +290,14 @@ def _baseline_remote_pair() -> tuple[RemoteGenerationResult, RemoteCompileResult
     return generation, compile_
 
 
-def _g_remote_pair() -> tuple[RemoteGenerationResult, RemoteCompileResult]:
+def _g_remote_pair(
+    grammar_variant: str = "template_upper_bound",
+) -> tuple[RemoteGenerationResult, RemoteCompileResult]:
     generation = RemoteGenerationResult(
         source=_FAKE_SOURCE,
         model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
         grammar_active=True,
-        grammar_variant="template_upper_bound",
+        grammar_variant=grammar_variant,
         masked_token_rate=0.42,
         generation_seed=0,
         temperature=0.2,
@@ -426,7 +477,7 @@ def _make_args(tmp_path: Path, **overrides) -> SimpleNamespace:
         model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
         dataset_id="ScalingIntelligence/KernelBench",
         grammar_variant="template_upper_bound",
-        grammar_path=runner.DEFAULT_GRAMMAR_PATH,
+        grammar_path=None,
         temperature=0.2,
         max_new_tokens=64,
         modal_generation_gpu=runner.DEFAULT_GENERATION_GPU,
@@ -527,7 +578,7 @@ def _write_resume_metadata(
     n: int = 1,
     model_id: str = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
     grammar_variant: str = "template_upper_bound",
-    grammar_path: str = runner.DEFAULT_GRAMMAR_PATH,
+    grammar_path: str | None = None,
     expected_rows: int = 3,
     status: str = "failed_partial",
     dataset_id: str = "ScalingIntelligence/KernelBench",
@@ -588,6 +639,8 @@ def test_run_writes_three_rows_for_elementwise_baseline_n1(
     assert rows == 3
     assert len(calls["generate"]) == 3
     assert len(calls["compile"]) == 3
+    assert {call["grammar_variant"] for call in calls["generate"]} == {None}
+    assert {call["grammar_path"] for call in calls["generate"]} == {None}
 
     out = Path(args.output)
     assert out.exists()
@@ -599,6 +652,23 @@ def test_run_writes_three_rows_for_elementwise_baseline_n1(
         assert row["grammar_active"] is False
         assert row["grammar_variant"] is None
         assert row["masked_token_rate"] is None
+
+
+def test_run_baseline_ignores_requested_grammar_variant(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    args = _make_args(tmp_path, grammar_variant="task_agnostic")
+
+    runner._run(args=args)
+
+    assert {call["grammar_variant"] for call in calls["generate"]} == {None}
+    assert {call["grammar_path"] for call in calls["generate"]} == {None}
+    lines = [json.loads(line) for line in Path(args.output).read_text().splitlines()]
+    assert {row["grammar_variant"] for row in lines} == {None}
+    assert _read_metadata(Path(args.output))["grammar_variant"] is None
 
 
 def test_run_writes_template_upper_bound_for_g_by_default(
@@ -614,22 +684,82 @@ def test_run_writes_template_upper_bound_for_g_by_default(
     assert {call["grammar_variant"] for call in calls["generate"]} == {
         "template_upper_bound"
     }
+    assert {call["grammar_path"] for call in calls["generate"]} == {
+        "cluster1/grammar/triton_kernel.gbnf"
+    }
     lines = [json.loads(line) for line in Path(args.output).read_text().splitlines()]
     assert {row["grammar_variant"] for row in lines} == {"template_upper_bound"}
 
 
-def test_task_agnostic_schema_path_requires_explicit_grammar_path(
+def test_run_uses_task_agnostic_grammar_path_for_task_agnostic_variant(
     monkeypatch, tmp_path
 ) -> None:
-    generation, compile_ = _g_remote_pair()
+    generation, compile_ = _g_remote_pair(grammar_variant="task_agnostic")
     calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
     args = _make_args(tmp_path, condition="G", grammar_variant="task_agnostic")
 
-    with pytest.raises(ValueError, match="task-agnostic grammar_path"):
-        runner._run(args=args)
+    rows = runner._run(args=args)
 
-    assert calls["generate"] == []
-    assert calls["compile"] == []
+    assert rows == 3
+    assert {call["grammar_variant"] for call in calls["generate"]} == {
+        "task_agnostic"
+    }
+    assert {call["grammar_path"] for call in calls["generate"]} == {
+        "cluster1/grammar/triton_kernel_agnostic.gbnf"
+    }
+    assert len(calls["compile"]) == 3
+
+
+def test_run_grammar_variant_both_expands_g_variants_without_dup_baseline(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    calls: dict = {"generate": [], "compile": []}
+
+    def fake_generate(**kwargs):
+        calls["generate"].append(kwargs)
+        return RemoteGenerationResult(
+            source=_FAKE_SOURCE,
+            model_id=kwargs["model_id"],
+            grammar_active=kwargs["grammar_active"],
+            grammar_variant=kwargs["grammar_variant"],
+            masked_token_rate=0.42 if kwargs["grammar_active"] else None,
+            generation_seed=kwargs["generation_seed"],
+            temperature=kwargs["temperature"],
+            run_id=kwargs["run_id"],
+        )
+
+    def fake_compile(**kwargs):
+        calls["compile"].append(kwargs)
+        return RemoteCompileResult(
+            compile_success=True,
+            compile_results_by_dtype={"fp32": True, "fp16": True, "bf16": True},
+            n_shapes_tested=9,
+            run_id=kwargs["run_id"],
+            factor_cell=kwargs["factor_cell"],
+        )
+
+    monkeypatch.setattr(runner, "generate_source_modal", fake_generate)
+    monkeypatch.setattr(runner, "check_compiles_modal", fake_compile)
+    args = _make_args(tmp_path, condition="both", grammar_variant="both")
+
+    rows = runner._run(args=args)
+
+    assert rows == 9
+    assert [call["grammar_variant"] for call in calls["generate"]].count(None) == 3
+    assert [call["grammar_variant"] for call in calls["generate"]].count(
+        "template_upper_bound"
+    ) == 3
+    assert [call["grammar_variant"] for call in calls["generate"]].count(
+        "task_agnostic"
+    ) == 3
+    assert [call["grammar_path"] for call in calls["generate"]].count(None) == 3
+    assert [call["grammar_path"] for call in calls["generate"]].count(
+        "cluster1/grammar/triton_kernel.gbnf"
+    ) == 3
+    assert [call["grammar_path"] for call in calls["generate"]].count(
+        "cluster1/grammar/triton_kernel_agnostic.gbnf"
+    ) == 3
 
 
 def test_run_passes_modal_generation_gpu_to_generation_adapter(
@@ -644,7 +774,7 @@ def test_run_passes_modal_generation_gpu_to_generation_adapter(
     assert len(calls["generate"]) == 3
     assert {call["modal_generation_gpu"] for call in calls["generate"]} == {"L4"}
     metadata = _read_metadata(Path(args.output))
-    assert metadata["grammar_variant"] == "template_upper_bound"
+    assert metadata["grammar_variant"] is None
     assert metadata["run_config"]["grammar_variant"] == "template_upper_bound"
     assert metadata["run_config"]["modal_generation_gpu"] == "L4"
 

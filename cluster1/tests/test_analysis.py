@@ -10,6 +10,7 @@ import pytest
 
 from cluster1.experiments.analyze_cluster1 import (
     build_compile_summary_markdown,
+    main,
     null_hypothesis_report,
     pass_at_k,
     prompt_dtype_compile_success,
@@ -357,6 +358,86 @@ def test_summary_groups_by_condition_variant_kernel_and_dtype(tmp_path: Path) ->
         "template_upper_bound",
         "task_agnostic",
     }
+
+
+def test_analyzer_cli_accepts_task_agnostic_grammar_variant(
+    tmp_path: Path,
+) -> None:
+    jsonl_path = tmp_path / "task_agnostic.jsonl"
+    output_path = tmp_path / "summary.md"
+    _write_jsonl(
+        jsonl_path,
+        [
+            _make_record(
+                grammar_active=True,
+                grammar_variant="task_agnostic",
+                masked_token_rate=0.35,
+                dtype=dtype,
+                generation_seed=0,
+                run_id=f"task-agnostic-{dtype}",
+            )
+            for dtype in ("fp32", "fp16", "bf16")
+        ],
+    )
+
+    rc = main(
+        [
+            "--input",
+            str(jsonl_path),
+            "--output",
+            str(output_path),
+            "--condition",
+            "G",
+            "--grammar-variant",
+            "task_agnostic",
+            "--kernel-class",
+            "elementwise",
+            "--n",
+            "1",
+            "--validate",
+            "--allow-small-matrix",
+        ]
+    )
+
+    assert rc == 0
+    markdown = output_path.read_text(encoding="utf-8")
+    assert "expected_grammar_variants: ['task_agnostic']" in markdown
+    assert "| G | task_agnostic | elementwise | fp32 |" in markdown
+
+
+def test_analyzer_validates_and_groups_both_g_variants(
+    tmp_path: Path,
+) -> None:
+    jsonl_path = tmp_path / "both_variants.jsonl"
+    rows: list[dict[str, object]] = []
+    for grammar_variant in ("template_upper_bound", "task_agnostic"):
+        for dtype in ("fp32", "fp16", "bf16"):
+            rows.append(
+                _make_record(
+                    grammar_active=True,
+                    grammar_variant=grammar_variant,
+                    masked_token_rate=0.25,
+                    dtype=dtype,
+                    generation_seed=0,
+                    run_id=f"{grammar_variant}-{dtype}",
+                )
+            )
+    _write_jsonl(jsonl_path, rows)
+
+    markdown = build_compile_summary_markdown(
+        jsonl_path,
+        condition="G",
+        grammar_variants=("both",),
+        kernel_class="elementwise",
+        n=1,
+        allow_small_matrix=True,
+        validate=True,
+    )
+
+    assert "expected_row_count: 6" in markdown
+    assert "expected_grammar_variants: ['template_upper_bound', 'task_agnostic']" in markdown
+    assert "| G | template_upper_bound | elementwise | fp32 |" in markdown
+    assert "| G | task_agnostic | elementwise | fp32 |" in markdown
 
 
 def _make_result(**overrides) -> GenerationResult:

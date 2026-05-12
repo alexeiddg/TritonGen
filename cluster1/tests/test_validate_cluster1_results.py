@@ -79,6 +79,28 @@ def test_valid_g_task_agnostic_variant_n1(tmp_path: Path) -> None:
     assert report.observed_grammar_variants == ("task_agnostic",)
 
 
+def test_valid_g_both_grammar_variants_n1(tmp_path: Path) -> None:
+    path = tmp_path / "g_both_variants.jsonl"
+    rows = _rows(["G"], n=1, grammar_variant="template_upper_bound")
+    rows.extend(_rows(["G"], n=1, grammar_variant="task_agnostic"))
+    _write_jsonl(path, rows)
+
+    report = validate_cluster1_results(
+        path,
+        condition="G",
+        kernel_class="elementwise",
+        n=1,
+        grammar_variants=("both",),
+    )
+
+    assert report.passed
+    assert report.expected_row_count == 6
+    assert report.observed_grammar_variants == (
+        "task_agnostic",
+        "template_upper_bound",
+    )
+
+
 def test_missing_variant_cell_rejected(tmp_path: Path) -> None:
     path = tmp_path / "missing_variant.jsonl"
     _write_jsonl(path, _rows(["G"], n=1, grammar_variant="template_upper_bound"))
@@ -396,6 +418,31 @@ def test_cli_returns_failure_for_invalid_file(tmp_path: Path, capsys) -> None:
     captured = capsys.readouterr()
     assert rc == 1
     assert "Cluster 1 result validation: FAIL" in captured.out
+
+
+def test_cli_accepts_task_agnostic_grammar_variant(tmp_path: Path, capsys) -> None:
+    path = tmp_path / "task_agnostic.jsonl"
+    _write_jsonl(path, _rows(["G"], n=1, grammar_variant="task_agnostic"))
+
+    rc = main(
+        [
+            "--input",
+            str(path),
+            "--condition",
+            "G",
+            "--grammar-variant",
+            "task_agnostic",
+            "--kernel-class",
+            "elementwise",
+            "--n",
+            "1",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "Cluster 1 result validation: PASS" in captured.out
+    assert "expected=['task_agnostic']" in captured.out
 
 
 def _rows(

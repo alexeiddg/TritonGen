@@ -14,10 +14,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from cluster1.generation.grammar_variants import grammar_path_for_variant
 from cluster1.results.dataclass import (
     DEFAULT_GRAMMAR_VARIANT,
     GrammarVariant,
-    grammar_variant_for_cell,
     validate_grammar_variant_invariants,
 )
 from shared.factors.cells import FactorCell
@@ -45,7 +45,7 @@ class RemoteGenerationRequest(BaseModel):
     model_id: str
     grammar_active: bool
     grammar_variant: GrammarVariant | None = None
-    grammar_path: str = "cluster1/grammar/triton_kernel.gbnf"
+    grammar_path: str | None = None
     max_new_tokens: int = 1024
     temperature: float = 0.2
     generation_seed: int | None = None
@@ -58,11 +58,26 @@ class RemoteGenerationRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_factor_matches_grammar(self):
-        self.grammar_variant = grammar_variant_for_cell(
+        validate_grammar_variant_invariants(
             factor_cell=self.factor_cell,
             grammar_active=self.grammar_active,
             grammar_variant=self.grammar_variant,
         )
+        if not self.grammar_active:
+            if self.grammar_path is not None:
+                raise ValueError("grammar_path must be None when grammar_active=False")
+            return self
+
+        assert self.grammar_variant is not None
+        expected_path = grammar_path_for_variant(self.grammar_variant)
+        if self.grammar_path is None:
+            self.grammar_path = expected_path
+        elif self.grammar_path != expected_path:
+            raise ValueError(
+                "grammar_path must match grammar_variant mapping: "
+                f"{self.grammar_variant!r} -> {expected_path!r}; "
+                f"got {self.grammar_path!r}"
+            )
         return self
 
 

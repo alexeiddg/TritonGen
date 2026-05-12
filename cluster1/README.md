@@ -78,6 +78,21 @@ Cluster 1 should ultimately report two grammar variants side by side.
 Do not mutate the current strict grammar into the task-agnostic grammar. Keep it
 fixed as the upper-bound control and add the task-agnostic grammar separately.
 
+## Pre-Registered Task-Agnostic Interpretation Thresholds
+
+These thresholds are fixed before any task-agnostic Modal run:
+
+- Tiny n=1 task-agnostic smoke: GO if 3/3 rows are written, there are no
+  infrastructure failures, all rows have `grammar_active=True`,
+  `grammar_variant=task_agnostic`, and `masked_token_rate` is non-null.
+  `compile_success` is informative but not required at n=1.
+- n=5 task-agnostic smoke: STRONG_SIGNAL if compile success is >=9/15,
+  PARTIAL_SIGNAL if compile success is 1-8/15, WEAK_OR_ZERO_SIGNAL if compile
+  success is 0/15, and STRUCTURAL_FAILURE if SignatureError, missing launcher,
+  or grammar invalidity dominates.
+- Final n=20: report the measured result without post-hoc grammar tuning unless
+  failure is a genuine task-agnostic Triton language-surface bug.
+
 The planned task-agnostic grammar should constrain the Triton/Python language
 surface, not the benchmark task. It must not hard-code:
 

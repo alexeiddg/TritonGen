@@ -19,6 +19,7 @@ from cluster1.results.dataclass import (
 
 CONDITIONS = ("baseline", "G")
 DEFAULT_EXPECTED_GRAMMAR_VARIANTS = (DEFAULT_GRAMMAR_VARIANT,)
+GRAMMAR_VARIANT_CHOICES = (*VALID_GRAMMAR_VARIANTS, "both")
 KERNEL_CLASSES = ("elementwise", "reduction", "matmul")
 DTYPES = ("fp32", "fp16", "bf16")
 FULL_SAMPLE_SIZE = 20
@@ -147,6 +148,7 @@ def validate_cluster1_results(
     allow_duplicate_identities: bool = False,
 ) -> Cluster1ValidationReport:
     expected_conditions = _expected_conditions(condition)
+    grammar_variants = _normalize_grammar_variants(grammar_variants)
     expected_grammar_variants = _expected_grammar_variants(
         expected_conditions,
         grammar_variants,
@@ -297,11 +299,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--grammar-variant",
         action="append",
-        choices=VALID_GRAMMAR_VARIANTS,
+        choices=GRAMMAR_VARIANT_CHOICES,
         dest="grammar_variants",
         help=(
-            "Expected G grammar variant. May be repeated. Defaults to "
-            "template_upper_bound."
+            "Expected G grammar variant. Use 'both' to expect every active "
+            "grammar variant. May be repeated. Defaults to template_upper_bound."
         ),
     )
     parser.add_argument(
@@ -435,6 +437,27 @@ def _validate_expected_grammar_variants(grammar_variants: tuple[str, ...]) -> No
         raise ValueError(
             f"invalid grammar variant(s): {', '.join(invalid)}; expected {allowed}"
         )
+
+
+def _normalize_grammar_variants(grammar_variants: tuple[str, ...]) -> tuple[str, ...]:
+    if not grammar_variants:
+        raise ValueError("at least one grammar variant is required for G validation")
+
+    invalid = sorted(set(grammar_variants) - set(GRAMMAR_VARIANT_CHOICES))
+    if invalid:
+        allowed = ", ".join(GRAMMAR_VARIANT_CHOICES)
+        raise ValueError(
+            f"invalid grammar variant selector(s): {', '.join(invalid)}; "
+            f"expected {allowed}"
+        )
+
+    normalized: list[str] = []
+    for variant in grammar_variants:
+        variants = VALID_GRAMMAR_VARIANTS if variant == "both" else (variant,)
+        for expanded in variants:
+            if expanded not in normalized:
+                normalized.append(expanded)
+    return tuple(normalized)
 
 
 def _expected_identities(

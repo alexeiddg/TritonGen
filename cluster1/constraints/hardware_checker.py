@@ -22,6 +22,7 @@ class HardwareChecker:
 
     def reset(self) -> None:
         self.assignments: dict[str, int] = {}
+        self.block_params: set[str] = set()
 
     def validate_assignment(self, name: str, value: int) -> bool:
         if value not in self.allowed_values(name):
@@ -100,7 +101,7 @@ class HardwareChecker:
         """
 
         prefix = _decode_prefix(tokenizer, input_ids, prompt_length)
-        self.record_completed_assignments(prefix)
+        self.record_completed_surface_bindings(prefix)
         name = _pending_assignment_name(prefix)
         # validate_dot_shapes() is intentionally not called here — see its docstring.
         if name is None:
@@ -110,7 +111,11 @@ class HardwareChecker:
                 allowed_values = {"0"}
             else:
                 # Phase B: sampling the *end* argument of tl.arange(0, ...).
-                allowed_values = _pending_arange_values(prefix, self.assignments)
+                allowed_values = _pending_arange_values(
+                    prefix,
+                    self.assignments,
+                    self.block_params,
+                )
                 if allowed_values is None:
                     return None
                 current_literal = _pending_arange_fragment(prefix)
@@ -128,12 +133,17 @@ class HardwareChecker:
                 allowed_ids.add(token_id)
         return allowed_ids
 
-    def record_completed_assignments(self, text: str) -> None:
+    def record_completed_surface_bindings(self, text: str) -> None:
         for match in _COMPLETED_ASSIGNMENT_RE.finditer(text):
             name = match.group("name")
             value = int(match.group("value"))
             if value in self.allowed_values(name):
                 self.assignments[name] = value
+        for match in _COMPLETED_BLOCK_PARAM_RE.finditer(text):
+            self.block_params.add(match.group("name"))
+
+    def record_completed_assignments(self, text: str) -> None:
+        self.record_completed_surface_bindings(text)
 
     def _smem_valid_with(self, name: str, value: int) -> bool:
         block_m = value if name == "BLOCK_M" else self.assignments.get("BLOCK_M")
@@ -149,6 +159,9 @@ _ASSIGNMENT_RE = re.compile(
 _COMPLETED_ASSIGNMENT_RE = re.compile(
     r"(?P<name>BLOCK_SIZE|BLOCK_M|BLOCK_N|BLOCK_K|num_warps|num_stages)"
     r"\s*=\s*(?P<value>[0-9]+)\b"
+)
+_COMPLETED_BLOCK_PARAM_RE = re.compile(
+    r"(?P<name>BLOCK_[A-Za-z0-9_]*)\s*:\s*tl\.constexpr"
 )
 # Detects the generation of tl.arange's *start* argument before the comma.
 # Matches as soon as `tl.arange(` appears with an optional in-progress digit
@@ -203,24 +216,26 @@ def _pending_arange_fragment(prefix: str) -> str:
 def _pending_arange_values(
     prefix: str,
     assignments: dict[str, int],
+    block_params: set[str] | None = None,
 ) -> set[str] | None:
     if _ARANGE_RE.search(prefix) is None:
         return None
+    block_params = block_params or set()
     symbolic_blocks = {
         name
         for name in assignments
         if name in BLOCK_NAMES
-    }
+    } | block_params
     sampled_blocks = {
         str(assignments[name])
-        for name in symbolic_blocks
+        for name in symbolic_blocks & set(assignments)
     }
+    literal_blocks = {str(value) for value in BLOCK_DIM_VALUES | BLOCK_SIZE_VALUES}
     if sampled_blocks:
         return sampled_blocks | symbolic_blocks
-    return (
-        {str(value) for value in BLOCK_DIM_VALUES | BLOCK_SIZE_VALUES}
-        | set(BLOCK_NAMES)
-    )
+    if symbolic_blocks:
+        return symbolic_blocks | literal_blocks
+    return literal_blocks
 
 
 def _token_keeps_value_valid(

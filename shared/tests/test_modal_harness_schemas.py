@@ -96,13 +96,24 @@ def test_generation_request_baseline_mode() -> None:
     assert req.factor_cell == "none"
     assert req.grammar_active is False
     assert req.grammar_variant is None
+    assert req.grammar_path is None
 
 
 def test_generation_request_g_mode() -> None:
-    req = _make_generation_request(factor_cell="G", grammar_active=True)
+    req = _make_generation_request(
+        factor_cell="G",
+        grammar_active=True,
+        grammar_variant="template_upper_bound",
+    )
     assert req.factor_cell == "G"
     assert req.grammar_active is True
     assert req.grammar_variant == "template_upper_bound"
+    assert req.grammar_path == "cluster1/grammar/triton_kernel.gbnf"
+
+
+def test_generation_request_g_mode_requires_explicit_variant() -> None:
+    with pytest.raises(ValueError, match="grammar_variant must be one of"):
+        _make_generation_request(factor_cell="G", grammar_active=True)
 
 
 def test_generation_request_task_agnostic_variant_accepted() -> None:
@@ -112,6 +123,40 @@ def test_generation_request_task_agnostic_variant_accepted() -> None:
         grammar_variant="task_agnostic",
     )
     assert req.grammar_variant == "task_agnostic"
+    assert req.grammar_path == "cluster1/grammar/triton_kernel_agnostic.gbnf"
+
+
+@pytest.mark.parametrize(
+    ("grammar_variant", "grammar_path"),
+    [
+        ("template_upper_bound", "cluster1/grammar/triton_kernel.gbnf"),
+        ("task_agnostic", "cluster1/grammar/triton_kernel_agnostic.gbnf"),
+    ],
+)
+def test_generation_request_round_trip_preserves_both_grammar_variants(
+    grammar_variant: str,
+    grammar_path: str,
+) -> None:
+    req = _make_generation_request(
+        factor_cell="G",
+        grammar_active=True,
+        grammar_variant=grammar_variant,
+    )
+    rebuilt = RemoteGenerationRequest(**req.model_dump())
+
+    assert rebuilt == req
+    assert rebuilt.grammar_variant == grammar_variant
+    assert rebuilt.grammar_path == grammar_path
+
+
+def test_generation_request_rejects_mismatched_grammar_path() -> None:
+    with pytest.raises(ValueError, match="grammar_path must match"):
+        _make_generation_request(
+            factor_cell="G",
+            grammar_active=True,
+            grammar_variant="task_agnostic",
+            grammar_path="cluster1/grammar/triton_kernel.gbnf",
+        )
 
 
 @pytest.mark.parametrize("reserved", ["C", "P", "G+C", "G+P", "C+P", "G+C+P"])
@@ -167,6 +212,20 @@ def test_generation_result_masked_rate_invariant() -> None:
     )
     assert constrained.masked_token_rate == 0.25
     assert constrained.grammar_variant == "template_upper_bound"
+
+
+def test_generation_result_legacy_missing_variant_defaults_to_template() -> None:
+    result = RemoteGenerationResult(
+        source="@triton.jit",
+        model_id="model",
+        grammar_active=True,
+        masked_token_rate=0.25,
+        generation_seed=0,
+        temperature=0.2,
+        run_id="rid",
+    )
+
+    assert result.grammar_variant == "template_upper_bound"
 
 
 def test_generation_result_rejects_wrong_masked_rate_shape() -> None:

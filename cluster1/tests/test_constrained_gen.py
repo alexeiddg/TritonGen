@@ -755,6 +755,34 @@ def test_hardware_mask_allows_symbolic_arange_end() -> None:
     assert 22 not in allowed
 
 
+def test_hardware_mask_rejects_undeclared_symbolic_arange_end() -> None:
+    tokenizer = TokenMaskTokenizer()
+    checker = HardwareChecker()
+
+    allowed = checker.allowed_token_ids(tokenizer, [[19]], 24)
+
+    assert 3 in allowed
+    assert 21 not in allowed
+
+
+def test_hardware_mask_allows_constexpr_param_symbolic_arange_end() -> None:
+    tokenizer = MappingTokenizer(
+        {
+            0: "def kernel(BLOCK_SIZE: tl.constexpr):\n    offsets = tl.arange(0, ",
+            1: "BLOCK_SIZE",
+            2: "BLOCK_M",
+            3: "64",
+        }
+    )
+    checker = HardwareChecker()
+
+    allowed = checker.allowed_token_ids(tokenizer, [[0]], 4)
+
+    assert 1 in allowed
+    assert 2 not in allowed
+    assert 3 in allowed
+
+
 def test_hardware_mask_keeps_split_symbolic_arange_end_constrained() -> None:
     tokenizer = TokenMaskTokenizer()
     checker = HardwareChecker()

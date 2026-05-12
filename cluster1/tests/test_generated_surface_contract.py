@@ -11,7 +11,10 @@ import pytest
 from cluster1.data.kernels import get_kernel_spec
 from cluster1.data.kernels.spec import torch as spec_torch
 from cluster1.grammar.acceptance_fixtures import BAD_KERNELS
-from cluster1.grammar.triton_kernel_validator import accepts_source
+from cluster1.grammar.triton_kernel_validator import (
+    TASK_AGNOSTIC_GBNF_PATH,
+    accepts_source,
+)
 from cluster1.validation.compile_check import (
     cleanup_generated_module,
     load_generated_module,
@@ -88,6 +91,11 @@ def test_golden_fixture_compile_checker_signature_exact(
 @pytest.mark.parametrize("kernel_class", ["elementwise", "reduction", "matmul"])
 def test_golden_fixture_offline_grammar(kernel_class: str) -> None:
     assert accepts_source(_read_fixture(kernel_class))
+
+
+@pytest.mark.parametrize("kernel_class", ["elementwise", "reduction", "matmul"])
+def test_golden_fixture_task_agnostic_offline_grammar(kernel_class: str) -> None:
+    assert accepts_source(_read_fixture(kernel_class), TASK_AGNOSTIC_GBNF_PATH)
 
 
 @pytest.mark.parametrize("kernel_class", ["elementwise", "reduction", "matmul"])

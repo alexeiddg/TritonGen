@@ -1,0 +1,461 @@
+# Cluster 1 Phase 1B task-agnostic grammar for raw Triton Python kernels.
+#
+# Scope:
+# - Required fixed-order imports.
+# - One or more @triton.jit helper functions.
+# - One public launcher with typed tensor/scalar arguments and torch.Tensor return.
+# - Launcher must use output allocation, a grid variable, bracket launch, and return.
+# - Triton corpus calls are whitelisted by API family; arbitrary tl.* calls are
+#   not callable.
+# - In-scope corpus families: @triton.autotune, @triton.heuristics,
+#   triton.Config, program_id/num_programs, creation, shape, linear algebra,
+#   memory and block pointers, indexing, math, reductions, scan/sort, atomics,
+#   RNG, tl.range/static_range, inline asm, compiler hints, and Triton language
+#   debug ops.
+# - Out-of-scope corpus material remains out of grammar: triton.testing,
+#   triton.runtime internals, gluon, CUDA/C++ helpers, and benchmarking/profiling
+#   APIs.
+# - Kernel bodies are generic Triton/Python statement sequences rather than
+#   ReLU/Softmax/GEMM body templates.
+# - Python indentation is represented by explicit 4-space levels to support nested
+#   if/for blocks without context-sensitive indent/dedent tokens.
+
+root ::= module
+
+imports ::= "import torch" nl
+            "import triton" nl
+            "import triton.language as tl" nl
+            blank-lines
+
+module ::= imports agnostic-module trailing-ws
+agnostic-module ::= jit-helper-section blank-lines launch-wrapper
+jit-helper-section ::= jit-helper-function
+                     | jit-helper-function blank-lines jit-helper-function
+                     | jit-helper-function blank-lines jit-helper-function blank-lines jit-helper-function
+
+jit-helper-function ::= decorator-block kernel-function
+decorator-block ::= decorator-prefix* "@triton.jit" nl
+decorator-prefix ::= autotune-decorator | heuristics-decorator
+
+kernel-function ::= "def " private-kernel-name "(" kernel-param-list "):" nl kernel-body
+private-kernel-name ::= ident
+kernel-body ::= kernel-stmt-level1+
+
+kernel-stmt-level1 ::= indent1 kernel-stmt-body nl | indent1 line-comment nl | if-stmt-level1 | for-range-stmt-level1
+kernel-stmt-level2 ::= indent2 kernel-stmt-body nl | indent2 line-comment nl | if-stmt-level2 | for-range-stmt-level2
+kernel-stmt-level3 ::= indent3 kernel-stmt-body nl | indent3 line-comment nl
+
+kernel-stmt-body ::= kernel-assign-stmt | kernel-aug-assign-stmt | kernel-return-stmt | triton-call-stmt
+kernel-assign-stmt ::= target sp "=" sp kernel-expr
+kernel-aug-assign-stmt ::= target sp aug-op sp kernel-expr
+kernel-return-stmt ::= "return" | "return " kernel-expr
+aug-op ::= "+=" | "-=" | "*="
+triton-call-stmt ::= triton-core-call | triton-compute-call
+
+target ::= ident target-postfix*
+target-postfix ::= "[" kernel-subscript-content "]"
+
+# Core Triton calls. tl.constexpr is annotation-only and is not a call.
+triton-core-call ::= tl-programming-call | tl-creation-call | tl-memory-call | tl-compiler-hint-call | tl-debug-call
+triton-value-call ::= tl-programming-call | tl-creation-call | tl-memory-value-call | tl-compiler-hint-value-call | triton-compute-call
+
+tl-programming-call ::= tl-program-id-call | tl-num-programs-call
+
+tl-load-call ::= "tl.load(" kernel-expr tl-load-kwargs? ")"
+               | "tl.load(" nl call-continuation-indent kernel-expr tl-load-multiline-kwargs? ","? nl call-close-indent ")"
+tl-load-kwargs ::= ", " tl-load-kw (", " tl-load-kw)*
+tl-load-multiline-kwargs ::= "," nl call-continuation-indent tl-load-kw ("," nl call-continuation-indent tl-load-kw)*
+tl-load-kw ::= "mask=" kernel-expr
+             | "other=" kernel-expr
+             | "boundary_check=" kernel-expr
+             | "padding_option=" str-literal
+             | "cache_modifier=" str-literal
+             | "eviction_policy=" str-literal
+             | "volatile=" bool-literal
+
+tl-store-call ::= "tl.store(" kernel-expr ", " kernel-expr tl-store-kwargs? ")"
+                | "tl.store(" nl call-continuation-indent kernel-expr "," nl call-continuation-indent kernel-expr tl-store-multiline-kwargs? ","? nl call-close-indent ")"
+tl-store-kwargs ::= ", " tl-store-kw (", " tl-store-kw)*
+tl-store-multiline-kwargs ::= "," nl call-continuation-indent tl-store-kw ("," nl call-continuation-indent tl-store-kw)*
+tl-store-kw ::= "mask=" kernel-expr
+              | "boundary_check=" kernel-expr
+              | "cache_modifier=" str-literal
+              | "eviction_policy=" str-literal
+
+tl-arange-call ::= "tl.arange(" kernel-expr ", " kernel-expr ")"
+
+tl-program-id-call ::= "tl.program_id(" program-id-axis ")"
+                     | "tl.program_id(axis=" program-id-axis ")"
+tl-num-programs-call ::= "tl.num_programs(" program-id-axis ")"
+                       | "tl.num_programs(axis=" program-id-axis ")"
+program-id-axis ::= "0" | "1" | "2"
+
+tl-creation-call ::= tl-arange-call | tl-zeros-call | tl-full-call | tl-zeros-like-call | tl-cat-call | tl-cast-call
+tl-zeros-call ::= "tl.zeros(" kernel-shape-tuple ", dtype=" dtype ")"
+tl-full-call ::= "tl.full(" kernel-shape-tuple ", " kernel-expr ", dtype=" dtype ")"
+tl-zeros-like-call ::= "tl.zeros_like(" kernel-expr ")"
+tl-cat-call ::= "tl.cat(" kernel-expr ", " kernel-expr ")"
+              | "tl.cat(" kernel-expr ", " kernel-expr ", can_reorder=" bool-literal ")"
+              | "tl.cat(" kernel-expr ", " kernel-expr ", can_reorder=" bool-literal ", dim=" kernel-expr ")"
+tl-cast-call ::= "tl.cast(" kernel-expr ", " dtype ")"
+               | "tl.cast(" kernel-expr ", " dtype ", fp_downcast_rounding=" str-literal ")"
+               | "tl.cast(" kernel-expr ", " dtype ", bitcast=" bool-literal ")"
+constexpr-annotation ::= "tl.constexpr"
+
+# Compute Triton calls. No generic tl.<name>(...) fallback exists.
+triton-compute-call ::= tl-shape-call | tl-linear-algebra-call | tl-indexing-call | tl-math-call | tl-reduction-call | tl-scan-sort-call | tl-atomic-call | tl-random-call | tl-inline-asm-call
+
+tl-shape-call ::= tl-broadcast-call | tl-broadcast-to-call | tl-expand-dims-call | tl-interleave-call | tl-join-call | tl-permute-call | tl-ravel-call | tl-reshape-call | tl-split-call | tl-trans-call | tl-view-call
+tl-broadcast-call ::= "tl.broadcast(" kernel-expr ", " kernel-expr ")"
+tl-broadcast-to-call ::= "tl.broadcast_to(" kernel-expr ", " kernel-var-arg-list ")"
+tl-expand-dims-call ::= "tl.expand_dims(" kernel-expr ", " kernel-expr ")"
+tl-interleave-call ::= "tl.interleave(" kernel-expr ", " kernel-expr ")"
+tl-join-call ::= "tl.join(" kernel-expr ", " kernel-expr ")"
+tl-permute-call ::= "tl.permute(" kernel-expr ")"
+                  | "tl.permute(" kernel-expr ", " kernel-var-arg-list ")"
+tl-ravel-call ::= "tl.ravel(" kernel-expr ")"
+                | "tl.ravel(" kernel-expr ", can_reorder=" bool-literal ")"
+tl-reshape-call ::= "tl.reshape(" kernel-expr ", " kernel-var-arg-list ")"
+                  | "tl.reshape(" kernel-expr ", " kernel-var-arg-list ", can_reorder=" bool-literal ")"
+tl-split-call ::= "tl.split(" kernel-expr ")"
+tl-trans-call ::= "tl.trans(" kernel-expr ")"
+                | "tl.trans(" kernel-expr ", " kernel-var-arg-list ")"
+tl-view-call ::= "tl.view(" kernel-expr ", " kernel-var-arg-list ")"
+
+tl-linear-algebra-call ::= tl-dot-call | tl-dot-scaled-call
+
+tl-dot-call ::= "tl.dot(" kernel-expr ", " kernel-expr ")"
+              | "tl.dot(" kernel-expr ", " kernel-expr ", allow_tf32=" bool-literal ")"
+              | "tl.dot(" kernel-expr ", " kernel-expr ", input_precision=" str-literal ")"
+              | "tl.dot(" kernel-expr ", " kernel-expr ", acc=" kernel-expr ")"
+tl-dot-scaled-call ::= "tl.dot_scaled(" kernel-expr ", " kernel-expr ", " str-literal ", " kernel-expr ", " kernel-expr ", " str-literal ")"
+
+tl-memory-call ::= tl-load-call | tl-store-call | tl-make-tensor-descriptor-call | tl-load-tensor-descriptor-call | tl-store-tensor-descriptor-call | tensor-descriptor-method-call | tl-make-block-ptr-call | tl-advance-call
+tl-memory-value-call ::= tl-load-call | tl-make-tensor-descriptor-call | tl-load-tensor-descriptor-call | tensor-descriptor-load-call | tensor-descriptor-gather-call | tl-make-block-ptr-call | tl-advance-call
+tl-make-tensor-descriptor-call ::= "tl.make_tensor_descriptor(" kernel-expr ", shape=" kernel-list-expr ", strides=" kernel-list-expr ", block_shape=" kernel-list-expr tensor-descriptor-padding? ")"
+                                 | "tl.make_tensor_descriptor(" nl call-continuation-indent kernel-expr "," nl call-continuation-indent "shape=" kernel-list-expr "," nl call-continuation-indent "strides=" kernel-list-expr "," nl call-continuation-indent "block_shape=" kernel-list-expr tensor-descriptor-multiline-padding? ","? nl call-close-indent ")"
+tensor-descriptor-padding ::= ", padding_option=" str-literal
+tensor-descriptor-multiline-padding ::= "," nl call-continuation-indent "padding_option=" str-literal
+tl-load-tensor-descriptor-call ::= "tl.load_tensor_descriptor(" kernel-expr ", " kernel-list-expr ")"
+tl-store-tensor-descriptor-call ::= "tl.store_tensor_descriptor(" kernel-expr ", " kernel-list-expr ", " kernel-expr ")"
+tensor-descriptor-method-call ::= tensor-descriptor-load-call | tensor-descriptor-store-call | tensor-descriptor-atomic-call | tensor-descriptor-gather-call | tensor-descriptor-scatter-call
+tensor-descriptor-load-call ::= ident ".load(" kernel-expr ")"
+tensor-descriptor-store-call ::= ident ".store(" kernel-expr ", " kernel-expr ")"
+tensor-descriptor-atomic-call ::= ident "." tensor-descriptor-atomic-name "(" kernel-expr ", " kernel-expr ")"
+tensor-descriptor-atomic-name ::= "atomic_add" | "atomic_and" | "atomic_max" | "atomic_min" | "atomic_or" | "atomic_xor"
+tensor-descriptor-gather-call ::= ident ".gather(" kernel-var-arg-list ")"
+tensor-descriptor-scatter-call ::= ident ".scatter(" kernel-expr ", " kernel-var-arg-list ")"
+tl-make-block-ptr-call ::= "tl.make_block_ptr(base=" kernel-expr ", shape=" kernel-expr ", strides=" kernel-expr ", offsets=" kernel-expr ", block_shape=" kernel-expr ", order=" kernel-expr ")"
+                         | "tl.make_block_ptr(" kernel-expr ", " kernel-expr ", " kernel-expr ", " kernel-expr ", " kernel-expr ", " kernel-expr ")"
+tl-advance-call ::= "tl.advance(" kernel-expr ", " kernel-expr ")"
+
+tl-indexing-call ::= tl-flip-call | tl-where-call | tl-swizzle2d-call
+tl-flip-call ::= "tl.flip(" kernel-expr ")"
+               | "tl.flip(" kernel-expr ", " kernel-expr ")"
+tl-swizzle2d-call ::= "tl.swizzle2d(" kernel-expr ", " kernel-expr ", " kernel-expr ", " kernel-expr ", " kernel-expr ")"
+
+tl-math-call ::= tl-unary-math-call | tl-binary-math-call | tl-ternary-math-call | tl-exp-call | tl-log-call | tl-sqrt-call
+tl-unary-math-call ::= tl-unary-math-name "(" kernel-expr ")"
+tl-unary-math-name ::= "tl.abs" | "tl.ceil" | "tl.cos" | "tl.erf" | "tl.exp2" | "tl.floor" | "tl.log2" | "tl.rsqrt" | "tl.sigmoid" | "tl.sin" | "tl.softmax" | "tl.sqrt_rn"
+tl-binary-math-call ::= tl-binary-math-name "(" kernel-expr ", " kernel-expr ")"
+tl-binary-math-name ::= "tl.cdiv" | "tl.div_rn" | "tl.fdiv" | "tl.maximum" | "tl.minimum" | "tl.umulhi"
+tl-ternary-math-call ::= tl-ternary-math-name "(" kernel-expr ", " kernel-expr ", " kernel-expr ")"
+tl-ternary-math-name ::= "tl.clamp" | "tl.fma"
+tl-exp-call ::= "tl.exp(" kernel-expr ")"
+tl-log-call ::= "tl.log(" kernel-expr ")"
+tl-sqrt-call ::= "tl.sqrt(" kernel-expr ")"
+tl-where-call ::= "tl.where(" kernel-expr ", " kernel-expr ", " kernel-expr ")"
+
+tl-reduction-call ::= tl-reduction-axis-call | tl-reduce-call
+tl-reduction-axis-call ::= tl-reduction-axis-name "(" kernel-expr ")"
+                         | tl-reduction-axis-name "(" kernel-expr ", " reduction-axis-arg ")"
+                         | tl-reduction-axis-name "(" kernel-expr ", " reduction-axis-arg ", keep_dims=" bool-literal ")"
+                         | "tl.sum(" kernel-expr ", " reduction-axis-arg ", dtype=" dtype ")"
+                         | "tl.sum(" kernel-expr ", " reduction-axis-arg ", keep_dims=" bool-literal ", dtype=" dtype ")"
+                         | "tl.sum(" kernel-expr ", " reduction-axis-arg ", dtype=" dtype ", keep_dims=" bool-literal ")"
+tl-reduction-axis-name ::= "tl.argmax" | "tl.argmin" | "tl.max" | "tl.min" | "tl.sum" | "tl.xor_sum"
+reduction-axis-arg ::= kernel-expr | "axis=" kernel-expr
+tl-reduce-call ::= "tl.reduce(" kernel-expr ", " kernel-expr ", " ident ")"
+                 | "tl.reduce(" kernel-expr ", " kernel-expr ", " ident ", keep_dims=" bool-literal ")"
+
+tl-scan-sort-call ::= tl-associative-scan-call | tl-cumprod-call | tl-cumsum-call | tl-histogram-call | tl-sort-call | tl-topk-call | tl-gather-call
+tl-associative-scan-call ::= "tl.associative_scan(" kernel-expr ", " kernel-expr ", " ident ")"
+                           | "tl.associative_scan(" kernel-expr ", " kernel-expr ", " ident ", reverse=" bool-literal ")"
+tl-cumprod-call ::= "tl.cumprod(" kernel-expr ")"
+                  | "tl.cumprod(" kernel-expr ", axis=" kernel-expr ")"
+                  | "tl.cumprod(" kernel-expr ", axis=" kernel-expr ", reverse=" bool-literal ")"
+tl-cumsum-call ::= "tl.cumsum(" kernel-expr ")"
+                 | "tl.cumsum(" kernel-expr ", axis=" kernel-expr ")"
+                 | "tl.cumsum(" kernel-expr ", axis=" kernel-expr ", reverse=" bool-literal ")"
+                 | "tl.cumsum(" kernel-expr ", axis=" kernel-expr ", dtype=" dtype ")"
+tl-histogram-call ::= "tl.histogram(" kernel-expr ", " kernel-expr ")"
+                    | "tl.histogram(" kernel-expr ", " kernel-expr ", mask=" kernel-expr ")"
+tl-sort-call ::= "tl.sort(" kernel-expr ")"
+               | "tl.sort(" kernel-expr ", dim=" kernel-expr ")"
+               | "tl.sort(" kernel-expr ", dim=" kernel-expr ", descending=" bool-literal ")"
+tl-topk-call ::= "tl.topk(" kernel-expr ", " kernel-expr ")"
+               | "tl.topk(" kernel-expr ", " kernel-expr ", dim=" kernel-expr ")"
+               | "tl.topk(" kernel-expr ", " kernel-expr ", dim=" kernel-expr ", descending=" bool-literal ")"
+tl-gather-call ::= "tl.gather(" kernel-expr ", " kernel-expr ", " kernel-expr ")"
+
+tl-atomic-call ::= tl-atomic-binary-call | tl-atomic-cas-call
+tl-atomic-binary-call ::= tl-atomic-binary-name "(" kernel-expr ", " kernel-expr tl-atomic-kwargs? ")"
+tl-atomic-binary-name ::= "tl.atomic_add" | "tl.atomic_and" | "tl.atomic_max" | "tl.atomic_min" | "tl.atomic_or" | "tl.atomic_xchg" | "tl.atomic_xor"
+tl-atomic-cas-call ::= "tl.atomic_cas(" kernel-expr ", " kernel-expr ", " kernel-expr tl-atomic-cas-kwargs? ")"
+tl-atomic-kwargs ::= ", " tl-atomic-kw (", " tl-atomic-kw)*
+tl-atomic-cas-kwargs ::= ", " tl-atomic-cas-kw (", " tl-atomic-cas-kw)*
+tl-atomic-kw ::= "mask=" kernel-expr | "sem=" str-literal | "scope=" str-literal
+tl-atomic-cas-kw ::= "sem=" str-literal | "scope=" str-literal
+
+tl-random-call ::= tl-random-name "(" kernel-expr ", " kernel-expr ")"
+                 | tl-random-name "(" kernel-expr ", " kernel-expr ", n_rounds=" kernel-expr ")"
+tl-random-name ::= "tl.randint4x" | "tl.randint" | "tl.rand" | "tl.randn"
+
+tl-inline-asm-call ::= "tl.inline_asm_elementwise(asm=" str-literal ", constraints=" str-literal ", args=" kernel-list-expr ", dtype=" kernel-expr ", is_pure=" bool-literal ", pack=" int-literal ")"
+
+tl-compiler-hint-call ::= tl-assume-call | tl-debug-barrier-call | tl-max-constancy-call | tl-max-contiguous-call | tl-multiple-of-call
+tl-compiler-hint-value-call ::= tl-max-constancy-call | tl-max-contiguous-call | tl-multiple-of-call
+tl-assume-call ::= "tl.assume(" kernel-expr ")"
+tl-debug-barrier-call ::= "tl.debug_barrier()"
+tl-max-constancy-call ::= "tl.max_constancy(" kernel-expr ", " kernel-expr ")"
+tl-max-contiguous-call ::= "tl.max_contiguous(" kernel-expr ", " kernel-expr ")"
+tl-multiple-of-call ::= "tl.multiple_of(" kernel-expr ", " kernel-expr ")"
+
+tl-debug-call ::= tl-static-print-call | tl-static-assert-call | tl-device-print-call | tl-device-assert-call
+tl-static-print-call ::= "tl.static_print(" kernel-var-arg-list ")"
+tl-static-assert-call ::= "tl.static_assert(" kernel-expr ")"
+                        | "tl.static_assert(" kernel-expr ", " str-literal ")"
+tl-device-print-call ::= "tl.device_print(" str-literal ")"
+                       | "tl.device_print(" str-literal ", " kernel-var-arg-list ")"
+tl-device-assert-call ::= "tl.device_assert(" kernel-expr ")"
+                        | "tl.device_assert(" kernel-expr ", " str-literal ")"
+                        | "tl.device_assert(" kernel-expr ", " str-literal ", mask=" kernel-expr ")"
+
+# Control flow. Level-specific suites avoid empty indentation tokens and support
+# at least two nested for/if levels inside a kernel.
+control-flow-stmt ::= if-stmt | for-range-stmt
+if-stmt ::= if-stmt-level1
+for-range-stmt ::= for-range-stmt-level1
+
+if-stmt-level1 ::= indent1 "if " kernel-expr ":" nl kernel-stmt-level2+ else-clause-level1?
+if-stmt-level2 ::= indent2 "if " kernel-expr ":" nl kernel-stmt-level3+ else-clause-level2?
+else-clause-level1 ::= indent1 "else:" nl kernel-stmt-level2+
+else-clause-level2 ::= indent2 "else:" nl kernel-stmt-level3+
+
+for-range-stmt-level1 ::= indent1 "for " ident sp "in" sp range-call ":" nl kernel-stmt-level2+
+for-range-stmt-level2 ::= indent2 "for " ident sp "in" sp range-call ":" nl kernel-stmt-level3+
+range-call ::= "range(" kernel-expr ", " kernel-expr ", " kernel-expr ")"
+             | "tl.range(" kernel-call-arg-list ")"
+             | "tl.static_range(" kernel-call-arg-list ")"
+
+# Autotune decorator. Config literals are generic over BLOCK_* meta-parameters
+# rather than enumerating benchmark-task block shapes.
+autotune-decorator ::= autotune-decorator-one-line | autotune-decorator-multiline
+
+autotune-decorator-one-line ::= "@triton.autotune(configs=" config-list ", key=" string-list ")" nl
+
+autotune-decorator-multiline ::= "@triton.autotune(" nl
+                                 indent1 "configs=" config-list "," nl
+                                 indent1 "key=" string-list ","? nl
+                                 ")" nl
+
+config-list ::= "[" config-entry (", " config-entry)* "]"
+              | "[" nl indent2 config-entry ("," nl indent2 config-entry)* ","? nl indent1 "]"
+
+config-entry ::= "triton.Config(" config-dict ", num_warps=" int-literal ", num_stages=" int-literal ")"
+               | "triton.Config(kwargs=" config-dict ", num_warps=" int-literal ", num_stages=" int-literal ")"
+config-dict ::= "{" config-pair (", " config-pair)* "}"
+config-pair ::= config-key ": " int-literal
+config-key ::= "\"BLOCK_" ident "\"" | "'BLOCK_" ident "'"
+
+string-list ::= "[" str-literal (", " str-literal)* "]"
+
+heuristics-decorator ::= "@triton.heuristics(values=" heuristics-dict ")" nl
+heuristics-dict ::= "{" heuristics-entry (", " heuristics-entry)* "}"
+heuristics-entry ::= str-literal ": lambda args: triton.next_power_of_2(args[" str-literal "])"
+                   | str-literal ": lambda args: " int-literal
+                   | str-literal ": lambda args: " bool-literal
+
+# Public launcher. Semantic validation enforces output allocation, grid binding,
+# bracket launch to a helper kernel, and return of the allocated output.
+launch-wrapper ::= "def " public-launcher-name "(" wrapper-param-list ") -> torch.Tensor:" nl wrapper-body
+public-launcher-name ::= ident
+wrapper-body ::= wrapper-prefix-stmts bracket-launch-stmt wrapper-return-stmt
+wrapper-prefix-stmts ::= ""
+                       | wrapper-prelaunch-stmt
+                       | wrapper-prelaunch-stmt wrapper-prelaunch-stmt
+                       | wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt
+                       | wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt
+                       | wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt
+                       | wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt
+                       | wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt
+                       | wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt
+                       | wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt
+                       | wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt wrapper-prelaunch-stmt
+wrapper-stmt-level1 ::= wrapper-prelaunch-stmt | bracket-launch-stmt | wrapper-return-stmt
+wrapper-prelaunch-stmt ::= indent1 wrapper-stmt-body nl | indent1 line-comment nl
+wrapper-stmt-body ::= wrapper-assign-stmt | wrapper-assert-stmt
+wrapper-assign-stmt ::= wrapper-target sp "=" sp wrapper-expr
+wrapper-assert-stmt ::= "assert " wrapper-expr (", " str-literal)?
+wrapper-return ::= "return " wrapper-expr
+wrapper-return-stmt ::= indent1 wrapper-return nl
+
+wrapper-target ::= wrapper-target-name
+wrapper-target-name ::= wrapper-common-target | block-meta-name | ident-with-underscore | ident-with-digit
+wrapper-common-target ::= "out" | "output" | "aux" | "tmp" | "grid" | "M" | "N" | "K" | "c" | "scale"
+block-meta-name ::= "BLOCK_" ident
+ident-with-underscore ::= ident-start ident-cont* "_" ident-cont*
+ident-with-digit ::= ident-start ident-cont* digit ident-cont*
+
+bracket-launch-wrapper ::= launch-wrapper
+bracket-launch-stmt ::= indent1 private-kernel-name "[" grid-expr "](" wrapper-call-arg-list ")" nl
+grid-expr ::= "grid"
+
+# Parameters.
+kernel-param-list ::= kernel-param ("," sp kernel-param)*
+kernel-param ::= ident (": " kernel-type-annotation)?
+kernel-type-annotation ::= constexpr-annotation | ident | dotted-annotation
+dotted-annotation ::= ident "." ident ("." ident)*
+
+wrapper-param-list ::= wrapper-param ("," sp wrapper-param)*
+wrapper-param ::= ident ": " wrapper-type-annotation
+wrapper-type-annotation ::= "torch.Tensor" | "int" | "float" | "bool"
+
+# Kernel expressions allow Triton language calls but not Python wrapper runtime calls.
+kernel-expr ::= kernel-bool-or-expr
+kernel-bool-or-expr ::= kernel-bool-and-expr (sp "or" sp kernel-bool-and-expr)*
+kernel-bool-and-expr ::= kernel-bitwise-expr (sp "and" sp kernel-bitwise-expr)*
+kernel-bitwise-expr ::= kernel-comparison-expr (sp bitwise-op sp kernel-comparison-expr)*
+bitwise-op ::= "&" | "|"
+kernel-comparison-expr ::= kernel-add-expr (sp cmp-op sp kernel-add-expr)?
+cmp-op ::= "<=" | ">=" | "==" | "!=" | "<" | ">"
+kernel-add-expr ::= kernel-mul-expr (sp add-op sp kernel-mul-expr)*
+add-op ::= "+" | "-"
+kernel-mul-expr ::= kernel-unary-expr (sp kernel-mul-op sp kernel-unary-expr)*
+kernel-mul-op ::= "//" | "*" | "/" | "%" | "@"
+kernel-unary-expr ::= unary-op? kernel-primary
+unary-op ::= "-" | "+" | "~"
+
+kernel-primary ::= kernel-primary-base cast-postfix?
+kernel-primary-base ::= triton-value-call
+                      | kernel-atom kernel-atom-postfix*
+
+kernel-atom-postfix ::= "[" kernel-subscript-content "]"
+cast-postfix ::= ".to(" dtype ")"
+
+kernel-atom ::= literal | ident | dtype | constexpr-annotation | kernel-tuple-expr | kernel-list-expr | kernel-paren-expr
+
+# Wrapper expressions allow Python/Torch/Triton runtime calls but not tl.* calls.
+wrapper-expr ::= wrapper-bool-or-expr
+wrapper-bool-or-expr ::= wrapper-bool-and-expr (sp "or" sp wrapper-bool-and-expr)*
+wrapper-bool-and-expr ::= wrapper-comparison-expr (sp "and" sp wrapper-comparison-expr)*
+wrapper-comparison-expr ::= wrapper-add-expr (sp cmp-op sp wrapper-add-expr)?
+wrapper-add-expr ::= wrapper-mul-expr (sp add-op sp wrapper-mul-expr)*
+wrapper-mul-expr ::= wrapper-unary-expr (sp wrapper-mul-op sp wrapper-unary-expr)*
+wrapper-mul-op ::= "//" | "*" | "%"
+wrapper-unary-expr ::= wrapper-unary-op? wrapper-primary
+wrapper-unary-op ::= "-" | "+"
+
+wrapper-primary ::= wrapper-primary-base
+wrapper-primary-base ::= runtime-call
+                       | wrapper-atom wrapper-atom-postfix*
+
+wrapper-atom-postfix ::= "[" wrapper-subscript-content "]" | "." ident
+wrapper-atom ::= literal | ident | wrapper-tuple-expr | wrapper-list-expr | wrapper-paren-expr
+
+runtime-call ::= torch-empty-like-call
+               | torch-empty-call
+               | triton-cdiv-call
+               | tensor-numel-call
+               | builtin-minmax-call
+
+torch-empty-like-call ::= "torch.empty_like(" tensor-source-expr ")"
+torch-empty-call ::= "torch.empty(" wrapper-shape-expr ", device=" tensor-device-expr ", dtype=" tensor-dtype-expr ")"
+                   | "torch.empty(" nl call-continuation-indent wrapper-shape-expr "," nl call-continuation-indent "device=" tensor-device-expr "," nl call-continuation-indent "dtype=" tensor-dtype-expr ","? nl call-close-indent ")"
+triton-cdiv-call ::= "triton.cdiv(" wrapper-expr ", " wrapper-expr ")"
+tensor-numel-call ::= ident ".numel()"
+builtin-minmax-call ::= ("max" | "min") "(" wrapper-expr ", " wrapper-expr ")"
+tensor-source-expr ::= ident
+tensor-device-expr ::= ident ".device"
+tensor-dtype-expr ::= ident ".dtype" | torch-dtype
+torch-dtype ::= "torch.float64" | "torch.float32" | "torch.float16" | "torch.bfloat16" | "torch.int8" | "torch.int16" | "torch.int32" | "torch.int64" | "torch.uint8" | "torch.bool"
+
+grid-tuple-expr ::= "(" wrapper-dim-expr "," ")"
+                  | "(" wrapper-dim-expr ", " wrapper-dim-expr (", " wrapper-dim-expr)* ","? ")"
+wrapper-shape-expr ::= wrapper-dim-expr | wrapper-shape-tuple
+wrapper-shape-tuple ::= "(" wrapper-dim-expr "," ")"
+                      | "(" wrapper-dim-expr ", " wrapper-dim-expr (", " wrapper-dim-expr)* ","? ")"
+wrapper-dim-expr ::= wrapper-dim-add-expr
+wrapper-dim-add-expr ::= wrapper-dim-mul-expr (sp add-op sp wrapper-dim-mul-expr)*
+wrapper-dim-mul-expr ::= wrapper-dim-unary-expr (sp wrapper-mul-op sp wrapper-dim-unary-expr)*
+wrapper-dim-unary-expr ::= wrapper-unary-op? wrapper-dim-primary
+wrapper-dim-primary ::= int-literal | wrapper-dim-ident | triton-dim-cdiv-call | tensor-numel-call | builtin-dim-minmax-call | wrapper-shape-subscript | "(" wrapper-dim-expr ")"
+wrapper-dim-ident ::= ident
+triton-dim-cdiv-call ::= "triton.cdiv(" wrapper-dim-expr ", " wrapper-dim-expr ")"
+builtin-dim-minmax-call ::= ("max" | "min") "(" wrapper-dim-expr ", " wrapper-dim-expr ")"
+wrapper-shape-subscript ::= ident ".shape[" int-literal "]"
+
+call-arg-list ::= wrapper-call-arg-list
+wrapper-call-arg-list ::= positional-arg-list (", " keyword-arg-list)?
+                        | keyword-arg-list
+                        | ""
+positional-arg-list ::= wrapper-expr (", " wrapper-expr)*
+keyword-arg-list ::= keyword-arg (", " keyword-arg)*
+keyword-arg ::= ident "=" wrapper-expr
+
+kernel-subscript-content ::= kernel-subscript-item (", " kernel-subscript-item)*
+kernel-subscript-item ::= kernel-expr | kernel-slice-content
+kernel-slice-content ::= kernel-expr? ":" kernel-expr? (":" kernel-expr?)?
+
+wrapper-subscript-content ::= wrapper-subscript-item (", " wrapper-subscript-item)*
+wrapper-subscript-item ::= wrapper-expr | wrapper-slice-content
+wrapper-slice-content ::= wrapper-expr? ":" wrapper-expr? (":" wrapper-expr?)?
+
+kernel-shape-tuple ::= kernel-tuple-expr
+kernel-tuple-expr ::= "(" ")"
+                    | "(" kernel-expr "," ")"
+                    | "(" kernel-expr ", " kernel-expr (", " kernel-expr)* ","? ")"
+kernel-paren-expr ::= "(" kernel-expr ")"
+kernel-list-expr ::= "[" kernel-expr (", " kernel-expr)* "]"
+kernel-var-arg-list ::= kernel-expr (", " kernel-expr)*
+kernel-call-arg-list ::= kernel-var-arg-list (", " kernel-keyword-arg-list)?
+                       | kernel-keyword-arg-list
+                       | ""
+kernel-keyword-arg-list ::= kernel-keyword-arg (", " kernel-keyword-arg)*
+kernel-keyword-arg ::= ident "=" kernel-expr
+
+wrapper-tuple-expr ::= "(" ")"
+                     | "(" wrapper-expr "," ")"
+                     | "(" wrapper-expr ", " wrapper-expr (", " wrapper-expr)* ","? ")"
+wrapper-paren-expr ::= "(" wrapper-expr ")"
+wrapper-list-expr ::= "[" wrapper-list-elements "]"
+wrapper-list-elements ::= wrapper-expr (", " wrapper-expr)* | ""
+
+dtype ::= "tl.float64" | "tl.float32" | "tl.float16" | "tl.bfloat16" | "tl.int1" | "tl.int8" | "tl.int16" | "tl.int32" | "tl.int64" | "tl.uint8" | "tl.uint16" | "tl.uint32" | "tl.uint64" | "tl.bool"
+
+literal ::= float-literal | int-literal | bool-literal | none-literal | str-literal
+int-literal ::= [0-9] [0-9_]*
+digit ::= [0-9]
+float-literal ::= [0-9] [0-9_]* "." [0-9] [0-9_]*
+bool-literal ::= "True" | "False"
+none-literal ::= "None"
+str-literal ::= "\"" str-char* "\"" | "'" str-char-sq* "'"
+str-char ::= [^"\n\\] | "\\" [^\n]
+str-char-sq ::= [^'\n\\] | "\\" [^\n]
+
+ident ::= ident-start ident-cont*
+ident-start ::= [a-zA-Z_]
+ident-cont ::= [a-zA-Z0-9_]
+
+indent1 ::= "    "
+indent2 ::= "        "
+indent3 ::= "            "
+sp ::= " "
+nl ::= "\n"
+call-continuation-indent ::= indent2 | indent3 | indent4
+call-close-indent ::= indent1 | indent2 | indent3
+line-comment ::= "#" comment-char*
+comment-char ::= [^\n]
+indent4 ::= "                "
+blank-lines ::= nl*
+trailing-ws ::= [ \t\n]*

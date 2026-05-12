@@ -51,6 +51,7 @@ from cluster1.generation.modal_generate import (  # noqa: E402
     DEFAULT_GRAMMAR_PATH,
     generate_source_modal,
 )
+from cluster1.generation.grammar_variants import grammar_path_for_cell  # noqa: E402
 from cluster1.results.dataclass import (  # noqa: E402
     DEFAULT_GRAMMAR_VARIANT,
     VALID_GRAMMAR_VARIANTS,
@@ -64,7 +65,7 @@ DEFAULT_MODEL_ID = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
 DEFAULT_DATASET_ID = "ScalingIntelligence/KernelBench"
 SUPPORTED_BACKENDS: frozenset[str] = frozenset({"modal"})
 SUPPORTED_CONDITIONS: tuple[str, ...] = ("baseline", "G", "both")
-SUPPORTED_GRAMMAR_VARIANTS: tuple[str, ...] = VALID_GRAMMAR_VARIANTS
+SUPPORTED_GRAMMAR_VARIANTS: tuple[str, ...] = (*VALID_GRAMMAR_VARIANTS, "both")
 SUPPORTED_KERNEL_CLASSES: tuple[str, ...] = (
     "elementwise",
     "reduction",
@@ -186,7 +187,7 @@ def _build_initial_metadata(
         "output_path": str(output),
         "condition": args.condition,
         "kernel_class": args.kernel_class,
-        "grammar_variant": args.grammar_variant,
+        "grammar_variant": _metadata_grammar_variant(args),
         "n": args.n,
         "model_id": args.model_id,
         "expected_rows": expected_rows,
@@ -208,6 +209,12 @@ def _build_initial_metadata(
             }
         )
     return metadata
+
+
+def _metadata_grammar_variant(args) -> str | None:
+    if args.condition == "baseline":
+        return None
+    return getattr(args, "grammar_variant", None) or DEFAULT_GRAMMAR_VARIANT
 
 
 def _write_run_metadata(path: Path, metadata: dict[str, Any]) -> None:
@@ -374,8 +381,8 @@ def _validate_resume_metadata(
         "model_id": args.model_id,
         "expected_rows": expected_rows,
     }
-    if "grammar_variant" in metadata:
-        expected_values["grammar_variant"] = args.grammar_variant
+    if "grammar_variant" in metadata and args.condition != "baseline":
+        expected_values["grammar_variant"] = _metadata_grammar_variant(args)
     mismatches = [
         f"{key}: metadata={metadata.get(key)!r} requested={expected!r}"
         for key, expected in expected_values.items()
@@ -390,13 +397,10 @@ def _validate_resume_metadata(
 
     run_config = metadata.get("run_config")
     if isinstance(run_config, dict):
-        for key in (
-            "dataset_id",
-            "temperature",
-            "max_new_tokens",
-            "grammar_variant",
-            "grammar_path",
-        ):
+        comparable_keys = ["dataset_id", "temperature", "max_new_tokens"]
+        if args.condition != "baseline":
+            comparable_keys.append("grammar_variant")
+        for key in comparable_keys:
             requested = getattr(args, key, None)
             if key in run_config and run_config[key] != requested:
                 raise OutputPreflightError(
@@ -427,7 +431,7 @@ def _validate_resume_manifest_if_needed(
 
 def _grammar_conditions(
     condition: str,
-    grammar_variant: str | None = DEFAULT_GRAMMAR_VARIANT,
+    grammar_variant: str | None = None,
 ) -> list[tuple[str, bool, str | None]]:
     """Return ``[(factor_cell, grammar_active, grammar_variant), ...]``."""
     if condition == "baseline":
@@ -440,9 +444,10 @@ def _grammar_conditions(
                 grammar_variant_for_cell(
                     factor_cell="G",
                     grammar_active=True,
-                    grammar_variant=grammar_variant,
+                    grammar_variant=variant,
                 ),
             )
+            for variant in _active_grammar_variants(grammar_variant)
         ]
     if condition == "both":
         return _grammar_conditions("baseline") + _grammar_conditions(
@@ -455,24 +460,34 @@ def _grammar_conditions(
     )
 
 
+def _active_grammar_variants(grammar_variant: str | None) -> tuple[str, ...]:
+    if grammar_variant is None:
+        return (DEFAULT_GRAMMAR_VARIANT,)
+    if grammar_variant == "both":
+        return VALID_GRAMMAR_VARIANTS
+    if grammar_variant in VALID_GRAMMAR_VARIANTS:
+        return (grammar_variant,)
+    allowed = ", ".join(SUPPORTED_GRAMMAR_VARIANTS)
+    raise ValueError(f"--grammar-variant={grammar_variant!r} not in [{allowed}]")
+
+
+def _validation_grammar_variants(
+    condition: str,
+    grammar_variant: str | None,
+) -> tuple[str, ...]:
+    if condition == "baseline":
+        return (DEFAULT_GRAMMAR_VARIANT,)
+    return _active_grammar_variants(grammar_variant)
+
+
 def _validate_grammar_variant_request(
     *,
     condition: str,
-    grammar_variant: str,
-    grammar_path: str,
+    grammar_variant: str | None,
 ) -> None:
-    if grammar_variant not in SUPPORTED_GRAMMAR_VARIANTS:
-        allowed = ", ".join(SUPPORTED_GRAMMAR_VARIANTS)
-        raise ValueError(f"--grammar-variant={grammar_variant!r} not in [{allowed}]")
-    if (
-        condition in {"G", "both"}
-        and grammar_variant == "task_agnostic"
-        and grammar_path == DEFAULT_GRAMMAR_PATH
-    ):
-        raise ValueError(
-            "grammar_variant='task_agnostic' requires an explicit task-agnostic "
-            "grammar_path; the task-agnostic grammar is not implemented yet."
-        )
+    if condition == "baseline":
+        return
+    _active_grammar_variants(grammar_variant)
 
 
 def _validate_backends(*, compile_backend: str, generation_backend: str) -> None:
@@ -853,7 +868,7 @@ def _run_one_cell(
     temperature: float,
     max_new_tokens: int,
     run_id: str,
-    grammar_path: str,
+    grammar_path: str | None,
     modal_generation_gpu: str = DEFAULT_GENERATION_GPU,
 ):
     from cluster1.data.prompts.prompt_contract import build_prompt
@@ -930,7 +945,6 @@ def _run(*, args) -> int:
         _validate_grammar_variant_request(
             condition=args.condition,
             grammar_variant=args.grammar_variant,
-            grammar_path=args.grammar_path,
         )
 
         overwrite = bool(getattr(args, "overwrite", False))
@@ -1051,7 +1065,10 @@ def _run(*, args) -> int:
                     temperature=args.temperature,
                     max_new_tokens=args.max_new_tokens,
                     run_id=run_id,
-                    grammar_path=args.grammar_path,
+                    grammar_path=grammar_path_for_cell(
+                        grammar_active=grammar_active,
+                        grammar_variant=grammar_variant,
+                    ),
                     modal_generation_gpu=getattr(
                         args,
                         "modal_generation_gpu",
@@ -1105,6 +1122,10 @@ def _run(*, args) -> int:
                 condition=args.condition,
                 kernel_class=args.kernel_class,
                 n=args.n,
+                grammar_variants=_validation_grammar_variants(
+                    args.condition,
+                    args.grammar_variant,
+                ),
             )
             if not report.passed:
                 print(report.render(), flush=True)
@@ -1156,7 +1177,7 @@ def main(
     model_id: str = DEFAULT_MODEL_ID,
     dataset_id: str = DEFAULT_DATASET_ID,
     grammar_variant: str = DEFAULT_GRAMMAR_VARIANT,
-    grammar_path: str = DEFAULT_GRAMMAR_PATH,
+    grammar_path: str | None = None,
     temperature: float = 0.2,
     max_new_tokens: int = 1024,
     modal_generation_gpu: str = DEFAULT_GENERATION_GPU,
