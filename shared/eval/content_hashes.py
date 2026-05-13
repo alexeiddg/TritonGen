@@ -33,11 +33,19 @@ EVAL_PIPELINE_SOURCE_PATHS: tuple[str, ...] = (
 )
 
 C2_GENERATION_SOURCE_PATHS: tuple[str, ...] = (
+    "cluster2/modal/schemas.py",
     "cluster2/modal/generation.py",
     "cluster2/generation/modal_generate_c2.py",
     "cluster2/feedback/prompts.py",
     "cluster2/feedback/trace.py",
     "cluster2/feedback/repair_loop.py",
+)
+
+C2_MODAL_SOURCE_PATHS: tuple[str, ...] = (
+    "cluster2/modal/schemas.py",
+    "cluster2/modal/generation.py",
+    "cluster2/modal/correctness.py",
+    "cluster2/modal/correctness_runner.py",
 )
 
 
@@ -73,6 +81,12 @@ def collect_c2_generation_hashes(condition: str) -> dict[str, str]:
     if condition not in {"C", "G+C"}:
         raise ValueError("C2 generation hashes are defined only for C and G+C")
     return _collect_existing_repo_path_hashes(C2_GENERATION_SOURCE_PATHS)
+
+
+def collect_c2_modal_hashes() -> dict[str, str]:
+    """Return source hashes for isolated C2 Modal scaffold files."""
+
+    return _collect_existing_repo_path_hashes(C2_MODAL_SOURCE_PATHS)
 
 
 def collect_cluster1_frozen_generation_hashes(

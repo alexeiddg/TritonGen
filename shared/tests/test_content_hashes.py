@@ -8,6 +8,7 @@ import pytest
 
 from shared.eval.content_hashes import (
     collect_c2_generation_hashes,
+    collect_c2_modal_hashes,
     collect_cluster1_frozen_generation_hashes,
     collect_eval_pipeline_hashes,
     collect_external_pins,
@@ -53,6 +54,24 @@ def test_collect_eval_pipeline_hashes_includes_phase0_modules() -> None:
 def test_collect_c2_generation_hashes_rejects_replay_controls() -> None:
     with pytest.raises(ValueError, match="C and G\\+C"):
         collect_c2_generation_hashes("none")
+
+
+def test_collect_c2_generation_hashes_include_isolated_modal_scaffold() -> None:
+    hashes = collect_c2_generation_hashes("C")
+
+    assert "cluster2/modal/schemas.py" in hashes
+    assert "cluster2/modal/generation.py" in hashes
+
+
+def test_collect_c2_modal_hashes_include_phase0_scaffolds() -> None:
+    hashes = collect_c2_modal_hashes()
+
+    assert set(hashes) == {
+        "cluster2/modal/schemas.py",
+        "cluster2/modal/generation.py",
+        "cluster2/modal/correctness.py",
+        "cluster2/modal/correctness_runner.py",
+    }
 
 
 def test_collect_cluster1_frozen_generation_hashes_for_template_controls() -> None:

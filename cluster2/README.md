@@ -1,6 +1,6 @@
 # Cluster 2 - Correctness Feedback Control
 
-**Status:** Phase 0 metadata/hash surfaces started.
+**Status:** Phase 0 metadata/hash surfaces implemented.
 
 Cluster 2 is a controlled study of correctness-feedback control for Triton
 kernel generation on the three locked Cluster 1 KernelBench Level 1 archetypes:
@@ -25,10 +25,14 @@ the Phase -1 manifests are refreshed.
 
 ## Phase 0 Surfaces
 
-Phase 0 adds only metadata and source-hash helpers:
+Phase 0 adds only metadata, source-hash helpers, and isolated import scaffolds:
 
 - `shared/eval/content_hashes.py`
 - `shared/eval/correctness_shapes.py`
+- `cluster2/constants.py`
+- `cluster2/results/dataclass.py`
+- `cluster2/replay/manifest.py`
+- `cluster2/modal/`
 - tracked Phase -1 manifests under `cluster2/contracts/`
 
 It does not add Cluster 2 runtime orchestration, repair loops, Modal generation,

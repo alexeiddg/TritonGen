@@ -75,7 +75,7 @@ def test_factor_config_boolean_mapping() -> None:
 
 def test_cluster_allowed_cells_are_exact() -> None:
     assert allowed_cells_for_cluster("cluster1") == ("none", "G")
-    assert allowed_cells_for_cluster("cluster2") == ("none", "C", "G+C")
+    assert allowed_cells_for_cluster("cluster2") == ("none", "G", "C", "G+C")
     assert allowed_cells_for_cluster("cluster3") == ("P", "G+P", "C+P", "G+C+P")
 
 
