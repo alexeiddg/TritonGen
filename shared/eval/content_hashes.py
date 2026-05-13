@@ -32,6 +32,7 @@ EVAL_PIPELINE_SOURCE_PATHS: tuple[str, ...] = (
     "shared/eval/levels/level1_compile.py",
     "shared/eval/content_hashes.py",
     "shared/eval/correctness_shapes.py",
+    "shared/eval/reference_runner.py",
 )
 
 C2_GENERATION_SOURCE_PATHS: tuple[str, ...] = (

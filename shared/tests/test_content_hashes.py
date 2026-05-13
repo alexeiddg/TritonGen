@@ -50,6 +50,7 @@ def test_collect_eval_pipeline_hashes_includes_phase0_modules() -> None:
     assert "shared/eval/pipeline.py" in hashes
     assert "shared/eval/content_hashes.py" in hashes
     assert "shared/eval/correctness_shapes.py" in hashes
+    assert "shared/eval/reference_runner.py" in hashes
     assert "shared/eval/schema.py" in hashes
 
 
