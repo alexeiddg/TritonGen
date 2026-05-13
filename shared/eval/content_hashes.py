@@ -26,6 +26,8 @@ EVAL_PIPELINE_SOURCE_PATHS: tuple[str, ...] = (
     "shared/eval/failure_taxonomy.py",
     "shared/eval/diversity.py",
     "shared/eval/adapter_cluster1.py",
+    "shared/eval/run_config.py",
+    "shared/eval/pipeline.py",
     "shared/eval/levels/level0_parse.py",
     "shared/eval/levels/level1_compile.py",
     "shared/eval/content_hashes.py",

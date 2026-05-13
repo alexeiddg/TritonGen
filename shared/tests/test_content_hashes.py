@@ -46,6 +46,8 @@ def test_function_source_sha256_is_stable() -> None:
 def test_collect_eval_pipeline_hashes_includes_phase0_modules() -> None:
     hashes = collect_eval_pipeline_hashes()
 
+    assert "shared/eval/run_config.py" in hashes
+    assert "shared/eval/pipeline.py" in hashes
     assert "shared/eval/content_hashes.py" in hashes
     assert "shared/eval/correctness_shapes.py" in hashes
     assert "shared/eval/schema.py" in hashes
