@@ -9,6 +9,7 @@ FAILURE_CODES = {
     "F0_PARSE",
     "F0_NO_DECORATOR",
     "F0_BAD_SIGNATURE",
+    "F0_SURFACE_VIOLATION",
     "F1_COMPILE",
     "F1_RUNTIME",
     "F2_NUMERIC_LARGE",
@@ -40,6 +41,10 @@ def classify_failure(result: EvalResult) -> str | None:
     if result.failure_code in LEGACY_FAILURE_CODE_MAP:
         return LEGACY_FAILURE_CODE_MAP[result.failure_code]
 
+    sanitizer_failure = _classify_sanitizer_failure(result)
+    if sanitizer_failure is not None:
+        return sanitizer_failure
+
     if result.parse_success is False:
         return "F0_PARSE"
     if result.has_triton_decorator is False:
@@ -69,4 +74,15 @@ def classify_failure(result: EvalResult) -> str | None:
             return "F3_RACE"
         return "F3_OOB"
 
+    return None
+
+
+def _classify_sanitizer_failure(result: EvalResult) -> str | None:
+    if result.safe_success is not False:
+        return None
+    error_text = " ".join(result.sanitizer_errors or ()).lower()
+    if "f0_parse" in error_text or "syntaxerror" in error_text:
+        return "F0_PARSE"
+    if "f0_surface_violation" in error_text or "surface violation" in error_text:
+        return "F0_SURFACE_VIOLATION"
     return None
