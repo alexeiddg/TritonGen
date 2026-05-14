@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -266,6 +267,128 @@ def main(argv: Sequence[str] | None = None) -> Cluster2RunResult:
         )
     )
     return result
+
+
+def _modal_entrypoint_argv(
+    *,
+    condition: str,
+    kernel_class: str,
+    scale_tier: str,
+    n: int,
+    frozen_cluster1_manifest: str,
+    model_id: str,
+    model_revision: str | None,
+    tokenizer_revision: str | None,
+    grammar_variant: str,
+    dtypes: str,
+    temperature: float,
+    max_new_tokens: int,
+    repair_budget: int,
+    modal_generation_gpu: str,
+    modal_eval_gpu: str,
+    output: str,
+    overwrite: bool,
+    resume: bool,
+) -> list[str]:
+    if overwrite == resume:
+        raise ValueError("exactly one of overwrite or resume must be true")
+
+    argv = [
+        "--condition",
+        condition,
+        "--kernel-class",
+        kernel_class,
+        "--scale-tier",
+        scale_tier,
+        "--n",
+        str(n),
+        "--frozen-cluster1-manifest",
+        frozen_cluster1_manifest,
+        "--model-id",
+        model_id,
+        "--grammar-variant",
+        grammar_variant,
+        "--dtypes",
+        dtypes,
+        "--temperature",
+        str(temperature),
+        "--max-new-tokens",
+        str(max_new_tokens),
+        "--repair-budget",
+        str(repair_budget),
+        "--modal-generation-gpu",
+        modal_generation_gpu,
+        "--modal-eval-gpu",
+        modal_eval_gpu,
+        "--output",
+        output,
+        "--overwrite" if overwrite else "--resume",
+    ]
+    if model_revision is not None:
+        argv.extend(["--model-revision", model_revision])
+    if tokenizer_revision is not None:
+        argv.extend(["--tokenizer-revision", tokenizer_revision])
+    return argv
+
+
+def modal_entrypoint(
+    condition: str,
+    kernel_class: str,
+    scale_tier: str,
+    n: int,
+    output: str,
+    frozen_cluster1_manifest: str = DEFAULT_FROZEN_CLUSTER1_MANIFEST,
+    model_id: str = MODEL_ID_DEFAULT,
+    model_revision: str | None = None,
+    tokenizer_revision: str | None = None,
+    grammar_variant: str = GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND,
+    dtypes: str = ",".join(DTYPE_NAMES),
+    temperature: float = 0.2,
+    max_new_tokens: int = 1024,
+    repair_budget: int = DEFAULT_REPAIR_BUDGET,
+    modal_generation_gpu: str = DEFAULT_C2_MODAL_GENERATION_GPU,
+    modal_eval_gpu: str = DEFAULT_C2_MODAL_EVAL_GPU,
+    overwrite: bool = False,
+    resume: bool = False,
+) -> None:
+    main(
+        _modal_entrypoint_argv(
+            condition=condition,
+            kernel_class=kernel_class,
+            scale_tier=scale_tier,
+            n=n,
+            frozen_cluster1_manifest=frozen_cluster1_manifest,
+            model_id=model_id,
+            model_revision=model_revision,
+            tokenizer_revision=tokenizer_revision,
+            grammar_variant=grammar_variant,
+            dtypes=dtypes,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+            repair_budget=repair_budget,
+            modal_generation_gpu=modal_generation_gpu,
+            modal_eval_gpu=modal_eval_gpu,
+            output=output,
+            overwrite=overwrite,
+            resume=resume,
+        )
+    )
+
+
+def _register_modal_local_entrypoint_if_needed() -> None:
+    """Expose the documented ``modal run -m`` CLI without taxing cheap imports."""
+
+    if "modal" not in sys.modules:
+        return
+
+    from shared.modal_harness.app import app as _modal_app
+    import cluster2.modal.correctness  # noqa: F401
+    import cluster2.modal.generation  # noqa: F401
+
+    globals()["modal_entrypoint"] = _modal_app.local_entrypoint()(modal_entrypoint)
+
+
+_register_modal_local_entrypoint_if_needed()
 
 
 def run_cluster2(

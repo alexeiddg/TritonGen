@@ -6,6 +6,7 @@ import hashlib
 
 import pytest
 
+from shared.eval import content_hashes
 from shared.eval.content_hashes import (
     collect_c2_generation_hashes,
     collect_c2_modal_hashes,
@@ -100,3 +101,19 @@ def test_collect_external_pins_is_lightweight() -> None:
 
     assert "python_version" in pins
     assert "package:modal" in pins
+    assert all(isinstance(value, str) and value for value in pins.values())
+
+
+def test_collect_external_pins_normalizes_empty_package_versions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_version(package: str) -> str | None:
+        if package == "transformers":
+            return None
+        return "1.2.3"
+
+    monkeypatch.setattr(content_hashes.importlib.metadata, "version", fake_version)
+
+    pins = collect_external_pins()
+
+    assert pins["package:transformers"] == "unavailable"

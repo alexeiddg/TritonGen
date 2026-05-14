@@ -162,6 +162,9 @@ def _resolve_module_or_file(module_path: str) -> Path:
 
 def _package_version(package: str) -> str:
     try:
-        return importlib.metadata.version(package)
+        version = importlib.metadata.version(package)
     except importlib.metadata.PackageNotFoundError:
         return "unavailable"
+    if not isinstance(version, str) or not version:
+        return "unavailable"
+    return version
