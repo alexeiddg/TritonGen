@@ -15,6 +15,7 @@ from typing import Any
 from cluster2.constants import DEFAULT_REPAIR_BUDGET, require_generated_condition
 from cluster2.feedback.prompts import (
     build_feedback_prompt,
+    feedback_allowed_for_failure_code,
     sanitize_public_feedback_text,
     validate_no_forbidden_feedback_terms,
 )
@@ -24,6 +25,7 @@ from shared.eval.failure_taxonomy import FAILURE_CODES, LEGACY_FAILURE_CODE_MAP
 
 REPAIR_LOOP_SUCCESS_STATUS = "success"
 REPAIR_LOOP_EXHAUSTED_STATUS = "exhausted"
+REPAIR_LOOP_TERMINATED_STATUS = "terminated"
 
 
 @dataclass(frozen=True)
@@ -171,11 +173,21 @@ def run_repair_loop(
             )
         )
         public_result = _public_result_view(evaluation_result)
+        terminate_without_feedback = (
+            False
+            if public_result.functional_success is True
+            else _must_terminate_without_feedback(public_result)
+        )
+        trace_public_failure_summary = (
+            public_result.termination_public_failure_summary
+            if terminate_without_feedback
+            else public_result.public_failure_summary
+        )
         trace = build_trace_summary(
             condition=normalized_condition,
             attempt_index=attempt_index,
             failure_code=public_result.failure_code,
-            public_failure_summary=public_result.public_failure_summary,
+            public_failure_summary=trace_public_failure_summary,
             functional_success=public_result.functional_success,
             repair_set_success=public_result.repair_set_success,
             eval_set_success=public_result.eval_set_success,
@@ -212,6 +224,20 @@ def run_repair_loop(
                 trace_summaries=tuple(traces),
             )
 
+        if terminate_without_feedback:
+            return RepairLoopResult(
+                condition=normalized_condition,
+                status=REPAIR_LOOP_TERMINATED_STATUS,
+                base_seed=base_seed,
+                repair_budget=repair_budget,
+                attempts_executed=len(attempts),
+                successful_attempt_index=None,
+                final_failure_code=final_failure_code,
+                final_public_failure_summary=final_public_failure_summary,
+                attempts=tuple(attempts),
+                trace_summaries=tuple(traces),
+            )
+
         if attempt_index == repair_budget:
             break
 
@@ -222,9 +248,9 @@ def run_repair_loop(
             candidate_source=source,
             failure_code=public_result.failure_code,
             public_failure_summary=public_result.public_failure_summary,
-            compile_error=public_result.compile_error,
-            signature_error=public_result.signature_error,
-            sanitizer_errors=public_result.sanitizer_errors,
+            compile_error=None,
+            signature_error=None,
+            sanitizer_errors=(),
             functional_success=public_result.functional_success,
             repair_set_success=public_result.repair_set_success,
             eval_set_success=public_result.eval_set_success,
@@ -280,6 +306,8 @@ def build_default_feedback_prompt(inputs: RepairFeedbackInput) -> str | None:
 class _PublicEvaluationResult:
     failure_code: str | None
     public_failure_summary: str | None
+    termination_public_failure_summary: str | None
+    level_reached: int | None
     functional_success: bool | None
     repair_set_success: bool | None
     eval_set_success: bool | None
@@ -291,7 +319,10 @@ class _PublicEvaluationResult:
 def _public_result_view(result: object) -> _PublicEvaluationResult:
     failure_code = _normalize_failure_code(_field(result, "failure_code"))
     public_failure_summary = _public_text(
-        _first_present_field(result, ("public_failure_summary", "correctness_error"))
+        _first_present_field(
+            result,
+            ("public_failure_summary", "correctness_error", "parse_error"),
+        )
     )
     compile_error = _public_text(_field(result, "compile_error"))
     signature_error = _public_text(_field(result, "signature_error"))
@@ -299,10 +330,21 @@ def _public_result_view(result: object) -> _PublicEvaluationResult:
         _public_text(value) or ""
         for value in _string_sequence(_field(result, "sanitizer_errors"))
     )
+    sanitized_sanitizer_errors = tuple(value for value in sanitizer_errors if value)
+    termination_public_failure_summary = _first_non_empty_string(
+        (
+            public_failure_summary,
+            signature_error,
+            compile_error,
+            *sanitized_sanitizer_errors,
+        )
+    )
 
     return _PublicEvaluationResult(
         failure_code=failure_code,
         public_failure_summary=public_failure_summary,
+        termination_public_failure_summary=termination_public_failure_summary,
+        level_reached=_optional_non_negative_int(_field(result, "level_reached")),
         functional_success=_optional_bool(_field(result, "functional_success")),
         repair_set_success=_optional_bool(
             _level2_flag(result, "repair_set_success")
@@ -310,8 +352,14 @@ def _public_result_view(result: object) -> _PublicEvaluationResult:
         eval_set_success=_optional_bool(_level2_flag(result, "eval_set_success")),
         compile_error=compile_error,
         signature_error=signature_error,
-        sanitizer_errors=tuple(value for value in sanitizer_errors if value),
+        sanitizer_errors=sanitized_sanitizer_errors,
     )
+
+
+def _must_terminate_without_feedback(result: _PublicEvaluationResult) -> bool:
+    if result.level_reached is not None and result.level_reached < 2:
+        return True
+    return not feedback_allowed_for_failure_code(result.failure_code)
 
 
 def _level2_flag(result: object, field_name: str) -> object:
@@ -367,6 +415,13 @@ def _first_present_field(result: object, field_names: tuple[str, ...]) -> object
     return None
 
 
+def _first_non_empty_string(values: tuple[str | None, ...]) -> str | None:
+    for value in values:
+        if value:
+            return value
+    return None
+
+
 def _field(result: object, field_name: str) -> object:
     if isinstance(result, dict):
         return result.get(field_name)
@@ -403,6 +458,16 @@ def _optional_bool(value: object) -> bool | None:
     if isinstance(value, bool):
         return value
     raise TypeError("success flags must be bool when present")
+
+
+def _optional_non_negative_int(value: object) -> int | None:
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError("level_reached must be an int when present")
+    if value < 0:
+        raise ValueError("level_reached must be non-negative")
+    return value
 
 
 def _coerce_feedback(

@@ -9,6 +9,8 @@ import pytest
 from cluster1.data.kernels import KERNEL_SPECS
 from cluster1.data.prompts.prompt_contract import build_prompt as build_cluster1_prompt
 from cluster2.feedback.prompts import (
+    ALLOWED_CORRECTNESS_FEEDBACK_FAILURE_CODES,
+    CORRECTNESS_FEEDBACK_TYPE,
     FORBIDDEN_FEEDBACK_TERMS,
     GENERIC_EVAL_FAILURE_FEEDBACK,
     build_feedback_prompt,
@@ -89,8 +91,11 @@ def _eval_result_with_dtype_flags(
     )
 
 
-@pytest.mark.parametrize("failure_code", sorted(FAILURE_CODES))
-def test_feedback_prompt_is_deterministic_for_each_failure_code(
+@pytest.mark.parametrize(
+    "failure_code",
+    sorted(ALLOWED_CORRECTNESS_FEEDBACK_FAILURE_CODES),
+)
+def test_feedback_prompt_is_deterministic_for_each_allowed_f2_failure_code(
     failure_code: str,
 ) -> None:
     kwargs = {
@@ -113,6 +118,43 @@ def test_feedback_prompt_is_deterministic_for_each_failure_code(
     assert BASE_PROMPT in first
     assert "@triton.jit def relu_kernel" in first
     _assert_no_forbidden_terms(first)
+
+
+@pytest.mark.parametrize(
+    "failure_code",
+    sorted(set(FAILURE_CODES) - ALLOWED_CORRECTNESS_FEEDBACK_FAILURE_CODES),
+)
+def test_feedback_prompt_rejects_non_f2_failure_codes(failure_code: str) -> None:
+    with pytest.raises(ValueError, match="Level 2 numerical correctness failure"):
+        build_feedback_prompt(
+            condition="C",
+            failure_code=failure_code,
+            base_prompt=BASE_PROMPT,
+            candidate_source=SOURCE,
+            public_failure_summary="public failure summary",
+            functional_success=False,
+            repair_set_success=False,
+            eval_set_success=None,
+        )
+
+
+@pytest.mark.parametrize("failure_code", ("F0_PARSE", "F0_BAD_SIGNATURE", "F1_COMPILE"))
+def test_feedback_text_rejects_f0_f1_when_called_directly(
+    failure_code: str,
+) -> None:
+    with pytest.raises(ValueError, match="Level 2 numerical correctness failure"):
+        build_feedback_text(
+            condition="C",
+            failure_code=failure_code,
+            public_failure_summary="public failure summary",
+            functional_success=False,
+            repair_set_success=False,
+            eval_set_success=None,
+        )
+
+
+def test_repair_feedback_type_contract_is_correctness_error_only() -> None:
+    assert CORRECTNESS_FEEDBACK_TYPE == "correctness_error"
 
 
 def test_eval_set_failure_feedback_is_generic_and_redacted() -> None:
@@ -173,14 +215,13 @@ def test_eval_detail_fragment_is_redacted_without_split_flags() -> None:
 def test_forbidden_terms_are_redacted_from_public_details() -> None:
     prompt = build_feedback_prompt(
         condition="C",
-        failure_code="F1_COMPILE",
+        failure_code="F2_NUMERIC_LARGE",
         base_prompt=BASE_PROMPT,
         candidate_source=SOURCE,
         public_failure_summary=(
             "LLVM PTX C++ traceback compute-sanitizer speedup fast@ nsight ncu "
             "nvml profil benchmark RL GRPO TRL hidden private edge cases extra shapes"
         ),
-        compile_error="compile failed",
         functional_success=False,
         repair_set_success=False,
         eval_set_success=None,
@@ -241,15 +282,31 @@ def test_result_helper_reads_level2_split_flags_from_dtype_results() -> None:
     _assert_no_forbidden_terms(prompt)
 
 
+def test_result_helper_rejects_generated_f1_feedback() -> None:
+    result = EvalResult.from_dict(
+        {
+            **_replay_eval_result_with_legacy_failure("C").to_dict(),
+            "failure_code": "F1_COMPILE",
+        }
+    )
+
+    with pytest.raises(ValueError, match="Level 2 numerical correctness failure"):
+        build_feedback_prompt_from_result(
+            result,
+            base_prompt=BASE_PROMPT,
+            candidate_source=SOURCE,
+        )
+
+
 def test_base_prompt_preserves_locked_cluster1_prompt_verbatim() -> None:
     base_prompt = build_cluster1_prompt(KERNEL_SPECS["elementwise"], "fp32")
 
     prompt = build_feedback_prompt(
         condition="C",
-        failure_code="F1_COMPILE",
+        failure_code="F2_NUMERIC_LARGE",
         base_prompt=base_prompt,
         candidate_source=SOURCE,
-        public_failure_summary="compile failed",
+        public_failure_summary="Repair shape (2,) failed Level 2: max_abs_diff=1",
         functional_success=False,
         repair_set_success=False,
         eval_set_success=None,
@@ -259,6 +316,30 @@ def test_base_prompt_preserves_locked_cluster1_prompt_verbatim() -> None:
     assert f"Base task:\n{base_prompt}\n\nPrevious source:" in prompt
     assert "Private Triton helper name" in prompt
     assert "- Define one private @triton.jit helper" in prompt
+
+
+def test_compile_and_signature_details_are_not_prompt_feedback() -> None:
+    prompt = build_feedback_prompt(
+        condition="C",
+        failure_code="F2_NUMERIC_LARGE",
+        base_prompt=BASE_PROMPT,
+        candidate_source=SOURCE,
+        public_failure_summary="Repair shape (2,) failed Level 2: max_abs_diff=1",
+        compile_error="compile failure details must not appear",
+        signature_error="signature failure details must not appear",
+        sanitizer_errors=("sanitizer details must not appear",),
+        functional_success=False,
+        repair_set_success=False,
+        eval_set_success=True,
+    )
+
+    assert prompt is not None
+    assert "Repair shape (2,)" in prompt
+    assert "compile failure details" not in prompt
+    assert "signature failure details" not in prompt
+    assert "sanitizer details" not in prompt
+    assert "compile_error" not in prompt
+    assert "signature_error" not in prompt
 
 
 def test_feedback_serialization_has_no_eval_shape_or_forbidden_leakage() -> None:

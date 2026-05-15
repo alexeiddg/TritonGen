@@ -15,6 +15,7 @@ from cluster2.feedback.prompts import FORBIDDEN_FEEDBACK_TERMS
 from cluster2.feedback.repair_loop import (
     REPAIR_LOOP_EXHAUSTED_STATUS,
     REPAIR_LOOP_SUCCESS_STATUS,
+    REPAIR_LOOP_TERMINATED_STATUS,
     RepairEvaluationInput,
     RepairFeedbackInput,
     RepairGenerationInput,
@@ -153,6 +154,197 @@ def test_exhaustion_generates_repair_budget_plus_one_attempts() -> None:
     assert result.final_public_failure_summary == "Repair shape failed at attempt 2"
 
 
+@pytest.mark.parametrize(
+    ("failure_code", "level_reached"),
+    (
+        ("F0_PARSE", 0),
+        ("F0_BAD_SIGNATURE", 0),
+        ("F1_COMPILE", 1),
+        ("F1_RUNTIME", 1),
+        ("F3_OOB", 3),
+    ),
+)
+def test_non_f2_failures_terminate_without_feedback_or_repair_generation(
+    failure_code: str,
+    level_reached: int,
+) -> None:
+    generation_calls: list[RepairGenerationInput] = []
+    feedback_calls: list[RepairFeedbackInput] = []
+    summary = f"public summary for {failure_code}"
+
+    def generation(request: RepairGenerationInput) -> str:
+        generation_calls.append(request)
+        return _source(request.attempt_index)
+
+    def feedback_builder(inputs: RepairFeedbackInput) -> str:
+        feedback_calls.append(inputs)
+        return _custom_feedback_prompt(inputs, "should-not-be-built")
+
+    result = run_repair_loop(
+        condition="C",
+        base_prompt=BASE_PROMPT,
+        base_seed=6,
+        generation=generation,
+        evaluation=lambda request: _failure(
+            request.attempt_index,
+            failure_code=failure_code,
+            summary=summary,
+            level_reached=level_reached,
+        ),
+        feedback_builder=feedback_builder,
+        repair_budget=3,
+    )
+
+    assert result.status == REPAIR_LOOP_TERMINATED_STATUS
+    assert result.attempts_executed == 1
+    assert result.final_failure_code == failure_code
+    assert result.final_public_failure_summary == summary
+    assert [call.attempt_index for call in generation_calls] == [0]
+    assert feedback_calls == []
+    assert [trace.attempt_index for trace in result.trace_summaries] == [0]
+
+
+@pytest.mark.parametrize(
+    ("failure_code", "level_reached", "detail_field", "summary"),
+    (
+        ("F0_BAD_SIGNATURE", 0, "signature_error", "launcher signature mismatch"),
+        ("F1_COMPILE", 1, "compile_error", "Triton compile failed publicly"),
+        ("F0_SURFACE_VIOLATION", 0, "sanitizer_errors", "surface violation summary"),
+    ),
+)
+def test_non_f2_termination_preserves_level0_level1_public_details(
+    failure_code: str,
+    level_reached: int,
+    detail_field: str,
+    summary: str,
+) -> None:
+    generation_calls: list[RepairGenerationInput] = []
+    feedback_calls: list[RepairFeedbackInput] = []
+
+    def generation(request: RepairGenerationInput) -> str:
+        generation_calls.append(request)
+        return _source(request.attempt_index)
+
+    def feedback_builder(inputs: RepairFeedbackInput) -> str:
+        feedback_calls.append(inputs)
+        return _custom_feedback_prompt(inputs, "should-not-be-built")
+
+    detail_payload = (
+        {detail_field: (summary,)}
+        if detail_field == "sanitizer_errors"
+        else {detail_field: summary}
+    )
+
+    result = run_repair_loop(
+        condition="C",
+        base_prompt=BASE_PROMPT,
+        base_seed=6,
+        generation=generation,
+        evaluation=lambda request: SimpleNamespace(
+            functional_success=False,
+            level_reached=level_reached,
+            failure_code=failure_code,
+            repair_set_success=False,
+            eval_set_success=False,
+            **detail_payload,
+        ),
+        feedback_builder=feedback_builder,
+        repair_budget=3,
+    )
+
+    assert result.status == REPAIR_LOOP_TERMINATED_STATUS
+    assert result.attempts_executed == 1
+    assert result.final_failure_code == failure_code
+    assert result.final_public_failure_summary == summary
+    assert result.attempts[0].public_failure_summary == summary
+    assert result.trace_summaries[0].public_failure_summary == summary
+    assert [call.attempt_index for call in generation_calls] == [0]
+    assert feedback_calls == []
+
+
+def test_level_below_two_terminates_even_with_allowed_f2_failure_code() -> None:
+    generation_calls: list[RepairGenerationInput] = []
+    feedback_calls: list[RepairFeedbackInput] = []
+
+    def generation(request: RepairGenerationInput) -> str:
+        generation_calls.append(request)
+        return _source(request.attempt_index)
+
+    def feedback_builder(inputs: RepairFeedbackInput) -> str:
+        feedback_calls.append(inputs)
+        return _custom_feedback_prompt(inputs, "should-not-be-built")
+
+    result = run_repair_loop(
+        condition="C",
+        base_prompt=BASE_PROMPT,
+        base_seed=6,
+        generation=generation,
+        evaluation=lambda request: _failure(
+            request.attempt_index,
+            failure_code="F2_NUMERIC_LARGE",
+            level_reached=1,
+        ),
+        feedback_builder=feedback_builder,
+        repair_budget=3,
+    )
+
+    assert result.status == REPAIR_LOOP_TERMINATED_STATUS
+    assert result.attempts_executed == 1
+    assert result.final_failure_code == "F2_NUMERIC_LARGE"
+    assert [call.attempt_index for call in generation_calls] == [0]
+    assert feedback_calls == []
+
+
+@pytest.mark.parametrize(
+    "failure_code",
+    ("F2_NUMERIC_LARGE", "F2_NUMERIC_NAN", "F2_SHAPE_MISMATCH"),
+)
+def test_allowed_f2_failures_trigger_correctness_feedback(
+    failure_code: str,
+) -> None:
+    generation_calls: list[RepairGenerationInput] = []
+    feedback_calls: list[RepairFeedbackInput] = []
+
+    def generation(request: RepairGenerationInput) -> str:
+        generation_calls.append(request)
+        return _source(request.attempt_index)
+
+    def evaluation(request: RepairEvaluationInput) -> object:
+        if request.attempt_index == 1:
+            return _success()
+        return _failure(
+            request.attempt_index,
+            failure_code=failure_code,
+            level_reached=2,
+        )
+
+    def feedback_builder(inputs: RepairFeedbackInput) -> str:
+        feedback_calls.append(inputs)
+        return _custom_feedback_prompt(
+            inputs,
+            f"correctness_error:{inputs.public_failure_summary}",
+        )
+
+    result = run_repair_loop(
+        condition="C",
+        base_prompt=BASE_PROMPT,
+        base_seed=6,
+        generation=generation,
+        evaluation=evaluation,
+        feedback_builder=feedback_builder,
+        repair_budget=3,
+    )
+
+    assert result.status == REPAIR_LOOP_SUCCESS_STATUS
+    assert [call.attempt_index for call in generation_calls] == [0, 1]
+    assert [call.attempt_index for call in feedback_calls] == [0]
+    assert feedback_calls[0].failure_code == failure_code
+    assert feedback_calls[0].compile_error is None
+    assert feedback_calls[0].signature_error is None
+    assert feedback_calls[0].sanitizer_errors == ()
+    assert "correctness_error:" in generation_calls[1].prompt
+
+
 def test_repair_loop_rejects_repair_budget_above_phase9_maximum() -> None:
     calls: list[RepairGenerationInput] = []
 
@@ -250,6 +442,7 @@ def test_feedback_builder_receives_public_sanitized_fields_only() -> None:
         if request.attempt_index == 0:
             return SimpleNamespace(
                 functional_success=False,
+                level_reached=2,
                 failure_code="F2_NUMERIC_LARGE",
                 correctness_error=(
                     "Repair shape failed; eval_shape_set shape (97,) hidden private "
@@ -289,6 +482,48 @@ def test_feedback_builder_receives_public_sanitized_fields_only() -> None:
     _assert_no_forbidden_terms(generation_calls[1].prompt)
 
 
+def test_default_feedback_prompt_is_correctness_only() -> None:
+    generation_calls: list[RepairGenerationInput] = []
+
+    def generation(request: RepairGenerationInput) -> str:
+        generation_calls.append(request)
+        return _source(request.attempt_index)
+
+    def evaluation(request: RepairEvaluationInput) -> object:
+        if request.attempt_index == 0:
+            return SimpleNamespace(
+                functional_success=False,
+                level_reached=2,
+                failure_code="F2_NUMERIC_LARGE",
+                correctness_error="Repair shape failed at attempt 0",
+                compile_error="compile failure details must not be feedback",
+                signature_error="signature failure details must not be feedback",
+                sanitizer_errors=("sanitizer details must not be feedback",),
+                repair_set_success=False,
+                eval_set_success=True,
+            )
+        return _success()
+
+    result = run_repair_loop(
+        condition="C",
+        base_prompt=BASE_PROMPT,
+        base_seed=4,
+        generation=generation,
+        evaluation=evaluation,
+        repair_budget=2,
+    )
+
+    assert result.status == REPAIR_LOOP_SUCCESS_STATUS
+    repair_prompt = generation_calls[1].prompt
+    assert "Repair shape failed at attempt 0" in repair_prompt
+    assert "compile failure details" not in repair_prompt
+    assert "signature failure details" not in repair_prompt
+    assert "sanitizer details" not in repair_prompt
+    assert "feedback_type" not in result.to_json()
+    assert "compile_error" not in result.to_json()
+    assert "signature_error" not in result.to_json()
+
+
 def test_default_feedback_handoff_does_not_pass_private_eval_details() -> None:
     generation_calls: list[RepairGenerationInput] = []
 
@@ -300,6 +535,7 @@ def test_default_feedback_handoff_does_not_pass_private_eval_details() -> None:
         if request.attempt_index == 0:
             return SimpleNamespace(
                 functional_success=False,
+                level_reached=2,
                 failure_code="F2_NUMERIC_LARGE",
                 correctness_error=(
                     "eval_shape_set shape (97,) max_abs_diff=99 hidden private "
@@ -503,6 +739,7 @@ def _source(attempt_index: int) -> str:
 def _success() -> SimpleNamespace:
     return SimpleNamespace(
         functional_success=True,
+        level_reached=2,
         failure_code=None,
         correctness_error=None,
         repair_set_success=True,
@@ -515,9 +752,11 @@ def _failure(
     *,
     failure_code: str = "F2_NUMERIC_LARGE",
     summary: str | None = None,
+    level_reached: int | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         functional_success=False,
+        level_reached=level_reached,
         failure_code=failure_code,
         correctness_error=summary or f"Repair shape failed at attempt {attempt_index}",
         repair_set_success=False,

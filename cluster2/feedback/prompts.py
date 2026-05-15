@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
 
@@ -13,6 +13,14 @@ from shared.eval.levels.level2_correctness import GENERIC_EVAL_FAILURE_FEEDBACK
 
 
 MAX_PUBLIC_DETAIL_CHARS: Final = 200
+CORRECTNESS_FEEDBACK_TYPE: Final = "correctness_error"
+ALLOWED_CORRECTNESS_FEEDBACK_FAILURE_CODES: Final[frozenset[str]] = frozenset(
+    {
+        "F2_NUMERIC_LARGE",
+        "F2_NUMERIC_NAN",
+        "F2_SHAPE_MISMATCH",
+    }
+)
 
 FORBIDDEN_FEEDBACK_TERMS: Final[tuple[str, ...]] = (
     "speedup",
@@ -49,30 +57,6 @@ _SECTION_ORDER: Final[tuple[str, ...]] = (
 )
 
 _FAILURE_FEEDBACK: Final[dict[str, str]] = {
-    "F0_PARSE": (
-        "The previous attempt did not parse as Python. Return a complete "
-        "Triton Python module that satisfies the original task."
-    ),
-    "F0_NO_DECORATOR": (
-        "The previous attempt did not define a @triton.jit kernel. Return a "
-        "complete Triton Python module with the required decorated kernel."
-    ),
-    "F0_BAD_SIGNATURE": (
-        "The previous attempt used an invalid kernel interface. Match the "
-        "required signature and return a complete Triton Python module."
-    ),
-    "F0_SURFACE_VIOLATION": (
-        "The previous attempt used a disallowed Python surface. Return a "
-        "single compliant Triton Python module."
-    ),
-    "F1_COMPILE": (
-        "The previous attempt failed to compile. Fix the Triton kernel and "
-        "return a complete Triton Python module."
-    ),
-    "F1_RUNTIME": (
-        "The previous attempt raised during execution. Fix the kernel logic "
-        "and return a complete Triton Python module."
-    ),
     "F2_NUMERIC_LARGE": (
         "The previous attempt produced incorrect numeric values on initial "
         "correctness shapes. Fix indexing, masks, strides, and arithmetic."
@@ -84,18 +68,6 @@ _FAILURE_FEEDBACK: Final[dict[str, str]] = {
     "F2_SHAPE_MISMATCH": (
         "The previous attempt produced an output with the wrong shape. Fix "
         "the output layout and return a complete Triton Python module."
-    ),
-    "F3_OOB": (
-        "The previous attempt failed memory-safety validation. Fix bounds "
-        "checks, masks, and pointer offsets."
-    ),
-    "F3_RACE": (
-        "The previous attempt has conflicting writes. Ensure each output "
-        "element is written consistently."
-    ),
-    "F3_TIMEOUT": (
-        "The previous attempt did not finish within the validation limit. "
-        "Simplify the kernel while preserving correctness."
     ),
 }
 
@@ -143,9 +115,14 @@ class FeedbackPromptInputs:
     eval_set_success: bool | None = None
 
     def __post_init__(self) -> None:
-        normalize_cluster2_condition(self.condition)
+        normalized_condition = normalize_cluster2_condition(self.condition)
         if self.failure_code is not None and self.failure_code not in FAILURE_CODES:
             raise ValueError(f"unsupported failure_code {self.failure_code!r}")
+        if (
+            normalized_condition in NEW_GENERATION_CONDITIONS
+            and self.failure_code is not None
+        ):
+            require_correctness_feedback_failure_code(self.failure_code)
         if not isinstance(self.base_prompt, str) or not self.base_prompt.strip():
             raise ValueError("base_prompt must be a non-empty string")
         if self.candidate_source is not None and not isinstance(
@@ -199,13 +176,9 @@ def build_feedback_text(
         return None
     if resolved.functional_success is True:
         return None
+    require_correctness_feedback_failure_code(resolved.failure_code)
     if _is_eval_only_failure(resolved):
         return GENERIC_EVAL_FAILURE_FEEDBACK
-    if resolved.failure_code is None:
-        return _validated_feedback_text(
-            "The previous attempt failed validation. Produce a corrected "
-            "complete Triton Python module."
-        )
 
     message = _FAILURE_FEEDBACK[resolved.failure_code]
     detail = _public_detail(resolved)
@@ -326,6 +299,24 @@ def validate_no_forbidden_feedback_terms(value: str) -> None:
             raise ValueError(f"feedback contains forbidden term: {term}")
 
 
+def feedback_allowed_for_failure_code(failure_code: str | None) -> bool:
+    """Return whether ``failure_code`` may produce C correctness feedback."""
+
+    return failure_code in ALLOWED_CORRECTNESS_FEEDBACK_FAILURE_CODES
+
+
+def require_correctness_feedback_failure_code(failure_code: str | None) -> None:
+    """Reject failures that are not Level 2 numerical correctness failures."""
+
+    if feedback_allowed_for_failure_code(failure_code):
+        return
+    allowed = ", ".join(sorted(ALLOWED_CORRECTNESS_FEEDBACK_FAILURE_CODES))
+    raise ValueError(
+        "C repair feedback requires a Level 2 numerical correctness failure "
+        f"({allowed}); got {failure_code!r}"
+    )
+
+
 def _coerce_inputs(
     inputs: FeedbackPromptInputs | None,
     *,
@@ -365,12 +356,7 @@ def _is_eval_only_failure(inputs: FeedbackPromptInputs) -> bool:
 def _public_detail(inputs: FeedbackPromptInputs) -> str:
     if _is_eval_only_failure(inputs):
         return ""
-    details = [
-        inputs.public_failure_summary,
-        inputs.compile_error,
-        inputs.signature_error,
-        *_take_first(inputs.sanitizer_errors, limit=2),
-    ]
+    details = [inputs.public_failure_summary]
     return " | ".join(
         detail for detail in (_sanitize_detail(value) for value in details) if detail
     )
@@ -387,15 +373,6 @@ def _sanitize_detail(value: str | None, *, limit: int | None = MAX_PUBLIC_DETAIL
     if limit is not None:
         text = text[:limit]
     return text.strip()
-
-
-def _take_first(values: Iterable[str], *, limit: int) -> tuple[str, ...]:
-    taken: list[str] = []
-    for value in values:
-        taken.append(value)
-        if len(taken) == limit:
-            break
-    return tuple(taken)
 
 
 def _validated_feedback_text(value: str) -> str:

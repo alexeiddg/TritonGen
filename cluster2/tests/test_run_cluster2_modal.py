@@ -121,6 +121,44 @@ def test_runner_routes_c_to_c2_generation(tmp_path: Path) -> None:
     assert result.route_audit[0].route == "c2_repair_loop"
 
 
+def test_runner_c_non_f2_failure_does_not_request_repair_generation(
+    tmp_path: Path,
+) -> None:
+    generation_calls: list[dict[str, Any]] = []
+    correctness_calls: list[Any] = []
+
+    def compile_failure_correctness(request: Any) -> dict[str, Any]:
+        correctness_calls.append(request)
+        return {
+            "correctness_result": {
+                "identity": request.identity.model_dump(),
+                "functional_success": False,
+                "repair_set_success": False,
+                "eval_set_success": False,
+                "level_reached": 1,
+                "failure_code": "F1_COMPILE",
+                "correctness_error": "compile failed before Level 2",
+            }
+        }
+
+    result = run_cluster2(
+        _config(tmp_path, condition="C", repair_budget=3, n=1),
+        dependencies=RunnerDependencies(
+            generation=_fake_generation(generation_calls),
+            correctness=compile_failure_correctness,
+        ),
+    )
+
+    assert len(generation_calls) == 1
+    assert len(correctness_calls) == 1
+    assert len(result.rows) == 1
+    assert result.rows[0].attempt_index == 0
+    assert result.rows[0].failure_code == "F1_COMPILE"
+    assert result.rows[0].trace_summary is not None
+    assert result.rows[0].trace_summary.attempt_index == 0
+    assert result.route_audit[0].generation_calls == 1
+
+
 def test_runner_routes_gc_to_c2_generation_with_g_adapter(tmp_path: Path) -> None:
     generation_calls: list[dict[str, Any]] = []
 

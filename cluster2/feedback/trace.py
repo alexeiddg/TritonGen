@@ -14,6 +14,7 @@ from cluster2.feedback.prompts import (
     GENERIC_EVAL_FAILURE_FEEDBACK,
     _result_level2_success_flag,
     build_feedback_text,
+    feedback_allowed_for_failure_code,
     sanitize_public_feedback_text,
     validate_no_forbidden_feedback_terms,
 )
@@ -150,6 +151,8 @@ def _summary_text(
     if public_failure_summary:
         return sanitize_public_feedback_text(public_failure_summary)
     if failure_code is None:
+        return "Validation failed."
+    if not feedback_allowed_for_failure_code(failure_code):
         return "Validation failed."
     feedback = build_feedback_text(
         condition="C",
