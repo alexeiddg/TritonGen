@@ -425,7 +425,7 @@ def _runner_config(
         grammar_variant="task_agnostic",
         dtypes=("fp32",),
         temperature=0.2,
-        max_new_tokens=64,
+        max_new_tokens=512,
         repair_budget=0,
         modal_generation_gpu="L4",
         modal_eval_gpu="L4",

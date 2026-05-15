@@ -45,6 +45,9 @@ def build_lift_table(
             "lift": estimate.lift,
             "ci_lower": estimate.ci_lower,
             "ci_upper": estimate.ci_upper,
+            "discordant_treatment_only": estimate.discordant_treatment_only,
+            "discordant_control_only": estimate.discordant_control_only,
+            "mcnemar_p_value": estimate.mcnemar_p_value,
             "bootstrap_resamples": estimate.bootstrap_resamples,
             "bootstrap_seed": estimate.bootstrap_seed,
         }

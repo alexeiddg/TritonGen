@@ -29,6 +29,9 @@ from cluster2.results.dataclass import (
 from shared.eval.content_hashes import collect_cluster1_frozen_generation_hashes
 
 
+UNAVAILABLE_FROZEN_REVISION = "unavailable_in_frozen_cluster1_artifact"
+
+
 @dataclass(frozen=True, order=True)
 class CellKey:
     """Phase 13 cell identity including condition."""
@@ -183,6 +186,45 @@ def require_replay_control_rows(
     if invalid:
         raise ValueError(f"replay aggregation received invalid conditions: {', '.join(invalid)}")
     return row_tuple
+
+
+def validate_paired_replay_alignment(
+    rows_treatment: Iterable[Cluster2EvalRow | Mapping[str, Any]],
+    rows_control: Iterable[Cluster2EvalRow | Mapping[str, Any]],
+) -> None:
+    """Reject generated/replay comparisons that are not paired by seed."""
+
+    treatment = require_generated_rows(rows_treatment)
+    control = require_replay_control_rows(rows_control)
+    treatment_condition = _single_row_condition(treatment, "treatment")
+    control_condition = _single_row_condition(control, "control")
+    expected_control = {"C": "none", "G+C": "G"}[treatment_condition]
+    if control_condition != expected_control:
+        raise ValueError(
+            f"condition {treatment_condition!r} must pair with replay "
+            f"{expected_control!r}; got {control_condition!r}"
+        )
+
+    treatment_by_cell = _generated_rows_by_matched_cell(treatment)
+    control_by_cell = _single_replay_rows_by_matched_cell(control)
+    if set(treatment_by_cell) != set(control_by_cell):
+        missing_control = sorted(set(treatment_by_cell) - set(control_by_cell))
+        missing_treatment = sorted(set(control_by_cell) - set(treatment_by_cell))
+        raise ValueError(
+            "missing replay pair for paired-by-seed comparison: "
+            f"missing_control={missing_control}, "
+            f"missing_treatment={missing_treatment}"
+        )
+
+    for key in sorted(treatment_by_cell):
+        control_row = control_by_cell[key]
+        _validate_control_pair_metadata(control_row, key)
+        for generated in treatment_by_cell[key]:
+            _validate_generated_pair_metadata(
+                generated,
+                control_row,
+                expected_control_condition=expected_control,
+            )
 
 
 def validate_hash_classes(
@@ -476,10 +518,161 @@ def _replay_manifest_record_matches_row(
     if row_hash is not None and record.get("row_sha256") != row_hash:
         return False
 
-    manifest_attempt = record.get("attempt_index")
-    if manifest_attempt is not None and manifest_attempt != row.attempt_index:
-        return False
+    pairing_fields = {
+        "base_seed": row.replay_metadata.replay_base_seed,
+        "generation_seed": row.replay_metadata.replay_generation_seed,
+        "prompt_sha256": row.replay_metadata.prompt_sha256,
+        "model_id": row.replay_metadata.model_id,
+        "model_revision": row.replay_metadata.model_revision,
+        "tokenizer_revision": row.replay_metadata.tokenizer_revision,
+        "temperature": row.replay_metadata.temperature,
+        "max_new_tokens": row.replay_metadata.max_new_tokens,
+        "replay_pair_id": row.replay_metadata.replay_pair_id,
+    }
+    for field_name, expected in pairing_fields.items():
+        if expected is None:
+            continue
+        if field_name not in record:
+            return False
+        if record.get(field_name) != expected:
+            return False
     return True
+
+
+def _single_row_condition(rows: Sequence[Cluster2EvalRow], label: str) -> str:
+    conditions = sorted({row.condition for row in rows})
+    if len(conditions) != 1:
+        raise ValueError(f"{label} rows must contain exactly one condition")
+    return conditions[0]
+
+
+def _generated_rows_by_matched_cell(
+    rows: Sequence[Cluster2EvalRow],
+) -> dict[MatchedCellKey, tuple[Cluster2EvalRow, ...]]:
+    grouped: dict[MatchedCellKey, list[Cluster2EvalRow]] = defaultdict(list)
+    for row in rows:
+        grouped[matched_cell_key(row)].append(row)
+    result: dict[MatchedCellKey, tuple[Cluster2EvalRow, ...]] = {}
+    for key, cell_rows in grouped.items():
+        attempt_indexes: set[int] = set()
+        duplicates: set[int] = set()
+        for row in cell_rows:
+            if row.attempt_index in attempt_indexes:
+                duplicates.add(row.attempt_index)
+            attempt_indexes.add(row.attempt_index)
+        if duplicates:
+            duplicate_text = ", ".join(str(index) for index in sorted(duplicates))
+            raise ValueError(f"duplicate pair attempt_index values for {key}: {duplicate_text}")
+        if 0 not in attempt_indexes:
+            raise ValueError(f"missing generated attempt 0 for replay pair {key}")
+        result[key] = tuple(sorted(cell_rows, key=lambda row: row.attempt_index))
+    return result
+
+
+def _single_replay_rows_by_matched_cell(
+    rows: Sequence[Cluster2EvalRow],
+) -> dict[MatchedCellKey, Cluster2EvalRow]:
+    result: dict[MatchedCellKey, Cluster2EvalRow] = {}
+    for row in rows:
+        key = matched_cell_key(row)
+        if key in result:
+            raise ValueError(f"duplicate replay pair for {key}")
+        if row.attempt_index != 0:
+            raise ValueError(
+                f"replay pair {key} must use attempt_index 0; "
+                f"got {row.attempt_index}"
+            )
+        result[key] = row
+    return result
+
+
+def _validate_control_pair_metadata(
+    row: Cluster2EvalRow,
+    key: MatchedCellKey,
+) -> None:
+    metadata = row.replay_metadata
+    if metadata is None:
+        raise ValueError("replay row is missing replay_metadata")
+    missing = [
+        field
+        for field in (
+            "replay_pair_id",
+            "replay_base_seed",
+            "replay_generation_seed",
+            "prompt_sha256",
+            "model_id",
+            "temperature",
+            "max_new_tokens",
+        )
+        if getattr(metadata, field) is None
+    ]
+    if missing:
+        raise ValueError(
+            "replay row is missing paired seed metadata: "
+            + ", ".join(missing)
+        )
+    if metadata.replay_base_seed != key.base_seed:
+        raise ValueError("replay metadata base_seed mismatch")
+    if metadata.replay_generation_seed != key.base_seed:
+        raise ValueError("replay metadata generation_seed mismatch")
+
+
+def _validate_generated_pair_metadata(
+    row: Cluster2EvalRow,
+    control_row: Cluster2EvalRow,
+    *,
+    expected_control_condition: str,
+) -> None:
+    generated = row.generated_metadata
+    replay = control_row.replay_metadata
+    if generated is None or replay is None:
+        raise ValueError("paired comparison requires generated and replay metadata")
+    missing = [
+        field
+        for field in (
+            "replay_pair_id",
+            "replay_control_condition",
+            "replay_base_seed",
+            "replay_generation_seed",
+            "prompt_sha256",
+            "model_id",
+            "temperature",
+            "max_new_tokens",
+        )
+        if getattr(generated, field) is None
+    ]
+    if missing:
+        raise ValueError(
+            "generated row is missing paired seed metadata: "
+            + ", ".join(missing)
+        )
+    expected = {
+        "replay_pair_id": replay.replay_pair_id,
+        "replay_control_condition": expected_control_condition,
+        "replay_base_seed": replay.replay_base_seed,
+        "replay_generation_seed": replay.replay_generation_seed,
+        "prompt_sha256": replay.prompt_sha256,
+        "model_id": replay.model_id,
+        "temperature": replay.temperature,
+        "max_new_tokens": replay.max_new_tokens,
+    }
+    if _known_frozen_revision(replay.model_revision):
+        expected["model_revision"] = replay.model_revision
+    if _known_frozen_revision(replay.tokenizer_revision):
+        expected["tokenizer_revision"] = replay.tokenizer_revision
+    mismatches = [
+        f"{field}: expected {expected_value!r}, got {getattr(generated, field)!r}"
+        for field, expected_value in expected.items()
+        if getattr(generated, field) != expected_value
+    ]
+    if mismatches:
+        raise ValueError("metadata mismatch for replay pair: " + "; ".join(mismatches))
+    if row.attempt_index == 0 and generated.generation_seed != replay.replay_generation_seed:
+        raise ValueError("initial generated seed does not match replay seed")
+
+
+def _known_frozen_revision(value: str | None) -> bool:
+    return value is not None and value != UNAVAILABLE_FROZEN_REVISION
 
 
 def sorted_cell_keys(rows: Iterable[Cluster2EvalRow | Mapping[str, Any]]) -> tuple[CellKey, ...]:

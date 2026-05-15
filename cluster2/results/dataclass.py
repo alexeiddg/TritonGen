@@ -181,6 +181,15 @@ class Cluster2ReplayRowMetadata:
     frozen_cluster1_source_hash: str
     frozen_cluster1_generation_hashes: dict[str, str]
     frozen_cluster1_row_hash: str | None = None
+    replay_pair_id: str | None = None
+    replay_base_seed: int | None = None
+    replay_generation_seed: int | None = None
+    prompt_sha256: str | None = None
+    model_id: str | None = None
+    model_revision: str | None = None
+    tokenizer_revision: str | None = None
+    temperature: float | None = None
+    max_new_tokens: int | None = None
 
     def __post_init__(self) -> None:
         _require_non_empty_str(
@@ -196,6 +205,17 @@ class Cluster2ReplayRowMetadata:
         _validate_optional_sha256(
             self.frozen_cluster1_row_hash,
             "frozen_cluster1_row_hash",
+        )
+        _validate_pairing_metadata(
+            replay_pair_id=self.replay_pair_id,
+            replay_base_seed=self.replay_base_seed,
+            replay_generation_seed=self.replay_generation_seed,
+            prompt_sha256=self.prompt_sha256,
+            model_id=self.model_id,
+            model_revision=self.model_revision,
+            tokenizer_revision=self.tokenizer_revision,
+            temperature=self.temperature,
+            max_new_tokens=self.max_new_tokens,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -218,6 +238,16 @@ class Cluster2GeneratedRowMetadata:
     grammar_variant: str | None = None
     grammar_path: str | None = None
     grammar_claim_scope: str | None = None
+    replay_pair_id: str | None = None
+    replay_control_condition: str | None = None
+    replay_base_seed: int | None = None
+    replay_generation_seed: int | None = None
+    prompt_sha256: str | None = None
+    model_id: str | None = None
+    model_revision: str | None = None
+    tokenizer_revision: str | None = None
+    temperature: float | None = None
+    max_new_tokens: int | None = None
 
     def __post_init__(self) -> None:
         _validate_hash_mapping(
@@ -231,6 +261,23 @@ class Cluster2GeneratedRowMetadata:
             grammar_variant=self.grammar_variant,
             grammar_path=self.grammar_path,
             grammar_claim_scope=self.grammar_claim_scope,
+        )
+        if self.replay_control_condition is not None:
+            if self.replay_control_condition not in REPLAY_CONTROL_CONDITIONS:
+                raise ValueError(
+                    "replay_control_condition must be one of: "
+                    f"{', '.join(REPLAY_CONTROL_CONDITIONS)}"
+                )
+        _validate_pairing_metadata(
+            replay_pair_id=self.replay_pair_id,
+            replay_base_seed=self.replay_base_seed,
+            replay_generation_seed=self.replay_generation_seed,
+            prompt_sha256=self.prompt_sha256,
+            model_id=self.model_id,
+            model_revision=self.model_revision,
+            tokenizer_revision=self.tokenizer_revision,
+            temperature=self.temperature,
+            max_new_tokens=self.max_new_tokens,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -572,6 +619,15 @@ def replay_control_row(
     frozen_cluster1_artifact_id: str,
     frozen_cluster1_generation_hashes: dict[str, str],
     frozen_cluster1_row_hash: str | None = None,
+    replay_pair_id: str | None = None,
+    replay_base_seed: int | None = None,
+    replay_generation_seed: int | None = None,
+    prompt_sha256: str | None = None,
+    model_id: str | None = None,
+    model_revision: str | None = None,
+    tokenizer_revision: str | None = None,
+    temperature: float | None = None,
+    max_new_tokens: int | None = None,
 ) -> Cluster2EvalRow:
     """Build a replay-control row with frozen Cluster 1 provenance."""
 
@@ -598,6 +654,15 @@ def replay_control_row(
             frozen_cluster1_source_hash=source_hash,
             frozen_cluster1_generation_hashes=frozen_cluster1_generation_hashes,
             frozen_cluster1_row_hash=frozen_cluster1_row_hash,
+            replay_pair_id=replay_pair_id,
+            replay_base_seed=replay_base_seed,
+            replay_generation_seed=replay_generation_seed,
+            prompt_sha256=prompt_sha256,
+            model_id=model_id,
+            model_revision=model_revision,
+            tokenizer_revision=tokenizer_revision,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
         ),
         generated_metadata=None,
     )
@@ -622,6 +687,16 @@ def generated_row(
     grammar_variant: str | None = None,
     grammar_path: str | None = None,
     grammar_claim_scope: str | None = None,
+    replay_pair_id: str | None = None,
+    replay_control_condition: str | None = None,
+    replay_base_seed: int | None = None,
+    replay_generation_seed: int | None = None,
+    prompt_sha256: str | None = None,
+    model_id: str | None = None,
+    model_revision: str | None = None,
+    tokenizer_revision: str | None = None,
+    temperature: float | None = None,
+    max_new_tokens: int | None = None,
 ) -> Cluster2EvalRow:
     """Build a generated row with C2 generation provenance."""
 
@@ -650,6 +725,16 @@ def generated_row(
             grammar_variant=grammar_variant,
             grammar_path=grammar_path,
             grammar_claim_scope=grammar_claim_scope,
+            replay_pair_id=replay_pair_id,
+            replay_control_condition=replay_control_condition,
+            replay_base_seed=replay_base_seed,
+            replay_generation_seed=replay_generation_seed,
+            prompt_sha256=prompt_sha256,
+            model_id=model_id,
+            model_revision=model_revision,
+            tokenizer_revision=tokenizer_revision,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
         ),
     )
 
@@ -741,6 +826,41 @@ def _validate_generated_grammar_metadata(
         raise ValueError("grammar_claim_scope does not match grammar_variant")
 
 
+def _validate_pairing_metadata(
+    *,
+    replay_pair_id: str | None,
+    replay_base_seed: int | None,
+    replay_generation_seed: int | None,
+    prompt_sha256: str | None,
+    model_id: str | None,
+    model_revision: str | None,
+    tokenizer_revision: str | None,
+    temperature: float | None,
+    max_new_tokens: int | None,
+) -> None:
+    if replay_pair_id is not None:
+        _require_non_empty_str(replay_pair_id, "replay_pair_id")
+    if replay_base_seed is not None:
+        _require_non_negative_int(replay_base_seed, "replay_base_seed")
+    if replay_generation_seed is not None:
+        _require_non_negative_int(replay_generation_seed, "replay_generation_seed")
+    if prompt_sha256 is not None:
+        _validate_sha256(prompt_sha256, "prompt_sha256")
+    if model_id is not None:
+        _require_non_empty_str(model_id, "model_id")
+    if model_revision is not None:
+        _require_non_empty_str(model_revision, "model_revision")
+    if tokenizer_revision is not None:
+        _require_non_empty_str(tokenizer_revision, "tokenizer_revision")
+    if temperature is not None:
+        if not isinstance(temperature, (int, float)) or isinstance(temperature, bool):
+            raise TypeError("temperature must be numeric")
+        if temperature < 0:
+            raise ValueError("temperature must be non-negative")
+    if max_new_tokens is not None:
+        _require_positive_int(max_new_tokens, "max_new_tokens")
+
+
 def _validate_condition_hash_mapping(
     value: dict[str, dict[str, str]],
     field_name: str,
@@ -795,6 +915,13 @@ def _require_non_negative_int(value: int, field_name: str) -> None:
         raise TypeError(f"{field_name} must be an int")
     if value < 0:
         raise ValueError(f"{field_name} must be non-negative")
+
+
+def _require_positive_int(value: int, field_name: str) -> None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(f"{field_name} must be an int")
+    if value <= 0:
+        raise ValueError(f"{field_name} must be positive")
 
 
 def _require_non_empty_str(value: str, field_name: str) -> None:

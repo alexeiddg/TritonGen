@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 
+from cluster2.constants import DEFAULT_FROZEN_CLUSTER1_MANIFEST
 from cluster2.experiments.run_cluster2_modal import (
     Cluster2RunnerConfig,
     RunnerDependencies,
@@ -112,11 +113,14 @@ def test_runner_routes_c_to_c2_generation(tmp_path: Path) -> None:
     assert len(generation_calls) == 1
     assert generation_calls[0]["identity"].condition == "C"
     assert generation_calls[0]["identity"].generation_mode == "new_c2_generation"
+    assert generation_calls[0]["generation_seed"] == 0
     assert generation_calls[0]["modal_generation_gpu"] == "L4"
     assert len(correctness_calls) == 1
     assert len(result.rows) == 1
     assert result.rows[0].source_class == "generated_row"
     assert result.rows[0].generated_metadata is not None
+    assert result.rows[0].generated_metadata.replay_control_condition == "none"
+    assert result.rows[0].generated_metadata.replay_generation_seed == 0
     assert result.rows[0].replay_metadata is None
     assert result.route_audit[0].route == "c2_repair_loop"
 
@@ -159,6 +163,41 @@ def test_runner_c_non_f2_failure_does_not_request_repair_generation(
     assert result.route_audit[0].generation_calls == 1
 
 
+def test_runner_repair_attempts_preserve_repair_loop_seed_schedule(
+    tmp_path: Path,
+) -> None:
+    generation_calls: list[dict[str, Any]] = []
+
+    def first_attempt_fails_then_succeeds(request: Any) -> dict[str, Any]:
+        success = request.identity.attempt_index == 1
+        return {
+            "correctness_result": {
+                "identity": request.identity.model_dump(),
+                "functional_success": success,
+                "repair_set_success": success,
+                "eval_set_success": success,
+                "level_reached": 2,
+                "failure_code": None if success else "F2_NUMERIC_LARGE",
+                "correctness_error": None if success else "numeric mismatch",
+            }
+        }
+
+    result = run_cluster2(
+        _config(tmp_path, condition="C", repair_budget=1, n=1),
+        dependencies=RunnerDependencies(
+            generation=_fake_generation(generation_calls),
+            correctness=first_attempt_fails_then_succeeds,
+        ),
+    )
+
+    assert [call["generation_seed"] for call in generation_calls] == [0, 1]
+    assert [
+        row.generated_metadata.generation_seed
+        for row in result.rows
+        if row.generated_metadata is not None
+    ] == [0, 1]
+
+
 def test_runner_routes_gc_to_c2_generation_with_g_adapter(tmp_path: Path) -> None:
     generation_calls: list[dict[str, Any]] = []
 
@@ -179,12 +218,146 @@ def test_runner_routes_gc_to_c2_generation_with_g_adapter(tmp_path: Path) -> Non
     assert result.rows[0].generation_mode == "new_c2_generation_with_G_adapter"
     assert result.rows[0].generated_metadata is not None
     assert result.rows[0].generated_metadata.grammar_variant == "task_agnostic"
+    assert result.rows[0].generated_metadata.replay_control_condition == "G"
     assert (
         result.rows[0].generated_metadata.grammar_path
         == "cluster1/grammar/triton_kernel_agnostic.gbnf"
     )
     assert result.rows[0].generated_metadata.grammar_claim_scope == "primary"
     assert result.route_audit[0].route == "c2_repair_loop_with_g_adapter"
+
+
+def test_runner_generated_conditions_consume_replay_seed_schedule(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_replay_fixture(tmp_path, condition="none", row_count=3)
+    generation_calls: list[dict[str, Any]] = []
+
+    result = run_cluster2(
+        _config(tmp_path, condition="C", manifest=manifest, repair_budget=0, n=3),
+        dependencies=RunnerDependencies(
+            generation=_fake_generation(generation_calls),
+            correctness=_success_correctness([]),
+        ),
+    )
+
+    assert [call["identity"].base_seed for call in generation_calls] == [0, 1, 2]
+    assert [call["generation_seed"] for call in generation_calls] == [0, 1, 2]
+    assert [
+        row.generated_metadata.replay_generation_seed
+        for row in result.rows
+        if row.generated_metadata is not None
+    ] == [0, 1, 2]
+
+
+def test_runner_preflights_all_requested_cells_before_generation(
+    tmp_path: Path,
+) -> None:
+    manifest = tmp_path / "bad_pairing_manifest.json"
+    payload = json.loads(Path(DEFAULT_FROZEN_CLUSTER1_MANIFEST).read_text(encoding="utf-8"))
+    artifact = payload["artifacts"][0]
+    for schedule in artifact["seed_schedule"]["records"]:
+        if schedule["kernel_class"] == "elementwise" and schedule["dtype"] == "fp16":
+            schedule["max_new_tokens"] = 999
+            for line_number in schedule["line_numbers"]:
+                for record in artifact["row_records"]:
+                    if record["line_number"] == line_number:
+                        record["max_new_tokens"] = 999
+            break
+    manifest.write_text(
+        json.dumps(payload, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    generation_calls: list[dict[str, Any]] = []
+
+    with pytest.raises(ValueError, match="max_new_tokens"):
+        run_cluster2(
+            _config(
+                tmp_path,
+                condition="C",
+                manifest=manifest,
+                repair_budget=0,
+                n=1,
+                dtypes=("fp32", "fp16"),
+                max_new_tokens=512,
+            ),
+            dependencies=RunnerDependencies(
+                generation=_fake_generation(generation_calls),
+                correctness=_success_correctness([]),
+            ),
+        )
+
+    assert generation_calls == []
+
+
+def test_runner_preflights_all_generated_conditions_before_generation(
+    tmp_path: Path,
+) -> None:
+    manifest = tmp_path / "bad_gc_pairing_manifest.json"
+    payload = json.loads(Path(DEFAULT_FROZEN_CLUSTER1_MANIFEST).read_text(encoding="utf-8"))
+    task_agnostic_g_id = payload["selected_controls"]["task_agnostic_g_status"][
+        "available_development_artifact_id"
+    ]
+    artifact = next(
+        item
+        for item in payload["artifacts"]
+        if item["artifact_id"] == task_agnostic_g_id
+    )
+    for schedule in artifact["seed_schedule"]["records"]:
+        if schedule["kernel_class"] == "elementwise" and schedule["dtype"] == "fp32":
+            schedule["max_new_tokens"] = 999
+            for line_number in schedule["line_numbers"]:
+                for record in artifact["row_records"]:
+                    if record["line_number"] == line_number:
+                        record["max_new_tokens"] = 999
+            break
+    manifest.write_text(
+        json.dumps(payload, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    generation_calls: list[dict[str, Any]] = []
+
+    with pytest.raises(ValueError, match="max_new_tokens"):
+        run_cluster2(
+            _config(
+                tmp_path,
+                condition="both",
+                manifest=manifest,
+                repair_budget=0,
+                n=1,
+                max_new_tokens=512,
+            ),
+            dependencies=RunnerDependencies(
+                generation=_fake_generation(generation_calls),
+                correctness=_success_correctness([]),
+            ),
+        )
+
+    assert generation_calls == []
+
+
+def test_runner_rejects_known_frozen_revision_mismatch(tmp_path: Path) -> None:
+    manifest = _write_replay_fixture(tmp_path, condition="none", row_count=1)
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    artifact = payload["artifacts"][0]
+    artifact["seed_schedule"]["records"][0]["model_revision"] = "frozen-model-rev"
+    artifact["row_records"][0]["model_revision"] = "frozen-model-rev"
+    manifest.write_text(
+        json.dumps(payload, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    generation_calls: list[dict[str, Any]] = []
+
+    with pytest.raises(ValueError, match="model_revision"):
+        run_cluster2(
+            _config(tmp_path, condition="C", manifest=manifest, repair_budget=0, n=1),
+            dependencies=RunnerDependencies(
+                generation=_fake_generation(generation_calls),
+                correctness=_success_correctness([]),
+            ),
+        )
+
+    assert generation_calls == []
 
 
 def test_runner_template_upper_bound_requires_explicit_diagnostic_flag(
@@ -480,8 +653,18 @@ def _config(
     write_mode: str = "overwrite",
     modal_generation_gpu: str = "L4",
     grammar_variant: str = "task_agnostic",
+    dtypes: tuple[str, ...] = ("fp32",),
+    max_new_tokens: int = 64,
 ) -> Cluster2RunnerConfig:
     tmp_path.mkdir(parents=True, exist_ok=True)
+    if manifest is None and condition in {"C", "G+C"}:
+        replay_condition = "none" if condition == "C" else "G"
+        manifest = _write_replay_fixture(
+            tmp_path / f"{condition}-paired-manifest",
+            condition=replay_condition,
+            row_count=n,
+            grammar_variant=grammar_variant,
+        )
     return Cluster2RunnerConfig(
         condition=condition,
         kernel_class="elementwise",
@@ -494,9 +677,9 @@ def _config(
         model_revision="model-rev",
         tokenizer_revision="tok-rev",
         grammar_variant=grammar_variant,
-        dtypes=("fp32",),
+        dtypes=dtypes,
         temperature=0.2,
-        max_new_tokens=64,
+        max_new_tokens=max_new_tokens,
         repair_budget=repair_budget,
         modal_generation_gpu=modal_generation_gpu,
         modal_eval_gpu="L4",

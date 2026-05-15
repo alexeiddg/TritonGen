@@ -20,6 +20,7 @@ from cluster2.constants import (
     require_replay_control_condition,
 )
 from cluster2.replay.manifest import (
+    ReplaySeedScheduleEntry,
     artifact_for_replay_condition,
     load_frozen_cluster1_manifest,
     selected_replay_artifact_ids_for_condition,
@@ -57,6 +58,10 @@ class FrozenReplayCandidate:
     generation_seed: int | None
     generation_index: int | None
     frozen_attempt_index: int | None
+    prompt_sha256: str
+    temperature: float
+    max_new_tokens: int
+    replay_pair_id: str
     artifact_id: str
     artifact_path: str
     artifact_sha256: str
@@ -163,6 +168,13 @@ def map_replay_candidates(
         expected_sha256=artifact_summary.sha256,
         artifact_id=artifact_summary.artifact_id,
     )
+    selected_schedule = _validate_seed_schedule_cell_structure(
+        artifact,
+        condition=normalized,
+        kernel_class=kernel_class,
+        dtype=dtype,
+        candidate_count=candidate_count,
+    )
     raw_rows = _load_raw_artifact_rows(artifact_path)
     row_records = _matching_manifest_rows(
         artifact,
@@ -170,6 +182,10 @@ def map_replay_candidates(
         kernel_class=kernel_class,
         dtype=dtype,
         grammar_active=artifact_summary.grammar_active,
+    )
+    _validate_available_records_match_seed_schedule(
+        artifact.get("row_records", []),
+        selected_schedule,
     )
     selected_records = _select_attempt_records(row_records, candidate_count)
     metadata = get_shape_metadata(kernel_class)
@@ -197,9 +213,11 @@ def map_replay_candidates(
             coverage_failure=failure,
         )
 
+    selected_records = _records_for_seed_schedule(row_records, selected_schedule)
     candidates = tuple(
         _candidate_from_record(
             record,
+            schedule_entry=selected_schedule[attempt_index],
             raw_rows=raw_rows,
             condition=normalized,
             kernel_class=kernel_class,
@@ -235,6 +253,129 @@ def replay_generation_hashes(
 
     normalized = require_replay_control_condition(condition)
     return collect_cluster1_frozen_generation_hashes(normalized, str(manifest_path))
+
+
+def _validate_seed_schedule_present(artifact: dict[str, Any]) -> None:
+    schedule = artifact.get("seed_schedule")
+    if not isinstance(schedule, dict):
+        raise ValueError("seed_schedule must be an object")
+    if schedule.get("schedule_type") != "paired_by_seed":
+        raise ValueError("seed_schedule.schedule_type must be 'paired_by_seed'")
+    records = schedule.get("records")
+    if not isinstance(records, list) or not records:
+        raise ValueError("seed_schedule.records must be a non-empty list")
+
+
+def _validate_seed_schedule_cell_structure(
+    artifact: dict[str, Any],
+    *,
+    condition: str,
+    kernel_class: str,
+    dtype: str,
+    candidate_count: int,
+) -> tuple[ReplaySeedScheduleEntry, ...]:
+    _validate_seed_schedule_present(artifact)
+    artifact_id = _require_non_empty_str(artifact.get("artifact_id"), "artifact_id")
+    records = artifact["seed_schedule"]["records"]
+    matching = [
+        record
+        for record in records
+        if isinstance(record, dict)
+        and record.get("kernel_class") == kernel_class
+        and record.get("dtype") == dtype
+    ]
+    if len(matching) != 1:
+        raise ValueError(
+            "seed_schedule must contain exactly one record for "
+            f"{condition}/{kernel_class}/{dtype}; got {len(matching)}"
+        )
+
+    record = matching[0]
+    kernel_name = _require_non_empty_str(record.get("kernel_name"), "kernel_name")
+    prompt_sha256 = _require_sha256(record.get("prompt_sha256"), "prompt_sha256")
+    model_id = _require_non_empty_str(record.get("model_id"), "model_id")
+    model_revision = _optional_str(record.get("model_revision"))
+    tokenizer_revision = _optional_str(record.get("tokenizer_revision"))
+    temperature = _require_non_negative_number(record.get("temperature"), "temperature")
+    max_new_tokens = _require_positive_int(record.get("max_new_tokens"), "max_new_tokens")
+    base_seeds = _require_int_list(record.get("base_seeds"), "base_seeds")
+    generation_seeds = _require_int_list(
+        record.get("generation_seeds"),
+        "generation_seeds",
+    )
+    attempt_indexes = _require_int_list(
+        record.get("attempt_indexes"),
+        "attempt_indexes",
+    )
+    generation_indexes = _require_int_list(
+        record.get("generation_indexes"),
+        "generation_indexes",
+    )
+    line_numbers = _require_positive_int_list(
+        record.get("line_numbers"),
+        "line_numbers",
+    )
+    replay_pair_ids = _require_str_list(
+        record.get("replay_pair_ids"),
+        "replay_pair_ids",
+    )
+    lengths = {
+        len(base_seeds),
+        len(generation_seeds),
+        len(attempt_indexes),
+        len(generation_indexes),
+        len(line_numbers),
+        len(replay_pair_ids),
+    }
+    if len(lengths) != 1:
+        raise ValueError("seed_schedule lists must have identical lengths")
+    if len(base_seeds) < candidate_count:
+        raise ValueError(
+            "seed_schedule coverage failure for "
+            f"{condition}/{kernel_class}/{dtype}: required {candidate_count}, "
+            f"observed {len(base_seeds)}"
+        )
+
+    expected_base_seeds = tuple(range(len(base_seeds)))
+    if base_seeds != expected_base_seeds:
+        raise ValueError(
+            "seed_schedule base_seeds must be dense and zero-based: "
+            f"expected {expected_base_seeds}, got {base_seeds}"
+        )
+    requested_window = tuple(range(candidate_count))
+    if base_seeds[:candidate_count] != requested_window:
+        raise ValueError(
+            "seed_schedule must cover requested dense window: "
+            f"expected {requested_window}, got {base_seeds[:candidate_count]}"
+        )
+    if generation_seeds != base_seeds:
+        raise ValueError("seed_schedule generation_seeds must equal base_seeds")
+    if generation_indexes != attempt_indexes:
+        raise ValueError("seed_schedule generation_indexes must equal attempt_indexes")
+    if len(set(replay_pair_ids)) != len(replay_pair_ids):
+        raise ValueError("seed_schedule replay_pair_ids must be unique")
+    return tuple(
+        ReplaySeedScheduleEntry(
+            artifact_id=artifact_id,
+            condition=condition,
+            kernel_class=kernel_class,
+            kernel_name=kernel_name,
+            dtype=dtype,
+            base_seed=base_seeds[index],
+            generation_seed=generation_seeds[index],
+            attempt_index=attempt_indexes[index],
+            generation_index=generation_indexes[index],
+            prompt_sha256=prompt_sha256,
+            model_id=model_id,
+            model_revision=model_revision,
+            tokenizer_revision=tokenizer_revision,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+            line_number=line_numbers[index],
+            replay_pair_id=replay_pair_ids[index],
+        )
+        for index in range(candidate_count)
+    )
 
 
 def _selected_artifact(
@@ -334,9 +475,84 @@ def _select_attempt_records(
     )
 
 
+def _validate_available_records_match_seed_schedule(
+    row_records: Sequence[dict[str, Any]],
+    seed_schedule: Sequence[ReplaySeedScheduleEntry],
+) -> None:
+    records_by_line: dict[int, dict[str, Any]] = {}
+    for record in row_records:
+        line_number = _optional_int(record.get("line_number"))
+        if line_number is None:
+            raise ValueError("selected row_record is missing line_number")
+        if line_number in records_by_line:
+            raise ValueError(f"duplicate row_record line_number {line_number}")
+        records_by_line[line_number] = record
+    for entry in seed_schedule:
+        record = records_by_line.get(entry.line_number)
+        if record is None:
+            continue
+        _validate_record_matches_seed_schedule(record, entry)
+
+
+def _records_for_seed_schedule(
+    row_records: Sequence[dict[str, Any]],
+    seed_schedule: Sequence[ReplaySeedScheduleEntry],
+) -> tuple[dict[str, Any], ...]:
+    by_line: dict[int, dict[str, Any]] = {}
+    for record in row_records:
+        line_number = _optional_int(record.get("line_number"))
+        if line_number is None:
+            continue
+        if line_number in by_line:
+            raise ValueError(f"duplicate row_record line_number {line_number}")
+        by_line[line_number] = record
+
+    selected: list[dict[str, Any]] = []
+    for entry in seed_schedule:
+        record = by_line.get(entry.line_number)
+        if record is None:
+            raise ValueError(
+                "seed_schedule line_number "
+                f"{entry.line_number} missing matching row_record"
+            )
+        _validate_record_matches_seed_schedule(record, entry)
+        selected.append(record)
+    return tuple(selected)
+
+
+def _validate_record_matches_seed_schedule(
+    record: dict[str, Any],
+    entry: ReplaySeedScheduleEntry,
+) -> None:
+    expected = {
+        "condition": entry.condition,
+        "kernel_class": entry.kernel_class,
+        "kernel_name": entry.kernel_name,
+        "dtype": entry.dtype,
+        "base_seed": entry.base_seed,
+        "generation_seed": entry.generation_seed,
+        "attempt_index": entry.attempt_index,
+        "generation_index": entry.generation_index,
+        "prompt_sha256": entry.prompt_sha256,
+        "model_id": entry.model_id,
+        "model_revision": entry.model_revision,
+        "tokenizer_revision": entry.tokenizer_revision,
+        "temperature": entry.temperature,
+        "max_new_tokens": entry.max_new_tokens,
+        "replay_pair_id": entry.replay_pair_id,
+    }
+    for field_name, expected_value in expected.items():
+        if record.get(field_name) != expected_value:
+            raise ValueError(
+                f"seed_schedule row mismatch for {field_name}: "
+                f"expected {expected_value!r}, got {record.get(field_name)!r}"
+            )
+
+
 def _candidate_from_record(
     record: dict[str, Any],
     *,
+    schedule_entry: Any,
     raw_rows: dict[int, tuple[dict[str, Any], str]],
     condition: str,
     kernel_class: str,
@@ -382,8 +598,8 @@ def _candidate_from_record(
         kernel_class=kernel_class,
         kernel_name=kernel_name,
         dtype=dtype,
-        base_seed=base_seed,
-        attempt_index=mapped_attempt_index,
+        base_seed=schedule_entry.base_seed,
+        attempt_index=0,
         source=source,
         source_sha256=source_hash,
         row_sha256=observed_row_hash,
@@ -394,6 +610,10 @@ def _candidate_from_record(
         generation_seed=_optional_int(record.get("generation_seed")),
         generation_index=_optional_int(record.get("generation_index")),
         frozen_attempt_index=_optional_int(record.get("attempt_index")),
+        prompt_sha256=schedule_entry.prompt_sha256,
+        temperature=schedule_entry.temperature,
+        max_new_tokens=schedule_entry.max_new_tokens,
+        replay_pair_id=schedule_entry.replay_pair_id,
         artifact_id=artifact_id,
         artifact_path=artifact_path,
         artifact_sha256=artifact_sha256,
@@ -479,6 +699,51 @@ def _require_non_negative_int(value: object, field_name: str) -> int:
     if value < 0:
         raise ValueError(f"{field_name} must be non-negative")
     return value
+
+
+def _require_non_negative_number(value: object, field_name: str) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise TypeError(f"{field_name} must be numeric")
+    if value < 0:
+        raise ValueError(f"{field_name} must be non-negative")
+    return float(value)
+
+
+def _require_non_empty_str(value: object, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{field_name} must be a string")
+    if not value:
+        raise ValueError(f"{field_name} must not be empty")
+    return value
+
+
+def _require_sha256(value: object, field_name: str) -> str:
+    digest = _require_non_empty_str(value, field_name)
+    if len(digest) != 64:
+        raise ValueError(f"{field_name} must be a 64-character SHA256 hex digest")
+    try:
+        int(digest, 16)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be a SHA256 hex digest") from exc
+    return digest
+
+
+def _require_int_list(value: object, field_name: str) -> tuple[int, ...]:
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"{field_name} must be a non-empty list")
+    return tuple(_require_non_negative_int(item, field_name) for item in value)
+
+
+def _require_positive_int_list(value: object, field_name: str) -> tuple[int, ...]:
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"{field_name} must be a non-empty list")
+    return tuple(_require_positive_int(item, field_name) for item in value)
+
+
+def _require_str_list(value: object, field_name: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"{field_name} must be a non-empty list")
+    return tuple(_require_non_empty_str(item, field_name) for item in value)
 
 
 def _optional_int(value: object) -> int | None:

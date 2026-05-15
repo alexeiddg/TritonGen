@@ -60,25 +60,22 @@ def test_generated_convergence_rate_is_per_cell() -> None:
     assert result.rate == 0.5
 
 
-def test_replay_pass_within_n_is_per_cell() -> None:
+def test_replay_pass_within_n_is_per_paired_seed_cell() -> None:
     within_one_rows = [
-        _replay_row(condition="none", base_seed=0, attempt_index=0, success=False),
-        _replay_row(condition="none", base_seed=1, attempt_index=0, success=False),
+        _replay_row(condition="none", base_seed=0, attempt_index=0, success=True),
     ]
     within_two_rows = [
         _replay_row(condition="none", base_seed=0, attempt_index=0, success=False),
-        _replay_row(condition="none", base_seed=0, attempt_index=1, success=True),
-        _replay_row(condition="none", base_seed=1, attempt_index=0, success=False),
-        _replay_row(condition="none", base_seed=1, attempt_index=1, success=True),
+        _replay_row(condition="none", base_seed=1, attempt_index=0, success=True),
     ]
 
     within_one = compute_pass_rate_within_n(within_one_rows, n=1)
     within_two = compute_pass_rate_within_n(within_two_rows, n=2)
 
-    assert within_one.successes == 0
-    assert within_one.rate == 0.0
-    assert within_two.successes == 2
-    assert within_two.rate == 1.0
+    assert within_one.successes == 1
+    assert within_one.rate == 1.0
+    assert within_two.successes == 1
+    assert within_two.rate == 0.5
 
 
 def test_pass_at_1_initial_uses_only_attempt_zero() -> None:
@@ -118,6 +115,9 @@ def test_lift_computation_uses_matched_cells() -> None:
     assert lift.control_rate == 0.0
     assert lift.lift == 0.5
     assert lift.total_cells == 2
+    assert lift.discordant_treatment_only == 1
+    assert lift.discordant_control_only == 0
+    assert lift.mcnemar_p_value == 1.0
     assert lift.ci_lower <= lift.lift <= lift.ci_upper
 
 
@@ -161,9 +161,7 @@ def test_bootstrap_and_lift_are_over_cells_not_rows() -> None:
     ]
     control = [
         _replay_row(condition="none", base_seed=0, attempt_index=0, success=False),
-        _replay_row(condition="none", base_seed=0, attempt_index=1, success=False),
         _replay_row(condition="none", base_seed=1, attempt_index=0, success=False),
-        _replay_row(condition="none", base_seed=1, attempt_index=1, success=False),
     ]
 
     lift = compute_lift_with_bootstrap_ci(
@@ -177,6 +175,82 @@ def test_bootstrap_and_lift_are_over_cells_not_rows() -> None:
     assert lift.total_cells == 2
     assert lift.treatment_rate == 0.5
     assert lift.lift == 0.5
+
+
+def test_lift_rejects_unpaired_replay_rows() -> None:
+    treatment = [
+        _generated_row(condition="C", base_seed=0, attempt_index=0, success=True),
+        _generated_row(condition="C", base_seed=1, attempt_index=0, success=False),
+    ]
+    control = [
+        _replay_row(condition="none", base_seed=0, attempt_index=0, success=False),
+    ]
+
+    with pytest.raises(ValueError, match="missing replay pair"):
+        compute_lift_with_bootstrap_ci(
+            treatment,
+            control,
+            n=1,
+            bootstrap_resamples=50,
+        )
+
+
+def test_lift_rejects_generated_pair_missing_attempt_zero() -> None:
+    treatment = [
+        _generated_row(condition="C", base_seed=0, attempt_index=1, success=True),
+    ]
+    control = [
+        _replay_row(condition="none", base_seed=0, attempt_index=0, success=False),
+    ]
+
+    with pytest.raises(ValueError, match="missing generated attempt 0"):
+        compute_lift_with_bootstrap_ci(
+            treatment,
+            control,
+            n=2,
+            bootstrap_resamples=50,
+        )
+
+
+def test_lift_rejects_pair_metadata_mismatch() -> None:
+    treatment = [
+        _generated_row(condition="C", base_seed=0, attempt_index=0, success=True),
+    ]
+    control = [
+        _replay_row(condition="none", base_seed=0, attempt_index=0, success=False),
+    ]
+    payload = control[0].to_dict()
+    payload["replay_metadata"]["prompt_sha256"] = "d" * 64
+    mismatched_control = [Cluster2EvalRow.from_dict(payload)]
+
+    with pytest.raises(ValueError, match="metadata mismatch"):
+        compute_lift_with_bootstrap_ci(
+            treatment,
+            mismatched_control,
+            n=1,
+            bootstrap_resamples=50,
+        )
+
+
+def test_lift_rejects_known_revision_metadata_mismatch() -> None:
+    treatment = [
+        _generated_row(condition="C", base_seed=0, attempt_index=0, success=True),
+    ]
+    control = [
+        _replay_row(condition="none", base_seed=0, attempt_index=0, success=False),
+    ]
+    payload = control[0].to_dict()
+    payload["replay_metadata"]["model_revision"] = "frozen-model-rev"
+    payload["replay_metadata"]["tokenizer_revision"] = "frozen-tokenizer-rev"
+    mismatched_control = [Cluster2EvalRow.from_dict(payload)]
+
+    with pytest.raises(ValueError, match="metadata mismatch"):
+        compute_lift_with_bootstrap_ci(
+            treatment,
+            mismatched_control,
+            n=1,
+            bootstrap_resamples=50,
+        )
 
 
 def test_eval_hash_mismatch_is_rejected() -> None:
@@ -299,6 +373,82 @@ def test_replay_row_hash_mismatch_is_rejected(tmp_path: Path) -> None:
         condition="none",
         artifact_hash="4" * 64,
         row_hash="b" * 64,
+    )
+    replay = _replay_row(
+        condition="none",
+        frozen_hashes={"none_fixture:artifact": "4" * 64},
+    )
+    dataset = AggregationDataset(
+        rows=(replay,),
+        content_hash_sidecar=_sidecar(
+            replay_control_hashes={"none": {"none_fixture:artifact": "4" * 64}},
+        ),
+    )
+
+    with pytest.raises(ValueError, match="source/row hash missing"):
+        validate_hash_classes([dataset], frozen_cluster1_manifest_path=manifest)
+
+
+def test_replay_manifest_membership_accepts_remapped_attempt_index(
+    tmp_path: Path,
+) -> None:
+    source_hash = _source_hash("import triton\n# replay none 2 0\n")
+    manifest = _write_frozen_manifest(
+        tmp_path,
+        condition="none",
+        artifact_hash="4" * 64,
+        source_hash=source_hash,
+    )
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    record = payload["artifacts"][0]["row_records"][0]
+    record.update(
+        {
+            "base_seed": 2,
+            "generation_seed": 2,
+            "attempt_index": 2,
+            "generation_index": 2,
+            "prompt_sha256": "c" * 64,
+            "model_id": "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+            "model_revision": "unavailable_in_frozen_cluster1_artifact",
+            "tokenizer_revision": "unavailable_in_frozen_cluster1_artifact",
+            "temperature": 0.2,
+            "max_new_tokens": 512,
+            "replay_pair_id": "elementwise:fp32:2",
+        }
+    )
+    manifest.write_text(
+        json.dumps(payload, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    replay = _replay_row(
+        condition="none",
+        base_seed=2,
+        attempt_index=0,
+        frozen_hashes={"none_fixture:artifact": "4" * 64},
+    )
+    dataset = AggregationDataset(
+        rows=(replay,),
+        content_hash_sidecar=_sidecar(
+            replay_control_hashes={"none": {"none_fixture:artifact": "4" * 64}},
+        ),
+    )
+
+    validate_hash_classes([dataset], frozen_cluster1_manifest_path=manifest)
+
+
+def test_replay_manifest_membership_rejects_missing_pair_metadata(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_frozen_manifest(
+        tmp_path,
+        condition="none",
+        artifact_hash="4" * 64,
+    )
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["artifacts"][0]["row_records"][0].pop("prompt_sha256")
+    manifest.write_text(
+        json.dumps(payload, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
     )
     replay = _replay_row(
         condition="none",
@@ -458,13 +608,13 @@ def test_generated_duplicate_attempt_indexes_are_rejected() -> None:
         compute_convergence_rate(rows)
 
 
-def test_replay_duplicate_attempt_indexes_are_rejected() -> None:
+def test_replay_duplicate_pair_rows_are_rejected() -> None:
     rows = [
         _replay_row(condition="none", base_seed=0, attempt_index=0, success=False),
         _replay_row(condition="none", base_seed=0, attempt_index=0, success=True),
     ]
 
-    with pytest.raises(ValueError, match="duplicate attempt_index"):
+    with pytest.raises(ValueError, match="duplicate replay pair"):
         compute_pass_rate_within_n(rows)
 
 
@@ -480,12 +630,21 @@ def test_replay_incomplete_attempt_window_is_rejected() -> None:
 def test_replay_extra_attempt_window_is_rejected() -> None:
     rows = [
         _replay_row(condition="none", base_seed=0, attempt_index=0, success=False),
-        _replay_row(condition="none", base_seed=0, attempt_index=1, success=False),
-        _replay_row(condition="none", base_seed=0, attempt_index=2, success=True),
+        _replay_row(condition="none", base_seed=1, attempt_index=0, success=False),
+        _replay_row(condition="none", base_seed=2, attempt_index=0, success=True),
     ]
 
     with pytest.raises(ValueError, match="extra=2"):
         compute_pass_rate_within_n(rows, n=2)
+
+
+def test_replay_nonzero_attempt_index_is_rejected() -> None:
+    rows = [
+        _replay_row(condition="none", base_seed=0, attempt_index=1, success=False),
+    ]
+
+    with pytest.raises(ValueError, match="attempt_index 0"):
+        compute_pass_rate_within_n(rows, n=1)
 
 
 def test_coverage_computation() -> None:
@@ -621,7 +780,9 @@ def _generated_row(
             if c2_generation_hashes is None
             else c2_generation_hashes
         ),
-        generation_seed=base_seed * 100 + attempt_index,
+        generation_seed=(
+            base_seed if attempt_index == 0 else base_seed * 10 + attempt_index
+        ),
         grammar_variant="task_agnostic" if condition == "G+C" else None,
         grammar_path=(
             "cluster1/grammar/triton_kernel_agnostic.gbnf"
@@ -629,6 +790,16 @@ def _generated_row(
             else None
         ),
         grammar_claim_scope="primary" if condition == "G+C" else None,
+        replay_pair_id=f"{kernel_class}:{dtype}:{base_seed}",
+        replay_control_condition="G" if condition == "G+C" else "none",
+        replay_base_seed=base_seed,
+        replay_generation_seed=base_seed,
+        prompt_sha256="c" * 64,
+        model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+        model_revision="model-rev",
+        tokenizer_revision="tok-rev",
+        temperature=0.2,
+        max_new_tokens=512,
     )
 
 
@@ -663,6 +834,15 @@ def _replay_row(
             _frozen_hashes(condition) if frozen_hashes is None else frozen_hashes
         ),
         frozen_cluster1_row_hash="a" * 64,
+        replay_pair_id=f"{kernel_class}:{dtype}:{base_seed}",
+        replay_base_seed=base_seed,
+        replay_generation_seed=base_seed,
+        prompt_sha256="c" * 64,
+        model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+        model_revision="unavailable_in_frozen_cluster1_artifact",
+        tokenizer_revision="unavailable_in_frozen_cluster1_artifact",
+        temperature=0.2,
+        max_new_tokens=512,
     )
 
 
@@ -721,9 +901,17 @@ def _write_frozen_manifest(
                         "kernel_class": "elementwise",
                         "kernel_name": kernel_name,
                         "dtype": "fp32",
+                        "base_seed": 0,
                         "attempt_index": 0,
                         "generation_index": 0,
                         "generation_seed": 0,
+                        "prompt_sha256": "c" * 64,
+                        "model_id": "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+                        "model_revision": "unavailable_in_frozen_cluster1_artifact",
+                        "tokenizer_revision": "unavailable_in_frozen_cluster1_artifact",
+                        "temperature": 0.2,
+                        "max_new_tokens": 512,
+                        "replay_pair_id": "elementwise:fp32:0",
                         "source_sha256": frozen_source_hash,
                         "row_sha256": row_hash,
                     }

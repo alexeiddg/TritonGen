@@ -43,6 +43,10 @@ from cluster2.replay.cluster1_controls import (
     map_replay_candidates,
     replay_generation_hashes,
 )
+from cluster2.replay.manifest import (
+    ReplaySeedScheduleEntry,
+    replay_seed_schedule_for_condition,
+)
 from cluster2.results.dataclass import (
     Cluster2ContentHashSidecar,
     Cluster2EvalRow,
@@ -60,6 +64,8 @@ from shared.eval.correctness_shapes import LOCKED_KERNEL_CLASSES, get_shape_meta
 
 
 MODEL_ID_DEFAULT = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
+MAX_NEW_TOKENS_DEFAULT = 512
+UNAVAILABLE_FROZEN_REVISION = "unavailable_in_frozen_cluster1_artifact"
 GRAMMAR_VARIANT_TASK_AGNOSTIC = "task_agnostic"
 GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND = "template_upper_bound"
 GRAMMAR_VARIANT_CHOICES: tuple[str, ...] = (
@@ -238,7 +244,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dtypes", default=",".join(DTYPE_NAMES))
     parser.add_argument("--temperature", default=0.2, type=float)
-    parser.add_argument("--max-new-tokens", default=1024, type=int)
+    parser.add_argument("--max-new-tokens", default=MAX_NEW_TOKENS_DEFAULT, type=int)
     parser.add_argument("--repair-budget", default=DEFAULT_REPAIR_BUDGET, type=int)
     parser.add_argument("--modal-generation-gpu", default=DEFAULT_C2_MODAL_GENERATION_GPU)
     parser.add_argument("--modal-eval-gpu", default=DEFAULT_C2_MODAL_EVAL_GPU)
@@ -349,7 +355,7 @@ def modal_entrypoint(
     grammar_variant: str = GRAMMAR_VARIANT_TASK_AGNOSTIC,
     dtypes: str = ",".join(DTYPE_NAMES),
     temperature: float = 0.2,
-    max_new_tokens: int = 1024,
+    max_new_tokens: int = MAX_NEW_TOKENS_DEFAULT,
     repair_budget: int = DEFAULT_REPAIR_BUDGET,
     modal_generation_gpu: str = DEFAULT_C2_MODAL_GENERATION_GPU,
     modal_eval_gpu: str = DEFAULT_C2_MODAL_EVAL_GPU,
@@ -411,6 +417,7 @@ def run_cluster2(
     content_hash_sidecar = _build_runner_content_hash_sidecar(config)
     _preflight_resume_hashes(config, content_hash_sidecar)
     _preflight_primary_gc_replay_alignment(config)
+    paired_generation_schedules = _preflight_all_paired_generation_schedules(config)
 
     for condition in config.conditions:
         stats = _ConditionRunStats()
@@ -436,6 +443,7 @@ def run_cluster2(
                 correctness=deps.correctness or _default_correctness_call,
                 rows=rows,
                 stats=stats,
+                paired_generation_schedule=paired_generation_schedules[condition],
             )
             route = (
                 "c2_repair_loop_with_g_adapter"
@@ -570,6 +578,15 @@ def _evaluate_replay_mapping(
                 frozen_cluster1_artifact_id=candidate.artifact_id,
                 frozen_cluster1_generation_hashes=hashes,
                 frozen_cluster1_row_hash=candidate.row_sha256,
+                replay_pair_id=candidate.replay_pair_id,
+                replay_base_seed=candidate.base_seed,
+                replay_generation_seed=candidate.generation_seed,
+                prompt_sha256=candidate.prompt_sha256,
+                model_id=candidate.model_id,
+                model_revision=candidate.model_revision,
+                tokenizer_revision=candidate.tokenizer_revision,
+                temperature=candidate.temperature,
+                max_new_tokens=candidate.max_new_tokens,
             )
         )
     return tuple(rows)
@@ -584,19 +601,26 @@ def _run_generated_condition(
     correctness: CorrectnessAdapter,
     rows: list[Cluster2EvalRow],
     stats: _ConditionRunStats,
+    paired_generation_schedule: tuple[
+        str,
+        dict[tuple[str, str], tuple[ReplaySeedScheduleEntry, ...]],
+    ],
 ) -> None:
+    replay_control_condition, schedule_by_cell = paired_generation_schedule
     c2_hashes = collect_c2_generation_hashes(condition)
     for kernel_class in config.kernel_classes:
         kernel_name = get_shape_metadata(kernel_class).kernel_name
         for dtype in config.dtypes:
-            for base_seed in range(config.n):
+            for pairing_entry in schedule_by_cell[(kernel_class, dtype)]:
                 rows.extend(
                     _run_generated_cell(
                         condition=condition,
                         kernel_class=kernel_class,
                         kernel_name=kernel_name,
                         dtype=dtype,
-                        base_seed=base_seed,
+                        base_seed=pairing_entry.base_seed,
+                        replay_control_condition=replay_control_condition,
+                        pairing_entry=pairing_entry,
                         config=config,
                         run_id=run_id,
                         generation=generation,
@@ -614,6 +638,8 @@ def _run_generated_cell(
     kernel_name: str,
     dtype: str,
     base_seed: int,
+    replay_control_condition: str,
+    pairing_entry: ReplaySeedScheduleEntry,
     config: Cluster2RunnerConfig,
     run_id: str,
     generation: GenerationAdapter,
@@ -623,8 +649,19 @@ def _run_generated_cell(
 ) -> tuple[Cluster2EvalRow, ...]:
     attempt_records: dict[int, _GeneratedAttemptRecord] = {}
     base_prompt = _build_base_prompt(kernel_class, dtype)
+    prompt_sha256 = _source_sha256(base_prompt)
+    _validate_generation_pairing_context(
+        condition=condition,
+        kernel_class=kernel_class,
+        dtype=dtype,
+        base_seed=base_seed,
+        prompt_sha256=prompt_sha256,
+        config=config,
+        pairing_entry=pairing_entry,
+    )
 
     def generation_call(inputs: RepairGenerationInput) -> str:
+        generation_seed = _paired_generation_seed(pairing_entry, inputs.attempt_index)
         identity = _eval_identity(
             run_id=run_id,
             condition=condition,
@@ -640,7 +677,7 @@ def _run_generated_cell(
             model_id=config.model_id,
             model_revision=config.model_revision,
             tokenizer_revision=config.tokenizer_revision,
-            generation_seed=inputs.generation_seed,
+            generation_seed=generation_seed,
             temperature=config.temperature,
             max_new_tokens=config.max_new_tokens,
             grammar_variant=(
@@ -652,7 +689,7 @@ def _run_generated_cell(
         source = _extract_generated_source(payload)
         attempt_records[inputs.attempt_index] = _GeneratedAttemptRecord(
             attempt_index=inputs.attempt_index,
-            generation_seed=inputs.generation_seed,
+            generation_seed=generation_seed,
             source=source,
             generation_payload=payload,
         )
@@ -725,6 +762,16 @@ def _run_generated_cell(
                 grammar_variant=grammar_metadata["grammar_variant"],
                 grammar_path=grammar_metadata["grammar_path"],
                 grammar_claim_scope=grammar_metadata["grammar_claim_scope"],
+                replay_pair_id=pairing_entry.replay_pair_id,
+                replay_control_condition=replay_control_condition,
+                replay_base_seed=pairing_entry.base_seed,
+                replay_generation_seed=pairing_entry.generation_seed,
+                prompt_sha256=pairing_entry.prompt_sha256,
+                model_id=config.model_id,
+                model_revision=config.model_revision,
+                tokenizer_revision=config.tokenizer_revision,
+                temperature=config.temperature,
+                max_new_tokens=config.max_new_tokens,
             )
         )
     return tuple(rows)
@@ -779,6 +826,123 @@ def _preflight_primary_gc_replay_alignment(config: Cluster2RunnerConfig) -> None
         "is not sufficient. Use the explicit template_upper_bound diagnostic "
         "route only for non-primary analysis."
     )
+
+
+def _preflight_paired_generation_schedules(
+    *,
+    condition: str,
+    config: Cluster2RunnerConfig,
+) -> tuple[str, dict[tuple[str, str], tuple[ReplaySeedScheduleEntry, ...]]]:
+    replay_control_condition = _paired_replay_control_condition(condition)
+    schedules: dict[tuple[str, str], tuple[ReplaySeedScheduleEntry, ...]] = {}
+    for kernel_class in config.kernel_classes:
+        for dtype in config.dtypes:
+            schedule = replay_seed_schedule_for_condition(
+                condition=replay_control_condition,
+                kernel_class=kernel_class,
+                dtype=dtype,
+                candidate_count=config.n,
+                manifest_path=config.frozen_cluster1_manifest,
+                grammar_variant=config.grammar_variant,
+            )
+            prompt_sha256 = _source_sha256(_build_base_prompt(kernel_class, dtype))
+            for pairing_entry in schedule:
+                _validate_generation_pairing_context(
+                    condition=condition,
+                    kernel_class=kernel_class,
+                    dtype=dtype,
+                    base_seed=pairing_entry.base_seed,
+                    prompt_sha256=prompt_sha256,
+                    config=config,
+                    pairing_entry=pairing_entry,
+                )
+            schedules[(kernel_class, dtype)] = schedule
+    return replay_control_condition, schedules
+
+
+def _preflight_all_paired_generation_schedules(
+    config: Cluster2RunnerConfig,
+) -> dict[
+    str,
+    tuple[str, dict[tuple[str, str], tuple[ReplaySeedScheduleEntry, ...]]],
+]:
+    return {
+        condition: _preflight_paired_generation_schedules(
+            condition=condition,
+            config=config,
+        )
+        for condition in config.conditions
+        if condition in NEW_GENERATION_CONDITIONS
+    }
+
+
+def _paired_replay_control_condition(condition: str) -> str:
+    if condition == "C":
+        return "none"
+    if condition == "G+C":
+        return "G"
+    raise ValueError(f"condition {condition!r} is not a generated condition")
+
+
+def _paired_generation_seed(
+    pairing_entry: ReplaySeedScheduleEntry,
+    attempt_index: int,
+) -> int:
+    if attempt_index == 0:
+        return pairing_entry.generation_seed
+    return seed_for_attempt(pairing_entry.base_seed, attempt_index)
+
+
+def _validate_generation_pairing_context(
+    *,
+    condition: str,
+    kernel_class: str,
+    dtype: str,
+    base_seed: int,
+    prompt_sha256: str,
+    config: Cluster2RunnerConfig,
+    pairing_entry: ReplaySeedScheduleEntry,
+) -> None:
+    expected = {
+        "kernel_class": kernel_class,
+        "dtype": dtype,
+        "base_seed": base_seed,
+        "generation_seed": base_seed,
+        "prompt_sha256": prompt_sha256,
+        "model_id": config.model_id,
+        "temperature": float(config.temperature),
+        "max_new_tokens": config.max_new_tokens,
+    }
+    observed = {
+        "kernel_class": pairing_entry.kernel_class,
+        "dtype": pairing_entry.dtype,
+        "base_seed": pairing_entry.base_seed,
+        "generation_seed": pairing_entry.generation_seed,
+        "prompt_sha256": pairing_entry.prompt_sha256,
+        "model_id": pairing_entry.model_id,
+        "temperature": float(pairing_entry.temperature),
+        "max_new_tokens": pairing_entry.max_new_tokens,
+    }
+    if _known_frozen_revision(pairing_entry.model_revision):
+        expected["model_revision"] = config.model_revision
+        observed["model_revision"] = pairing_entry.model_revision
+    if _known_frozen_revision(pairing_entry.tokenizer_revision):
+        expected["tokenizer_revision"] = config.tokenizer_revision
+        observed["tokenizer_revision"] = pairing_entry.tokenizer_revision
+    mismatches = [
+        f"{field}: expected {expected[field]!r}, got {observed[field]!r}"
+        for field in expected
+        if expected[field] != observed[field]
+    ]
+    if mismatches:
+        raise ValueError(
+            f"paired replay metadata mismatch before {condition} generation: "
+            + "; ".join(mismatches)
+        )
+
+
+def _known_frozen_revision(value: str | None) -> bool:
+    return value is not None and value != UNAVAILABLE_FROZEN_REVISION
 
 
 def _write_rows(

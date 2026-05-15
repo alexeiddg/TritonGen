@@ -13,9 +13,8 @@ from cluster2.results.dataclass import Cluster2EvalRow
 from shared.eval.aggregation import (
     CellKey,
     MatchedCellKey,
-    group_rows_by_cell,
     require_replay_control_rows,
-    require_unique_attempt_indexes,
+    validate_paired_replay_alignment,
 )
 from shared.eval.metrics.repair import (
     CellOutcome,
@@ -60,6 +59,9 @@ class LiftEstimate:
     lift: float
     ci_lower: float
     ci_upper: float
+    discordant_treatment_only: int
+    discordant_control_only: int
+    mcnemar_p_value: float
     bootstrap_resamples: int
     bootstrap_seed: int
     total_cells: int
@@ -74,6 +76,9 @@ class LiftEstimate:
             "lift": self.lift,
             "ci_lower": self.ci_lower,
             "ci_upper": self.ci_upper,
+            "discordant_treatment_only": self.discordant_treatment_only,
+            "discordant_control_only": self.discordant_control_only,
+            "mcnemar_p_value": self.mcnemar_p_value,
             "bootstrap_resamples": self.bootstrap_resamples,
             "bootstrap_seed": self.bootstrap_seed,
             "total_cells": self.total_cells,
@@ -86,28 +91,45 @@ def compute_pass_rate_within_n(
     *,
     n: int = DEFAULT_EQUAL_ATTEMPTS_N,
 ) -> RateResult:
-    """Compute replay-control pass-within-N as Bernoulli per cell."""
+    """Compute replay-control success over the first N paired seed cells."""
 
     if n <= 0:
         raise ValueError("n must be positive")
     row_tuple = require_replay_control_rows(rows)
-    groups = group_rows_by_cell(row_tuple)
+    grouped_by_schedule_cell: dict[tuple[str, str, str], list[Cluster2EvalRow]] = {}
     outcomes: list[CellOutcome] = []
-    for key, cell_rows in groups.items():
-        require_unique_attempt_indexes(key, cell_rows)
-        _require_complete_replay_window(key, cell_rows, n)
-        considered = tuple(row for row in cell_rows if row.attempt_index < n)
+    seen_cells: set[CellKey] = set()
+    for row in row_tuple:
+        key = CellKey(
+            kernel_class=row.kernel_class,
+            dtype=row.dtype,
+            base_seed=row.base_seed,
+            condition=row.condition,
+        )
+        if key in seen_cells:
+            raise ValueError(f"duplicate replay pair for {key}")
+        seen_cells.add(key)
+        if row.attempt_index != 0:
+            raise ValueError(
+                f"replay pair {key} must use attempt_index 0; got {row.attempt_index}"
+            )
+        grouped_by_schedule_cell.setdefault(
+            (row.condition, row.kernel_class, row.dtype),
+            [],
+        ).append(row)
         outcomes.append(
             CellOutcome(
                 cell=key,
-                success=any(row.functional_success for row in considered),
-                attempts_observed=len(cell_rows),
-                attempts_considered=len(considered),
+                success=row.functional_success,
+                attempts_observed=1,
+                attempts_considered=1,
             )
         )
 
     if not outcomes:
         raise ValueError("pass-within-N requires at least one replay-control cell")
+    for group_key, cell_rows in sorted(grouped_by_schedule_cell.items()):
+        _require_complete_replay_seed_window(group_key, cell_rows, n)
     successes = sum(outcome.success for outcome in outcomes)
     return RateResult(
         metric="pass_rate_within_n",
@@ -120,12 +142,12 @@ def compute_pass_rate_within_n(
     )
 
 
-def _require_complete_replay_window(
-    key: CellKey,
+def _require_complete_replay_seed_window(
+    key: tuple[str, str, str],
     cell_rows: Sequence[Cluster2EvalRow],
     n: int,
 ) -> None:
-    observed = {row.attempt_index for row in cell_rows}
+    observed = {row.base_seed for row in cell_rows}
     expected = set(range(n))
     if observed == expected:
         return
@@ -137,9 +159,11 @@ def _require_complete_replay_window(
     if extra:
         detail_parts.append(f"extra={extra}")
     details = ", ".join(detail_parts)
+    condition, kernel_class, dtype = key
     raise ValueError(
-        "replay control cell must have exactly the mapped attempt_index values "
-        f"for pass-within-{n}: cell={key}, {details}; "
+        "replay control schedule cell must have exactly the mapped base_seed "
+        f"values for pass-within-{n}: condition={condition!r}, "
+        f"kernel_class={kernel_class!r}, dtype={dtype!r}, {details}; "
         "record coverage_failure_missing_frozen_control instead"
     )
 
@@ -152,12 +176,15 @@ def compute_lift_with_bootstrap_ci(
     bootstrap_resamples: int = DEFAULT_BOOTSTRAP_RESAMPLES,
     bootstrap_seed: int = DEFAULT_BOOTSTRAP_SEED,
 ) -> LiftEstimate:
-    """Compute generated-vs-replay lift with bootstrap over matched cells."""
+    """Compute generated-vs-replay paired lift over matched seed cells."""
 
     if bootstrap_resamples <= 0:
         raise ValueError("bootstrap_resamples must be positive")
-    treatment = compute_convergence_rate(rows_treatment, max_attempts=n)
-    control = compute_pass_rate_within_n(rows_control, n=n)
+    treatment_rows = tuple(rows_treatment)
+    control_rows = tuple(rows_control)
+    validate_paired_replay_alignment(treatment_rows, control_rows)
+    treatment = compute_convergence_rate(treatment_rows, max_attempts=n)
+    control = _compute_single_replay_pair_rate(control_rows)
     treatment_by_cell = _matched_outcomes(treatment.cell_outcomes)
     control_by_cell = _matched_outcomes(control.cell_outcomes)
     if set(treatment_by_cell) != set(control_by_cell):
@@ -187,6 +214,14 @@ def compute_lift_with_bootstrap_ci(
         resamples=bootstrap_resamples,
         seed=bootstrap_seed,
     )
+    discordant_treatment_only = sum(
+        outcome.treatment_success and not outcome.control_success
+        for outcome in paired
+    )
+    discordant_control_only = sum(
+        outcome.control_success and not outcome.treatment_success
+        for outcome in paired
+    )
     return LiftEstimate(
         treatment_condition=_require_condition(treatment.condition, "treatment"),
         control_condition=_require_condition(control.condition, "control"),
@@ -195,10 +230,57 @@ def compute_lift_with_bootstrap_ci(
         lift=lift,
         ci_lower=_percentile(bootstrap_values, 0.025),
         ci_upper=_percentile(bootstrap_values, 0.975),
+        discordant_treatment_only=discordant_treatment_only,
+        discordant_control_only=discordant_control_only,
+        mcnemar_p_value=_mcnemar_exact_p_value(
+            discordant_treatment_only,
+            discordant_control_only,
+        ),
         bootstrap_resamples=bootstrap_resamples,
         bootstrap_seed=bootstrap_seed,
         total_cells=len(paired),
         cell_outcomes=paired,
+    )
+
+
+def _compute_single_replay_pair_rate(
+    rows: Iterable[Cluster2EvalRow | Mapping[str, Any]],
+) -> RateResult:
+    row_tuple = require_replay_control_rows(rows)
+    outcomes = tuple(
+        CellOutcome(
+            cell=cell_key,
+            success=row.functional_success,
+            attempts_observed=1,
+            attempts_considered=1,
+        )
+        for cell_key, row in sorted(
+            (
+                (
+                    CellKey(
+                        kernel_class=row.kernel_class,
+                        dtype=row.dtype,
+                        base_seed=row.base_seed,
+                        condition=row.condition,
+                    ),
+                    row,
+                )
+                for row in row_tuple
+            ),
+            key=lambda item: item[0],
+        )
+    )
+    if not outcomes:
+        raise ValueError("paired replay rate requires at least one control row")
+    successes = sum(outcome.success for outcome in outcomes)
+    return RateResult(
+        metric="paired_replay_success",
+        condition=_single_condition(outcome.cell.condition for outcome in outcomes),
+        source_class=REPLAY_CONTROL_SOURCE_CLASS,
+        successes=successes,
+        total_cells=len(outcomes),
+        rate=successes / len(outcomes),
+        cell_outcomes=outcomes,
     )
 
 
@@ -249,6 +331,18 @@ def _percentile(sorted_values: Sequence[float], percentile: float) -> float:
         return sorted_values[lower]
     weight = position - lower
     return sorted_values[lower] * (1.0 - weight) + sorted_values[upper] * weight
+
+
+def _mcnemar_exact_p_value(treatment_only: int, control_only: int) -> float:
+    discordant = treatment_only + control_only
+    if discordant == 0:
+        return 1.0
+    smaller = min(treatment_only, control_only)
+    cumulative = sum(
+        math.comb(discordant, index) * (0.5 ** discordant)
+        for index in range(smaller + 1)
+    )
+    return min(1.0, 2.0 * cumulative)
 
 
 def _single_condition(values: Iterable[str]) -> str | None:

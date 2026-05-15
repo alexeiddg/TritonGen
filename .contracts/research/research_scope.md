@@ -88,6 +88,17 @@ The current frozen Cluster 1 `n=20` artifacts are a three-kernel
 template-control subset. They are useful as a paper-style upper-bound reference
 for that subset, but they are not the full future paper-scale factorial run.
 
+Cluster 2 replay-control claims are paired-by-seed within-subject comparisons:
+`C` pairs only against the frozen `none` row with the same
+`(kernel_class, dtype, base_seed)`, and `G+C` pairs only against the frozen `G`
+row with the same key. The replay manifest is the canonical seed schedule.
+Unmatched generated-vs-replay population comparisons are diagnostic only and
+are excluded from primary claims.
+Legacy compile-only factorial summaries, including
+`shared/analysis/factorial.py::factorial_summary`, are structural-validity
+diagnostics for Cluster 2. Primary Cluster 2 claims use Level 2
+`functional_success` through paired replay summaries.
+
 ## Paper-Relevant Design Decisions
 
 - Keep model weights fixed so the causal axis is external inference control,
@@ -99,6 +110,9 @@ for that subset, but they are not the full future paper-scale factorial run.
   different evaluation levels.
 - Report the strict grammar as an upper-bound control, not as the main grammar
   condition.
+- Enforce paired replay controls in the runner before new `C` or `G+C`
+  generation starts; aggregation reports paired bootstrap lift and
+  McNemar-style binary discordance summaries over matched seeds.
 - Build Cluster 2 and Cluster 3 at smoke scale first, then development scale,
   then paper scale.
 
