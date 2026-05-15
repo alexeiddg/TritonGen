@@ -4,6 +4,7 @@ This module owns new Cluster 2 generation for ``C`` and ``G+C`` only. Replay
 controls remain artifact-driven and never route through this surface.
 """
 
+import ast
 import hashlib
 import json
 from contextlib import nullcontext
@@ -478,13 +479,17 @@ def verify_phase_minus1_remote_generator_hash(
             f"expected {expected_hash}, got {current_hash}"
         )
 
-    from shared.modal_harness.generation import DEFAULT_GENERATION_GPU
-
     expected_gpu = str(modal_generation["DEFAULT_GENERATION_GPU"])
-    if DEFAULT_GENERATION_GPU != expected_gpu:
+    current_gpu = str(
+        _literal_assignment_value(
+            REPO_ROOT / "shared" / "modal_harness" / "generation.py",
+            "DEFAULT_GENERATION_GPU",
+        )
+    )
+    if current_gpu != expected_gpu:
         raise ValueError(
             "DEFAULT_GENERATION_GPU mismatch against Phase -1: "
-            f"expected {expected_gpu!r}, got {DEFAULT_GENERATION_GPU!r}"
+            f"expected {expected_gpu!r}, got {current_gpu!r}"
         )
     return {"RemoteGenerator.generate_one": current_hash}
 
@@ -570,6 +575,18 @@ def _source_range_sha256(
     lines = Path(path).read_text(encoding="utf-8").splitlines(keepends=True)
     source = "".join(lines[start_line - 1 : end_line]).strip()
     return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+
+def _literal_assignment_value(path: str | Path, name: str) -> Any:
+    tree = ast.parse(Path(path).read_text(encoding="utf-8"))
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            if any(isinstance(target, ast.Name) and target.id == name for target in node.targets):
+                return ast.literal_eval(node.value)
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            if node.target.id == name and node.value is not None:
+                return ast.literal_eval(node.value)
+    raise ValueError(f"{name} assignment not found in {path}")
 
 
 def _file_sha256(path: str | Path) -> str:
