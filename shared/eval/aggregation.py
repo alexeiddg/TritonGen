@@ -205,6 +205,10 @@ def validate_hash_classes(
 
     first_eval_hashes = dataset_tuple[0].content_hash_sidecar.eval_pipeline_hashes
     generated_hashes_by_condition: dict[str, dict[str, str]] = {}
+    required_g_replay_artifact_id = _required_g_replay_artifact_id_for_comparison(
+        dataset_tuple,
+        frozen_cluster1_manifest_path=frozen_cluster1_manifest_path,
+    )
     for dataset in dataset_tuple:
         sidecar = dataset.content_hash_sidecar
         if sidecar.eval_pipeline_hashes != first_eval_hashes:
@@ -213,6 +217,7 @@ def validate_hash_classes(
         dataset_generated_hashes = _validate_dataset_hash_classes(
             dataset,
             frozen_cluster1_manifest_path=frozen_cluster1_manifest_path,
+            required_g_replay_artifact_id=required_g_replay_artifact_id,
         )
         for condition, observed in dataset_generated_hashes.items():
             prior = generated_hashes_by_condition.setdefault(condition, observed)
@@ -227,6 +232,7 @@ def _validate_dataset_hash_classes(
     dataset: AggregationDataset,
     *,
     frozen_cluster1_manifest_path: str | Path,
+    required_g_replay_artifact_id: str | None,
 ) -> dict[str, dict[str, str]]:
     sidecar = dataset.content_hash_sidecar
     generated_seen: dict[str, dict[str, str]] = {}
@@ -280,7 +286,11 @@ def _validate_dataset_hash_classes(
                 replay_manifest = _load_frozen_replay_manifest(
                     frozen_cluster1_manifest_path
                 )
-            _validate_replay_row_manifest_membership(row, replay_manifest)
+            _validate_replay_row_manifest_membership(
+                row,
+                replay_manifest,
+                required_g_replay_artifact_id=required_g_replay_artifact_id,
+            )
             prior = replay_seen.setdefault(row.condition, observed)
             if prior != observed:
                 raise ValueError(
@@ -293,6 +303,41 @@ def _validate_dataset_hash_classes(
     return generated_seen
 
 
+def _required_g_replay_artifact_id_for_comparison(
+    datasets: Sequence[AggregationDataset],
+    *,
+    frozen_cluster1_manifest_path: str | Path,
+) -> str | None:
+    if not _contains_primary_task_agnostic_gc_rows(datasets):
+        return None
+
+    manifest = _load_frozen_replay_manifest(frozen_cluster1_manifest_path)
+    artifact_id = _selected_task_agnostic_g_artifact_id(manifest)
+    if artifact_id is None:
+        raise ValueError(
+            "primary task_agnostic G+C comparison requires a task-agnostic "
+            "G replay artifact in the Phase -1 manifest"
+        )
+    return artifact_id
+
+
+def _contains_primary_task_agnostic_gc_rows(
+    datasets: Sequence[AggregationDataset],
+) -> bool:
+    for dataset in datasets:
+        for row in dataset.rows:
+            if row.condition != "G+C" or row.source_class != GENERATED_SOURCE_CLASS:
+                continue
+            if row.generated_metadata is None:
+                raise ValueError("generated row is missing generated_metadata")
+            if (
+                row.generated_metadata.grammar_variant == "task_agnostic"
+                and row.generated_metadata.grammar_claim_scope == "primary"
+            ):
+                return True
+    return False
+
+
 def _load_frozen_replay_manifest(path: str | Path) -> dict[str, Any]:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -303,9 +348,22 @@ def _load_frozen_replay_manifest(path: str | Path) -> dict[str, Any]:
 def _validate_replay_row_manifest_membership(
     row: Cluster2EvalRow,
     manifest: Mapping[str, Any],
+    *,
+    required_g_replay_artifact_id: str | None = None,
 ) -> None:
     if row.replay_metadata is None:
         raise ValueError("replay row is missing replay_metadata")
+    artifact_id = row.replay_metadata.frozen_cluster1_artifact_id
+    if (
+        row.condition == "G"
+        and required_g_replay_artifact_id is not None
+        and artifact_id != required_g_replay_artifact_id
+    ):
+        raise ValueError(
+            "primary task_agnostic G+C comparison requires task-agnostic "
+            f"G replay artifact {required_g_replay_artifact_id!r}; "
+            f"got {artifact_id!r}"
+        )
 
     artifact = _manifest_artifact_for_replay_row(row, manifest)
     row_records = artifact.get("row_records", [])
@@ -327,7 +385,7 @@ def _manifest_artifact_for_replay_row(
 ) -> Mapping[str, Any]:
     assert row.replay_metadata is not None
     artifact_id = row.replay_metadata.frozen_cluster1_artifact_id
-    selected_ids = _selected_template_replay_artifact_ids(manifest)
+    selected_ids = _selected_replay_artifact_ids(manifest)
     if artifact_id not in selected_ids:
         raise ValueError(
             f"replay artifact {artifact_id!r} is not a selected Phase -1 control"
@@ -344,6 +402,16 @@ def _manifest_artifact_for_replay_row(
             raise ValueError("replay row artifact condition mismatch")
         return artifact
     raise ValueError(f"replay artifact {artifact_id!r} missing from Phase -1 manifest")
+
+
+def _selected_replay_artifact_ids(
+    manifest: Mapping[str, Any],
+) -> frozenset[str]:
+    selected_ids = set(_selected_template_replay_artifact_ids(manifest))
+    task_agnostic_g_artifact_id = _selected_task_agnostic_g_artifact_id(manifest)
+    if task_agnostic_g_artifact_id is not None:
+        selected_ids.add(task_agnostic_g_artifact_id)
+    return frozenset(selected_ids)
 
 
 def _selected_template_replay_artifact_ids(
@@ -367,6 +435,25 @@ def _selected_template_replay_artifact_ids(
             "selected Phase -1 replay artifact_ids must be non-empty strings"
         )
     return frozenset(artifact_ids)
+
+
+def _selected_task_agnostic_g_artifact_id(
+    manifest: Mapping[str, Any],
+) -> str | None:
+    selected = manifest.get("selected_controls", {})
+    if not isinstance(selected, Mapping):
+        raise ValueError("frozen replay manifest selected_controls must be an object")
+    status = selected.get("task_agnostic_g_status")
+    if status is None:
+        return None
+    if not isinstance(status, Mapping):
+        raise ValueError("frozen replay manifest task-agnostic G status must be an object")
+    artifact_id = status.get("available_development_artifact_id")
+    if artifact_id is None:
+        return None
+    if not isinstance(artifact_id, str) or not artifact_id:
+        raise ValueError("task-agnostic G replay artifact id must be a non-empty string")
+    return artifact_id
 
 
 def _replay_manifest_record_matches_row(

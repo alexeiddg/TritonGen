@@ -38,8 +38,24 @@ from shared.modal_harness.volumes import hf_cache_volume
 C2_GENERATION_PAYLOAD_SCHEMA_VERSION = 1
 C2_GENERATION_SURFACE = "c2_remote_generation"
 C2_GENERATION_HASH_CLASS = "c2_generation_pipeline"
-C2_G_PLUS_C_GRAMMAR_VARIANT = "template_upper_bound"
-C2_G_PLUS_C_GRAMMAR_PATH = "cluster1/grammar/triton_kernel.gbnf"
+C2_G_PLUS_C_GRAMMAR_VARIANT = "task_agnostic"
+C2_G_PLUS_C_GRAMMAR_PATH = "cluster1/grammar/triton_kernel_agnostic.gbnf"
+C2_G_PLUS_C_TEMPLATE_UPPER_BOUND_GRAMMAR_VARIANT = "template_upper_bound"
+C2_G_PLUS_C_TEMPLATE_UPPER_BOUND_GRAMMAR_PATH = "cluster1/grammar/triton_kernel.gbnf"
+C2_GRAMMAR_PATHS_BY_VARIANT = {
+    C2_G_PLUS_C_GRAMMAR_VARIANT: C2_G_PLUS_C_GRAMMAR_PATH,
+    C2_G_PLUS_C_TEMPLATE_UPPER_BOUND_GRAMMAR_VARIANT: (
+        C2_G_PLUS_C_TEMPLATE_UPPER_BOUND_GRAMMAR_PATH
+    ),
+}
+C2_GRAMMAR_CLAIM_SCOPE_BY_VARIANT = {
+    C2_G_PLUS_C_GRAMMAR_VARIANT: "primary",
+    C2_G_PLUS_C_TEMPLATE_UPPER_BOUND_GRAMMAR_VARIANT: "diagnostic_non_primary",
+}
+C2_FROZEN_G_ARTIFACT_BY_GRAMMAR_VARIANT = {
+    C2_G_PLUS_C_GRAMMAR_VARIANT: "g_task_agnostic_n5_l4_rerun",
+    C2_G_PLUS_C_TEMPLATE_UPPER_BOUND_GRAMMAR_VARIANT: "g_template_upper_bound_n20_l4",
+}
 REMOTE_C2_GENERATION_GPU = DEFAULT_C2_MODAL_GENERATION_GPU
 SUPPORTED_C2_GENERATION_GPUS = frozenset({REMOTE_C2_GENERATION_GPU})
 INFRASTRUCTURE_FAILURE_STATUS = "INFRA_FAILURE"
@@ -69,6 +85,9 @@ PHASE_MINUS1_G_GENERATION_SOURCE_HASHES: dict[str, str] = {
     "cluster1/grammar/triton_kernel.gbnf": (
         "0f875b88ea80d7bc9573793f2cfb81bd75523af5ef5c0416466bc07d3eaf9b82"
     ),
+    "cluster1/grammar/triton_kernel_agnostic.gbnf": (
+        "756f46a76e8fc6e208a263a69678873ecbbe7327d1c3c7ee9fe6a902fb96600f"
+    ),
     "cluster1/generation/grammar_loader.py": (
         "1a21c61801ae1180408c39be6116cf4fe7aec0920ed2d047ba94839cf7c010eb"
     ),
@@ -94,6 +113,7 @@ class C2GenerationRouting:
     grammar_active: bool
     grammar_variant: str | None
     grammar_path: str | None
+    grammar_claim_scope: str | None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -196,23 +216,37 @@ def validate_future_generation_condition(condition: str) -> str:
     return require_c2_generation_condition(condition)
 
 
-def generation_routing_for_condition(condition: str) -> C2GenerationRouting:
+def generation_routing_for_condition(
+    condition: str,
+    grammar_variant: str | None = None,
+) -> C2GenerationRouting:
     """Return grammar routing for one C2 generated condition."""
 
     normalized = require_c2_generation_condition(condition)
     if normalized == "C":
+        if grammar_variant is not None:
+            raise ValueError("condition 'C' must not request a grammar_variant")
         return C2GenerationRouting(
             condition=normalized,
             grammar_active=False,
             grammar_variant=None,
             grammar_path=None,
+            grammar_claim_scope=None,
         )
 
+    resolved_variant = grammar_variant or C2_G_PLUS_C_GRAMMAR_VARIANT
+    if resolved_variant not in C2_GRAMMAR_PATHS_BY_VARIANT:
+        allowed = ", ".join(sorted(C2_GRAMMAR_PATHS_BY_VARIANT))
+        raise ValueError(
+            f"unsupported G+C grammar_variant {resolved_variant!r}; "
+            f"expected one of: {allowed}"
+        )
     return C2GenerationRouting(
         condition=normalized,
         grammar_active=True,
-        grammar_variant=C2_G_PLUS_C_GRAMMAR_VARIANT,
-        grammar_path=C2_G_PLUS_C_GRAMMAR_PATH,
+        grammar_variant=resolved_variant,
+        grammar_path=C2_GRAMMAR_PATHS_BY_VARIANT[resolved_variant],
+        grammar_claim_scope=C2_GRAMMAR_CLAIM_SCOPE_BY_VARIANT[resolved_variant],
     )
 
 
@@ -247,10 +281,17 @@ def run_c2_generation_with_loaded_model(
         loaded_tokenizer_revision=loaded_tokenizer_revision,
     )
     condition = require_c2_generation_condition(request.identity.condition)
+    routing = generation_routing_for_condition(
+        condition,
+        grammar_variant=request.grammar_variant,
+    )
     if condition == "G+C":
-        verify_g_hashes = verify_g_hashes_fn or verify_phase_minus1_g_generation_hashes
-        verify_g_hashes()
-    routing = generation_routing_for_condition(condition)
+        if verify_g_hashes_fn is None:
+            verify_phase_minus1_g_generation_hashes(
+                grammar_variant=routing.grammar_variant
+            )
+        else:
+            verify_g_hashes_fn()
 
     compiled_grammar = None
     hardware_checker = None
@@ -368,6 +409,7 @@ def build_success_payload(
             "grammar_active": routing.grammar_active,
             "grammar_variant": routing.grammar_variant,
             "grammar_path": routing.grammar_path,
+            "grammar_claim_scope": routing.grammar_claim_scope,
             "generation_seed": result.generation_seed,
         },
         "model_identity": {
@@ -494,13 +536,16 @@ def verify_phase_minus1_remote_generator_hash(
     return {"RemoteGenerator.generate_one": current_hash}
 
 
-def verify_phase_minus1_g_generation_hashes() -> dict[str, str]:
+def verify_phase_minus1_g_generation_hashes(
+    *,
+    grammar_variant: str = C2_G_PLUS_C_GRAMMAR_VARIANT,
+) -> dict[str, str]:
     """Hash gate required before any ``G+C`` generation call."""
 
     hashes = verify_phase_minus1_remote_generator_hash()
     hashes.update(_verify_phase_minus1_frozen_g_source_hashes())
     hashes["frozen_cluster1_artifacts_manifest"] = (
-        _verify_phase_minus1_frozen_g_manifest()
+        _verify_phase_minus1_frozen_g_manifest(grammar_variant=grammar_variant)
     )
     return hashes
 
@@ -535,7 +580,17 @@ def _phase_minus1_manifest(
     return json.loads(Path(manifest_path).read_text(encoding="utf-8"))
 
 
-def _verify_phase_minus1_frozen_g_manifest() -> str:
+def _verify_phase_minus1_frozen_g_manifest(
+    *,
+    grammar_variant: str = C2_G_PLUS_C_GRAMMAR_VARIANT,
+) -> str:
+    if grammar_variant not in C2_FROZEN_G_ARTIFACT_BY_GRAMMAR_VARIANT:
+        allowed = ", ".join(sorted(C2_FROZEN_G_ARTIFACT_BY_GRAMMAR_VARIANT))
+        raise ValueError(
+            f"unsupported frozen G grammar_variant {grammar_variant!r}; "
+            f"expected one of: {allowed}"
+        )
+    expected_artifact_id = C2_FROZEN_G_ARTIFACT_BY_GRAMMAR_VARIANT[grammar_variant]
     phase_manifest = _phase_minus1_manifest()
     manifest_record = phase_manifest["frozen_cluster1_artifacts_manifest"]
     manifest_path = REPO_ROOT / manifest_record["path"]
@@ -549,21 +604,25 @@ def _verify_phase_minus1_frozen_g_manifest() -> str:
 
     frozen_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     for artifact in frozen_manifest.get("artifacts", []):
-        if artifact.get("artifact_id") != "g_template_upper_bound_n20_l4":
+        if artifact.get("artifact_id") != expected_artifact_id:
             continue
         if artifact.get("condition") != "G":
-            raise ValueError("frozen G template artifact must record condition 'G'")
+            raise ValueError("frozen G artifact must record condition 'G'")
         flag_check = artifact.get("condition_flag_check", {})
         if flag_check.get("passed") is not True:
-            raise ValueError("frozen G template artifact flag check did not pass")
+            raise ValueError("frozen G artifact flag check did not pass")
         if flag_check.get("expected_grammar_active") is not True:
-            raise ValueError("frozen G template artifact must be grammar-active")
-        if flag_check.get("expected_grammar_variant") != C2_G_PLUS_C_GRAMMAR_VARIANT:
+            raise ValueError("frozen G artifact must be grammar-active")
+        if flag_check.get("expected_grammar_variant") != grammar_variant:
             raise ValueError(
-                "frozen G template artifact must use template_upper_bound"
+                "frozen G artifact grammar_variant mismatch: "
+                f"expected {grammar_variant!r}"
             )
         return current_hash
-    raise ValueError("frozen G template artifact not found in Phase -1 manifest")
+    raise ValueError(
+        "frozen G artifact not found in Phase -1 manifest: "
+        f"{expected_artifact_id}"
+    )
 
 
 def _source_range_sha256(
@@ -824,13 +883,23 @@ def _validate_generation_identity(
 ) -> None:
     if not isinstance(generation_identity, dict):
         raise TypeError("generation_identity must be a dict")
-    routing = generation_routing_for_condition(identity.condition)
+    requested_variant = generation_identity.get("grammar_variant")
+    if requested_variant is not None and not isinstance(requested_variant, str):
+        raise TypeError("generation_identity grammar_variant must be a string or None")
+    routing = generation_routing_for_condition(
+        identity.condition,
+        grammar_variant=requested_variant,
+    )
     if generation_identity.get("grammar_active") is not routing.grammar_active:
         raise ValueError("generation_identity grammar_active does not match condition")
     if generation_identity.get("grammar_variant") != routing.grammar_variant:
         raise ValueError("generation_identity grammar_variant does not match condition")
     if generation_identity.get("grammar_path") != routing.grammar_path:
         raise ValueError("generation_identity grammar_path does not match condition")
+    if generation_identity.get("grammar_claim_scope") != routing.grammar_claim_scope:
+        raise ValueError(
+            "generation_identity grammar_claim_scope does not match condition"
+        )
     generation_seed = generation_identity.get("generation_seed")
     if generation_seed is not None and (
         not isinstance(generation_seed, int) or isinstance(generation_seed, bool)

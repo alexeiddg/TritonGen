@@ -62,6 +62,30 @@ def test_replay_adapter_preserves_hashes_and_attempt_indexes(tmp_path: Path) -> 
     assert first.frozen_attempt_index == 0
 
 
+def test_replay_adapter_maps_task_agnostic_g_when_requested(tmp_path: Path) -> None:
+    manifest = _write_replay_fixture(
+        tmp_path,
+        condition="G",
+        row_count=3,
+        grammar_variant="task_agnostic",
+    )
+
+    mapping = map_replay_candidates(
+        condition="G",
+        kernel_class="elementwise",
+        dtype="fp32",
+        candidate_count=2,
+        manifest_path=manifest,
+        grammar_variant="task_agnostic",
+    )
+
+    first = mapping.candidates[0]
+    assert mapping.ok
+    assert first.grammar_active is True
+    assert first.grammar_variant == "task_agnostic"
+    assert first.artifact_id == "g_task_agnostic_n5_l4_rerun"
+
+
 def test_replay_adapter_marks_missing_rows_coverage_failure(tmp_path: Path) -> None:
     manifest = _write_replay_fixture(tmp_path, condition="none", row_count=2)
 
@@ -140,11 +164,16 @@ def _write_replay_fixture(
     *,
     condition: str,
     row_count: int,
+    grammar_variant: str = "template_upper_bound",
 ) -> Path:
     tmp_path.mkdir(parents=True, exist_ok=True)
     grammar_active = condition == "G"
     artifact_id = (
-        "g_template_upper_bound_n20_l4"
+        (
+            "g_task_agnostic_n5_l4_rerun"
+            if grammar_variant == "task_agnostic"
+            else "g_template_upper_bound_n20_l4"
+        )
         if condition == "G"
         else "none_baseline_n20_l4"
     )
@@ -193,9 +222,7 @@ def _write_replay_fixture(
                 "kernel_name": "relu",
                 "dtype": "fp32",
                 "grammar_active": grammar_active,
-                "grammar_variant": (
-                    "template_upper_bound" if grammar_active else None
-                ),
+                "grammar_variant": grammar_variant if grammar_active else None,
                 "generation_seed": index,
                 "generation_index": index,
                 "attempt_index": index,
@@ -220,6 +247,9 @@ def _write_replay_fixture(
                 "row_count": row_count,
                 "condition_flag_check": {
                     "expected_grammar_active": grammar_active,
+                    "expected_grammar_variant": (
+                        grammar_variant if grammar_active else None
+                    ),
                 },
                 "rows_per_kernel_dtype_grammar_active": [
                     {
@@ -239,6 +269,12 @@ def _write_replay_fixture(
             }
         },
     }
+    if condition == "G" and grammar_variant == "task_agnostic":
+        manifest["selected_controls"]["task_agnostic_g_status"] = {
+            "available_development_artifact_id": artifact_id,
+            "development_rows_per_cell_sufficient": True,
+            "paper_rows_per_cell_sufficient": False,
+        }
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text(
         json.dumps(manifest, sort_keys=True, indent=2) + "\n",

@@ -22,6 +22,12 @@ from shared.eval.content_hashes import file_sha256
 from shared.eval.correctness_shapes import LOCKED_KERNEL_CLASSES
 
 
+REPLAY_GRAMMAR_VARIANT_TASK_AGNOSTIC = "task_agnostic"
+REPLAY_GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND = "template_upper_bound"
+_TEMPLATE_SELECTED_CONTROLS = "cluster2_v5_template_upper_bound_controls"
+_TASK_AGNOSTIC_G_STATUS = "task_agnostic_g_status"
+
+
 @dataclass(frozen=True)
 class ReplayArtifactSummary:
     artifact_id: str
@@ -80,7 +86,7 @@ def selected_template_control_artifact_ids(manifest: dict[str, Any]) -> tuple[st
     """Return the Phase -1 selected template-control artifact ids."""
 
     selected = manifest.get("selected_controls", {}).get(
-        "cluster2_v5_template_upper_bound_controls",
+        _TEMPLATE_SELECTED_CONTROLS,
         {},
     )
     artifact_ids = selected.get("artifact_ids", [])
@@ -91,11 +97,45 @@ def selected_template_control_artifact_ids(manifest: dict[str, Any]) -> tuple[st
     return tuple(artifact_ids)
 
 
+def selected_replay_control_artifact_ids(
+    manifest: dict[str, Any],
+    *,
+    grammar_variant: str = REPLAY_GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND,
+) -> tuple[str, ...]:
+    """Return selected replay artifact ids for the requested grammar route."""
+
+    return tuple(
+        artifact_id
+        for condition in REPLAY_CONTROL_CONDITIONS
+        for artifact_id in selected_replay_artifact_ids_for_condition(
+            condition,
+            manifest,
+            grammar_variant=grammar_variant,
+        )
+    )
+
+
+def selected_replay_artifact_ids_for_condition(
+    condition: str,
+    manifest: dict[str, Any],
+    *,
+    grammar_variant: str = REPLAY_GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND,
+) -> tuple[str, ...]:
+    """Return selected replay artifact ids for one replay condition."""
+
+    normalized = require_replay_control_condition(condition)
+    requested_variant = _require_replay_grammar_variant(grammar_variant)
+    if normalized == "G" and requested_variant == REPLAY_GRAMMAR_VARIANT_TASK_AGNOSTIC:
+        return (_task_agnostic_g_artifact_id(manifest),)
+    return _selected_template_artifact_ids_for_condition(normalized, manifest)
+
+
 def artifact_for_replay_condition(
     condition: str,
     manifest: dict[str, Any] | None = None,
     *,
     manifest_path: str | Path = DEFAULT_FROZEN_CLUSTER1_MANIFEST,
+    grammar_variant: str = REPLAY_GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND,
 ) -> ReplayArtifactSummary:
     """Return the selected replay artifact for ``condition``."""
 
@@ -103,7 +143,13 @@ def artifact_for_replay_condition(
     loaded_manifest = (
         load_frozen_cluster1_manifest(manifest_path) if manifest is None else manifest
     )
-    selected_ids = set(selected_template_control_artifact_ids(loaded_manifest))
+    selected_ids = set(
+        selected_replay_artifact_ids_for_condition(
+            normalized,
+            loaded_manifest,
+            grammar_variant=grammar_variant,
+        )
+    )
     for artifact in loaded_manifest.get("artifacts", []):
         if artifact.get("artifact_id") not in selected_ids:
             continue
@@ -117,12 +163,16 @@ def validate_replay_manifest_integrity(
     *,
     required_attempts: int = DEFAULT_EQUAL_ATTEMPTS_N,
     verify_artifact_hashes: bool = False,
+    grammar_variant: str = REPLAY_GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND,
 ) -> ReplayManifestIntegrity:
     """Validate selected replay-control metadata without evaluating candidates."""
 
     manifest_path = Path(path)
     manifest = load_frozen_cluster1_manifest(manifest_path)
-    selected_ids = selected_template_control_artifact_ids(manifest)
+    selected_ids = selected_replay_control_artifact_ids(
+        manifest,
+        grammar_variant=grammar_variant,
+    )
     artifacts_by_id = {
         artifact.get("artifact_id"): artifact for artifact in manifest.get("artifacts", [])
     }
@@ -159,6 +209,68 @@ def validate_replay_manifest_integrity(
         artifact_hash_mismatches=hash_mismatches,
         valid=valid,
     )
+
+
+def _require_replay_grammar_variant(grammar_variant: str) -> str:
+    if grammar_variant not in {
+        REPLAY_GRAMMAR_VARIANT_TASK_AGNOSTIC,
+        REPLAY_GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND,
+    }:
+        raise ValueError(
+            "grammar_variant must be one of: "
+            f"{REPLAY_GRAMMAR_VARIANT_TASK_AGNOSTIC}, "
+            f"{REPLAY_GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND}"
+        )
+    return grammar_variant
+
+
+def _selected_template_artifact_ids_for_condition(
+    condition: str,
+    manifest: dict[str, Any],
+) -> tuple[str, ...]:
+    artifact_conditions = _artifact_conditions_by_id(manifest)
+    selected_ids = tuple(
+        artifact_id
+        for artifact_id in selected_template_control_artifact_ids(manifest)
+        if artifact_conditions.get(artifact_id) == condition
+    )
+    if not selected_ids:
+        raise KeyError(f"no selected replay artifact for condition {condition!r}")
+    return selected_ids
+
+
+def _task_agnostic_g_artifact_id(manifest: dict[str, Any]) -> str:
+    selected_controls = manifest.get("selected_controls", {})
+    status = selected_controls.get(_TASK_AGNOSTIC_G_STATUS, {})
+    artifact_id = status.get("available_development_artifact_id")
+    if not isinstance(artifact_id, str) or not artifact_id:
+        raise ValueError("task-agnostic G replay artifact id is not recorded")
+
+    artifacts = {
+        artifact.get("artifact_id"): artifact
+        for artifact in manifest.get("artifacts", [])
+        if isinstance(artifact, dict)
+    }
+    artifact = artifacts.get(artifact_id)
+    if not isinstance(artifact, dict):
+        raise KeyError(f"task-agnostic G replay artifact {artifact_id!r} missing")
+    if artifact.get("condition") != "G":
+        raise ValueError("task-agnostic replay artifact must belong to condition 'G'")
+    condition_check = artifact.get("condition_flag_check", {})
+    expected_variant = condition_check.get("expected_grammar_variant")
+    if expected_variant != REPLAY_GRAMMAR_VARIANT_TASK_AGNOSTIC:
+        raise ValueError("task-agnostic G replay artifact is not marked task_agnostic")
+    return artifact_id
+
+
+def _artifact_conditions_by_id(manifest: dict[str, Any]) -> dict[str, str]:
+    return {
+        artifact["artifact_id"]: artifact["condition"]
+        for artifact in manifest.get("artifacts", [])
+        if isinstance(artifact, dict)
+        and isinstance(artifact.get("artifact_id"), str)
+        and isinstance(artifact.get("condition"), str)
+    }
 
 
 def _artifact_summary_from_manifest(artifact: dict[str, Any]) -> ReplayArtifactSummary:

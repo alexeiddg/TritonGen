@@ -108,10 +108,12 @@ def test_c_generation_passes_grammar_inactive() -> None:
     assert calls[0]["hardware_checker"] is None
     assert payload["generation_identity"]["grammar_active"] is False
     assert payload["generation_identity"]["grammar_variant"] is None
+    assert payload["generation_identity"]["grammar_path"] is None
+    assert payload["generation_identity"]["grammar_claim_scope"] is None
     assert payload["source"] == _relu_source()
 
 
-def test_g_plus_c_uses_template_upper_bound() -> None:
+def test_g_plus_c_defaults_to_task_agnostic_grammar() -> None:
     calls: dict[str, Any] = {}
 
     def fake_verify() -> dict[str, str]:
@@ -156,7 +158,54 @@ def test_g_plus_c_uses_template_upper_bound() -> None:
         payload["generation_identity"]["grammar_variant"]
         == C2_G_PLUS_C_GRAMMAR_VARIANT
     )
+    assert payload["generation_identity"]["grammar_variant"] == "task_agnostic"
+    assert (
+        payload["generation_identity"]["grammar_path"]
+        == "cluster1/grammar/triton_kernel_agnostic.gbnf"
+    )
+    assert payload["generation_identity"]["grammar_claim_scope"] == "primary"
+
+
+def test_g_plus_c_template_upper_bound_is_explicit_diagnostic() -> None:
+    calls: dict[str, Any] = {}
+
+    def fake_load_grammar(grammar_path: str, tokenizer_id: str) -> object:
+        calls["grammar_path"] = grammar_path
+        calls["tokenizer_id"] = tokenizer_id
+        return "compiled-template-grammar"
+
+    payload = run_c2_generation_with_loaded_model(
+        _request_payload(
+            "G+C",
+            generation_seed=17,
+            grammar_variant="template_upper_bound",
+        ),
+        model=object(),
+        tokenizer=object(),
+        tokenizer_grammar_id="snapshot://tokenizer-rev",
+        loaded_model_id="model",
+        loaded_model_revision="model-rev",
+        loaded_tokenizer_revision="tokenizer-rev",
+        generate_source_fn=lambda **kwargs: FakeDecoded(
+            source=_relu_source(),
+            generation_seed=kwargs["seed"],
+        ),
+        load_compiled_grammar_fn=fake_load_grammar,
+        hardware_checker_cls=lambda **_kwargs: object(),
+        verify_g_hashes_fn=lambda: {"RemoteGenerator.generate_one": "a" * 64},
+    )
+
+    assert calls["grammar_path"].endswith("cluster1/grammar/triton_kernel.gbnf")
+    assert calls["tokenizer_id"] == "snapshot://tokenizer-rev"
     assert payload["generation_identity"]["grammar_variant"] == "template_upper_bound"
+    assert (
+        payload["generation_identity"]["grammar_path"]
+        == "cluster1/grammar/triton_kernel.gbnf"
+    )
+    assert (
+        payload["generation_identity"]["grammar_claim_scope"]
+        == "diagnostic_non_primary"
+    )
 
 
 def test_c2_generation_passes_model_and_tokenizer_revisions() -> None:
@@ -350,9 +399,17 @@ def test_generation_payload_has_no_timing_or_token_accounting_fields() -> None:
 def test_generation_routing_rejects_replay_controls() -> None:
     assert generation_routing_for_condition("C").grammar_active is False
     assert generation_routing_for_condition("G+C").grammar_active is True
+    assert generation_routing_for_condition("G+C").grammar_variant == "task_agnostic"
     assert (
         generation_routing_for_condition("G+C").grammar_path
         == C2_G_PLUS_C_GRAMMAR_PATH
+    )
+    assert (
+        generation_routing_for_condition(
+            "G+C",
+            grammar_variant="template_upper_bound",
+        ).grammar_path
+        == "cluster1/grammar/triton_kernel.gbnf"
     )
 
     with pytest.raises(ValueError, match="must not invoke C2 generation"):
@@ -365,6 +422,7 @@ def _request_payload(
     condition: str,
     *,
     generation_seed: int | None = 11,
+    grammar_variant: str | None = None,
 ) -> dict[str, Any]:
     return {
         "identity": _identity(condition),
@@ -373,6 +431,7 @@ def _request_payload(
         "model_revision": "model-rev",
         "tokenizer_revision": "tokenizer-rev",
         "generation_seed": generation_seed,
+        "grammar_variant": grammar_variant,
     }
 
 

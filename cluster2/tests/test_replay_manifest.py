@@ -8,6 +8,7 @@ from cluster2.constants import DEFAULT_FROZEN_CLUSTER1_MANIFEST
 from cluster2.replay.manifest import (
     artifact_for_replay_condition,
     load_frozen_cluster1_manifest,
+    selected_replay_control_artifact_ids,
     selected_template_control_artifact_ids,
     validate_replay_manifest_integrity,
 )
@@ -34,6 +35,24 @@ def test_artifact_for_replay_condition_returns_frozen_paths() -> None:
     assert g.grammar_active is True
 
 
+def test_task_agnostic_replay_artifacts_use_task_agnostic_g_control() -> None:
+    manifest = load_frozen_cluster1_manifest(DEFAULT_FROZEN_CLUSTER1_MANIFEST)
+
+    selected_ids = selected_replay_control_artifact_ids(
+        manifest,
+        grammar_variant="task_agnostic",
+    )
+    g = artifact_for_replay_condition(
+        "G",
+        manifest,
+        grammar_variant="task_agnostic",
+    )
+
+    assert selected_ids == ("none_baseline_n20_l4", "g_task_agnostic_n5_l4_rerun")
+    assert g.path == "outputs/cluster1/task_agnostic_g_all_n5_l4_rerun.jsonl"
+    assert g.grammar_active is True
+
+
 def test_artifact_for_replay_condition_rejects_generated_conditions() -> None:
     manifest = load_frozen_cluster1_manifest(DEFAULT_FROZEN_CLUSTER1_MANIFEST)
 
@@ -51,3 +70,24 @@ def test_replay_manifest_integrity_covers_equal_attempt_window() -> None:
     assert all(record.observed_rows >= 6 for record in integrity.coverage)
     assert all(record.status == "ok" for record in integrity.coverage)
     assert integrity.artifact_hash_mismatches == ()
+
+
+def test_task_agnostic_replay_integrity_blocks_paper_window_until_n20() -> None:
+    development = validate_replay_manifest_integrity(
+        DEFAULT_FROZEN_CLUSTER1_MANIFEST,
+        required_attempts=5,
+        grammar_variant="task_agnostic",
+    )
+    paper = validate_replay_manifest_integrity(
+        DEFAULT_FROZEN_CLUSTER1_MANIFEST,
+        required_attempts=20,
+        grammar_variant="task_agnostic",
+    )
+
+    assert development.valid
+    assert paper.valid is False
+    assert {
+        record.artifact_id
+        for record in paper.coverage
+        if record.status == "coverage_failure_missing_frozen_control"
+    } == {"g_task_agnostic_n5_l4_rerun"}

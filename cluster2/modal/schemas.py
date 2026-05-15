@@ -166,6 +166,7 @@ class RemoteC2GenerationRequest(_StrictC2Schema):
     max_new_tokens: int = 1024
     temperature: float = 0.2
     generation_seed: int | None = None
+    grammar_variant: str | None = None
 
     @field_validator("prompt", "model_id", "model_revision", "tokenizer_revision")
     @classmethod
@@ -188,6 +189,19 @@ class RemoteC2GenerationRequest(_StrictC2Schema):
             return None
         return _require_non_negative_int(value)
 
+    @field_validator("grammar_variant")
+    @classmethod
+    def _optional_known_grammar_variant(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        allowed = {"task_agnostic", "template_upper_bound"}
+        if value not in allowed:
+            raise ValueError(
+                "grammar_variant must be one of "
+                f"{', '.join(sorted(allowed))}; got {value!r}"
+            )
+        return value
+
     @model_validator(mode="after")
     def _validate_generated_condition(self) -> "RemoteC2GenerationRequest":
         condition = require_c2_generation_condition(self.identity.condition)
@@ -202,6 +216,8 @@ class RemoteC2GenerationRequest(_StrictC2Schema):
                 f"condition {condition!r} requires generation_mode "
                 f"{expected_generation_mode!r}; got {self.identity.generation_mode!r}"
             )
+        if condition == "C" and self.grammar_variant is not None:
+            raise ValueError("condition 'C' must not request a grammar_variant")
         return self
 
 

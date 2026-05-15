@@ -22,6 +22,7 @@ from cluster2.constants import (
 from cluster2.replay.manifest import (
     artifact_for_replay_condition,
     load_frozen_cluster1_manifest,
+    selected_replay_artifact_ids_for_condition,
 )
 from shared.eval.content_hashes import (
     collect_cluster1_frozen_generation_hashes,
@@ -34,7 +35,6 @@ COVERAGE_FAILURE_MISSING_FROZEN_CONTROL = (
     "coverage_failure_missing_frozen_control"
 )
 REPLAY_MAPPING_OK = "ok"
-_TEMPLATE_SELECTED_CONTROLS = "cluster2_v5_template_upper_bound_controls"
 
 
 @dataclass(frozen=True)
@@ -129,6 +129,7 @@ def map_replay_candidates(
     candidate_count: int,
     manifest_path: str | Path = DEFAULT_FROZEN_CLUSTER1_MANIFEST,
     base_seed: int = 0,
+    grammar_variant: str = "template_upper_bound",
 ) -> ReplayCandidateMapping:
     """Map exactly ``candidate_count`` frozen sources for one replay cell.
 
@@ -146,8 +147,16 @@ def map_replay_candidates(
 
     manifest_file = Path(manifest_path)
     manifest = load_frozen_cluster1_manifest(manifest_file)
-    artifact = _selected_artifact(normalized, manifest)
-    artifact_summary = artifact_for_replay_condition(normalized, manifest)
+    artifact = _selected_artifact(
+        normalized,
+        manifest,
+        grammar_variant=grammar_variant,
+    )
+    artifact_summary = artifact_for_replay_condition(
+        normalized,
+        manifest,
+        grammar_variant=grammar_variant,
+    )
     artifact_path = _resolve_artifact_path(artifact_summary.path, manifest_file)
     _verify_artifact_sha256(
         artifact_path,
@@ -228,11 +237,18 @@ def replay_generation_hashes(
     return collect_cluster1_frozen_generation_hashes(normalized, str(manifest_path))
 
 
-def _selected_artifact(condition: str, manifest: dict[str, Any]) -> dict[str, Any]:
+def _selected_artifact(
+    condition: str,
+    manifest: dict[str, Any],
+    *,
+    grammar_variant: str,
+) -> dict[str, Any]:
     selected_ids = set(
-        manifest.get("selected_controls", {})
-        .get(_TEMPLATE_SELECTED_CONTROLS, {})
-        .get("artifact_ids", [])
+        selected_replay_artifact_ids_for_condition(
+            condition,
+            manifest,
+            grammar_variant=grammar_variant,
+        )
     )
     for artifact in manifest.get("artifacts", []):
         if artifact.get("artifact_id") in selected_ids and artifact.get("condition") == condition:

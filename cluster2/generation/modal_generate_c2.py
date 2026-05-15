@@ -27,6 +27,7 @@ def build_c2_generation_request(
     generation_seed: int | None,
     temperature: float = 0.2,
     max_new_tokens: int = 1024,
+    grammar_variant: str | None = None,
 ) -> RemoteC2GenerationRequest:
     """Build a strict C2 generation request for ``C`` or ``G+C`` only."""
 
@@ -42,6 +43,7 @@ def build_c2_generation_request(
         generation_seed=generation_seed,
         temperature=temperature,
         max_new_tokens=max_new_tokens,
+        grammar_variant=grammar_variant,
     )
 
 
@@ -55,6 +57,7 @@ def generate_source_c2_modal(
     generation_seed: int | None,
     temperature: float = 0.2,
     max_new_tokens: int = 1024,
+    grammar_variant: str | None = None,
     modal_generation_gpu: str = DEFAULT_C2_MODAL_GENERATION_GPU,
     remote_call: RemoteC2GenerationCall | None = None,
 ) -> dict[str, Any]:
@@ -73,6 +76,7 @@ def generate_source_c2_modal(
         generation_seed=generation_seed,
         temperature=temperature,
         max_new_tokens=max_new_tokens,
+        grammar_variant=grammar_variant,
     )
     if modal_generation_gpu != REMOTE_C2_GENERATION_GPU:
         raise ValueError(

@@ -60,7 +60,12 @@ from shared.eval.correctness_shapes import LOCKED_KERNEL_CLASSES, get_shape_meta
 
 
 MODEL_ID_DEFAULT = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
+GRAMMAR_VARIANT_TASK_AGNOSTIC = "task_agnostic"
 GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND = "template_upper_bound"
+GRAMMAR_VARIANT_CHOICES: tuple[str, ...] = (
+    GRAMMAR_VARIANT_TASK_AGNOSTIC,
+    GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND,
+)
 CONDITION_SELECTOR_CHOICES: tuple[str, ...] = (*CLUSTER2_CONDITIONS, "both", "all")
 KERNEL_CLASS_SELECTOR_CHOICES: tuple[str, ...] = (*LOCKED_KERNEL_CLASSES, "all")
 SCALE_TIER_CHOICES: tuple[str, ...] = ("smoke", "development", "paper")
@@ -102,8 +107,7 @@ class Cluster2RunnerConfig:
         if any(condition in NEW_GENERATION_CONDITIONS for condition in self.conditions):
             _require_non_empty_str(self.model_revision, "model_revision")
             _require_non_empty_str(self.tokenizer_revision, "tokenizer_revision")
-        if self.grammar_variant != GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND:
-            raise ValueError("grammar_variant must be template_upper_bound")
+        _require_member(self.grammar_variant, GRAMMAR_VARIANT_CHOICES, "grammar_variant")
         _require_dtypes(self.dtypes)
         _require_non_negative_float(self.temperature, "temperature")
         _require_positive_int(self.max_new_tokens, "max_new_tokens")
@@ -229,7 +233,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tokenizer-revision")
     parser.add_argument(
         "--grammar-variant",
-        default=GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND,
+        default=GRAMMAR_VARIANT_TASK_AGNOSTIC,
+        choices=GRAMMAR_VARIANT_CHOICES,
     )
     parser.add_argument("--dtypes", default=",".join(DTYPE_NAMES))
     parser.add_argument("--temperature", default=0.2, type=float)
@@ -341,7 +346,7 @@ def modal_entrypoint(
     model_id: str = MODEL_ID_DEFAULT,
     model_revision: str | None = None,
     tokenizer_revision: str | None = None,
-    grammar_variant: str = GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND,
+    grammar_variant: str = GRAMMAR_VARIANT_TASK_AGNOSTIC,
     dtypes: str = ",".join(DTYPE_NAMES),
     temperature: float = 0.2,
     max_new_tokens: int = 1024,
@@ -405,6 +410,7 @@ def run_cluster2(
     run_id = _stable_run_id(config)
     content_hash_sidecar = _build_runner_content_hash_sidecar(config)
     _preflight_resume_hashes(config, content_hash_sidecar)
+    _preflight_primary_gc_replay_alignment(config)
 
     for condition in config.conditions:
         stats = _ConditionRunStats()
@@ -507,6 +513,7 @@ def _run_replay_condition(
                 candidate_count=config.n,
                 manifest_path=config.frozen_cluster1_manifest,
                 base_seed=0,
+                grammar_variant=config.grammar_variant,
             )
             if not mapping.ok:
                 assert mapping.coverage_failure is not None
@@ -636,6 +643,9 @@ def _run_generated_cell(
             generation_seed=inputs.generation_seed,
             temperature=config.temperature,
             max_new_tokens=config.max_new_tokens,
+            grammar_variant=(
+                config.grammar_variant if condition == "G+C" else None
+            ),
             modal_generation_gpu=config.modal_generation_gpu,
         )
         stats.generation_calls += 1
@@ -687,6 +697,10 @@ def _run_generated_cell(
             record.generation_payload,
             fallback=c2_hashes,
         )
+        grammar_metadata = _generation_grammar_metadata_from_payload(
+            record.generation_payload,
+            condition=condition,
+        )
         source_hash = _source_sha256(record.source)
         rows.append(
             generated_row(
@@ -708,6 +722,9 @@ def _run_generated_cell(
                 trace_summary=trace_by_attempt[attempt_index],
                 c2_generation_hashes=generation_hashes,
                 generation_seed=record.generation_seed,
+                grammar_variant=grammar_metadata["grammar_variant"],
+                grammar_path=grammar_metadata["grammar_path"],
+                grammar_claim_scope=grammar_metadata["grammar_claim_scope"],
             )
         )
     return tuple(rows)
@@ -738,6 +755,30 @@ def _preflight_resume_hashes(
 
     existing_sidecar = load_content_hash_sidecar(sidecar_path)
     existing_sidecar.require_hash_compatible(content_hash_sidecar)
+
+
+def _preflight_primary_gc_replay_alignment(config: Cluster2RunnerConfig) -> None:
+    if "G+C" not in config.conditions:
+        return
+    if config.grammar_variant != GRAMMAR_VARIANT_TASK_AGNOSTIC:
+        return
+    if config.scale_tier != "paper":
+        return
+
+    manifest = json.loads(
+        Path(config.frozen_cluster1_manifest).read_text(encoding="utf-8")
+    )
+    selected_controls = manifest.get("selected_controls", {})
+    status = selected_controls.get("task_agnostic_g_status", {})
+    if status.get("paper_rows_per_cell_sufficient") is True:
+        return
+    artifact_id = status.get("available_development_artifact_id", "<missing>")
+    raise ValueError(
+        "paper-scale primary G+C requires a frozen task-agnostic G replay "
+        f"artifact with paper rows per cell; current artifact {artifact_id!r} "
+        "is not sufficient. Use the explicit template_upper_bound diagnostic "
+        "route only for non-primary analysis."
+    )
 
 
 def _write_rows(
@@ -835,6 +876,60 @@ def _generation_hashes_from_payload(
     ):
         raise ValueError("generation_hashes must be a string mapping")
     return dict(hashes)
+
+
+def _generation_grammar_metadata_from_payload(
+    payload: dict[str, Any],
+    *,
+    condition: str,
+) -> dict[str, str | None]:
+    generation_identity = payload.get("generation_identity")
+    if condition == "C":
+        if generation_identity is None:
+            return {
+                "grammar_variant": None,
+                "grammar_path": None,
+                "grammar_claim_scope": None,
+            }
+        if not isinstance(generation_identity, dict):
+            raise ValueError("generation_identity must be a mapping")
+        if generation_identity.get("grammar_active") is True:
+            raise ValueError("C generation payload must remain grammar-free")
+        if generation_identity.get("grammar_variant") is not None:
+            raise ValueError("C generation payload must not record grammar_variant")
+        if generation_identity.get("grammar_path") is not None:
+            raise ValueError("C generation payload must not record grammar_path")
+        if generation_identity.get("grammar_claim_scope") is not None:
+            raise ValueError("C generation payload must not record grammar_claim_scope")
+        return {
+            "grammar_variant": None,
+            "grammar_path": None,
+            "grammar_claim_scope": None,
+        }
+
+    if condition != "G+C":
+        raise ValueError(f"condition {condition!r} is not generated")
+    if not isinstance(generation_identity, dict):
+        raise ValueError("G+C generation payload must include generation_identity")
+    if generation_identity.get("grammar_active") is not True:
+        raise ValueError("G+C generation payload must record grammar_active=True")
+    grammar_variant = generation_identity.get("grammar_variant")
+    grammar_path = generation_identity.get("grammar_path")
+    grammar_claim_scope = generation_identity.get("grammar_claim_scope")
+    for field_name, value in (
+        ("grammar_variant", grammar_variant),
+        ("grammar_path", grammar_path),
+        ("grammar_claim_scope", grammar_claim_scope),
+    ):
+        if not isinstance(value, str) or not value:
+            raise ValueError(
+                f"G+C generation payload must record non-empty {field_name}"
+            )
+    return {
+        "grammar_variant": grammar_variant,
+        "grammar_path": grammar_path,
+        "grammar_claim_scope": grammar_claim_scope,
+    }
 
 
 def _stable_run_id(config: Cluster2RunnerConfig) -> str:

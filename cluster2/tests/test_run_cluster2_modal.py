@@ -45,7 +45,12 @@ def test_runner_routes_none_to_replay_adapter(tmp_path: Path) -> None:
 
 
 def test_runner_routes_g_to_replay_adapter(tmp_path: Path) -> None:
-    manifest = _write_replay_fixture(tmp_path, condition="G", row_count=2)
+    manifest = _write_replay_fixture(
+        tmp_path,
+        condition="G",
+        row_count=2,
+        grammar_variant="task_agnostic",
+    )
     generation_calls: list[dict[str, Any]] = []
 
     result = run_cluster2(
@@ -60,12 +65,24 @@ def test_runner_routes_g_to_replay_adapter(tmp_path: Path) -> None:
     assert len(result.rows) == 2
     assert {row.condition for row in result.rows} == {"G"}
     assert {row.source_class for row in result.rows} == {"replay_control_row"}
+    assert {
+        row.replay_metadata.frozen_cluster1_artifact_id
+        for row in result.rows
+        if row.replay_metadata is not None
+    } == {"g_task_agnostic_n5_l4_rerun"}
     assert result.route_audit[0].generation_allowed is False
 
 
 def test_runner_never_calls_generation_for_replay_controls(tmp_path: Path) -> None:
     for condition in ("none", "G"):
-        manifest = _write_replay_fixture(tmp_path / condition, condition=condition, row_count=1)
+        manifest = _write_replay_fixture(
+            tmp_path / condition,
+            condition=condition,
+            row_count=1,
+            grammar_variant=(
+                "task_agnostic" if condition == "G" else "template_upper_bound"
+            ),
+        )
         generation_calls: list[dict[str, Any]] = []
 
         result = run_cluster2(
@@ -116,12 +133,81 @@ def test_runner_routes_gc_to_c2_generation_with_g_adapter(tmp_path: Path) -> Non
     )
 
     assert generation_calls[0]["identity"].condition == "G+C"
+    assert generation_calls[0]["grammar_variant"] == "task_agnostic"
     assert (
         generation_calls[0]["identity"].generation_mode
         == "new_c2_generation_with_G_adapter"
     )
     assert result.rows[0].generation_mode == "new_c2_generation_with_G_adapter"
+    assert result.rows[0].generated_metadata is not None
+    assert result.rows[0].generated_metadata.grammar_variant == "task_agnostic"
+    assert (
+        result.rows[0].generated_metadata.grammar_path
+        == "cluster1/grammar/triton_kernel_agnostic.gbnf"
+    )
+    assert result.rows[0].generated_metadata.grammar_claim_scope == "primary"
     assert result.route_audit[0].route == "c2_repair_loop_with_g_adapter"
+
+
+def test_runner_template_upper_bound_requires_explicit_diagnostic_flag(
+    tmp_path: Path,
+) -> None:
+    generation_calls: list[dict[str, Any]] = []
+
+    result = run_cluster2(
+        _config(
+            tmp_path,
+            condition="G+C",
+            repair_budget=0,
+            n=1,
+            grammar_variant="template_upper_bound",
+        ),
+        dependencies=RunnerDependencies(
+            generation=_fake_generation(generation_calls),
+            correctness=_success_correctness([]),
+        ),
+    )
+
+    assert generation_calls[0]["grammar_variant"] == "template_upper_bound"
+    assert result.rows[0].generated_metadata is not None
+    assert result.rows[0].generated_metadata.grammar_variant == "template_upper_bound"
+    assert (
+        result.rows[0].generated_metadata.grammar_path
+        == "cluster1/grammar/triton_kernel.gbnf"
+    )
+    assert (
+        result.rows[0].generated_metadata.grammar_claim_scope
+        == "diagnostic_non_primary"
+    )
+
+
+def test_runner_blocks_paper_primary_gc_until_task_agnostic_g_n20_exists(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_replay_fixture(
+        tmp_path / "manifest",
+        condition="G",
+        row_count=5,
+        grammar_variant="task_agnostic",
+    )
+    generation_calls: list[dict[str, Any]] = []
+
+    with pytest.raises(ValueError, match="paper-scale primary G\\+C requires"):
+        run_cluster2(
+            _config(
+                tmp_path,
+                condition="G+C",
+                manifest=manifest,
+                scale_tier="paper",
+                n=20,
+            ),
+            dependencies=RunnerDependencies(
+                generation=_forbidden_generation(generation_calls),
+                correctness=_success_correctness([]),
+            ),
+        )
+
+    assert generation_calls == []
 
 
 def test_runner_records_generation_mode_sidecar(tmp_path: Path) -> None:
@@ -224,6 +310,58 @@ def test_replay_cli_allows_omitted_revision_flags(tmp_path: Path) -> None:
     assert config.tokenizer_revision is None
 
 
+def test_cli_defaults_gc_grammar_variant_to_task_agnostic(tmp_path: Path) -> None:
+    config = parse_args(
+        [
+            "--condition",
+            "G+C",
+            "--kernel-class",
+            "elementwise",
+            "--scale-tier",
+            "smoke",
+            "--n",
+            "1",
+            "--model-revision",
+            "model-rev",
+            "--tokenizer-revision",
+            "tok-rev",
+            "--output",
+            str(tmp_path / "out.jsonl"),
+            "--overwrite",
+        ]
+    )
+
+    assert config.grammar_variant == "task_agnostic"
+
+
+def test_cli_accepts_explicit_template_upper_bound_diagnostic(
+    tmp_path: Path,
+) -> None:
+    config = parse_args(
+        [
+            "--condition",
+            "G+C",
+            "--kernel-class",
+            "elementwise",
+            "--scale-tier",
+            "smoke",
+            "--n",
+            "1",
+            "--model-revision",
+            "model-rev",
+            "--tokenizer-revision",
+            "tok-rev",
+            "--grammar-variant",
+            "template_upper_bound",
+            "--output",
+            str(tmp_path / "out.jsonl"),
+            "--overwrite",
+        ]
+    )
+
+    assert config.grammar_variant == "template_upper_bound"
+
+
 def test_generated_cli_requires_revision_flags(tmp_path: Path) -> None:
     with pytest.raises((TypeError, ValueError), match="model_revision"):
         parse_args(
@@ -298,16 +436,18 @@ def _config(
     *,
     condition: str,
     manifest: Path | None = None,
+    scale_tier: str = "smoke",
     n: int = 1,
     repair_budget: int = 0,
     write_mode: str = "overwrite",
     modal_generation_gpu: str = "L4",
+    grammar_variant: str = "task_agnostic",
 ) -> Cluster2RunnerConfig:
     tmp_path.mkdir(parents=True, exist_ok=True)
     return Cluster2RunnerConfig(
         condition=condition,
         kernel_class="elementwise",
-        scale_tier="smoke",
+        scale_tier=scale_tier,
         n=n,
         frozen_cluster1_manifest=str(
             manifest if manifest is not None else tmp_path / "unused_manifest.json"
@@ -315,7 +455,7 @@ def _config(
         model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
         model_revision="model-rev",
         tokenizer_revision="tok-rev",
-        grammar_variant="template_upper_bound",
+        grammar_variant=grammar_variant,
         dtypes=("fp32",),
         temperature=0.2,
         max_new_tokens=64,
@@ -339,6 +479,21 @@ def _fake_generation(calls: list[dict[str, Any]]):
     def generation(**kwargs: Any) -> dict[str, Any]:
         calls.append(kwargs)
         identity = kwargs["identity"]
+        grammar_variant = kwargs.get("grammar_variant")
+        grammar_path = None
+        grammar_claim_scope = None
+        if identity.condition == "G+C":
+            grammar_variant = grammar_variant or "task_agnostic"
+            grammar_path = (
+                "cluster1/grammar/triton_kernel.gbnf"
+                if grammar_variant == "template_upper_bound"
+                else "cluster1/grammar/triton_kernel_agnostic.gbnf"
+            )
+            grammar_claim_scope = (
+                "diagnostic_non_primary"
+                if grammar_variant == "template_upper_bound"
+                else "primary"
+            )
         source = (
             "import torch\n"
             "import triton\n"
@@ -350,9 +505,9 @@ def _fake_generation(calls: list[dict[str, Any]]):
             "generation_hashes": collect_c2_generation_hashes(identity.condition),
             "generation_identity": {
                 "grammar_active": identity.condition == "G+C",
-                "grammar_variant": (
-                    "template_upper_bound" if identity.condition == "G+C" else None
-                ),
+                "grammar_variant": grammar_variant if identity.condition == "G+C" else None,
+                "grammar_path": grammar_path,
+                "grammar_claim_scope": grammar_claim_scope,
             },
         }
 

@@ -250,6 +250,9 @@ def test_replay_conditions_never_call_c2_generation(
         tmp_path / f"replay-{condition}",
         condition=condition,
         row_count=1,
+        grammar_variant=(
+            "task_agnostic" if condition == "G" else "template_upper_bound"
+        ),
     )
     generation_calls: list[dict[str, Any]] = []
     correctness_calls: list[Any] = []
@@ -304,6 +307,23 @@ def test_generated_conditions_route_to_generated_path(
     assert result.rows[0].generation_mode == expected_generation_mode
     assert result.rows[0].generated_metadata is not None
     assert result.rows[0].replay_metadata is None
+
+
+def test_g_plus_c_default_grammar_routing_stays_task_agnostic() -> None:
+    from cluster2.modal.generation import generation_routing_for_condition
+
+    primary = generation_routing_for_condition("G+C")
+    diagnostic = generation_routing_for_condition(
+        "G+C",
+        grammar_variant="template_upper_bound",
+    )
+
+    assert primary.grammar_variant == "task_agnostic"
+    assert primary.grammar_path == "cluster1/grammar/triton_kernel_agnostic.gbnf"
+    assert primary.grammar_claim_scope == "primary"
+    assert diagnostic.grammar_variant == "template_upper_bound"
+    assert diagnostic.grammar_path == "cluster1/grammar/triton_kernel.gbnf"
+    assert diagnostic.grammar_claim_scope == "diagnostic_non_primary"
 
 
 @pytest.mark.parametrize("condition", ["none", "G"])
@@ -402,7 +422,7 @@ def _runner_config(
         model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
         model_revision="model-rev",
         tokenizer_revision="tok-rev",
-        grammar_variant="template_upper_bound",
+        grammar_variant="task_agnostic",
         dtypes=("fp32",),
         temperature=0.2,
         max_new_tokens=64,
@@ -426,6 +446,21 @@ def _fake_generation(calls: list[dict[str, Any]]):
     def generation(**kwargs: Any) -> dict[str, Any]:
         calls.append(kwargs)
         identity = kwargs["identity"]
+        grammar_variant = kwargs.get("grammar_variant")
+        grammar_path = None
+        grammar_claim_scope = None
+        if identity.condition == "G+C":
+            grammar_variant = grammar_variant or "task_agnostic"
+            grammar_path = (
+                "cluster1/grammar/triton_kernel.gbnf"
+                if grammar_variant == "template_upper_bound"
+                else "cluster1/grammar/triton_kernel_agnostic.gbnf"
+            )
+            grammar_claim_scope = (
+                "diagnostic_non_primary"
+                if grammar_variant == "template_upper_bound"
+                else "primary"
+            )
         return {
             "source": (
                 "import torch\n"
@@ -433,6 +468,14 @@ def _fake_generation(calls: list[dict[str, Any]]):
                 "import triton.language as tl\n"
                 f"# generated {identity.condition} {identity.attempt_index}\n"
             ),
+            "generation_identity": {
+                "grammar_active": identity.condition == "G+C",
+                "grammar_variant": (
+                    grammar_variant if identity.condition == "G+C" else None
+                ),
+                "grammar_path": grammar_path,
+                "grammar_claim_scope": grammar_claim_scope,
+            },
         }
 
     return generation

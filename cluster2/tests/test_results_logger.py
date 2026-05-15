@@ -191,6 +191,14 @@ def test_replay_and_generated_rows_serialize_distinct_source_classes() -> None:
     assert generated_payload["source_class"] == "generated_row"
     assert generated_payload["generation_mode"] == "new_c2_generation_with_G_adapter"
     assert generated_payload["generated_metadata"] is not None
+    assert (
+        generated_payload["generated_metadata"]["grammar_variant"]
+        == "task_agnostic"
+    )
+    assert (
+        generated_payload["generated_metadata"]["grammar_path"]
+        == "cluster1/grammar/triton_kernel_agnostic.gbnf"
+    )
     assert generated_payload["replay_metadata"] is None
     assert generated_payload["trace_summary"] is not None
 
@@ -389,6 +397,13 @@ def _generated_row(
         ),
         c2_generation_hashes=_c2_hashes(condition),
         generation_seed=110 + attempt_index,
+        grammar_variant="task_agnostic" if condition == "G+C" else None,
+        grammar_path=(
+            "cluster1/grammar/triton_kernel_agnostic.gbnf"
+            if condition == "G+C"
+            else None
+        ),
+        grammar_claim_scope="primary" if condition == "G+C" else None,
     )
 
 

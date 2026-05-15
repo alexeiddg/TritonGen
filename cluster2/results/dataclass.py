@@ -215,6 +215,9 @@ class Cluster2GeneratedRowMetadata:
 
     c2_generation_hashes: dict[str, str]
     generation_seed: int | None = None
+    grammar_variant: str | None = None
+    grammar_path: str | None = None
+    grammar_claim_scope: str | None = None
 
     def __post_init__(self) -> None:
         _validate_hash_mapping(
@@ -224,6 +227,11 @@ class Cluster2GeneratedRowMetadata:
         )
         if self.generation_seed is not None:
             _require_non_negative_int(self.generation_seed, "generation_seed")
+        _validate_generated_grammar_metadata(
+            grammar_variant=self.grammar_variant,
+            grammar_path=self.grammar_path,
+            grammar_claim_scope=self.grammar_claim_scope,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -351,6 +359,18 @@ class Cluster2EvalRow:
                 raise TypeError(
                     "generated rows require Cluster2GeneratedRowMetadata"
                 )
+            if self.condition == "G+C" and (
+                self.generated_metadata.grammar_variant is None
+                or self.generated_metadata.grammar_path is None
+                or self.generated_metadata.grammar_claim_scope is None
+            ):
+                raise ValueError("G+C generated rows require grammar metadata")
+            if self.condition == "C" and (
+                self.generated_metadata.grammar_variant is not None
+                or self.generated_metadata.grammar_path is not None
+                or self.generated_metadata.grammar_claim_scope is not None
+            ):
+                raise ValueError("C generated rows must remain grammar-free")
             if self.replay_metadata is not None:
                 raise ValueError("generated rows must not carry replay_metadata")
             if not isinstance(self.trace_summary, TraceSummary):
@@ -599,6 +619,9 @@ def generated_row(
     trace_summary: TraceSummary,
     c2_generation_hashes: dict[str, str],
     generation_seed: int | None = None,
+    grammar_variant: str | None = None,
+    grammar_path: str | None = None,
+    grammar_claim_scope: str | None = None,
 ) -> Cluster2EvalRow:
     """Build a generated row with C2 generation provenance."""
 
@@ -624,6 +647,9 @@ def generated_row(
         generated_metadata=Cluster2GeneratedRowMetadata(
             c2_generation_hashes=c2_generation_hashes,
             generation_seed=generation_seed,
+            grammar_variant=grammar_variant,
+            grammar_path=grammar_path,
+            grammar_claim_scope=grammar_claim_scope,
         ),
     )
 
@@ -679,6 +705,40 @@ def _validate_hash_mapping(
         if not isinstance(key, str) or not key:
             raise ValueError(f"{field_name} keys must be non-empty strings")
         _validate_sha256(digest, f"{field_name}[{key!r}]")
+
+
+def _validate_generated_grammar_metadata(
+    *,
+    grammar_variant: str | None,
+    grammar_path: str | None,
+    grammar_claim_scope: str | None,
+) -> None:
+    if grammar_variant is None:
+        if grammar_path is not None:
+            raise ValueError("grammar_path must be None without grammar_variant")
+        if grammar_claim_scope is not None:
+            raise ValueError(
+                "grammar_claim_scope must be None without grammar_variant"
+            )
+        return
+
+    expected_paths = {
+        "task_agnostic": "cluster1/grammar/triton_kernel_agnostic.gbnf",
+        "template_upper_bound": "cluster1/grammar/triton_kernel.gbnf",
+    }
+    expected_scopes = {
+        "task_agnostic": "primary",
+        "template_upper_bound": "diagnostic_non_primary",
+    }
+    if grammar_variant not in expected_paths:
+        allowed = ", ".join(sorted(expected_paths))
+        raise ValueError(
+            f"grammar_variant must be one of: {allowed}; got {grammar_variant!r}"
+        )
+    if grammar_path != expected_paths[grammar_variant]:
+        raise ValueError("grammar_path does not match grammar_variant")
+    if grammar_claim_scope != expected_scopes[grammar_variant]:
+        raise ValueError("grammar_claim_scope does not match grammar_variant")
 
 
 def _validate_condition_hash_mapping(

@@ -358,6 +358,96 @@ def test_nonselected_replay_artifact_is_rejected(tmp_path: Path) -> None:
         validate_hash_classes([dataset], frozen_cluster1_manifest_path=manifest)
 
 
+def test_task_agnostic_g_replay_artifact_is_accepted_when_status_selects_it(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_frozen_manifest(
+        tmp_path,
+        condition="G",
+        artifact_hash="5" * 64,
+        selected_artifact_id="g_template_fixture",
+        task_agnostic_artifact_id="g_fixture",
+    )
+    replay = _replay_row(
+        condition="G",
+        frozen_hashes={"g_fixture:artifact": "5" * 64},
+    )
+    dataset = AggregationDataset(
+        rows=(replay,),
+        content_hash_sidecar=_sidecar(
+            replay_control_hashes={"G": {"g_fixture:artifact": "5" * 64}},
+        ),
+    )
+
+    validate_hash_classes([dataset], frozen_cluster1_manifest_path=manifest)
+
+
+def test_primary_task_agnostic_gc_rejects_template_g_replay_artifact(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_frozen_manifest(
+        tmp_path,
+        condition="G",
+        artifact_hash="5" * 64,
+        task_agnostic_artifact_id="g_task_agnostic_fixture",
+    )
+    generated = _generated_row(condition="G+C")
+    replay = _replay_row(
+        condition="G",
+        frozen_hashes={"g_fixture:artifact": "5" * 64},
+    )
+    datasets = (
+        AggregationDataset(
+            rows=(generated,),
+            content_hash_sidecar=_sidecar(
+                generated_condition_hashes={"G+C": _c2_hashes("G+C")},
+            ),
+        ),
+        AggregationDataset(
+            rows=(replay,),
+            content_hash_sidecar=_sidecar(
+                replay_control_hashes={"G": {"g_fixture:artifact": "5" * 64}},
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="requires task-agnostic G replay artifact"):
+        validate_hash_classes(datasets, frozen_cluster1_manifest_path=manifest)
+
+
+def test_primary_task_agnostic_gc_accepts_task_agnostic_g_replay_artifact(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_frozen_manifest(
+        tmp_path,
+        condition="G",
+        artifact_hash="5" * 64,
+        selected_artifact_id="g_template_fixture",
+        task_agnostic_artifact_id="g_fixture",
+    )
+    generated = _generated_row(condition="G+C")
+    replay = _replay_row(
+        condition="G",
+        frozen_hashes={"g_fixture:artifact": "5" * 64},
+    )
+    datasets = (
+        AggregationDataset(
+            rows=(generated,),
+            content_hash_sidecar=_sidecar(
+                generated_condition_hashes={"G+C": _c2_hashes("G+C")},
+            ),
+        ),
+        AggregationDataset(
+            rows=(replay,),
+            content_hash_sidecar=_sidecar(
+                replay_control_hashes={"G": {"g_fixture:artifact": "5" * 64}},
+            ),
+        ),
+    )
+
+    validate_hash_classes(datasets, frozen_cluster1_manifest_path=manifest)
+
+
 def test_generated_duplicate_attempt_indexes_are_rejected() -> None:
     rows = [
         _generated_row(condition="C", base_seed=0, attempt_index=0, success=False),
@@ -532,6 +622,13 @@ def _generated_row(
             else c2_generation_hashes
         ),
         generation_seed=base_seed * 100 + attempt_index,
+        grammar_variant="task_agnostic" if condition == "G+C" else None,
+        grammar_path=(
+            "cluster1/grammar/triton_kernel_agnostic.gbnf"
+            if condition == "G+C"
+            else None
+        ),
+        grammar_claim_scope="primary" if condition == "G+C" else None,
     )
 
 
@@ -600,6 +697,7 @@ def _write_frozen_manifest(
     source_hash: str | None = None,
     row_hash: str = "a" * 64,
     selected_artifact_id: str | None = None,
+    task_agnostic_artifact_id: str | None = None,
 ) -> Path:
     artifact_id = "none_fixture" if condition == "none" else "g_fixture"
     kernel_name = "relu"
@@ -643,6 +741,12 @@ def _write_frozen_manifest(
             }
         },
     }
+    if task_agnostic_artifact_id is not None:
+        manifest["selected_controls"]["task_agnostic_g_status"] = {
+            "available_development_artifact_id": task_agnostic_artifact_id,
+            "development_rows_per_cell_sufficient": True,
+            "paper_rows_per_cell_sufficient": False,
+        }
     path = tmp_path / "frozen_manifest.json"
     path.write_text(
         json.dumps(manifest, sort_keys=True, indent=2) + "\n",
