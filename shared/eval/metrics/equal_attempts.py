@@ -10,6 +10,7 @@ from typing import Any
 
 from cluster2.constants import DEFAULT_EQUAL_ATTEMPTS_N, REPLAY_CONTROL_SOURCE_CLASS
 from cluster2.results.dataclass import Cluster2EvalRow
+from shared.eval.constants import BOOTSTRAP_SAMPLES, BOOTSTRAP_SEED, CI_LEVEL
 from shared.eval.aggregation import (
     CellKey,
     MatchedCellKey,
@@ -23,8 +24,8 @@ from shared.eval.metrics.repair import (
 )
 
 
-DEFAULT_BOOTSTRAP_RESAMPLES = 10_000
-DEFAULT_BOOTSTRAP_SEED = 13013
+DEFAULT_BOOTSTRAP_RESAMPLES = BOOTSTRAP_SAMPLES
+DEFAULT_BOOTSTRAP_SEED = BOOTSTRAP_SEED
 
 
 @dataclass(frozen=True)
@@ -228,8 +229,8 @@ def compute_lift_with_bootstrap_ci(
         treatment_rate=treatment_rate,
         control_rate=control_rate,
         lift=lift,
-        ci_lower=_percentile(bootstrap_values, 0.025),
-        ci_upper=_percentile(bootstrap_values, 0.975),
+        ci_lower=_percentile(bootstrap_values, (1.0 - CI_LEVEL) / 2.0),
+        ci_upper=_percentile(bootstrap_values, 1.0 - (1.0 - CI_LEVEL) / 2.0),
         discordant_treatment_only=discordant_treatment_only,
         discordant_control_only=discordant_control_only,
         mcnemar_p_value=_mcnemar_exact_p_value(

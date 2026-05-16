@@ -13,6 +13,11 @@ from shared.eval.metrics.repair import RateResult
 
 PRIMARY_COMPARISON_LABEL = "primary comparison: C vs frozen none replay control"
 SECONDARY_COMPARISON_LABEL = "secondary comparison: G+C vs frozen G replay control"
+FACTORIAL_TABLE_SECTION_KEYS = (
+    "table_1_cell_summaries",
+    "table_2_paired_comparisons",
+    "table_3_factorial_terms",
+)
 
 
 def comparison_label(treatment_condition: str, control_condition: str) -> str:
@@ -93,6 +98,102 @@ def build_convergence_table(
     return rows
 
 
+def build_factorial_paper_tables(
+    analysis: Mapping[str, Any],
+) -> dict[str, tuple[dict[str, Any], ...]]:
+    """Return table rows from structured factorial analyzer output.
+
+    This function intentionally does not recompute statistics. It only selects
+    deterministic rows produced by ``shared.analysis.factorial``.
+    """
+
+    if "paper_tables" not in analysis:
+        raise ValueError("factorial analysis output must contain paper_tables")
+    tables = analysis["paper_tables"]
+    if not isinstance(tables, Mapping):
+        raise ValueError("factorial analysis output must contain paper_tables")
+    missing_tables = [
+        table_key
+        for table_key in FACTORIAL_TABLE_SECTION_KEYS
+        if table_key not in tables
+    ]
+    if missing_tables:
+        raise ValueError(
+            "factorial paper_tables missing required sections: "
+            + ", ".join(missing_tables)
+        )
+    return {
+        "table_1_cell_summaries": tuple(
+            _mapping_rows(tables.get("table_1_cell_summaries", ()))
+        ),
+        "table_2_paired_comparisons": tuple(
+            _mapping_rows(tables.get("table_2_paired_comparisons", ()))
+        ),
+        "table_3_factorial_terms": tuple(
+            _mapping_rows(tables.get("table_3_factorial_terms", ()))
+        ),
+    }
+
+
+def render_factorial_markdown_report(analysis: Mapping[str, Any]) -> str:
+    """Render the analyzer's Table 1-3 rows as markdown."""
+
+    tables = build_factorial_paper_tables(analysis)
+    parts = ["# Factorial Analysis"]
+    table_columns = {
+        "table_1_cell_summaries": (
+            "metric_name",
+            "response_variable",
+            "analysis_role",
+            "summary_level",
+            "scale_tier",
+            "cell_status",
+            "condition",
+            "kernel_class",
+            "dtype",
+            "n_cells",
+            "successes",
+            "success_rate",
+            "interpretation_flags",
+        ),
+        "table_2_paired_comparisons": (
+            "metric_name",
+            "response_variable",
+            "comparison",
+            "n_pairs",
+            "success_rate_a",
+            "success_rate_b",
+            "absolute_lift",
+            "ci_low",
+            "ci_high",
+            "p_value",
+            "p_value_holm",
+            "paired_analysis",
+            "interpretation_flags",
+        ),
+        "table_3_factorial_terms": (
+            "response_variable",
+            "model_type",
+            "model_family",
+            "model_fit_status",
+            "term",
+            "coefficient",
+            "direction",
+            "model_warnings",
+        ),
+    }
+    titles = {
+        "table_1_cell_summaries": "Table 1 Cell Summaries",
+        "table_2_paired_comparisons": "Table 2 Paired Comparisons",
+        "table_3_factorial_terms": "Table 3 Factorial Terms",
+    }
+    for key, rows in tables.items():
+        parts.append(f"\n## {titles[key]}")
+        rendered = render_markdown_table(rows, columns=table_columns[key])
+        parts.append(rendered if rendered else "_No rows emitted._")
+    return "\n".join(parts)
+
+
 def render_markdown_table(
     rows: Sequence[Mapping[str, Any]],
     *,
@@ -119,7 +220,13 @@ def _format_value(value: Any) -> str:
         return f"{value:.6g}"
     if value is None:
         return ""
+    if isinstance(value, (list, tuple)):
+        return ", ".join(str(item) for item in value)
     return str(value)
+
+
+def _mapping_rows(rows: Any) -> tuple[dict[str, Any], ...]:
+    return tuple(dict(row) for row in rows)
 
 
 def _tupleify(value: Any) -> tuple[Any, ...]:

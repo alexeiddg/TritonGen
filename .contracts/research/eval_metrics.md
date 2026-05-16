@@ -1003,6 +1003,24 @@ def compute_speedup_significance(
 
 The central thesis question is answered by fitting factorial models over the eight canonical cells: `none`, `G`, `C`, `P`, `G+C`, `G+P`, `C+P`, and `G+C+P`. Main effects alone answer whether each mechanism helps in isolation; interaction terms answer whether mechanisms compose additively or interfere.
 
+For current Cluster 2 paper claims, the canonical analyzer is
+`shared/analysis/factorial.py`. Its default primary response is Level 2
+`functional_success`, not `compile_success`. The primary Cluster 2 comparisons
+are paired by replay-control seed identity: `C` versus frozen `none`, and
+`G+C` versus frozen `G`. These paired comparisons must use matched-cell
+statistics, paired bootstrap confidence intervals, McNemar-style binary
+discordance p-values, and Holm correction for the planned paired tests.
+
+`compile_success` factorial output is secondary structural-validity diagnostic
+output only. It may be emitted by the same analyzer when explicitly requested,
+but it must not be used as the headline Cluster 2 result.
+
+Until Cluster 3 / factor `P` data exists, the valid current design is the
+four-cell subset `none`, `G`, `C`, and `G+C`. The analyzer must mark `P`,
+`G+P`, `C+P`, and `G+C+P` as `not_populated` rather than treating them as
+failures or blocking current Cluster 2 tables. Absence of P cells prevents
+full three-factor claims.
+
 For binary outcomes (`compile_success`, `functional_success`, `fast_tc@1.0`), use a logistic model:
 
 ```
