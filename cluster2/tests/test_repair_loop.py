@@ -101,6 +101,71 @@ def test_iteration_zero_success_generates_exactly_one_attempt() -> None:
     assert [call.attempt_index for call in evaluation_calls] == [0]
 
 
+def test_seed_candidate_bypasses_only_initial_generation() -> None:
+    generation_calls: list[RepairGenerationInput] = []
+    evaluation_calls: list[RepairEvaluationInput] = []
+    seed_source = "seed_candidate_source"
+
+    def generation(request: RepairGenerationInput) -> str:
+        generation_calls.append(request)
+        return _source(request.attempt_index)
+
+    def evaluation(request: RepairEvaluationInput) -> object:
+        evaluation_calls.append(request)
+        if request.attempt_index == 0:
+            assert request.source == seed_source
+            return _failure(request.attempt_index)
+        assert request.source == _source(request.attempt_index)
+        return _success()
+
+    result = run_repair_loop(
+        condition="C",
+        base_prompt=BASE_PROMPT,
+        base_seed=5,
+        generation=generation,
+        evaluation=evaluation,
+        repair_budget=2,
+        seed_candidate_source=seed_source,
+    )
+
+    assert result.status == REPAIR_LOOP_SUCCESS_STATUS
+    assert result.successful_attempt_index == 1
+    assert [call.attempt_index for call in generation_calls] == [1]
+    assert generation_calls[0].previous_feedback is not None
+    assert [call.attempt_index for call in evaluation_calls] == [0, 1]
+    assert [attempt.attempt_index for attempt in result.attempts] == [0, 1]
+
+
+def test_seed_candidate_f0_f1_failure_still_terminates_without_feedback() -> None:
+    generation_calls: list[RepairGenerationInput] = []
+    feedback_calls: list[RepairFeedbackInput] = []
+
+    result = run_repair_loop(
+        condition="C",
+        base_prompt=BASE_PROMPT,
+        base_seed=5,
+        generation=lambda request: generation_calls.append(request) or _source(
+            request.attempt_index
+        ),
+        evaluation=lambda request: _failure(
+            request.attempt_index,
+            failure_code="F1_COMPILE",
+            summary="compile failed publicly",
+            level_reached=1,
+        ),
+        feedback_builder=lambda inputs: feedback_calls.append(inputs)
+        or _custom_feedback_prompt(inputs, "should-not-be-built"),
+        repair_budget=2,
+        seed_candidate_source="seed_candidate_source",
+    )
+
+    assert result.status == REPAIR_LOOP_TERMINATED_STATUS
+    assert result.attempts_executed == 1
+    assert result.final_failure_code == "F1_COMPILE"
+    assert generation_calls == []
+    assert feedback_calls == []
+
+
 def test_stops_immediately_after_success() -> None:
     generation_calls: list[RepairGenerationInput] = []
 

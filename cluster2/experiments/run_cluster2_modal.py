@@ -76,6 +76,7 @@ CONDITION_SELECTOR_CHOICES: tuple[str, ...] = (*CLUSTER2_CONDITIONS, "both", "al
 KERNEL_CLASS_SELECTOR_CHOICES: tuple[str, ...] = (*LOCKED_KERNEL_CLASSES, "all")
 SCALE_TIER_CHOICES: tuple[str, ...] = ("smoke", "development", "paper")
 MAX_CLI_N = 20
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 GenerationAdapter = Callable[..., dict[str, Any]]
 CorrectnessAdapter = Callable[[RemoteCorrectnessRequest], dict[str, Any]]
@@ -417,6 +418,7 @@ def run_cluster2(
     content_hash_sidecar = _build_runner_content_hash_sidecar(config)
     _preflight_resume_hashes(config, content_hash_sidecar)
     _preflight_primary_gc_replay_alignment(config)
+    _preflight_f2_repair_smoke_artifacts(config)
     paired_generation_schedules = _preflight_all_paired_generation_schedules(config)
 
     for condition in config.conditions:
@@ -826,6 +828,19 @@ def _preflight_primary_gc_replay_alignment(config: Cluster2RunnerConfig) -> None
         "is not sufficient. Use the explicit template_upper_bound diagnostic "
         "route only for non-primary analysis."
     )
+
+
+def _preflight_f2_repair_smoke_artifacts(config: Cluster2RunnerConfig) -> None:
+    if config.scale_tier != "paper":
+        return
+    if not any(condition in NEW_GENERATION_CONDITIONS for condition in config.conditions):
+        return
+
+    from cluster2.experiments.run_f2_repair_smoke import (
+        validate_canonical_f2_smoke_artifacts,
+    )
+
+    validate_canonical_f2_smoke_artifacts(repo_root=REPO_ROOT)
 
 
 def _preflight_paired_generation_schedules(

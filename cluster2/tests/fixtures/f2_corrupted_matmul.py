@@ -1,0 +1,40 @@
+import torch
+import triton
+import triton.language as tl
+
+# Synthetic F2 smoke fixture.
+# Archetype: matmul/GEMM.
+# Corruption: adds 1.0 to every accumulated output tile before storing.
+# Expected failure: F2_NUMERIC_LARGE against torch.matmul(a, b).
+# Level 0/1 rationale: the launcher signature, @triton.jit surface, tiling,
+# masks, launch grid, and output shape match the known-good matmul fixture;
+# only the final numerical value stored to c is corrupted.
+
+
+@triton.jit
+def _matmul_kernel(a_ptr, b_ptr, c_ptr, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr):
+    pid_m = tl.program_id(axis=0)
+    pid_n = tl.program_id(axis=1)
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_k = tl.arange(0, BLOCK_K)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k in range(0, K, BLOCK_K):
+        a = tl.load(a_ptr + offs_m[:, None] * K + (k + offs_k)[None, :], mask=(offs_m[:, None] < M) & ((k + offs_k)[None, :] < K), other=0.0)
+        b = tl.load(b_ptr + (k + offs_k)[:, None] * N + offs_n[None, :], mask=((k + offs_k)[:, None] < K) & (offs_n[None, :] < N), other=0.0)
+        acc += tl.dot(a, b, allow_tf32=True)
+    mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
+    tl.store(c_ptr + offs_m[:, None] * N + offs_n[None, :], acc + 1.0, mask=mask)
+
+
+def matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    M = a.shape[0]
+    K = a.shape[1]
+    N = b.shape[1]
+    c = torch.empty((M, N), device=a.device, dtype=a.dtype)
+    BLOCK_M = 32
+    BLOCK_N = 32
+    BLOCK_K = 32
+    grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
+    _matmul_kernel[grid](a, b, c, M, N, K, BLOCK_M, BLOCK_N, BLOCK_K)
+    return c

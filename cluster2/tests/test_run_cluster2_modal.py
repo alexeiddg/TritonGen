@@ -10,16 +10,23 @@ from typing import Any
 
 import pytest
 
+import cluster2.experiments.run_cluster2_modal as runner_mod
 from cluster2.constants import DEFAULT_FROZEN_CLUSTER1_MANIFEST
+from cluster2.experiments.run_f2_repair_smoke import _corrected_source, run_f2_repair_smoke
 from cluster2.experiments.run_cluster2_modal import (
     Cluster2RunnerConfig,
     RunnerDependencies,
     parse_args,
     run_cluster2,
 )
+from cluster2.modal.correctness_runner import build_success_payload
+from cluster2.modal.schemas import RemoteCorrectnessRequest, RemoteCorrectnessResult
 from cluster2.results.logger import default_content_hash_sidecar_path
 from cluster2.tests.test_replay_controls import _write_replay_fixture
 from shared.eval.content_hashes import collect_c2_generation_hashes
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_runner_routes_none_to_replay_adapter(tmp_path: Path) -> None:
@@ -421,6 +428,83 @@ def test_runner_blocks_paper_primary_gc_until_task_agnostic_g_n20_exists(
     assert generation_calls == []
 
 
+def test_runner_blocks_paper_generated_run_without_f2_smoke_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generation_calls: list[dict[str, Any]] = []
+    monkeypatch.setattr(runner_mod, "REPO_ROOT", tmp_path / "repo_without_smoke")
+
+    with pytest.raises(FileNotFoundError, match="missing F2 smoke trace artifact"):
+        run_cluster2(
+            _config(
+                tmp_path,
+                condition="C",
+                scale_tier="paper",
+                repair_budget=0,
+                n=1,
+            ),
+            dependencies=RunnerDependencies(
+                generation=_forbidden_generation(generation_calls),
+                correctness=_success_correctness([]),
+            ),
+        )
+
+    assert generation_calls == []
+
+
+def test_runner_allows_paper_generated_run_with_valid_f2_smoke_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generation_calls: list[dict[str, Any]] = []
+    _copy_f2_smoke_artifacts(tmp_path / "repo_with_smoke")
+    monkeypatch.setattr(runner_mod, "REPO_ROOT", tmp_path / "repo_with_smoke")
+
+    result = run_cluster2(
+        _config(
+            tmp_path,
+            condition="C",
+            scale_tier="paper",
+            repair_budget=0,
+            n=1,
+        ),
+        dependencies=RunnerDependencies(
+            generation=_fake_generation(generation_calls),
+            correctness=_success_correctness([]),
+        ),
+    )
+
+    assert len(generation_calls) == 1
+    assert len(result.rows) == 1
+
+
+def test_runner_blocks_paper_generated_run_with_mock_f2_smoke_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generation_calls: list[dict[str, Any]] = []
+    _copy_f2_smoke_artifacts(tmp_path / "repo_with_mock_smoke", modalized=False)
+    monkeypatch.setattr(runner_mod, "REPO_ROOT", tmp_path / "repo_with_mock_smoke")
+
+    with pytest.raises(ValueError, match="expected evaluation_mode"):
+        run_cluster2(
+            _config(
+                tmp_path,
+                condition="C",
+                scale_tier="paper",
+                repair_budget=0,
+                n=1,
+            ),
+            dependencies=RunnerDependencies(
+                generation=_forbidden_generation(generation_calls),
+                correctness=_success_correctness([]),
+            ),
+        )
+
+    assert generation_calls == []
+
+
 def test_runner_records_generation_mode_sidecar(tmp_path: Path) -> None:
     manifest = _write_replay_fixture(tmp_path, condition="none", row_count=1)
 
@@ -733,6 +817,99 @@ def _fake_generation(calls: list[dict[str, Any]]):
         }
 
     return generation
+
+
+def _copy_f2_smoke_artifacts(repo_root: Path, *, modalized: bool = True) -> None:
+    fixture_source_dir = REPO_ROOT / "cluster2" / "tests" / "fixtures"
+    fixture_target_dir = repo_root / "cluster2" / "tests" / "fixtures"
+    trace_target_dir = repo_root / "outputs" / "cluster2"
+    fixture_target_dir.mkdir(parents=True, exist_ok=True)
+    trace_target_dir.mkdir(parents=True, exist_ok=True)
+    for name in (
+        "f2_corrupted_relu.py",
+        "f2_corrupted_softmax.py",
+        "f2_corrupted_matmul.py",
+    ):
+        (fixture_target_dir / name).write_text(
+            (fixture_source_dir / name).read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+    for archetype in ("relu", "softmax", "matmul"):
+        if modalized:
+            fixture_path = fixture_target_dir / f"f2_corrupted_{archetype}.py"
+            corrected_source = _corrected_source(
+                fixture_path.read_text(encoding="utf-8"),
+                archetype,
+            )
+
+            def generation_adapter(**kwargs: Any) -> dict[str, Any]:
+                del kwargs
+                return {"source": corrected_source}
+
+            def correctness_adapter(request: RemoteCorrectnessRequest) -> dict[str, Any]:
+                return _remote_smoke_correctness_payload(
+                    request,
+                    functional_success=request.identity.attempt_index > 0,
+                )
+
+            run_f2_repair_smoke(
+                fixture_path=fixture_path,
+                archetype=archetype,
+                output_path=trace_target_dir / f"smoke_f2_repair_{archetype}.jsonl",
+                repair_budget=1,
+                mock_repair=False,
+                model_revision="test-model-revision",
+                tokenizer_revision="test-tokenizer-revision",
+                generation_adapter=generation_adapter,
+                correctness_adapter=correctness_adapter,
+            )
+        else:
+            rows = [
+                json.loads(line)
+                for line in (
+                    fixture_source_dir
+                    / "expected_smoke_traces"
+                    / f"{archetype}.jsonl"
+                ).read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            (trace_target_dir / f"smoke_f2_repair_{archetype}.jsonl").write_text(
+                "\n".join(
+                    json.dumps(row, sort_keys=True, separators=(",", ":"))
+                    for row in rows
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+
+def _remote_smoke_correctness_payload(
+    request: RemoteCorrectnessRequest,
+    *,
+    functional_success: bool,
+) -> dict[str, Any]:
+    result = RemoteCorrectnessResult(
+        identity=request.identity,
+        functional_success=functional_success,
+        repair_set_success=functional_success,
+        eval_set_success=functional_success,
+        failure_code=None if functional_success else "F2_NUMERIC_LARGE",
+        correctness_error=(
+            None
+            if functional_success
+            else "F2_NUMERIC_LARGE max_abs_diff=1.0 max_rel_diff=1.0"
+        ),
+        feedback=None if functional_success else "max_abs_diff=1.0 max_rel_diff=1.0",
+        num_repair_shapes=1,
+        num_eval_shapes=1,
+        num_test_shapes=2,
+        shapes_passed=2 if functional_success else 0,
+        repair_shapes_passed=1 if functional_success else 0,
+        eval_shapes_passed=1 if functional_success else 0,
+        max_abs_diff=0.0 if functional_success else 1.0,
+        max_rel_diff=0.0 if functional_success else 1.0,
+    )
+    return build_success_payload(request, result)
 
 
 def _success_correctness(calls: list[Any]):

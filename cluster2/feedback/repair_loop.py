@@ -131,6 +131,7 @@ def run_repair_loop(
     evaluation: EvaluationCallable,
     feedback_builder: FeedbackCallable | None = None,
     repair_budget: int = DEFAULT_REPAIR_BUDGET,
+    seed_candidate_source: str | None = None,
 ) -> RepairLoopResult:
     """Run a deterministic sequential repair loop for ``C`` or ``G+C`` only."""
 
@@ -142,6 +143,9 @@ def run_repair_loop(
         raise ValueError(f"repair_budget must be <= {DEFAULT_REPAIR_BUDGET}")
     _require_callable(generation, "generation")
     _require_callable(evaluation, "evaluation")
+    resolved_seed_candidate_source = _coerce_optional_seed_candidate_source(
+        seed_candidate_source
+    )
     resolved_feedback_builder = feedback_builder or build_default_feedback_prompt
     _require_callable(resolved_feedback_builder, "feedback_builder")
 
@@ -154,15 +158,18 @@ def run_repair_loop(
 
     for attempt_index in range(repair_budget + 1):
         generation_seed = seed_for_attempt(base_seed, attempt_index)
-        generation_input = RepairGenerationInput(
-            condition=normalized_condition,
-            attempt_index=attempt_index,
-            base_seed=base_seed,
-            generation_seed=generation_seed,
-            prompt=next_prompt,
-            previous_feedback=previous_feedback,
-        )
-        source = _coerce_generated_source(generation(generation_input))
+        if attempt_index == 0 and resolved_seed_candidate_source is not None:
+            source = resolved_seed_candidate_source
+        else:
+            generation_input = RepairGenerationInput(
+                condition=normalized_condition,
+                attempt_index=attempt_index,
+                base_seed=base_seed,
+                generation_seed=generation_seed,
+                prompt=next_prompt,
+                previous_feedback=previous_feedback,
+            )
+            source = _coerce_generated_source(generation(generation_input))
         evaluation_result = evaluation(
             RepairEvaluationInput(
                 condition=normalized_condition,
@@ -394,6 +401,14 @@ def _coerce_generated_source(result: object) -> str:
     if not isinstance(source, str) or not source.strip():
         raise ValueError("generation must return a non-empty source string")
     return source
+
+
+def _coerce_optional_seed_candidate_source(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("seed_candidate_source must be a non-empty string")
+    return value
 
 
 def _normalize_failure_code(value: object) -> str | None:
