@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +29,8 @@ from shared.eval.content_hashes import collect_c2_generation_hashes
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+TEST_MODEL_REVISION = "a" * 40
+TEST_TOKENIZER_REVISION = "b" * 40
 
 
 def test_runner_routes_none_to_replay_adapter(tmp_path: Path) -> None:
@@ -505,6 +509,107 @@ def test_runner_blocks_paper_generated_run_with_mock_f2_smoke_artifacts(
     assert generation_calls == []
 
 
+def test_runner_blocks_paper_generated_run_with_mismatched_f2_smoke_revision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generation_calls: list[dict[str, Any]] = []
+    repo_root = tmp_path / "repo_with_mismatched_smoke_revision"
+    _copy_f2_smoke_artifacts(repo_root)
+    trace_path = repo_root / "outputs" / "cluster2" / "smoke_f2_repair_relu.jsonl"
+    rows = [
+        json.loads(line)
+        for line in trace_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    rows[0]["model_revision"] = "c" * 40
+    trace_path.write_text(
+        "\n".join(json.dumps(row, sort_keys=True, separators=(",", ":")) for row in rows)
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runner_mod, "REPO_ROOT", repo_root)
+
+    with pytest.raises(ValueError, match="model_revision"):
+        run_cluster2(
+            _config(
+                tmp_path,
+                condition="C",
+                scale_tier="paper",
+                repair_budget=0,
+                n=1,
+            ),
+            dependencies=RunnerDependencies(
+                generation=_forbidden_generation(generation_calls),
+                correctness=_success_correctness([]),
+            ),
+        )
+
+    assert generation_calls == []
+
+
+def test_runner_blocks_paper_generated_run_with_old_f2_smoke_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generation_calls: list[dict[str, Any]] = []
+    repo_root = tmp_path / "repo_with_old_smoke"
+    _copy_f2_smoke_artifacts(repo_root)
+    trace_path = repo_root / "outputs" / "cluster2" / "smoke_f2_repair_relu.jsonl"
+    old_mtime = time.time() - runner_mod.F2_SMOKE_MAX_AGE_SECONDS - 10
+    os.utime(trace_path, (old_mtime, old_mtime))
+    monkeypatch.setattr(runner_mod, "REPO_ROOT", repo_root)
+
+    with pytest.raises(ValueError, match="dated within the last 30 days"):
+        run_cluster2(
+            _config(
+                tmp_path,
+                condition="C",
+                scale_tier="paper",
+                repair_budget=0,
+                n=1,
+            ),
+            dependencies=RunnerDependencies(
+                generation=_forbidden_generation(generation_calls),
+                correctness=_success_correctness([]),
+            ),
+        )
+
+    assert generation_calls == []
+
+
+def test_runner_blocks_paper_generated_run_with_fixture_newer_than_f2_smoke(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generation_calls: list[dict[str, Any]] = []
+    repo_root = tmp_path / "repo_with_fixture_newer_than_smoke"
+    _copy_f2_smoke_artifacts(repo_root)
+    fixture_path = repo_root / "cluster2" / "tests" / "fixtures" / "f2_corrupted_relu.py"
+    trace_path = repo_root / "outputs" / "cluster2" / "smoke_f2_repair_relu.jsonl"
+    fixture_mtime = time.time()
+    os.utime(fixture_path, (fixture_mtime, fixture_mtime))
+    os.utime(trace_path, (fixture_mtime - 10, fixture_mtime - 10))
+    monkeypatch.setattr(runner_mod, "REPO_ROOT", repo_root)
+
+    with pytest.raises(ValueError, match="newer than their fixtures"):
+        run_cluster2(
+            _config(
+                tmp_path,
+                condition="C",
+                scale_tier="paper",
+                repair_budget=0,
+                n=1,
+            ),
+            dependencies=RunnerDependencies(
+                generation=_forbidden_generation(generation_calls),
+                correctness=_success_correctness([]),
+            ),
+        )
+
+    assert generation_calls == []
+
+
 def test_runner_records_generation_mode_sidecar(tmp_path: Path) -> None:
     manifest = _write_replay_fixture(tmp_path, condition="none", row_count=1)
 
@@ -758,8 +863,8 @@ def _config(
             manifest if manifest is not None else tmp_path / "unused_manifest.json"
         ),
         model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
-        model_revision="model-rev",
-        tokenizer_revision="tok-rev",
+        model_revision=TEST_MODEL_REVISION,
+        tokenizer_revision=TEST_TOKENIZER_REVISION,
         grammar_variant=grammar_variant,
         dtypes=dtypes,
         temperature=0.2,
@@ -843,8 +948,11 @@ def _copy_f2_smoke_artifacts(repo_root: Path, *, modalized: bool = True) -> None
             )
 
             def generation_adapter(**kwargs: Any) -> dict[str, Any]:
-                del kwargs
-                return {"source": corrected_source}
+                identity = kwargs["identity"]
+                return {
+                    "source": corrected_source,
+                    "modal_context": _generation_modal_context(identity.attempt_index),
+                }
 
             def correctness_adapter(request: RemoteCorrectnessRequest) -> dict[str, Any]:
                 return _remote_smoke_correctness_payload(
@@ -858,8 +966,8 @@ def _copy_f2_smoke_artifacts(repo_root: Path, *, modalized: bool = True) -> None
                 output_path=trace_target_dir / f"smoke_f2_repair_{archetype}.jsonl",
                 repair_budget=1,
                 mock_repair=False,
-                model_revision="test-model-revision",
-                tokenizer_revision="test-tokenizer-revision",
+                model_revision=TEST_MODEL_REVISION,
+                tokenizer_revision=TEST_TOKENIZER_REVISION,
                 generation_adapter=generation_adapter,
                 correctness_adapter=correctness_adapter,
             )
@@ -909,7 +1017,27 @@ def _remote_smoke_correctness_payload(
         max_abs_diff=0.0 if functional_success else 1.0,
         max_rel_diff=0.0 if functional_success else 1.0,
     )
-    return build_success_payload(request, result)
+    payload = build_success_payload(request, result)
+    payload["modal_context"] = _correctness_modal_context(
+        request.identity.attempt_index
+    )
+    return payload
+
+
+def _generation_modal_context(attempt_index: int) -> dict[str, str]:
+    return {
+        "function_call_id": f"generation-call-{attempt_index}",
+        "input_id": f"generation-input-{attempt_index}",
+        "modal_generation_gpu": "L4",
+    }
+
+
+def _correctness_modal_context(attempt_index: int) -> dict[str, str]:
+    return {
+        "function_call_id": f"correctness-call-{attempt_index}",
+        "input_id": f"correctness-input-{attempt_index}",
+        "modal_eval_gpu": "L4",
+    }
 
 
 def _success_correctness(calls: list[Any]):

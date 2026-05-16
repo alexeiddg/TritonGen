@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import sys
+import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -76,6 +77,7 @@ CONDITION_SELECTOR_CHOICES: tuple[str, ...] = (*CLUSTER2_CONDITIONS, "both", "al
 KERNEL_CLASS_SELECTOR_CHOICES: tuple[str, ...] = (*LOCKED_KERNEL_CLASSES, "all")
 SCALE_TIER_CHOICES: tuple[str, ...] = ("smoke", "development", "paper")
 MAX_CLI_N = 20
+F2_SMOKE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 GenerationAdapter = Callable[..., dict[str, Any]]
@@ -837,10 +839,47 @@ def _preflight_f2_repair_smoke_artifacts(config: Cluster2RunnerConfig) -> None:
         return
 
     from cluster2.experiments.run_f2_repair_smoke import (
+        ARCHETYPES,
+        load_f2_smoke_trace,
         validate_canonical_f2_smoke_artifacts,
     )
 
     validate_canonical_f2_smoke_artifacts(repo_root=REPO_ROOT)
+    now = time.time()
+    for spec in ARCHETYPES.values():
+        fixture_path = (
+            REPO_ROOT / "cluster2" / "tests" / "fixtures" / spec.fixture_filename
+        )
+        trace_path = (
+            REPO_ROOT
+            / "outputs"
+            / "cluster2"
+            / f"smoke_f2_repair_{spec.name}.jsonl"
+        )
+        rows = load_f2_smoke_trace(trace_path)
+        for row in rows:
+            if row.get("model_id") != config.model_id:
+                raise ValueError("canonical F2 smoke model_id does not match paper run")
+            if row.get("model_revision") != config.model_revision:
+                raise ValueError(
+                    "canonical F2 smoke model_revision does not match paper run"
+                )
+            if row.get("tokenizer_revision") != config.tokenizer_revision:
+                raise ValueError(
+                    "canonical F2 smoke tokenizer_revision does not match paper run"
+                )
+        trace_mtime = trace_path.stat().st_mtime
+        if now - trace_mtime > F2_SMOKE_MAX_AGE_SECONDS:
+            raise ValueError(
+                "paper-scale Cluster 2 requires canonical F2 smoke artifacts "
+                f"dated within the last 30 days; {trace_path} is stale"
+            )
+        if trace_mtime < fixture_path.stat().st_mtime:
+            raise ValueError(
+                "paper-scale Cluster 2 requires canonical F2 smoke artifacts "
+                f"newer than their fixtures; {trace_path} is older than "
+                f"{fixture_path}"
+            )
 
 
 def _preflight_paired_generation_schedules(

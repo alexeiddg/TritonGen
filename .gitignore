@@ -34,6 +34,10 @@ outputs/
 !.contracts/README.md
 !.contracts/research/
 !.contracts/research/**
+!.contracts/agentic/
+.contracts/agentic/*
+!.contracts/agentic/cluster1_contract.md
+!.contracts/agentic/cluster2_contract.md
 _legacy
 docs
 audits

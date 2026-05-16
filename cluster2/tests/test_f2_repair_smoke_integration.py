@@ -21,6 +21,7 @@ from cluster2.experiments.run_f2_repair_smoke import (
     _corrected_source,
     _evaluate_mock_smoke_source,
     _extract_prompt_section,
+    _normalize_generated_source,
     _resolve_archetype,
     run_f2_repair_smoke,
     validate_canonical_f2_smoke_artifacts,
@@ -33,6 +34,8 @@ from cluster2.modal.schemas import RemoteCorrectnessRequest, RemoteCorrectnessRe
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_DIR = REPO_ROOT / "cluster2" / "tests" / "fixtures"
 EXPECTED_TRACE_DIR = FIXTURE_DIR / "expected_smoke_traces"
+TEST_MODEL_REVISION = "a" * 40
+TEST_TOKENIZER_REVISION = "b" * 40
 
 FIXTURE_CASES = (
     (
@@ -144,13 +147,18 @@ def test_f2_smoke_non_mock_path_uses_injected_modal_adapters(tmp_path: Path) -> 
     def generation_adapter(**kwargs: Any) -> dict[str, Any]:
         generation_calls.append(kwargs)
         assert kwargs["prompt"].startswith("Base task:")
-        return {"source": corrected_source}
+        identity = kwargs["identity"]
+        return {
+            "source": corrected_source,
+            "modal_context": _generation_modal_context(identity.attempt_index),
+        }
 
     def correctness_adapter(request: RemoteCorrectnessRequest) -> dict[str, Any]:
         correctness_calls.append(request)
         return _remote_correctness_payload(
             request,
-            functional_success=request.source == corrected_source,
+            functional_success=request.source
+            == _normalize_generated_source(corrected_source),
         )
 
     rows = run_f2_repair_smoke(
@@ -159,8 +167,8 @@ def test_f2_smoke_non_mock_path_uses_injected_modal_adapters(tmp_path: Path) -> 
         output_path=output_path,
         repair_budget=1,
         mock_repair=False,
-        model_revision="test-model-revision",
-        tokenizer_revision="test-tokenizer-revision",
+        model_revision=TEST_MODEL_REVISION,
+        tokenizer_revision=TEST_TOKENIZER_REVISION,
         generation_adapter=generation_adapter,
         correctness_adapter=correctness_adapter,
     )
@@ -589,7 +597,27 @@ def _remote_correctness_payload(
         max_abs_diff=0.0 if functional_success else 1.0,
         max_rel_diff=0.0 if functional_success else 1.0,
     )
-    return build_success_payload(request, result)
+    payload = build_success_payload(request, result)
+    payload["modal_context"] = _correctness_modal_context(
+        request.identity.attempt_index
+    )
+    return payload
+
+
+def _generation_modal_context(attempt_index: int) -> dict[str, str]:
+    return {
+        "function_call_id": f"generation-call-{attempt_index}",
+        "input_id": f"generation-input-{attempt_index}",
+        "modal_generation_gpu": "L4",
+    }
+
+
+def _correctness_modal_context(attempt_index: int) -> dict[str, str]:
+    return {
+        "function_call_id": f"correctness-call-{attempt_index}",
+        "input_id": f"correctness-input-{attempt_index}",
+        "modal_eval_gpu": "L4",
+    }
 
 
 def _read_jsonl(path: Path) -> list[dict[str, object]]:
@@ -629,8 +657,11 @@ def _copy_canonical_smoke_artifacts(
             )
 
             def generation_adapter(**kwargs: Any) -> dict[str, Any]:
-                del kwargs
-                return {"source": corrected_source}
+                identity = kwargs["identity"]
+                return {
+                    "source": corrected_source,
+                    "modal_context": _generation_modal_context(identity.attempt_index),
+                }
 
             def correctness_adapter(request: RemoteCorrectnessRequest) -> dict[str, Any]:
                 return _remote_correctness_payload(
@@ -645,8 +676,8 @@ def _copy_canonical_smoke_artifacts(
                 condition=condition,
                 repair_budget=1,
                 mock_repair=False,
-                model_revision="test-model-revision",
-                tokenizer_revision="test-tokenizer-revision",
+                model_revision=TEST_MODEL_REVISION,
+                tokenizer_revision=TEST_TOKENIZER_REVISION,
                 generation_adapter=generation_adapter,
                 correctness_adapter=correctness_adapter,
             )

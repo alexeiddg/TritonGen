@@ -1,4 +1,33 @@
-"""Deterministic synthetic F2 smoke for Cluster 2 repair-loop activation."""
+"""Deterministic synthetic F2 smoke for Cluster 2 repair-loop activation.
+
+Validator-facing artifact contract:
+- Canonical outputs are JSONL files at ``outputs/cluster2/smoke_f2_repair_{relu,
+  softmax,matmul}.jsonl`` and each row belongs to condition ``C`` for exactly
+  one archetype.
+- Row ``repair_iteration`` values are contiguous from 0 through the terminal
+  attempt and every row records a consistent ``repair_budget``, ``run_id``,
+  fixture identity, ``schema_version``, evaluation mode, and generation backend.
+- Iteration 0 is the seeded corrupted fixture: ``candidate_origin`` is
+  ``seed_fixture``, ``source_sha256`` matches ``fixture_sha256``, it reaches
+  Level 2, fails with an ``F2_*`` code, and carries no repair feedback fields.
+- Repair iterations use ``candidate_origin`` derived from the generation
+  backend (``mock_repair`` for local schema smokes, ``modal_repair`` for
+  canonical Modal smokes), reach Level 2, and carry ``feedback_type`` equal to
+  ``correctness_error`` plus non-empty numerical ``feedback_content``.
+- ``feedback_prompt_content`` must hash to ``feedback_prompt_sha256`` and its
+  Feedback section must exactly match ``feedback_content``.
+- Terminal status is trace-wide: exactly one of ``repair_converged`` or
+  ``budget_exhausted`` is true; converged traces end at
+  ``successful_attempt_index`` and exhausted traces end at ``repair_budget``.
+- Canonical paper preflight additionally requires Modal provenance:
+  ``evaluation_mode=modal_correctness``, ``generation_backend=modal_generation``,
+  a modal ``run_id`` suffix, locked ``model_id``/``model_revision``/
+  ``tokenizer_revision`` metadata, L4 generation/eval GPU metadata, non-empty
+  Modal correctness call/input IDs on every row, and non-empty Modal generation
+  call/input IDs on repair rows.
+- Smoke trace rows must not contain runtime measurement or token accounting
+  fields.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +38,7 @@ import math
 import random
 import re
 import sys
+import textwrap
 import types
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -48,8 +78,10 @@ from cluster2.validation.modal_correctness_check import extract_correctness_resu
 
 BASE_SEED = 731
 DEFAULT_DTYPE = "fp32"
+F2_SMOKE_SCHEMA_VERSION = "canonical_f2_smoke.v1"
 MODEL_ID_DEFAULT = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
-MAX_NEW_TOKENS_DEFAULT = 512
+MAX_NEW_TOKENS_DEFAULT = 1024
+IMMUTABLE_REVISION_PATTERN = re.compile(r"\A[0-9a-f]{40}\Z", re.IGNORECASE)
 MOCK_REPAIR_CORRECT = "correct"
 MOCK_REPAIR_UNCHANGED = "unchanged"
 MOCK_EVALUATION_MODE = "mock_local_marker"
@@ -194,11 +226,10 @@ def run_f2_repair_smoke(
         f"f2-smoke-{spec.name}-{fixture_hash[:12]}-"
         f"b{base_seed}-r{repair_budget}-{mode_label}"
     )
-    base_prompt = (
-        f"Implement the {spec.kernel_name} kernel as a complete Triton Python module."
-    )
+    base_prompt = _base_prompt_for_spec(spec)
 
     generation_inputs: dict[int, RepairGenerationInput] = {}
+    generation_payload_by_attempt: dict[int, dict[str, Any]] = {}
     source_by_attempt: dict[int, str] = {0: fixture_source}
     result_by_attempt: dict[int, object] = {}
 
@@ -213,7 +244,7 @@ def run_f2_repair_smoke(
                 else fixture_source
             )
         else:
-            source = _generate_modal_repair_source(
+            source, payload = _generate_modal_repair_source(
                 request,
                 condition=condition,
                 spec=spec,
@@ -228,6 +259,7 @@ def run_f2_repair_smoke(
                 modal_generation_gpu=modal_generation_gpu,
                 generation_adapter=generation_adapter,
             )
+            generation_payload_by_attempt[request.attempt_index] = payload
         source_by_attempt[request.attempt_index] = source
         return source
 
@@ -269,6 +301,7 @@ def run_f2_repair_smoke(
     rows = _build_trace_rows(
         repair_result=repair_result,
         result_by_attempt=result_by_attempt,
+        generation_payload_by_attempt=generation_payload_by_attempt,
         source_by_attempt=source_by_attempt,
         generation_inputs=generation_inputs,
         run_id=run_id,
@@ -281,6 +314,11 @@ def run_f2_repair_smoke(
         dtype=dtype,
         evaluation_mode=evaluation_mode,
         generation_backend=generation_backend,
+        modal_generation_gpu=modal_generation_gpu,
+        modal_eval_gpu=modal_eval_gpu,
+        model_id=model_id,
+        model_revision=model_revision,
+        tokenizer_revision=tokenizer_revision,
     )
     validate_f2_smoke_trace(
         rows,
@@ -319,6 +357,11 @@ def validate_f2_smoke_trace(
     for row in rows:
         if row.get("repair_budget") != repair_budget:
             raise ValueError("trace rows must record a consistent repair_budget")
+        if row.get("schema_version") != F2_SMOKE_SCHEMA_VERSION:
+            raise ValueError(
+                "trace rows must record schema_version "
+                f"{F2_SMOKE_SCHEMA_VERSION}"
+            )
 
     first = rows[0]
     expected_fixture_hash = (
@@ -451,6 +494,8 @@ def validate_f2_smoke_trace(
             and not str(row.get("run_id", "")).endswith("-modal")
         ):
             raise ValueError("modal smoke trace rows must record a modal run_id")
+        if row.get("generation_backend") == MODAL_GENERATION_BACKEND:
+            _validate_modal_smoke_row_identity(row, iteration=row.get("repair_iteration"))
         for forbidden_key in (
             "tokens_generated",
             "tokens_input",
@@ -527,7 +572,11 @@ def _validate_smoke_eval_outcome(row: dict[str, Any], *, iteration: object) -> N
             f"row {iteration} must record functional_success as a boolean"
         )
     if level_reached != 2:
-        raise ValueError(f"row {iteration} failed outcome must reach Level 2")
+        raise ValueError(
+            f"row {iteration} failed outcome must reach Level 2 "
+            f"(level_reached={level_reached!r}, failure_code={failure_code!r}, "
+            f"eval_summary={row.get('eval_summary')!r})"
+        )
     if failure_code not in F2_SMOKE_FAILURE_CODES:
         raise ValueError(
             f"row {iteration} failed outcome must record an F2 failure_code"
@@ -579,6 +628,46 @@ def _validate_smoke_terminal_status(
             raise ValueError("exhausted trace must not record successful_attempt_index")
 
     return converged, exhausted, success_index
+
+
+def _validate_modal_smoke_row_identity(
+    row: dict[str, Any],
+    *,
+    iteration: object,
+) -> None:
+    provenance = row.get("modal_provenance")
+    if not isinstance(provenance, dict):
+        raise ValueError("modal smoke trace rows must record modal_provenance")
+    if provenance.get("modal_generation_gpu") != DEFAULT_C2_MODAL_GENERATION_GPU:
+        raise ValueError("modal smoke generation provenance must record L4")
+    if provenance.get("modal_eval_gpu") != DEFAULT_C2_MODAL_EVAL_GPU:
+        raise ValueError("modal smoke eval provenance must record L4")
+    for field_name in ("model_id", "model_revision", "tokenizer_revision"):
+        value = row.get(field_name)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"modal smoke rows must record {field_name}")
+    for field_name in ("model_revision", "tokenizer_revision"):
+        _require_immutable_revision(row[field_name], field_name)
+    for field_name in ("correctness_function_call_id", "correctness_input_id"):
+        if not isinstance(provenance.get(field_name), str) or not provenance[
+            field_name
+        ].strip():
+            raise ValueError(
+                f"modal smoke row {iteration} must record non-empty {field_name}"
+            )
+    if iteration == 0:
+        if provenance.get("generation_function_call_id") is not None:
+            raise ValueError("iteration 0 must not record generation Modal call id")
+        if provenance.get("generation_input_id") is not None:
+            raise ValueError("iteration 0 must not record generation Modal input id")
+        return
+    for field_name in ("generation_function_call_id", "generation_input_id"):
+        if not isinstance(provenance.get(field_name), str) or not provenance[
+            field_name
+        ].strip():
+            raise ValueError(
+                f"modal smoke repair row {iteration} must record non-empty {field_name}"
+            )
 
 
 def _require_terminal_bool(row: dict[str, Any], field_name: str) -> bool:
@@ -639,7 +728,7 @@ def _generate_modal_repair_source(
     grammar_variant: str | None,
     modal_generation_gpu: str,
     generation_adapter: RemoteGenerationAdapter | None,
-) -> str:
+) -> tuple[str, dict[str, Any]]:
     adapter = generation_adapter
     if adapter is None:
         from cluster2.generation.modal_generate_c2 import generate_source_c2_modal
@@ -664,7 +753,7 @@ def _generate_modal_repair_source(
         grammar_variant=grammar_variant if condition == "G+C" else None,
         modal_generation_gpu=modal_generation_gpu,
     )
-    return _extract_generated_source(payload)
+    return _extract_generated_source(payload), payload
 
 
 def _extract_generated_source(payload: dict[str, Any]) -> str:
@@ -674,7 +763,22 @@ def _extract_generated_source(payload: dict[str, Any]) -> str:
     source = payload.get("source")
     if not isinstance(source, str) or not source.strip():
         raise ValueError("remote C2 generation did not return source")
-    return source
+    return _normalize_generated_source(source)
+
+
+def _normalize_generated_source(source: str) -> str:
+    stripped = source.strip()
+    fence_match = re.search(
+        r"```(?:python)?\s*\n(?P<code>.*?)```",
+        stripped,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if fence_match is not None:
+        stripped = fence_match.group("code")
+    normalized = textwrap.dedent(stripped).strip()
+    if not normalized:
+        raise ValueError("remote C2 generation returned empty normalized source")
+    return normalized
 
 
 def _evaluate_modal_smoke_source(
@@ -733,6 +837,7 @@ def _evaluate_modal_smoke_source(
         eval_shapes_passed=result.eval_shapes_passed,
         dtype_results=None,
         repair_shape_results=None,
+        modal_context=payload.get("modal_context"),
     )
 
 
@@ -928,6 +1033,21 @@ def _corrected_source(source: str, archetype: str) -> str:
     raise AssertionError(f"unexpected archetype {archetype!r}")
 
 
+def _base_prompt_for_spec(spec: F2SmokeArchetype) -> str:
+    if spec.name == "relu":
+        behavior = "return the same values as torch.relu(x)"
+    elif spec.name == "softmax":
+        behavior = "return the same values as torch.softmax(x, dim=1)"
+    elif spec.name == "matmul":
+        behavior = "return the same values as torch.matmul(a, b)"
+    else:
+        raise AssertionError(f"unexpected archetype {spec.name!r}")
+    return (
+        f"Implement the {spec.kernel_name} kernel as a complete Triton Python "
+        f"module. The public reference behavior is to {behavior}."
+    )
+
+
 def _replace_required(source: str, old: str, new: str) -> str:
     if old not in source:
         raise ValueError(f"fixture source missing expected corruption marker: {old}")
@@ -965,6 +1085,7 @@ def _build_trace_rows(
     *,
     repair_result: Any,
     result_by_attempt: dict[int, object],
+    generation_payload_by_attempt: dict[int, dict[str, Any]],
     source_by_attempt: dict[int, str],
     generation_inputs: dict[int, RepairGenerationInput],
     run_id: str,
@@ -977,6 +1098,11 @@ def _build_trace_rows(
     dtype: str,
     evaluation_mode: str,
     generation_backend: str,
+    modal_generation_gpu: str,
+    modal_eval_gpu: str,
+    model_id: str,
+    model_revision: str | None,
+    tokenizer_revision: str | None,
 ) -> tuple[dict[str, Any], ...]:
     rows: list[dict[str, Any]] = []
     repair_converged = repair_result.status == REPAIR_LOOP_SUCCESS_STATUS
@@ -1000,6 +1126,7 @@ def _build_trace_rows(
             feedback_prompt_sha256 = _sha256(feedback_prompt_content)
         rows.append(
             {
+                "schema_version": F2_SMOKE_SCHEMA_VERSION,
                 "run_id": run_id,
                 "condition": condition,
                 "archetype": spec.name,
@@ -1007,8 +1134,18 @@ def _build_trace_rows(
                 "kernel_name": spec.kernel_name,
                 "dtype": dtype,
                 "base_seed": base_seed,
+                "model_id": model_id,
+                "model_revision": model_revision,
+                "tokenizer_revision": tokenizer_revision,
                 "evaluation_mode": evaluation_mode,
                 "generation_backend": generation_backend,
+                "modal_provenance": _modal_provenance_for_trace_row(
+                    generation_backend=generation_backend,
+                    generation_payload=generation_payload_by_attempt.get(iteration),
+                    correctness_result=result,
+                    modal_generation_gpu=modal_generation_gpu,
+                    modal_eval_gpu=modal_eval_gpu,
+                ),
                 "fixture_path": fixture_path.as_posix(),
                 "fixture_sha256": fixture_hash,
                 "repair_budget": repair_budget,
@@ -1055,6 +1192,51 @@ def _eval_summary(result: object) -> dict[str, Any]:
             "repair_shape_results": getattr(result, "repair_shape_results", None),
         }
     )
+
+
+def _modal_provenance_for_trace_row(
+    *,
+    generation_backend: str,
+    generation_payload: dict[str, Any] | None,
+    correctness_result: object,
+    modal_generation_gpu: str,
+    modal_eval_gpu: str,
+) -> dict[str, Any] | None:
+    if generation_backend != MODAL_GENERATION_BACKEND:
+        return None
+    generation_context = (
+        generation_payload.get("modal_context")
+        if isinstance(generation_payload, dict)
+        else None
+    )
+    correctness_context = getattr(correctness_result, "modal_context", None)
+    return {
+        "modal_generation_gpu": modal_generation_gpu,
+        "modal_eval_gpu": modal_eval_gpu,
+        "generation_function_call_id": _optional_modal_context_field(
+            generation_context,
+            "function_call_id",
+        ),
+        "generation_input_id": _optional_modal_context_field(
+            generation_context,
+            "input_id",
+        ),
+        "correctness_function_call_id": _optional_modal_context_field(
+            correctness_context,
+            "function_call_id",
+        ),
+        "correctness_input_id": _optional_modal_context_field(
+            correctness_context,
+            "input_id",
+        ),
+    }
+
+
+def _optional_modal_context_field(context: object, field_name: str) -> str | None:
+    if not isinstance(context, dict):
+        return None
+    value = context.get(field_name)
+    return value if isinstance(value, str) and value.strip() else None
 
 
 def _validate_smoke_feedback_content(value: str) -> None:
@@ -1157,10 +1339,15 @@ def _require_real_generation_metadata(
     model_revision: str | None,
     tokenizer_revision: str | None,
 ) -> None:
-    if not isinstance(model_revision, str) or not model_revision.strip():
-        raise ValueError("model_revision is required for non-mock F2 smoke")
-    if not isinstance(tokenizer_revision, str) or not tokenizer_revision.strip():
-        raise ValueError("tokenizer_revision is required for non-mock F2 smoke")
+    _require_immutable_revision(model_revision, "model_revision")
+    _require_immutable_revision(tokenizer_revision, "tokenizer_revision")
+
+
+def _require_immutable_revision(value: object, field_name: str) -> None:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{field_name} is required for non-mock F2 smoke")
+    if IMMUTABLE_REVISION_PATTERN.fullmatch(value) is None:
+        raise ValueError(f"{field_name} must be a full 40-character commit SHA")
 
 
 def _sha256(value: str) -> str:
@@ -1521,6 +1708,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--output-dir", type=Path, default=Path("outputs/cluster2"))
     parser.add_argument("--mock-repair", action="store_true")
+    parser.add_argument("--overwrite", action="store_true")
     parser.add_argument(
         "--mock-repair-mode",
         choices=(MOCK_REPAIR_CORRECT, MOCK_REPAIR_UNCHANGED),
@@ -1542,11 +1730,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.all:
         output_suffix = "_mock" if args.mock_repair else ""
         for spec in ARCHETYPES.values():
+            output_path = (
+                args.output_dir / f"smoke_f2_repair_{spec.name}{output_suffix}.jsonl"
+            )
+            _require_output_writable(output_path, overwrite=args.overwrite)
             run_f2_repair_smoke(
                 fixture_path=_canonical_fixture_path(spec),
                 archetype=spec.name,
-                output_path=args.output_dir
-                / f"smoke_f2_repair_{spec.name}{output_suffix}.jsonl",
+                output_path=output_path,
                 condition=args.condition,
                 repair_budget=args.repair_budget,
                 mock_repair=args.mock_repair,
@@ -1564,6 +1755,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.fixture is None or args.archetype is None or args.output is None:
         raise SystemExit("--fixture, --archetype, and --output are required without --all")
+    _require_output_writable(args.output, overwrite=args.overwrite)
     run_f2_repair_smoke(
         fixture_path=args.fixture,
         archetype=args.archetype,
@@ -1582,6 +1774,94 @@ def main(argv: Sequence[str] | None = None) -> int:
         modal_eval_gpu=args.modal_eval_gpu,
     )
     return 0
+
+
+def _require_output_writable(path: Path, *, overwrite: bool) -> None:
+    if path.exists() and not overwrite:
+        raise FileExistsError(f"refusing to overwrite existing smoke artifact: {path}")
+
+
+def f2_smoke_entrypoint(
+    fixture: str | None = None,
+    archetype: str | None = None,
+    output: str | None = None,
+    condition: str = "C",
+    repair_budget: int = DEFAULT_REPAIR_BUDGET,
+    all: bool = False,
+    output_dir: str = "outputs/cluster2",
+    mock_repair: bool = False,
+    mock_repair_mode: str = MOCK_REPAIR_CORRECT,
+    model_id: str = MODEL_ID_DEFAULT,
+    model_revision: str | None = None,
+    tokenizer_revision: str | None = None,
+    temperature: float = 0.2,
+    max_new_tokens: int = MAX_NEW_TOKENS_DEFAULT,
+    grammar_variant: str | None = None,
+    modal_generation_gpu: str = DEFAULT_C2_MODAL_GENERATION_GPU,
+    modal_eval_gpu: str = DEFAULT_C2_MODAL_EVAL_GPU,
+    overwrite: bool = False,
+) -> None:
+    """Modal local entrypoint matching the documented ``modal run -m`` smoke."""
+
+    argv: list[str] = [
+        "--condition",
+        condition,
+        "--repair-budget",
+        str(repair_budget),
+        "--output-dir",
+        output_dir,
+        "--mock-repair-mode",
+        mock_repair_mode,
+        "--model-id",
+        model_id,
+        "--temperature",
+        str(temperature),
+        "--max-new-tokens",
+        str(max_new_tokens),
+        "--modal-generation-gpu",
+        modal_generation_gpu,
+        "--modal-eval-gpu",
+        modal_eval_gpu,
+    ]
+    if fixture is not None:
+        argv.extend(["--fixture", fixture])
+    if archetype is not None:
+        argv.extend(["--archetype", archetype])
+    if output is not None:
+        argv.extend(["--output", output])
+    if model_revision is not None:
+        argv.extend(["--model-revision", model_revision])
+    if tokenizer_revision is not None:
+        argv.extend(["--tokenizer-revision", tokenizer_revision])
+    if grammar_variant is not None:
+        argv.extend(["--grammar-variant", grammar_variant])
+    if all:
+        argv.append("--all")
+    if mock_repair:
+        argv.append("--mock-repair")
+    if overwrite:
+        argv.append("--overwrite")
+    exit_code = main(argv)
+    if exit_code != 0:
+        raise SystemExit(exit_code)
+
+
+def _register_modal_local_entrypoint_if_needed() -> None:
+    """Expose the documented ``modal run -m`` CLI without taxing cheap imports."""
+
+    if "modal" not in sys.modules:
+        return
+
+    from shared.modal_harness.app import app as _modal_app
+    import cluster2.modal.correctness  # noqa: F401
+    import cluster2.modal.generation  # noqa: F401
+
+    globals()["f2_smoke_entrypoint"] = _modal_app.local_entrypoint()(
+        f2_smoke_entrypoint
+    )
+
+
+_register_modal_local_entrypoint_if_needed()
 
 
 if __name__ == "__main__":
