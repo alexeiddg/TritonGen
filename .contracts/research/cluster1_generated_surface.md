@@ -35,9 +35,11 @@ the first offline gate before the pinned official reference snapshot: it must
 enumerate the same public `triton.language` function and parameter surface.
 
 Paper methodology should cite the coverage report version/source when describing
-G as a harness-imposed structural surface plus a documented `triton.language`
-API allow-list. Do not claim universal Triton API coverage or complete grammar
-coverage beyond the functions and in-scope grammar forms audited in that report.
+task-agnostic G as a harness-imposed structural surface plus a documented
+`triton.language` API allow-list. Template G remains a diagnostic/reference
+upper bound and must not be used as the primary grammar-effect estimate. Do not
+claim universal Triton API coverage or complete grammar coverage beyond the
+functions and in-scope grammar forms audited in that report.
 Because the upstream source URL is Triton `main`, paper-facing citations must
 identify the pinned local JSON snapshot by path, extraction timestamp, and
 SHA-256 rather than citing `main` as a stable version.

@@ -704,6 +704,9 @@ def test_primary_and_secondary_comparison_labels() -> None:
 
     assert rows[0]["comparison"] == PRIMARY_COMPARISON_LABEL
     assert rows[1]["comparison"] == SECONDARY_COMPARISON_LABEL
+    assert rows[1]["comparison"] == (
+        "secondary comparison: task-agnostic G + C vs frozen task-agnostic G replay control"
+    )
 
 
 def test_forbidden_fields_are_absent_from_phase13_outputs() -> None:

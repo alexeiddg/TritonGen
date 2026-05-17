@@ -36,9 +36,14 @@ from cluster1.results.dataclass import (
     validate_result_invariants,
 )
 from shared.eval.metrics.pass_at_k import pass_at_k
+from shared.eval.reporting.grammar_language import grammar_condition_label
 
 
 CONDITIONS: Final = ("baseline", "G")
+CONDITION_DISPLAY_LABELS: Final = {
+    "baseline": "baseline",
+    "G": grammar_condition_label("G", "template_upper_bound"),
+}
 KERNEL_CLASSES: Final = ("elementwise", "reduction", "matmul")
 DTYPES: Final = ("fp32", "fp16", "bf16")
 PASS_K_VALUES: Final = (1, 5, 10)
@@ -121,6 +126,9 @@ def validate_integrity(df: pd.DataFrame) -> None:
     g_mask = df["condition"].astype(str) == "G"
     assert df.loc[baseline_mask, "masked_token_rate"].isna().all()
     assert df.loc[g_mask, "masked_token_rate"].notna().all()
+    assert set(df.loc[g_mask, "grammar_variant"].dropna().astype(str)) == {
+        "template_upper_bound"
+    }
 
     duplicate_columns = ["condition", "kernel_class", "dtype", "generation_seed"]
     duplicates = df[df.duplicated(duplicate_columns, keep=False)]
@@ -202,7 +210,7 @@ def make_failure_table(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def make_masked_token_table(df: pd.DataFrame) -> pd.DataFrame:
-    """Return G-only masked-token diagnostics by kernel class."""
+    """Return template-G reference masked-token diagnostics by kernel class."""
 
     g_df = df[df["condition"].astype(str) == "G"]
     table = (
@@ -305,9 +313,9 @@ def plot_headline_compile(table: pd.DataFrame, output_path: Path) -> None:
         color=[CONDITION_COLORS[condition] for condition in CONDITIONS],
         width=0.58,
     )
-    ax.set_title("Cluster 1 Compile Acceptance: Baseline vs Grammar")
+    ax.set_title("Cluster 1 Compile Acceptance: Baseline vs Template G Reference")
     ax.set_ylabel("compile@1")
-    ax.set_xticks(list(x), CONDITIONS)
+    ax.set_xticks(list(x), [CONDITION_DISPLAY_LABELS[condition] for condition in CONDITIONS])
     _format_rate_axis(ax)
     for bar, condition in zip(bars, CONDITIONS, strict=True):
         row = table[table["condition"].astype(str) == condition].iloc[0]
@@ -337,7 +345,7 @@ def plot_compile_by_kernel(table: pd.DataFrame, output_path: Path) -> None:
             [x + offset for x in x_positions],
             rates,
             width=width,
-            label=condition,
+            label=CONDITION_DISPLAY_LABELS[condition],
             color=CONDITION_COLORS[condition],
         )
     ax.set_title("Compile@1 by Kernel Family")
@@ -370,10 +378,11 @@ def plot_failure_distribution(table: pd.DataFrame, output_path: Path) -> None:
         "RuntimeError": "#f59e0b",
         "None/success": "#2563eb",
     }
+    x_labels = [CONDITION_DISPLAY_LABELS[condition] for condition in CONDITIONS]
     for label in pivot.columns:
         values = pivot[label].astype(int).to_list()
         ax.bar(
-            CONDITIONS,
+            x_labels,
             values,
             bottom=bottoms,
             label=str(label),
@@ -394,7 +403,7 @@ def plot_masked_token_rate(df: pd.DataFrame, output_path: Path) -> None:
     ]
     fig, ax = plt.subplots(figsize=(7.5, 4.5))
     ax.boxplot(values, tick_labels=KERNEL_CLASSES, showmeans=True)
-    ax.set_title("G Masked Token Rate by Kernel Family")
+    ax.set_title("Template G Reference Masked Token Rate by Kernel Family")
     ax.set_ylabel("masked_token_rate")
     ax.set_ylim(0, 1.05)
     ax.grid(axis="y", color="#e5e7eb", linewidth=0.8)
@@ -422,7 +431,7 @@ def plot_diversity(table: pd.DataFrame, output_path: Path) -> None:
             [x + offset for x in x_positions],
             rates,
             width=width,
-            label=condition,
+            label=CONDITION_DISPLAY_LABELS[condition],
             color=CONDITION_COLORS[condition],
         )
     ax.set_title("Unique Solution Hash Rate by Kernel Family")
@@ -456,7 +465,7 @@ def plot_pass_at_k(table: pd.DataFrame, output_path: Path) -> None:
                 [x + offset for x in x_positions],
                 rates,
                 width=width,
-                label=condition,
+                label=CONDITION_DISPLAY_LABELS[condition],
                 color=CONDITION_COLORS[condition],
             )
         ax.set_title(metric)

@@ -55,7 +55,20 @@ weights. All mechanisms are inference-time controls around the same model.
 ## Cluster 1 Reframing
 
 The current strict Cluster 1 grammar is retained as a
-`template_upper_bound` control. It is not the main grammar result.
+`template_upper_bound` diagnostic/reference control. It is not the main grammar
+result.
+
+Locked attribution language:
+
+- task-agnostic G is the primary grammar condition for paper claims.
+- template G is a diagnostic/reference upper bound.
+- template G is not used as the primary grammar-effect estimate; it is diagnostic/reference only.
+- Primary task-agnostic G comparisons must use the task-agnostic grammar unless
+  they are explicitly labeled as template-G diagnostic/reference upper-bound
+  results.
+- Strict baseline and permissive baseline are separate diagnostics. They are not
+  alternate grammar conditions and must not be mixed into the primary
+  grammar-effect estimate.
 
 Reason:
 
@@ -71,9 +84,11 @@ Paper-safe interpretation:
 > the scoped ReLU, Softmax, and GEMM subset, but this is an upper-bound control
 > and not evidence of broad grammar-constrained Triton generation.
 
-The main G condition for broader paper-scale claims should use a task-agnostic
-Triton grammar. The comparison between `G_task_agnostic` and
-`G_template_upper_bound` quantifies task encoding versus syntactic guidance.
+The task-agnostic G condition is the primary grammar condition for broader
+paper-scale claims. The comparison between `G_task_agnostic` and
+`G_template_upper_bound_reference` quantifies task encoding versus syntactic
+guidance. Template upper-bound results may be reported only as
+reference/diagnostic context.
 
 ## Scale Boundary
 
@@ -90,8 +105,10 @@ for that subset, but they are not the full future paper-scale factorial run.
 
 Cluster 2 replay-control claims are paired-by-seed within-subject comparisons:
 `C` pairs only against the frozen `none` row with the same
-`(kernel_class, dtype, base_seed)`, and `G+C` pairs only against the frozen `G`
-row with the same key. The replay manifest is the canonical seed schedule.
+`(kernel_class, dtype, base_seed)`, and primary `G+C` pairs only against the
+frozen task-agnostic G row with the same key. Template G replay rows are diagnostic/reference
+upper-bound controls only. The replay manifest is the
+canonical seed schedule.
 Unmatched generated-vs-replay population comparisons are diagnostic only and
 are excluded from primary claims.
 Legacy compile-only factorial summaries, including
@@ -108,8 +125,8 @@ diagnostics for Cluster 2. Primary Cluster 2 claims use Level 2
   balancing axis.
 - Separate syntactic validity, functional correctness, and performance into
   different evaluation levels.
-- Report the strict grammar as an upper-bound control, not as the main grammar
-  condition.
+- Report the strict grammar as a template G diagnostic/reference upper-bound
+  control, not as the main grammar condition.
 - Enforce paired replay controls in the runner before new `C` or `G+C`
   generation starts; aggregation reports paired bootstrap lift and
   McNemar-style binary discordance summaries over matched seeds.

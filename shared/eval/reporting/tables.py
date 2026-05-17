@@ -9,10 +9,13 @@ from typing import Any
 from shared.eval.aggregation import assert_no_forbidden_metric_fields
 from shared.eval.metrics.equal_attempts import LiftEstimate
 from shared.eval.metrics.repair import RateResult
+from shared.eval.reporting.grammar_language import assert_paper_facing_grammar_language
 
 
 PRIMARY_COMPARISON_LABEL = "primary comparison: C vs frozen none replay control"
-SECONDARY_COMPARISON_LABEL = "secondary comparison: G+C vs frozen G replay control"
+SECONDARY_COMPARISON_LABEL = (
+    "secondary comparison: task-agnostic G + C vs frozen task-agnostic G replay control"
+)
 FACTORIAL_TABLE_SECTION_KEYS = (
     "table_1_cell_summaries",
     "table_2_paired_comparisons",
@@ -149,6 +152,7 @@ def render_factorial_markdown_report(analysis: Mapping[str, Any]) -> str:
             "scale_tier",
             "cell_status",
             "condition",
+            "condition_label",
             "kernel_class",
             "dtype",
             "n_cells",
@@ -160,6 +164,7 @@ def render_factorial_markdown_report(analysis: Mapping[str, Any]) -> str:
             "metric_name",
             "response_variable",
             "comparison",
+            "comparison_label",
             "n_pairs",
             "success_rate_a",
             "success_rate_b",
@@ -191,7 +196,9 @@ def render_factorial_markdown_report(analysis: Mapping[str, Any]) -> str:
         parts.append(f"\n## {titles[key]}")
         rendered = render_markdown_table(rows, columns=table_columns[key])
         parts.append(rendered if rendered else "_No rows emitted._")
-    return "\n".join(parts)
+    report = "\n".join(parts)
+    assert_paper_facing_grammar_language(report)
+    return report
 
 
 def render_markdown_table(

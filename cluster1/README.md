@@ -1,6 +1,6 @@
 # Cluster 1 - Grammar Constraints
 
-**Status:** frozen as template-grammar upper-bound control  
+**Status:** frozen as template-grammar upper-bound reference control  
 **Research scope:** `.contracts/research/research_scope.md`  
 **Generated surface:** `.contracts/research/cluster1_generated_surface.md`
 
@@ -29,12 +29,22 @@ The only intended toggle was grammar-constrained decoding.
 | Condition | Compile successes | Interpretation |
 | --- | ---: | --- |
 | `none` | 0/180 | Unconstrained baseline fails the canonical generated-code surface |
-| `G` template grammar | 180/180 | Task-aware grammar forces compile-accepted canonical ReLU/Softmax/GEMM modules |
+| `G` template grammar reference | 180/180 | Task-aware grammar forces compile-accepted canonical ReLU/Softmax/GEMM modules |
 
-The `G` condition also has `unique_solution_rate = 0.05` per kernel/dtype cell:
-one unique solution among 20 seeds. That is the key diagnostic. The grammar
-successfully forces structural validity, but it collapses diversity and behaves
-like template instantiation.
+The template G reference condition also has `unique_solution_rate = 0.05` per
+kernel/dtype cell: one unique solution among 20 seeds. That is the key
+diagnostic. The grammar successfully forces structural validity, but it
+collapses diversity and behaves like template instantiation.
+
+## Grammar Attribution Language
+
+Task-agnostic G is the primary grammar condition for paper claims. Template G is a diagnostic/reference upper bound,
+and template G reference is not used as the primary grammar-effect estimate.
+
+Template G reference is not equivalent to task-agnostic G. Any result using
+`template_upper_bound` must be labeled as reference/diagnostic, and any primary
+task-agnostic G comparison must use the task-agnostic grammar unless it is
+explicitly labeled otherwise.
 
 Paper-safe claim:
 
@@ -54,11 +64,11 @@ paper-scale factorial.
 
 For future paper-scale runs:
 
-- keep the current strict grammar frozen as `template_upper_bound`;
-- report `template_upper_bound` only on the original three-kernel subset unless
-  a later contract explicitly expands it;
-- use the planned task-agnostic Triton grammar for the main G condition on the
-  larger 6-9 kernel paper-scale set;
+- keep the current strict grammar frozen as `template_upper_bound` reference;
+- report `template_upper_bound` only as reference/diagnostic on the original
+  three-kernel subset unless a later contract explicitly expands it;
+- use the planned task-agnostic Triton grammar for the primary task-agnostic G
+  condition on the larger 6-9 kernel paper-scale set;
 - attach `scale_tier`, `kernel_count`, `model_id`, `grammar_variant`, and seed
   schedule metadata before combining Cluster 1 artifacts with later clusters.
 
@@ -72,8 +82,8 @@ Cluster 1 should ultimately report two grammar variants side by side.
 
 | Variant | Status | Purpose |
 | --- | --- | --- |
-| `template_upper_bound` | implemented and frozen | Measures the ceiling when the grammar is allowed to encode ReLU/Softmax/GEMM family structure |
-| `task_agnostic` | planned | Measures genuine Triton-language syntactic guidance without task-specific body templates |
+| `template_upper_bound` reference | implemented and frozen | Measures the diagnostic/reference ceiling when the grammar is allowed to encode ReLU/Softmax/GEMM family structure |
+| `task_agnostic` primary | planned | Measures genuine Triton-language syntactic guidance without task-specific body templates |
 
 Do not mutate the current strict grammar into the task-agnostic grammar. Keep it
 fixed as the upper-bound control and add the task-agnostic grammar separately.
@@ -178,7 +188,7 @@ The final paper should compare:
 ```text
 none
 G_task_agnostic
-G_template_upper_bound
+G_template_upper_bound_reference
 C
 G_task_agnostic+C
 P
@@ -187,8 +197,8 @@ C+P
 G_task_agnostic+C+P
 ```
 
-The template upper bound can be reported as a reference/control row, not as the
-main G cell in the factorial interaction model.
+The template upper bound can be reported as a reference/diagnostic control row,
+not as the primary task-agnostic G cell in the factorial interaction model.
 
 ## Key Artifacts
 
@@ -214,10 +224,10 @@ Primary implementation paths:
 
 Before making broad paper claims about grammar-constrained generation:
 
-1. Keep the current strict grammar frozen as `template_upper_bound`.
+1. Keep the current strict grammar frozen as `template_upper_bound` reference.
 2. Add a separate task-agnostic Triton grammar.
 3. Add `grammar_variant` to future result/eval metadata where needed.
-4. Run `none` vs `G_task_agnostic` vs `G_template_upper_bound`.
+4. Run `none` vs `G_task_agnostic` vs `G_template_upper_bound_reference`.
 5. Report the gap between task-agnostic and template-aware grammar as evidence
    of task encoding versus syntactic guidance.
 

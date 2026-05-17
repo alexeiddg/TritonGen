@@ -25,6 +25,12 @@ from cluster1.experiments.validate_cluster1_results import (
 from cluster1.results.dataclass import GenerationResult
 from cluster1.results.dataclass import generation_result_record_for_deserialization
 from shared.eval.metrics.pass_at_k import compile_at_1, pass_at_k
+from shared.eval.reporting.grammar_language import (
+    assert_paper_facing_grammar_language,
+    grammar_condition_label,
+    grammar_variant_label,
+    grammar_variant_metadata_label,
+)
 
 
 REQUIRED_GROUP_SIZE = 20
@@ -209,6 +215,7 @@ def build_compile_summary_markdown(
             "",
         ]
     )
+    assert_paper_facing_grammar_language(markdown)
     return markdown
 
 
@@ -241,7 +248,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Expected G grammar variant for validation. Use 'both' to expect "
             "every active grammar variant. May be repeated. Defaults to "
-            "template_upper_bound."
+            "template_upper_bound reference."
         ),
     )
     parser.add_argument(
@@ -311,6 +318,10 @@ def _summary_markdown(summary: pd.DataFrame) -> str:
         return "No result rows found."
 
     display = summary.copy()
+    if "grammar_variant" in display.columns:
+        display["grammar_variant"] = display["grammar_variant"].map(
+            _grammar_variant_display_value
+        )
     for column in (
         "compile@1",
         "prompt_dtype_compile_success_rate",
@@ -351,14 +362,14 @@ def _null_hypothesis_lines(summary: pd.DataFrame) -> list[str]:
         label = f"`kernel_class={kernel_class}`, `dtype={dtype}`"
         if off is None or not g_rows:
             lines.append(
-                f"- {label}: comparison requires both baseline and G rows; "
+                f"- {label}: comparison requires both baseline and grammar-active rows; "
                 f"observed {len(group)} condition group(s)."
             )
             continue
 
         for on in g_rows:
             variant = on.grammar_variant
-            variant_label = f"G[{variant}]"
+            variant_label = grammar_condition_label("G", variant)
             off_failures = int(off.compile_failures)
             on_failures = int(on.compile_failures)
             eliminated = off_failures - on_failures
@@ -432,8 +443,10 @@ def _run_shape_lines(
             f"expected_row_count: {validation_report.expected_row_count}",
             f"expected_conditions: {list(validation_report.expected_conditions)}",
             f"actual_conditions: {list(validation_report.observed_conditions)}",
-            f"expected_grammar_variants: {list(validation_report.expected_grammar_variants)}",
-            f"actual_grammar_variants: {list(validation_report.observed_grammar_variants)}",
+            "expected_grammar_variants: "
+            f"{_grammar_variant_metadata_list(validation_report.expected_grammar_variants)}",
+            "actual_grammar_variants: "
+            f"{_grammar_variant_metadata_list(validation_report.observed_grammar_variants)}",
             f"expected_kernel_classes: {list(validation_report.expected_kernel_classes)}",
             f"actual_kernel_classes: {list(validation_report.observed_kernel_classes)}",
             f"expected_dtypes: {list(validation_report.expected_dtypes)}",
@@ -449,7 +462,7 @@ def _run_shape_lines(
 def _masked_token_rate_markdown(rows: list[GenerationResult]) -> str:
     g_rows = [row for row in rows if row.grammar_active]
     if not g_rows:
-        return "No G rows found."
+        return "No grammar-active rows found."
 
     groups: dict[tuple[str | None, str, str], list[float]] = {}
     for row in g_rows:
@@ -460,7 +473,7 @@ def _masked_token_rate_markdown(rows: list[GenerationResult]) -> str:
         )
 
     if not groups:
-        return "No non-null G masked_token_rate values found."
+        return "No non-null grammar-active masked_token_rate values found."
 
     lines = [
         "| condition | grammar_variant | kernel_class | dtype | n | mean | min | max |",
@@ -475,8 +488,9 @@ def _masked_token_rate_markdown(rows: list[GenerationResult]) -> str:
         ),
     ):
         mean = sum(values) / len(values)
+        grammar_variant_label = _grammar_variant_display_value(grammar_variant)
         lines.append(
-            f"| G | {grammar_variant} | "
+            f"| G | {grammar_variant_label} | "
             f"{kernel_class} | {dtype} | {len(values)} | "
             f"{mean:.6f} | {min(values):.6f} | {max(values):.6f} |"
         )
@@ -519,8 +533,9 @@ def _compile_error_distribution_markdown(rows: list[GenerationResult]) -> str:
             item[0][4],
         ),
     ):
+        grammar_variant_label = _grammar_variant_display_value(grammar_variant)
         lines.append(
-            f"| {condition} | {grammar_variant} | {kernel_class} | {dtype} | "
+            f"| {condition} | {grammar_variant_label} | {kernel_class} | {dtype} | "
             f"{error_type} | {count} |"
         )
     return "\n".join(lines)
@@ -528,6 +543,16 @@ def _compile_error_distribution_markdown(rows: list[GenerationResult]) -> str:
 
 def _condition_for_row(row: GenerationResult) -> str:
     return "G" if row.grammar_active else "baseline"
+
+
+def _grammar_variant_display_value(grammar_variant: object) -> str:
+    if grammar_variant is None or pd.isna(grammar_variant):
+        return grammar_variant_label(None)
+    return grammar_variant_label(str(grammar_variant))
+
+
+def _grammar_variant_metadata_list(grammar_variants: tuple[str | None, ...]) -> list[str]:
+    return [grammar_variant_metadata_label(variant) for variant in grammar_variants]
 
 
 def _pass_at_k_or_none(

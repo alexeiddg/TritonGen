@@ -102,6 +102,11 @@ def test_analyze_factorial_emits_primary_four_cell_output() -> None:
     ]
     assert {row["scale_tier"] for row in table_1_condition_rows} == {"paper"}
     assert {row["cell_status"] for row in table_1_condition_rows} == {"populated"}
+    labels_by_condition = {
+        row["condition"]: row["condition_label"] for row in table_1_condition_rows
+    }
+    assert labels_by_condition["G"] == "task-agnostic G"
+    assert labels_by_condition["G+C"] == "task-agnostic G + C"
     table_3_rows = result["paper_tables"]["table_3_factorial_terms"]
     assert {row["model_fit_status"] for row in table_3_rows} == {"fit"}
     assert {row["model_type"] for row in table_3_rows} == {"reduced_four_cell"}
@@ -252,6 +257,24 @@ def test_mode_collapse_warning_is_cell_summary_flag() -> None:
     )
     assert "mode_collapse_warning" in g_summary["interpretation_flags"]
     assert result["diagnostics"]["mode_collapse_warning_rows"] == 1
+
+
+def test_template_upper_bound_condition_label_is_reference() -> None:
+    rows = _four_cell_rows()
+    for row in rows:
+        if row["condition"] == "G":
+            row["grammar_variant"] = "template_upper_bound"
+
+    result = analyze_factorial(rows, bootstrap_samples=100)
+
+    g_summary = next(
+        row
+        for row in result["cell_summaries"]
+        if row["summary_level"] == "condition"
+        and row["condition"] == "G"
+        and row["response_variable"] == "functional_success"
+    )
+    assert g_summary["condition_label"] == "template G reference"
 
 
 def test_missing_optional_interpretation_columns_do_not_crash() -> None:
@@ -542,6 +565,8 @@ def _generated_row(
         "attempt_index": attempt_index,
         "compile_success": compile_success,
         "functional_success": functional_success,
+        "grammar_variant": "task_agnostic" if "G" in condition.split("+") else None,
+        "grammar_claim_scope": "primary" if "G" in condition.split("+") else None,
         "scale_tier": "paper",
         "generated_metadata": _generated_pair_metadata(
             base_seed,
@@ -573,6 +598,8 @@ def _replay_row(
         "attempt_index": 0,
         "compile_success": compile_success,
         "functional_success": functional_success,
+        "grammar_variant": "task_agnostic" if condition == "G" else None,
+        "grammar_claim_scope": "primary" if condition == "G" else None,
         "scale_tier": "paper",
         "replay_metadata": _pair_metadata(
             base_seed,
@@ -601,6 +628,8 @@ def _generic_factor_row(
         "attempt_index": 0,
         "compile_success": True,
         "functional_success": functional_success,
+        "grammar_variant": "task_agnostic" if "G" in condition.split("+") else None,
+        "grammar_claim_scope": "primary" if "G" in condition.split("+") else None,
         "scale_tier": "paper",
         "generated_metadata": _generated_pair_metadata(
             base_seed,

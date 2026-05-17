@@ -377,7 +377,7 @@ class EvalResult:
     run_id: str                             # Unique run identifier for reproducibility
     scale_tier: str                         # "smoke" | "development" | "paper"
     sample_cell_key: str                    # Stable key for the n-sample cell
-    grammar_variant: Optional[str] = None   # None | "template_upper_bound" | "task_agnostic"
+    grammar_variant: Optional[str] = None   # None | "template_upper_bound" reference | "task_agnostic"
 
     # ── Metadata ──
     timestamp: str = ""                     # ISO 8601
@@ -459,9 +459,10 @@ class EvalResult:
 ```
 
 `grammar_variant` is a subcondition of factor `G`, not a new factorial factor.
-Use `None` for baseline and non-grammar rows. Use `"template_upper_bound"` for
-the Cluster 1 template-instantiation control and `"task_agnostic"` for the
-grammar-constrained condition intended to represent general grammar guidance.
+Use `None` for baseline and non-grammar rows. Use `"template_upper_bound"` reference for
+the Cluster 1 template-instantiation diagnostic/reference control and
+`"task_agnostic"` for task-agnostic G, the primary grammar condition intended to
+represent general grammar guidance.
 
 Current KernelBench scope is Level 1 only. `kernelbench_level` remains in the
 schema because the dataset defines Levels 1, 2, and 3, but Levels 2 (fused
@@ -847,14 +848,14 @@ non-paper output.
 `grammar_variant` is valid only when the grammar factor `G` is active. Baseline
 and non-grammar conditions use `None`.
 
-- `"task_agnostic"` may be used for conditions containing `G` when the run is testing general grammar-constrained decoding.
-- `"template_upper_bound"` may be used only for `G` and `G+C`. The `G+C` case tests whether test-driven feedback helps even when grammar already forces canonical template-shaped solutions.
-- `"template_upper_bound"` must not be combined with `P`. Compiler/profiler repair on top of an already-converged template solution is methodologically ambiguous and should be rejected by the runner.
+- `"task_agnostic"` may be used for conditions containing `G` when the run is testing general grammar-constrained decoding; task-agnostic G is the primary grammar condition.
+- `"template_upper_bound"` may be used only for `G` and `G+C` diagnostic/reference rows. The `G+C` case tests whether test-driven feedback helps even when grammar already forces canonical template-shaped solutions.
+- `"template_upper_bound"` reference must not be combined with `P`. Compiler/profiler repair on top of an already-converged template solution is methodologically ambiguous and should be rejected by the runner.
 
 Analyzer output should include an interpretation flag, not an error, when:
 
 ```python
-grammar_variant == "template_upper_bound" and unique_ratio_ast < 0.1
+grammar_variant == "template_upper_bound" and unique_ratio_ast < 0.1  # diagnostic/reference upper-bound control
 ```
 
 The flag text should be:
@@ -863,8 +864,7 @@ The flag text should be:
 this cell shows mode collapse — interpret as template instantiation control, not as evidence of grammar-constrained generation
 ```
 
-This codifies the Cluster 1 interpretation rule: the template upper bound is a
-control condition, not evidence that a task-agnostic grammar improves generation.
+This codifies the Cluster 1 interpretation rule: template G is a diagnostic/reference upper bound, not evidence that a task-agnostic grammar improves generation.
 
 ### 5.4 Bootstrap Confidence Intervals
 
@@ -1185,8 +1185,9 @@ records.
 
 `grammar_variant` is required when the grammar factor is active and omitted
 otherwise. The variant is part of the cell identity but does not change the
-factor label: `template_upper_bound` under `G` is still condition `G`, with the
-variant recorded as a subcondition.
+factor label: `template_upper_bound` reference under `G` is still canonical
+condition `G`, with the variant recorded as a diagnostic/reference subcondition.
+Paper-facing labels must render it as template G reference, not plain `G`.
 
 ---
 
@@ -1293,15 +1294,15 @@ def preflight_check(run_config: RunConfig) -> list[str]:
         failures.append(f"Unknown scale_tier: {run_config.scale_tier}")
 
     # 7. Grammar variant is a valid subcondition of factor G
-    valid_variants = {None, "task_agnostic", "template_upper_bound"}
+    valid_variants = {None, "task_agnostic", "template_upper_bound"}  # template_upper_bound reference
     if run_config.grammar_variant not in valid_variants:
         failures.append(f"Unknown grammar_variant: {run_config.grammar_variant}")
 
     active_factors = set(run_config.condition.split("+")) if run_config.condition not in {"none", "baseline"} else set()
     if run_config.grammar_variant is not None and "G" not in active_factors:
         failures.append("grammar_variant requires condition containing G")
-    if run_config.grammar_variant == "template_upper_bound" and run_config.condition not in {"G", "G+C"}:
-        failures.append("template_upper_bound is valid only for G and G+C")
+    if run_config.grammar_variant == "template_upper_bound" and run_config.condition not in {"G", "G+C"}:  # reference only
+        failures.append("template_upper_bound reference is valid only for G and G+C")
 
     return failures
 ```

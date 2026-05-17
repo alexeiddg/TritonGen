@@ -1640,6 +1640,10 @@ TASK_AGNOSTIC_GENERATED_N5_DISAGREEMENT_REASONS: dict[tuple[str, int], str] = {
 TASK_AGNOSTIC_SURFACE_REJECTION_REASONS: dict[str, str] = {
     "missing_imports": "KEEP_SURFACE_CHECK: required imports are the generated module boundary.",
     "missing_jit_helper": "KEEP_SURFACE_CHECK: a Triton helper must be present and decorated.",
+    "range_duplicate_arg2_keyword": "KEEP_SURFACE_CHECK: duplicate tl.range argument names are malformed generated surface.",
+    "range_duplicate_step_keyword": "KEEP_SURFACE_CHECK: duplicate tl.range argument names are malformed generated surface.",
+    "static_range_duplicate_arg2_keyword": "KEEP_SURFACE_CHECK: duplicate tl.static_range argument names are malformed generated surface.",
+    "static_range_duplicate_step_keyword": "KEEP_SURFACE_CHECK: duplicate tl.static_range argument names are malformed generated surface.",
     "missing_public_launcher": "KEEP_SURFACE_CHECK: public launcher is required to reach compile_check.",
     "repeated_helper_only_module": "KEEP_SURFACE_CHECK: repeated helpers without a public launcher are incomplete module surface.",
     "truncated_public_wrapper_signature": "KEEP_SURFACE_CHECK: EOF inside a public launcher signature is incomplete Python module surface.",

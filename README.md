@@ -14,7 +14,7 @@ scaffolding.
 
 | Mechanism | Schema label | Cluster | Scope |
 |--------|-------|---------|-----------|
-| Grammar constraints | G | Cluster 1 | Task-agnostic grammar plus the current template-grammar upper-bound control |
+| Grammar constraints | G | Cluster 1 | Task-agnostic G is primary; current template G is a diagnostic/reference upper-bound control |
 | Test-driven feedback | C | Cluster 2 | PyTorch reference tests and numerical failure traces -> LLM repair loop |
 | Compiler/profiler repair | P | Cluster 3 | Triton compiler errors, runtime traces, and benchmark/profiler feedback -> LLM repair loop |
 
@@ -40,10 +40,10 @@ Working claim:
 > to yield the best correctness-per-iteration ratio without model fine-tuning.
 
 Cluster 1's current `180/180` result is therefore a control, not the main
-grammar result. It is the template-grammar upper bound: a measurement of what
-happens when the grammar is allowed to encode the task family. The real grammar
-condition for the paper is the planned task-agnostic Triton grammar, compared
-against both no-control baseline and this upper bound.
+grammar result. It is the template G diagnostic/reference upper bound: a
+measurement of what happens when the grammar is allowed to encode the task
+family. Task-agnostic G is the primary grammar condition for paper claims,
+compared against both no-control baseline and this upper bound.
 
 The publishable contradiction is the distinction between syntactic guidance and
 task encoding. If task-aware grammars explain most of the gain, then the
@@ -68,9 +68,10 @@ kernel set, eval gates, and artifact manifests. Future artifact filenames should
 include the scale tier, kernel count, sample count, and model alias.
 
 The current strict Cluster 1 grammar is a special control. It remains frozen as
-`template_upper_bound` on the original three-kernel subset. The larger
-paper-scale G condition should use the planned task-agnostic Triton grammar
-unless a future contract explicitly adds a new task-aware upper-bound control.
+`template_upper_bound` reference on the original three-kernel subset. The larger
+paper-scale task-agnostic G condition should use the planned task-agnostic
+Triton grammar unless a future contract explicitly adds a new task-aware
+upper-bound control.
 
 ---
 
@@ -168,7 +169,7 @@ python -m cluster1.experiments.run_cluster1 \
 Cluster 1 is currently being run through the shared Modal harness. Generation
 uses the heavier LLM image and can be selected per run with
 `--modal-generation-gpu`; compile-only validation uses a separate Triton image
-on L4 GPUs. The final frozen Cluster 1 baseline and G artifacts used
+on L4 GPUs. The final frozen Cluster 1 baseline and template-G reference artifacts used
 `--modal-generation-gpu L4`. The Modal app UI may still show the generation
 class default `L40S`, but the artifact sidecars record the actual per-run GPU
 override. The local process remains light: the Modal runner and adapters
@@ -218,8 +219,8 @@ test-driven feedback and compiler/profiler repair work.
 Modal is not currently training or fine-tuning a model. It is running remote
 inference with the AWQ 7B development model and remote compile validation. For
 the configured full Cluster 1 run, `--kernel-class all --condition both --n 20`
-produces 360 result rows: 3 KernelBench problems × 2 conditions (`none`, `G`) ×
-3 dtypes (`fp32`, `fp16`, `bf16`) × 20 seeds. Because each source is
+produces 360 result rows: 3 KernelBench problems × 2 conditions (`none`, `G`
+with `template_upper_bound` reference) × 3 dtypes (`fp32`, `fp16`, `bf16`) × 20 seeds. Because each source is
 compile-checked across 15 dtype/shape cases for its problem, that full run
 attempts up to 5,400 dummy compile launches. Each generated source is sent
 through the compile-only gate, which checks the canonical Cluster 1 shapes for
@@ -234,30 +235,31 @@ Frozen Cluster 1 result: the final controlled L4 compile-only comparison uses
 `outputs/cluster1/baseline_repaired_l4_n20.jsonl` and
 `outputs/cluster1/final_g_l4_n20.jsonl`, combined as
 `outputs/cluster1/final_none_vs_g_l4_n20.jsonl`. The final headline is baseline
-0/180 compile successes versus G 180/180 compile successes. Under G, ReLU,
-Softmax, and GEMM each reached 60/60 compile acceptance. This remains a
+0/180 compile successes versus template G reference 180/180 compile successes.
+Under template G reference, ReLU, Softmax, and GEMM each reached 60/60 compile
+acceptance. This remains a
 compile-acceptance result only: it makes no numerical-correctness,
 performance/speedup, memory-safety, or universal Triton grammar claim. Baseline
 failures remain `SignatureError` under unconstrained generation.
 
-Frozen artifact integrity: baseline has 180 rows, G has 180 rows, and the
+Frozen artifact integrity: baseline has 180 rows, template G reference has 180 rows, and the
 combined comparison has 360 rows, with `n=20` per condition/kernel-family/dtype
 cell. The JSONL artifacts validate, the combined analyzer passes, both final
 sidecars report zero infrastructure failures, and both sidecars confirm
 `modal_generation_gpu == "L4"`. These artifacts are the frozen three-kernel
 template-control subset. They are not the final paper-scale factorial run.
 
-Cluster 1 demonstrates that, for a scoped three-family Triton subset,
-grammar-constrained decoding eliminates the dominant structural failure mode of
-the unconstrained baseline. Under the repaired canonical function-launcher
-contract, the unconstrained condition achieved 0/180 compile acceptance, while
-the grammar-constrained condition achieved 180/180. These results support
-grammar constraints as a structural validity control, while leaving numerical
-correctness and performance to later clusters.
+Cluster 1 demonstrates that, for a scoped three-family Triton subset, template G reference
+decoding eliminates the dominant structural failure mode of the
+unconstrained baseline. Under the repaired canonical function-launcher contract,
+the unconstrained condition achieved 0/180 compile acceptance, while the
+template G reference condition achieved 180/180. These results support grammar
+constraints as a structural validity control, while leaving numerical correctness
+and performance to later clusters.
 
-Paper-ready Cluster 1 claim: on the scoped ReLU/Softmax/GEMM KernelBench subset,
-grammar-constrained decoding improved compile acceptance from 0/180 to 180/180
-under a controlled compile-only evaluation.
+Paper-safe Cluster 1 reference claim: on the scoped ReLU/Softmax/GEMM
+KernelBench subset, template G reference decoding improved compile acceptance
+from 0/180 to 180/180 under a controlled compile-only evaluation.
 
 Claim boundary: these results are not evidence of numerical correctness,
 speedup, memory safety, general KernelBench performance, high-quality Triton
@@ -337,7 +339,7 @@ performance-score fields are present in the shared Cluster 1 schemas.
 
 | Cluster | Factor | Status |
 |---------|--------|--------|
-| Cluster 1 | Grammar (G) | Frozen - final L4 compile-only comparison is baseline 0/180 vs G 180/180 |
+| Cluster 1 | Grammar (G) | Frozen - final L4 compile-only comparison is baseline 0/180 vs template G reference 180/180 |
 | Shared Modal infra | GPU execution | Stable for Cluster 1 freeze - remote generation and compile-only validation |
 | Cluster 2 | Test-driven feedback (C) | Not started - contract TBD |
 | Cluster 3 | Compiler/profiler repair (P) | Not started - contract TBD |

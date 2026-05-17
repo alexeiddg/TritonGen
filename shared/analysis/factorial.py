@@ -36,6 +36,7 @@ from shared.eval.constants import (
     MULTIPLE_TESTING_METHOD,
     SIGNIFICANCE_ALPHA,
 )
+from shared.eval.reporting.grammar_language import grammar_condition_label_for_variants
 
 
 CANONICAL_CONDITIONS = (
@@ -661,6 +662,7 @@ def _cell_summaries(
             flags = _summary_flags(subset, response_variable)
             successes = int(group["success"].sum())
             n_cells = int(len(group))
+            condition = str(record["condition"])
             rows.append(
                 {
                     "metric_name": _metric_name(response_variable),
@@ -670,6 +672,10 @@ def _cell_summaries(
                     "scale_tier": _summary_scale_tier(subset),
                     "cell_status": "populated",
                     **record,
+                    "condition_label": _condition_label_from_subset(
+                        condition,
+                        subset,
+                    ),
                     "n_cells": n_cells,
                     "successes": successes,
                     "success_rate": successes / n_cells if n_cells else None,
@@ -767,11 +773,14 @@ def _paired_comparison_rows(
             flags.extend(["diagnostic_only", "strict_surface_metric"])
         if any(condition not in populated_cells for condition in P_CONDITIONS):
             flags.append("p_cells_not_populated")
+        treatment_label = _condition_label_from_df(df, treatment_condition)
+        control_label = _condition_label_from_df(df, control_condition)
         rows.append(
             {
                 "metric_name": _metric_name(response_variable),
                 "response_variable": response_variable,
                 "comparison": f"{treatment_condition} vs {control_condition}",
+                "comparison_label": f"{treatment_label} vs {control_label}",
                 "condition_a": control_condition,
                 "condition_b": treatment_condition,
                 "control_condition": control_condition,
@@ -810,6 +819,21 @@ def _paired_comparison_rows(
             }
         )
     return rows
+
+
+def _condition_label_from_df(df: pd.DataFrame, condition: str) -> str:
+    subset = df[df["condition"] == condition]
+    return _condition_label_from_subset(condition, subset)
+
+
+def _condition_label_from_subset(condition: str, subset: pd.DataFrame) -> str:
+    if "grammar_variant" not in subset.columns:
+        return grammar_condition_label_for_variants(condition, ())
+    variants = (
+        None if _is_missing_value(value) else str(value)
+        for value in subset["grammar_variant"].tolist()
+    )
+    return grammar_condition_label_for_variants(condition, variants)
 
 
 def _apply_paired_holm(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

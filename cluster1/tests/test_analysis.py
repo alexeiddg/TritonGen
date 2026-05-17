@@ -17,6 +17,10 @@ from cluster1.experiments.analyze_cluster1 import (
     summarize_results,
     unique_solution_rate,
 )
+from cluster1.experiments.make_cluster1_figures import (
+    results_to_dataframe,
+    validate_integrity,
+)
 from cluster1.results.dataclass import GenerationResult
 
 
@@ -131,9 +135,9 @@ def test_baseline_only_compile_summary_markdown(tmp_path: Path) -> None:
     assert "pass@5" in markdown
     assert "pass@10" in markdown
     assert "unique_solution_rate" in markdown
-    assert "No G rows found." in markdown
-    assert "comparison requires both baseline and G rows" in markdown
-    assert "| baseline | None | elementwise | fp32 | None |" in markdown
+    assert "No grammar-active rows found." in markdown
+    assert "comparison requires both baseline and grammar-active rows" in markdown
+    assert "| baseline | none | elementwise | fp32 | None |" in markdown
 
 
 def test_g_only_compile_summary_markdown(tmp_path: Path) -> None:
@@ -151,10 +155,10 @@ def test_g_only_compile_summary_markdown(tmp_path: Path) -> None:
     assert "row_count: 60" in markdown
     assert "expected_conditions: ['G']" in markdown
     assert (
-        "| G | template_upper_bound | elementwise | fp32 | 20 | "
+        "| G | template G reference | elementwise | fp32 | 20 | "
         "0.250000 | 0.250000 | 0.250000 |"
     ) in markdown
-    assert "comparison requires both baseline and G rows" in markdown
+    assert "comparison requires both baseline and grammar-active rows" in markdown
 
 
 def test_both_condition_compile_summary_markdown(tmp_path: Path) -> None:
@@ -173,9 +177,9 @@ def test_both_condition_compile_summary_markdown(tmp_path: Path) -> None:
 
     assert "row_count: 120" in markdown
     assert "expected_row_count: 120" in markdown
-    assert "G[template_upper_bound] eliminated 6 compile failure(s)" in markdown
-    assert "| baseline | None | elementwise | fp32 |" in markdown
-    assert "| G | template_upper_bound | elementwise | fp32 |" in markdown
+    assert "template G reference eliminated 6 compile failure(s)" in markdown
+    assert "| baseline | none | elementwise | fp32 |" in markdown
+    assert "| G | template G reference | elementwise | fp32 |" in markdown
 
 
 def test_summary_rejects_small_matrix_unless_explicit(tmp_path: Path) -> None:
@@ -230,7 +234,7 @@ def test_masked_token_summary_excludes_baseline_rows(tmp_path: Path) -> None:
         maxsplit=1,
     )[0]
 
-    assert "| G | template_upper_bound | elementwise | fp32 |" in masked_section
+    assert "| G | template G reference | elementwise | fp32 |" in masked_section
     assert "| baseline |" not in masked_section
 
 
@@ -254,8 +258,8 @@ def test_compile_error_distribution_reported(tmp_path: Path) -> None:
     )
 
     assert "## Compile Error Types" in markdown
-    assert "| baseline | None | elementwise | fp32 | CompilationError | 1 |" in markdown
-    assert "| baseline | None | elementwise | fp32 | None | 19 |" in markdown
+    assert "| baseline | none | elementwise | fp32 | CompilationError | 1 |" in markdown
+    assert "| baseline | none | elementwise | fp32 | None | 19 |" in markdown
 
 
 def test_prompt_dtype_compile_success_uses_row_dtype() -> None:
@@ -322,7 +326,7 @@ def test_null_hypothesis_report_documents_eliminated_failures(tmp_path: Path) ->
     assert "unique_solution_rate" in markdown
     assert "compile_success_scope" in markdown
     assert "prompt_dtype_compile_successes" in markdown
-    assert "G[template_upper_bound] eliminated 6 compile failure(s)" in markdown
+    assert "template G reference eliminated 6 compile failure(s)" in markdown
 
 
 def test_summary_groups_by_condition_variant_kernel_and_dtype(tmp_path: Path) -> None:
@@ -401,8 +405,8 @@ def test_analyzer_cli_accepts_task_agnostic_grammar_variant(
 
     assert rc == 0
     markdown = output_path.read_text(encoding="utf-8")
-    assert "expected_grammar_variants: ['task_agnostic']" in markdown
-    assert "| G | task_agnostic | elementwise | fp32 |" in markdown
+    assert "expected_grammar_variants: ['task_agnostic (task-agnostic G primary)']" in markdown
+    assert "| G | task-agnostic G | elementwise | fp32 |" in markdown
 
 
 def test_analyzer_validates_and_groups_both_g_variants(
@@ -435,9 +439,36 @@ def test_analyzer_validates_and_groups_both_g_variants(
     )
 
     assert "expected_row_count: 6" in markdown
-    assert "expected_grammar_variants: ['template_upper_bound', 'task_agnostic']" in markdown
-    assert "| G | template_upper_bound | elementwise | fp32 |" in markdown
-    assert "| G | task_agnostic | elementwise | fp32 |" in markdown
+    assert (
+        "expected_grammar_variants: ['template_upper_bound reference "
+        "(template G reference)', 'task_agnostic (task-agnostic G primary)']"
+    ) in markdown
+    assert "| G | template G reference | elementwise | fp32 |" in markdown
+    assert "| G | task-agnostic G | elementwise | fp32 |" in markdown
+
+
+def test_cluster1_figures_reject_non_template_g_variant() -> None:
+    rows = [
+        _make_result(
+            grammar_active=condition == "G",
+            grammar_variant="task_agnostic" if condition == "G" else None,
+            masked_token_rate=0.25 if condition == "G" else None,
+            dtype=dtype,
+            kernel_class=kernel_class,
+            kernel_name=f"{kernel_class}_{dtype}",
+            generation_seed=seed,
+            run_id=f"{condition}-{kernel_class}-{dtype}-{seed}",
+            unique_solution_hash=f"{condition}-{kernel_class}-{dtype}-{seed}",
+        )
+        for condition in ("baseline", "G")
+        for kernel_class in ("elementwise", "reduction", "matmul")
+        for dtype in ("fp32", "fp16", "bf16")
+        for seed in range(20)
+    ]
+    df = results_to_dataframe(rows)
+
+    with pytest.raises(AssertionError):
+        validate_integrity(df)
 
 
 def _make_result(**overrides) -> GenerationResult:

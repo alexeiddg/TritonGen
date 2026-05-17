@@ -130,27 +130,28 @@ artifacts, kernel IDs, model IDs, seed schedule, and git hash.
 Aggregators must reject mixed-scale analysis by default. A mixed-scale report
 may exist only as an explicitly labeled diagnostic report.
 
-## Cluster 1 Template-Grammar Control
+## Cluster 1 Template-Grammar Reference Control
 
 The current strict Cluster 1 grammar was developed against the three-kernel
 KernelBench subset: ReLU, Softmax, and GEMM. That is why it is useful as a
-template-grammar upper-bound control. It measures what happens when the grammar
-is allowed to encode the selected task families.
+template G diagnostic/reference upper-bound control. It measures what happens
+when the grammar is allowed to encode the selected task families.
 
 Default paper-scale policy:
 
-- keep the current strict grammar frozen as `template_upper_bound`;
-- report it only on the original three-kernel subset unless a new contract says
-  otherwise;
+- keep the current strict grammar frozen as `template_upper_bound` reference;
+- report it only as reference/diagnostic on the original three-kernel subset
+  unless a new contract says otherwise;
 - do not expand the strict grammar merely to cover the larger paper-scale
   kernel set;
-- use the task-agnostic Triton grammar for the main G condition on the larger
-  paper-scale kernel set.
+- use the task-agnostic Triton grammar for the primary task-agnostic G condition
+  on the larger paper-scale kernel set.
 
 If the strict grammar is expanded to encode 6-9 paper-scale kernels, the run
 must be labeled as a new task-aware template upper bound, not as general
-grammar-constrained Triton generation. Expanding the template grammar strengthens
-the task-encoding control; it does not become the main G condition.
+grammar-constrained Triton generation. Expanding the diagnostic/reference template grammar strengthens
+the task-encoding control; it does not become the primary task-agnostic G
+condition.
 
 ## Cluster Sequencing
 
