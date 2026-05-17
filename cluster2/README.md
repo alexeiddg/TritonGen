@@ -30,6 +30,21 @@ Template replay controls are frozen from:
 The task-agnostic G paper path is blocked until an `n=20` artifact is frozen and
 the Phase -1 manifests are refreshed.
 
+## G Component in `G+C`
+
+The G component of `G+C` uses the same Cluster 1 G acceptance model documented
+in `.contracts/research/research_scope.md`: grammar-guided decoding plus
+offline semantic post-validation. XGrammar token-level masking against the GBNF
+grammar is the decoding layer, and the local semantic validator is the
+post-generation structural/surface layer. A replay or generated row counts as
+G-accepting only if both layers pass; rows that decode but fail semantic
+validation remain grammar-rejected with failure-layer attribution when
+available.
+
+C remains correctness-feedback control. Do not treat C repair feedback as a
+replacement for G validation, and do not blur G rejection with numerical
+correctness failure.
+
 ## Phase 0 Surfaces
 
 Phase 0 adds only metadata, source-hash helpers, and isolated import scaffolds:

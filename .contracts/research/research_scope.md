@@ -16,7 +16,7 @@ Working claim:
 > constraints, test-driven feedback, and compiler/profiler repair - make
 > non-additive contributions to functional correctness. Task-agnostic grammar
 > constraints provide minimal lift over no constraint alone; published
-> grammar-constrained decoding successes are substantially attributable to
+> grammar-guided decoding successes are substantially attributable to
 > task-specific grammar encoding rather than syntactic enforcement.
 > Test-driven feedback is expected to dominate as the strongest single
 > inference-time mechanism, and combining it with compiler feedback is expected
@@ -26,7 +26,7 @@ Working claim:
 
 | Factor | Mechanism | Cluster | Primary defect class |
 | --- | --- | --- | --- |
-| `G` | Grammar-constrained decoding | Cluster 1 | invalid syntax, surface shape, and API usage |
+| `G` | Grammar-guided decoding plus offline semantic post-validation | Cluster 1 | invalid syntax, surface shape, and API usage |
 | `C` | Test-driven feedback | Cluster 2 | numerical correctness failures |
 | `P` | Compiler/profiler repair | Cluster 3 | compiler/runtime failures and slow but correct kernels |
 
@@ -42,6 +42,26 @@ G+P
 C+P
 G+C+P
 ```
+
+## G Enforcement Model
+
+G consists of two enforcement layers. During generation, XGrammar applies
+token-level masking against a context-free grammar defined in GBNF. After
+generation, a semantic validator performs additional structural and surface
+checks that the context-free grammar cannot express. A generation is counted as
+G-accepting only if it passes both layers; rows that pass decoding but fail
+semantic validation are recorded as grammar-rejected with explicit
+failure-layer attribution.
+
+Short methodology label:
+
+> grammar-guided decoding plus offline semantic post-validation
+
+The decoding layer is XGrammar token-level masking against the GBNF grammar. The
+validation layer is the offline semantic, structural, and surface validator. G
+acceptance is the joint pass condition. This clarification does not change the
+factor definition; it clarifies the measurement contract for rows generated
+under the G factor.
 
 ## Current Iteration Scope
 
@@ -66,7 +86,7 @@ weights. All mechanisms are inference-time controls around the same model.
 
 ## Cluster 1 Reframing
 
-The current strict Cluster 1 grammar is retained as a
+The current template Cluster 1 grammar is retained as a
 `template_upper_bound` diagnostic/reference control. It is not the main grammar
 result.
 
@@ -85,8 +105,10 @@ Locked attribution language:
 Reason:
 
 - the grammar is family-scoped to ReLU, Softmax, and GEMM;
-- the final strict-grammar condition reached `180/180` compile acceptance;
-- the strict-grammar condition produced very low diversity;
+- the final diagnostic/reference template-grammar condition reached `180/180`
+  compile acceptance;
+- the diagnostic/reference template-grammar condition produced very low
+  diversity;
 - the result measures what happens when the grammar is allowed to encode the
   task family.
 
@@ -94,12 +116,12 @@ Paper-safe interpretation:
 
 > A task-aware, family-scoped Triton grammar can force compile acceptance for
 > the scoped ReLU, Softmax, and GEMM subset, but this is an upper-bound control
-> and not evidence of broad grammar-constrained Triton generation.
+> and not evidence of broad task-agnostic G enforcement for Triton generation.
 
 The task-agnostic G condition is the primary grammar condition for broader
 paper-scale claims. The comparison between `G_task_agnostic` and
 `G_template_upper_bound_reference` quantifies task encoding versus syntactic
-guidance. Template upper-bound results may be reported only as
+guidance plus offline semantic validation. Template upper-bound results may be reported only as
 reference/diagnostic context.
 
 ## Scale Boundary
@@ -137,7 +159,7 @@ diagnostics for Cluster 2. Primary Cluster 2 claims use Level 2
   balancing axis.
 - Separate syntactic validity, functional correctness, and performance into
   different evaluation levels.
-- Report the strict grammar as a template G diagnostic/reference upper-bound
+- Report the template grammar as a template G diagnostic/reference upper-bound
   control, not as the main grammar condition.
 - Enforce paired replay controls in the runner before new `C` or `G+C`
   generation starts; aggregation reports paired bootstrap lift and

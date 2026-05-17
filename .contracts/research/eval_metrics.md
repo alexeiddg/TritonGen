@@ -26,10 +26,47 @@
 3. **KernelBench alignment.** Metrics names and semantics align with KernelBench where possible (`fast_p`, `pass@k`). Where we extend beyond KernelBench (repair_iters, failure taxonomy), the extensions are additive — they never redefine a KernelBench metric.
 4. **Schema-first.** The `EvalResult` dataclass is the contract. Every downstream consumer (analysis scripts, paper tables, visualization) reads from `EvalResult` JSON. If a field is not in `EvalResult`, it does not exist.
 5. **Factor labels are canonical.** The 2³ factors are `G` (grammar), `C` (test-driven correctness feedback), and `P` (compiler/profiler repair). Use `none`, `G`, `C`, `P`, `G+C`, `G+P`, `C+P`, and `G+C+P` in result schemas. Do not add an older `T` label for test-driven feedback.
+6. **G acceptance is a two-layer contract.** The G factor means grammar-guided decoding plus offline semantic post-validation. XGrammar masks tokens against the GBNF grammar during generation; the offline validator then enforces structural and surface rules that the context-free grammar cannot fully express. A row is G-accepting only if both layers pass.
 
 ---
 
 ## 1. The Correctness Ladder — Definitions and Gating Logic
+
+### 1.0 G Acceptance Contract
+
+G consists of two enforcement layers. During generation, XGrammar applies
+token-level masking against a context-free grammar defined in GBNF. After
+generation, a semantic validator performs additional structural and surface
+checks that the context-free grammar cannot express. A generation is counted as
+G-accepting only if it passes both layers; rows that pass decoding but fail
+semantic validation are recorded as grammar-rejected with explicit
+failure-layer attribution.
+
+Preferred short label:
+
+> grammar-guided decoding plus offline semantic post-validation
+
+The grammar-acceptance metric is separate from the correctness ladder below.
+`grammar_acceptance`, `grammar_valid`, or equivalent G-acceptance fields mean
+joint acceptance by the decoding contract and the offline validator. A row can
+be grammar-rejected while still being syntactically valid Python, and a row can
+be grammar-accepted while later failing `compile_success` or
+`functional_success`.
+
+When available, grammar rejection records should identify one of these failure
+layers:
+
+| Failure layer | Meaning |
+| --- | --- |
+| `GBNF_PARSE_REJECT` | Offline GBNF parse rejected the generated source or the generation terminated as an incomplete grammar prefix. |
+| `VALIDATOR_ONLY_STRUCTURAL_REJECT` | GBNF parse passed, but offline structural Cluster 1 surface checks failed. |
+| `VALIDATOR_ONLY_SEMANTIC_REJECT` | GBNF parse passed, but offline semantic checks failed. |
+| `DECODER_ENVIRONMENT_MISMATCH` | Modal/decoder grammar provenance differs from the local validator grammar or parser environment. |
+| `UNKNOWN` | The failure layer was not recoverable from the artifact. |
+
+`compile_success` remains the Level 1 compile gate. `functional_success` remains
+the Level 2 numerical correctness gate. Neither field should be used as a proxy
+for G acceptance.
 
 ### 1.1 Level Definitions
 
@@ -465,7 +502,8 @@ class EvalResult:
 Use `None` for baseline and non-grammar rows. Use `"template_upper_bound"` reference for
 the Cluster 1 template-instantiation diagnostic/reference control and
 `"task_agnostic"` for task-agnostic G, the primary grammar condition intended to
-represent general grammar guidance.
+represent grammar-guided decoding plus offline semantic post-validation without
+task-specific body templates.
 
 Current KernelBench scope is Level 1 only. `kernelbench_level` remains in the
 schema because the dataset defines Levels 1, 2, and 3, but Levels 2 (fused
@@ -851,7 +889,7 @@ non-paper output.
 `grammar_variant` is valid only when the grammar factor `G` is active. Baseline
 and non-grammar conditions use `None`.
 
-- `"task_agnostic"` may be used for conditions containing `G` when the run is testing general grammar-constrained decoding; task-agnostic G is the primary grammar condition.
+- `"task_agnostic"` may be used for conditions containing `G` when the run is testing grammar-guided decoding plus offline semantic post-validation without task-specific body templates; task-agnostic G is the primary grammar condition.
 - `"template_upper_bound"` may be used only for `G` and `G+C` diagnostic/reference rows. The `G+C` case tests whether test-driven feedback helps even when grammar already forces canonical template-shaped solutions.
 - `"template_upper_bound"` reference must not be combined with `P`. Compiler/profiler repair on top of an already-converged template solution is methodologically ambiguous and should be rejected by the runner.
 
@@ -864,7 +902,7 @@ grammar_variant == "template_upper_bound" and unique_ratio_ast < 0.1  # diagnost
 The flag text should be:
 
 ```
-this cell shows mode collapse — interpret as template instantiation control, not as evidence of grammar-constrained generation
+this cell shows mode collapse — interpret as template instantiation control, not as evidence of task-agnostic G enforcement
 ```
 
 This codifies the Cluster 1 interpretation rule: template G is a diagnostic/reference upper bound, not evidence that a task-agnostic grammar improves generation.

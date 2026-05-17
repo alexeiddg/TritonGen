@@ -50,6 +50,13 @@ data is useful for engineering decisions but is not paper evidence.
 | C+P       | OFF         | ON                   | ON                |
 | G+C+P     | ON          | ON                   | ON                |
 
+Where G appears, it inherits the Cluster 1 two-layer acceptance model:
+grammar-guided decoding plus offline semantic post-validation. XGrammar
+token-level masking is the decoding layer; the offline semantic validator is the
+structural/surface validation layer. P must not reinterpret grammar rejection as
+compiler/profiler repair input unless a later contract explicitly adds that
+handoff.
+
 `C` in this table means the Cluster 2 test-driven feedback loop is active before
 compiler/profiler repair. Cluster 3 reads lower-level artifacts for comparison
 but only owns P-enabled conditions.

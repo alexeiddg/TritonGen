@@ -14,7 +14,7 @@ scaffolding.
 
 | Mechanism | Schema label | Cluster | Scope |
 |--------|-------|---------|-----------|
-| Grammar constraints | G | Cluster 1 | Task-agnostic G is primary; current template G is a diagnostic/reference upper-bound control |
+| Grammar constraints | G | Cluster 1 | Grammar-guided decoding plus offline semantic post-validation; task-agnostic G is primary and current template G is a diagnostic/reference upper-bound control |
 | Test-driven feedback | C | Cluster 2 | PyTorch reference tests and numerical failure traces -> LLM repair loop |
 | Compiler/profiler repair | P | Cluster 3 | Triton compiler errors, runtime traces, and benchmark/profiler feedback -> LLM repair loop |
 
@@ -33,7 +33,7 @@ Working claim:
 > constraints, test-driven feedback, and compiler/profiler repair - make
 > non-additive contributions to functional correctness. Task-agnostic grammar
 > constraints provide minimal lift over no constraint alone; published
-> grammar-constrained decoding successes are substantially attributable to
+> grammar-guided decoding successes are substantially attributable to
 > task-specific grammar encoding rather than syntactic enforcement.
 > Test-driven feedback is expected to dominate as the strongest single
 > inference-time mechanism, and combining it with compiler feedback is expected
@@ -47,7 +47,25 @@ compared against both no-control baseline and this upper bound.
 
 The publishable contradiction is the distinction between syntactic guidance and
 task encoding. If task-aware grammars explain most of the gain, then the
-standard grammar-constrained decoding story is incomplete for Triton kernels.
+standard single-layer grammar-guided decoding story is incomplete for Triton
+kernels.
+
+## G Enforcement Model
+
+G consists of two enforcement layers. During generation, XGrammar applies
+token-level masking against a context-free grammar defined in GBNF. After
+generation, a semantic validator performs additional structural and surface
+checks that the context-free grammar cannot express. A generation is counted as
+G-accepting only if it passes both layers; rows that pass decoding but fail
+semantic validation are recorded as grammar-rejected with explicit
+failure-layer attribution.
+
+Short label: grammar-guided decoding plus offline semantic post-validation.
+
+This does not redefine the G factor. It clarifies the measurement contract:
+XGrammar provides the decoding layer, the local validator provides the offline
+semantic/structural/surface layer, and compile or functional success remains
+separate from G acceptance.
 
 ---
 
@@ -96,11 +114,11 @@ TritonGen/
 │   │                              # Generated-code surface for Cluster 1
 │   └── agentic/                   # Local/internal implementation notes, gitignored
 │
-├── cluster1/                      # G-factor: Grammar-Constrained Generation
+├── cluster1/                      # G-factor: grammar-guided decoding + validation
 │   ├── README.md                  # Cluster 1 scope and template upper-bound framing
 │   ├── grammar/                   # triton_kernel.gbnf + Lark validator
 │   ├── constraints/               # Hardware checker (smem, power-of-2)
-│   ├── generation/                # XGrammar constrained decoding
+│   ├── generation/                # XGrammar token-level masking
 │   ├── validation/                # Triton compile gate (dummy JIT launch)
 │   ├── data/
 │   │   ├── kernels/               # KernelBench: ReLU, Softmax, GEMM specs
@@ -215,7 +233,7 @@ python -m cluster1.experiments.analyze_cluster1 \
 ## Current Pipeline Status
 
 Cluster 1 is frozen. It is the grammar-factor experiment: it compares baseline
-generation against grammar-constrained generation while holding the model,
+generation against the G path while holding the model,
 prompt, temperature, token budget, dtype, seed schedule, and kernel task fixed.
 The shared Modal harness is the execution substrate for that work. It owns the
 single `modal.App` named `tritongen-gpu-harness`, the generation and compile
@@ -358,7 +376,7 @@ performance-score fields are present in the shared Cluster 1 schemas.
 
 ## Key references
 
-- XGrammar (2024) — constrained decoding engine
+- XGrammar (2024) — token-level grammar masking engine
 - µCUTLASS (Sun et al., 2025) — context-dep/indep token classification
 - LEGO (Tavakkoli et al., 2025) — DSL-mediated layout constraint (cited as future work)
 - KernelBench (`ScalingIntelligence/KernelBench`) — evaluation dataset

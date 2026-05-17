@@ -12,8 +12,9 @@ through an explicit KernelBench adapter later, not mixed implicitly into Cluster
 ## Grammar v1 Scope
 
 The Cluster 1 grammar v1 is a scoped experimental grammar for the current
-evaluation subset only: ReLU, Softmax, and GEMM. Grammar acceptance is intended
-to imply canonical-surface acceptance for those selected kernel families.
+evaluation subset only: ReLU, Softmax, and GEMM. G acceptance is a two-layer
+contract: token-level GBNF guidance during decoding plus offline semantic
+post-validation after generation.
 
 This is not a universal Triton grammar and must not be described as one. Future
 KernelBench expansion requires explicit grammar generalization beyond these
@@ -35,14 +36,38 @@ the first offline gate before the pinned official reference snapshot: it must
 enumerate the same public `triton.language` function and parameter surface.
 
 Paper methodology should cite the coverage report version/source when describing
-task-agnostic G as a harness-imposed structural surface plus a documented
+task-agnostic G as grammar-guided decoding plus offline semantic
+post-validation over a harness-imposed structural surface and a documented
 `triton.language` API allow-list. Template G remains a diagnostic/reference
 upper bound and must not be used as the primary grammar-effect estimate. Do not
 claim universal Triton API coverage or complete grammar coverage beyond the
-functions and in-scope grammar forms audited in that report.
+functions, in-scope grammar forms, and validator-enforced surface checks audited
+for this project.
 Because the upstream source URL is Triton `main`, paper-facing citations must
 identify the pinned local JSON snapshot by path, extraction timestamp, and
 SHA-256 rather than citing `main` as a stable version.
+
+## GBNF vs Semantic Validator Responsibilities
+
+The GBNF layer captures the context-free, token-level surface used by XGrammar
+for decoding masks: module syntax, allowed imports and decorators where encoded,
+Triton helper and launcher productions, expression forms, control-flow forms,
+literal families, and grammar-level `tl.*` API names, arities, and keyword forms.
+
+The semantic validator is the offline post-generation layer. It enforces the
+parts of the Cluster 1 surface that are context dependent, structural, or
+outside the reliable context-free GBNF layer, including public launcher signatures,
+helper-count rules, duplicate helper detection, defined-name checks, launcher
+attribute checks, runtime output allocation checks, grid construction, bracket
+launch syntax, return-output requirements, helper statement placement, and any
+validator-only API/surface checks.
+
+The `tl.*` API allow-list may be represented in both layers. The GBNF layer
+provides token-level API guidance; the semantic validator may still reject a
+source that parses under the GBNF if it violates the canonical Cluster 1 surface.
+A row is G-accepting only when both layers pass. A row that decodes under
+XGrammar but fails the semantic validator is grammar-rejected, not compile- or
+functional-success evidence.
 
 ## Canonical Module Shape
 
@@ -105,6 +130,9 @@ surface.
 ## Alignment Rule
 
 The prompt, GBNF grammar, offline grammar validator, golden fixtures, and compile
-validator must all agree on this surface. If a candidate source satisfies one
-layer but not another, the contract is considered broken until the mismatch is
-resolved locally.
+validator must all agree on this surface. Passing the decoding layer alone is
+not sufficient for G acceptance. If a candidate source satisfies the GBNF parser
+but fails a validator-only structural or semantic rule, it must be recorded as a
+grammar rejection with failure-layer attribution. The contract is broken only if
+the pipeline records such a row as G-accepting, or if the documented layer
+boundary is inconsistent with the implemented validator.

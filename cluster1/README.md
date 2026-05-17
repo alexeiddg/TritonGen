@@ -6,10 +6,10 @@
 
 ## Purpose
 
-Cluster 1 isolates grammar-constrained decoding for Triton-only kernel
-generation. Its job is to answer how much structural validity comes from a
-grammar constraint, before any test-driven feedback or compiler/profiler repair
-is introduced.
+Cluster 1 isolates the G factor for Triton-only kernel generation. Its job is
+to answer how much structural validity comes from grammar-guided decoding plus
+offline semantic post-validation, before any test-driven feedback or
+compiler/profiler repair is introduced.
 
 The current Cluster 1 result is deliberately reframed:
 
@@ -18,13 +18,27 @@ The current Cluster 1 result is deliberately reframed:
 
 This is a useful control. It establishes the ceiling of what task-aware grammars
 can achieve when they encode the selected KernelBench families directly. It
-does not prove that general grammar-constrained Triton generation works.
+does not prove that general task-agnostic G enforcement for Triton generation
+works.
+
+## G Enforcement Model
+
+Cluster 1 G is implemented as grammar-guided decoding plus offline semantic
+post-validation. XGrammar masks tokens during decoding using the GBNF grammar.
+The offline validator enforces additional structural and surface checks. A
+generated candidate is counted as G-accepting only if it passes both layers.
+
+Rows that pass token-level decoding but fail the offline validator are
+grammar-rejected. They should be attributed to the failing layer where possible,
+for example `GBNF_PARSE_REJECT`,
+`VALIDATOR_ONLY_STRUCTURAL_REJECT`, or `VALIDATOR_ONLY_SEMANTIC_REJECT`.
 
 ## Current Frozen Result
 
 The frozen Cluster 1 Modal comparison used the same model, prompt, temperature,
 seed schedule, dtype coverage, and compile-only validator for baseline and G.
-The only intended toggle was grammar-constrained decoding.
+The intended G toggle was activation of the grammar-guided path and its
+associated validation contract.
 
 | Condition | Compile successes | Interpretation |
 | --- | ---: | --- |
@@ -50,21 +64,22 @@ Paper-safe claim:
 
 > A task-aware, family-scoped Triton grammar can force compile acceptance for
 > the scoped ReLU, Softmax, and GEMM subset, but the result is an upper-bound
-> control and not evidence of broad grammar-constrained Triton generation.
+> control and not evidence of broad task-agnostic G enforcement for Triton
+> generation.
 
 ## Scale Policy
 
 Cluster 1 follows the shared scale policy in
 `.contracts/research/scale_policy.md`.
 
-The current frozen strict-grammar run uses `n=20`, but it is still a
+The current frozen diagnostic/reference template-grammar run uses `n=20`, but it is still a
 three-kernel template-control subset: ReLU, Softmax, and GEMM. Treat it as a
 paper-style upper-bound control for that subset, not as the full future
 paper-scale factorial.
 
 For future paper-scale runs:
 
-- keep the current strict grammar frozen as `template_upper_bound` reference;
+- keep the current template grammar frozen as `template_upper_bound` reference;
 - report `template_upper_bound` only as reference/diagnostic on the original
   three-kernel subset unless a later contract explicitly expands it;
 - use the planned task-agnostic Triton grammar for the primary task-agnostic G
@@ -72,9 +87,9 @@ For future paper-scale runs:
 - attach `scale_tier`, `kernel_count`, `model_id`, `grammar_variant`, and seed
   schedule metadata before combining Cluster 1 artifacts with later clusters.
 
-If the strict grammar is expanded to cover more kernels, that expansion must be
+If the diagnostic/reference template grammar is expanded to cover more kernels, that expansion must be
 reported as a new task-aware upper-bound control. It should not be relabeled as
-general grammar-constrained Triton generation.
+general task-agnostic G enforcement for Triton generation.
 
 ## Grammar Variants
 
@@ -85,7 +100,7 @@ Cluster 1 should ultimately report two grammar variants side by side.
 | `template_upper_bound` reference | implemented and frozen | Measures the diagnostic/reference ceiling when the grammar is allowed to encode ReLU/Softmax/GEMM family structure |
 | `task_agnostic` primary | planned | Measures genuine Triton-language syntactic guidance without task-specific body templates |
 
-Do not mutate the current strict grammar into the task-agnostic grammar. Keep it
+Do not mutate the current diagnostic/reference template grammar into the task-agnostic grammar. Keep it
 fixed as the upper-bound control and add the task-agnostic grammar separately.
 
 ## Pre-Registered Task-Agnostic Interpretation Thresholds
@@ -149,7 +164,8 @@ allow-list, coverage report, and expected SHA in the same commit.
 Cluster 1 may do only these things:
 
 - generate Triton Python modules;
-- apply grammar-constrained decoding;
+- apply grammar-guided decoding with GBNF token masks;
+- apply offline semantic post-validation for G acceptance;
 - apply grammar/hardware token masks;
 - validate generated source against the Cluster 1 generated-code surface;
 - run dummy Triton launches to check compile acceptance;
@@ -222,9 +238,9 @@ Primary implementation paths:
 
 ## Next Cluster 1 Work
 
-Before making broad paper claims about grammar-constrained generation:
+Before making broad paper claims about task-agnostic G enforcement:
 
-1. Keep the current strict grammar frozen as `template_upper_bound` reference.
+1. Keep the current template grammar frozen as `template_upper_bound` reference.
 2. Add a separate task-agnostic Triton grammar.
 3. Add `grammar_variant` to future result/eval metadata where needed.
 4. Run `none` vs `G_task_agnostic` vs `G_template_upper_bound_reference`.
