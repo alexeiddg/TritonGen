@@ -2669,7 +2669,7 @@ def _valid_tl_call_shape(name: str, node: ast.Call) -> bool:
                 },
             )
         case "argmax" | "argmin":
-            return _valid_axis_reduction_call(
+            return _valid_required_axis_reduction_call(
                 node,
                 {
                     "axis",
@@ -2706,16 +2706,19 @@ def _valid_tl_call_shape(name: str, node: ast.Call) -> bool:
         case "randint4x" | "randint" | "rand" | "randn":
             return len(node.args) == 2 and kwargs <= {"n_rounds"}
         case "range":
-            return 1 <= len(node.args) <= 3 and kwargs <= {
-                "num_stages",
-                "loop_unroll_factor",
-                "disallow_acc_multi_buffer",
-                "flatten",
-                "warp_specialize",
-                "disable_licm",
-            }
+            return _valid_range_iterator_call(
+                node,
+                {
+                    "num_stages",
+                    "loop_unroll_factor",
+                    "disallow_acc_multi_buffer",
+                    "flatten",
+                    "warp_specialize",
+                    "disable_licm",
+                },
+            )
         case "static_range":
-            return 1 <= len(node.args) <= 3 and not kwargs
+            return _valid_range_iterator_call(node, set())
         case "inline_asm_elementwise":
             return not node.args and kwargs == {
                 "asm",
@@ -2764,6 +2767,35 @@ def _valid_axis_reduction_call(
         return False
     if len(node.args) == 2 and "axis" in kwargs:
         return False
+    return kwargs <= allowed_kwargs
+
+
+def _valid_required_axis_reduction_call(
+    node: ast.Call,
+    allowed_kwargs: set[str],
+) -> bool:
+    kwargs = {kw.arg for kw in node.keywords if kw.arg is not None}
+    if len(node.args) == 2 and "axis" in kwargs:
+        return False
+    if len(node.args) == 2:
+        return kwargs <= allowed_kwargs
+    if len(node.args) == 1 and "axis" in kwargs:
+        return kwargs <= allowed_kwargs
+    return False
+
+
+def _valid_range_iterator_call(
+    node: ast.Call,
+    compiler_kwargs: set[str],
+) -> bool:
+    kwargs = {kw.arg for kw in node.keywords if kw.arg is not None}
+    if not 1 <= len(node.args) <= 3:
+        return False
+    allowed_kwargs = set(compiler_kwargs)
+    if len(node.args) == 1:
+        allowed_kwargs |= {"arg2", "step"}
+    elif len(node.args) == 2:
+        allowed_kwargs.add("step")
     return kwargs <= allowed_kwargs
 
 

@@ -11,6 +11,28 @@
 > Triton grammar; broader KernelBench coverage requires explicit future
 > generalization.
 
+> **TASK-AGNOSTIC API COVERAGE CONTRACT:** The task-agnostic grammar's
+> `triton.language` allow-list must remain auditable through
+> `cluster1/grammar/corpus/api_coverage_report.md`. Any grammar modification
+> that changes accepted `tl.*` names, arities, kwargs, or encoded value
+> restrictions must update, in the same commit:
+> `cluster1/grammar/corpus/triton_language_reference_vmain_2026_05_16.json`
+> if the reference version/source changes,
+> `cluster1/grammar/corpus/grammar_allowlist_extracted.json`,
+> `cluster1/grammar/corpus/api_coverage_report.md`, and
+> `cluster1/tests/test_api_coverage.py` expectations if the pinned snapshot
+> SHA-256 or classification policy changes.
+> The grammar allow-list extractor must derive accepted `tl.*` kwargs/arities
+> from the GBNF alternatives rather than from a hand-maintained Triton signature
+> table.
+> The pasted Triton corpus at
+> `.contracts/agentic/reference/triton_corpus.md` is the first offline gate for
+> `tl.*` API coverage; CI must fail if its public function or parameter surface
+> drifts from the pinned reference snapshot.
+> Triton `main` is only the upstream source label. Reviewer-facing claims must
+> cite the pinned local JSON snapshot by path, extraction timestamp, and SHA-256:
+> `a7a637be7f80d59a0764838a6d21a945e7d17e85f1781992fa5089c67b6a1b80`.
+
 ---
 
 ## Table of Contents

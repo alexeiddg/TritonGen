@@ -560,6 +560,23 @@ TASK_AGNOSTIC_GOOD_KERNELS["static_range_output_store"] = _TASK_AGNOSTIC_VECTOR_
     1,
 )
 
+TASK_AGNOSTIC_GOOD_KERNELS["range_keyword_args"] = _TASK_AGNOSTIC_VECTOR_ADD.replace(
+    "    out = x + y\n",
+    "    work = x\n"
+    "    for stage in tl.range(0, arg2=1, step=1, num_stages=3):\n"
+    "        work = work + 0.0\n"
+    "    for stage in tl.range(0, 1, step=1, num_stages=3):\n"
+    "        work = work + 0.0\n"
+    "    for stage in tl.range(0, 1, 1, num_stages=3):\n"
+    "        work = work + 0.0\n"
+    "    for stage in tl.static_range(0, arg2=1, step=1):\n"
+    "        work = work + 0.0\n"
+    "    for stage in tl.static_range(0, 1, step=1):\n"
+    "        work = work + 0.0\n"
+    "    out = work + y\n",
+    1,
+)
+
 TASK_AGNOSTIC_GOOD_KERNELS["output_pointer_alias"] = _TASK_AGNOSTIC_VECTOR_ADD.replace(
     "    tl.store(out_ptr + offsets, out, mask=mask)\n",
     "    out_offsets = out_ptr + offsets\n"
@@ -866,6 +883,38 @@ TASK_AGNOSTIC_BAD_KERNELS: dict[str, str] = {
         1,
     ),
     "missing_jit_helper": _TASK_AGNOSTIC_VECTOR_ADD.replace("@triton.jit\n", "", 1),
+    "range_duplicate_arg2_keyword": _TASK_AGNOSTIC_VECTOR_ADD.replace(
+        "    out = x + y\n",
+        "    work = x\n"
+        "    for stage in tl.range(0, 1, arg2=2):\n"
+        "        work = work + 0.0\n"
+        "    out = work + y\n",
+        1,
+    ),
+    "range_duplicate_step_keyword": _TASK_AGNOSTIC_VECTOR_ADD.replace(
+        "    out = x + y\n",
+        "    work = x\n"
+        "    for stage in tl.range(0, 1, 1, step=2):\n"
+        "        work = work + 0.0\n"
+        "    out = work + y\n",
+        1,
+    ),
+    "static_range_duplicate_arg2_keyword": _TASK_AGNOSTIC_VECTOR_ADD.replace(
+        "    out = x + y\n",
+        "    work = x\n"
+        "    for stage in tl.static_range(0, 1, arg2=2):\n"
+        "        work = work + 0.0\n"
+        "    out = work + y\n",
+        1,
+    ),
+    "static_range_duplicate_step_keyword": _TASK_AGNOSTIC_VECTOR_ADD.replace(
+        "    out = x + y\n",
+        "    work = x\n"
+        "    for stage in tl.static_range(0, 1, 1, step=2):\n"
+        "        work = work + 0.0\n"
+        "    out = work + y\n",
+        1,
+    ),
     "missing_public_launcher": _TASK_AGNOSTIC_VECTOR_ADD.split(
         "\ndef vector_add",
         maxsplit=1,

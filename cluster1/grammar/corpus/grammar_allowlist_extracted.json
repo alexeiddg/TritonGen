@@ -1,0 +1,1955 @@
+{
+  "extraction_version": "2026-05-16.3",
+  "functions": [
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-unary-math-call"
+      ],
+      "name": "tl.abs",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-advance-call"
+      ],
+      "name": "tl.advance",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-arange-call"
+      ],
+      "name": "tl.arange",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+keep_dims"
+      ],
+      "allowed_kwargs": [
+        "axis",
+        "keep_dims"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-required-axis-reduction-call"
+      ],
+      "name": "tl.argmax",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+keep_dims"
+      ],
+      "allowed_kwargs": [
+        "axis",
+        "keep_dims"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-required-axis-reduction-call"
+      ],
+      "name": "tl.argmin",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "3",
+        "3+reverse"
+      ],
+      "allowed_kwargs": [
+        "reverse"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-associative-scan-call"
+      ],
+      "name": "tl.associative_scan",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-assume-call"
+      ],
+      "name": "tl.assume",
+      "notes": "Allowed in statement context; value use is restricted unless separately reachable from triton-value-call.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+kwargs"
+      ],
+      "allowed_kwargs": [
+        "mask",
+        "scope",
+        "sem"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-atomic-binary-call"
+      ],
+      "name": "tl.atomic_add",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "string-valued parameters must be string literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+kwargs"
+      ],
+      "allowed_kwargs": [
+        "mask",
+        "scope",
+        "sem"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-atomic-binary-call"
+      ],
+      "name": "tl.atomic_and",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "string-valued parameters must be string literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "3",
+        "3+kwargs"
+      ],
+      "allowed_kwargs": [
+        "scope",
+        "sem"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-atomic-cas-call"
+      ],
+      "name": "tl.atomic_cas",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "string-valued parameters must be string literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+kwargs"
+      ],
+      "allowed_kwargs": [
+        "mask",
+        "scope",
+        "sem"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-atomic-binary-call"
+      ],
+      "name": "tl.atomic_max",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "string-valued parameters must be string literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+kwargs"
+      ],
+      "allowed_kwargs": [
+        "mask",
+        "scope",
+        "sem"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-atomic-binary-call"
+      ],
+      "name": "tl.atomic_min",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "string-valued parameters must be string literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+kwargs"
+      ],
+      "allowed_kwargs": [
+        "mask",
+        "scope",
+        "sem"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-atomic-binary-call"
+      ],
+      "name": "tl.atomic_or",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "string-valued parameters must be string literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+kwargs"
+      ],
+      "allowed_kwargs": [
+        "mask",
+        "scope",
+        "sem"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-atomic-binary-call"
+      ],
+      "name": "tl.atomic_xchg",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "string-valued parameters must be string literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+kwargs"
+      ],
+      "allowed_kwargs": [
+        "mask",
+        "scope",
+        "sem"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-atomic-binary-call"
+      ],
+      "name": "tl.atomic_xor",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "string-valued parameters must be string literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-broadcast-call"
+      ],
+      "name": "tl.broadcast",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2+"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-broadcast-to-call"
+      ],
+      "name": "tl.broadcast_to",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+bitcast",
+        "2+fp_downcast_rounding"
+      ],
+      "allowed_kwargs": [
+        "bitcast",
+        "fp_downcast_rounding"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-cast-call"
+      ],
+      "name": "tl.cast",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "dtype arguments are restricted to the dtype production",
+        "string-valued parameters must be string literals",
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+can_reorder",
+        "2+can_reorder+dim"
+      ],
+      "allowed_kwargs": [
+        "can_reorder",
+        "dim"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-cat-call"
+      ],
+      "name": "tl.cat",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-binary-math-call"
+      ],
+      "name": "tl.cdiv",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-unary-math-call"
+      ],
+      "name": "tl.ceil",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "3"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-ternary-math-call"
+      ],
+      "name": "tl.clamp",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-unary-math-call"
+      ],
+      "name": "tl.cos",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "1+axis",
+        "1+axis+reverse"
+      ],
+      "allowed_kwargs": [
+        "axis",
+        "reverse"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-cumprod-call"
+      ],
+      "name": "tl.cumprod",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "1+axis",
+        "1+axis+dtype",
+        "1+axis+reverse"
+      ],
+      "allowed_kwargs": [
+        "axis",
+        "dtype",
+        "reverse"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-cumsum-call"
+      ],
+      "name": "tl.cumsum",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "dtype arguments are restricted to the dtype production",
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "0"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-debug-barrier-call"
+      ],
+      "name": "tl.debug_barrier",
+      "notes": "Allowed in statement context; value use is restricted unless separately reachable from triton-value-call.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "2",
+        "2+mask"
+      ],
+      "allowed_kwargs": [
+        "mask"
+      ],
+      "contexts": [
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-device-assert-call"
+      ],
+      "name": "tl.device_assert",
+      "notes": "Allowed in statement context; value use is restricted unless separately reachable from triton-value-call.",
+      "restrictions": [
+        "string-valued parameters must be string literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "2+"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-device-print-call"
+      ],
+      "name": "tl.device_print",
+      "notes": "Allowed in statement context; value use is restricted unless separately reachable from triton-value-call.",
+      "restrictions": [
+        "string-valued parameters must be string literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-binary-math-call"
+      ],
+      "name": "tl.div_rn",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+acc",
+        "2+allow_tf32",
+        "2+input_precision"
+      ],
+      "allowed_kwargs": [
+        "acc",
+        "allow_tf32",
+        "input_precision"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-dot-call"
+      ],
+      "name": "tl.dot",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "string-valued parameters must be string literals",
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "6"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-dot-scaled-call"
+      ],
+      "name": "tl.dot_scaled",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "string-valued parameters must be string literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-unary-math-call"
+      ],
+      "name": "tl.erf",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-exp-call"
+      ],
+      "name": "tl.exp",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-unary-math-call"
+      ],
+      "name": "tl.exp2",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-expand-dims-call"
+      ],
+      "name": "tl.expand_dims",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-binary-math-call"
+      ],
+      "name": "tl.fdiv",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-flip-call"
+      ],
+      "name": "tl.flip",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-unary-math-call"
+      ],
+      "name": "tl.floor",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "3"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-ternary-math-call"
+      ],
+      "name": "tl.fma",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2+dtype"
+      ],
+      "allowed_kwargs": [
+        "dtype"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-full-call"
+      ],
+      "name": "tl.full",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "dtype arguments are restricted to the dtype production"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "3"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-gather-call"
+      ],
+      "name": "tl.gather",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+mask"
+      ],
+      "allowed_kwargs": [
+        "mask"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-histogram-call"
+      ],
+      "name": "tl.histogram",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "keyword-only"
+      ],
+      "allowed_kwargs": [
+        "args",
+        "asm",
+        "constraints",
+        "dtype",
+        "is_pure",
+        "pack"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-inline-asm-call"
+      ],
+      "name": "tl.inline_asm_elementwise",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "string-valued parameters must be string literals",
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-interleave-call"
+      ],
+      "name": "tl.interleave",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-join-call"
+      ],
+      "name": "tl.join",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "1+kwargs"
+      ],
+      "allowed_kwargs": [
+        "boundary_check",
+        "cache_modifier",
+        "eviction_policy",
+        "mask",
+        "other",
+        "padding_option",
+        "volatile"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-load-call"
+      ],
+      "name": "tl.load",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "string-valued parameters must be string literals",
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-load-tensor-descriptor-call"
+      ],
+      "name": "tl.load_tensor_descriptor",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-log-call"
+      ],
+      "name": "tl.log",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-unary-math-call"
+      ],
+      "name": "tl.log2",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "6",
+        "keyword-only"
+      ],
+      "allowed_kwargs": [
+        "base",
+        "block_shape",
+        "offsets",
+        "order",
+        "shape",
+        "strides"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-make-block-ptr-call"
+      ],
+      "name": "tl.make_block_ptr",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1+shape+strides+block_shape",
+        "1+shape+strides+block_shape+padding_option"
+      ],
+      "allowed_kwargs": [
+        "block_shape",
+        "padding_option",
+        "shape",
+        "strides"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-make-tensor-descriptor-call"
+      ],
+      "name": "tl.make_tensor_descriptor",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "string-valued parameters must be string literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "2",
+        "2+keep_dims"
+      ],
+      "allowed_kwargs": [
+        "axis",
+        "keep_dims"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-optional-axis-reduction-call"
+      ],
+      "name": "tl.max",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-max-constancy-call"
+      ],
+      "name": "tl.max_constancy",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-max-contiguous-call"
+      ],
+      "name": "tl.max_contiguous",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-binary-math-call"
+      ],
+      "name": "tl.maximum",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "2",
+        "2+keep_dims"
+      ],
+      "allowed_kwargs": [
+        "axis",
+        "keep_dims"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-optional-axis-reduction-call"
+      ],
+      "name": "tl.min",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-binary-math-call"
+      ],
+      "name": "tl.minimum",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-multiple-of-call"
+      ],
+      "name": "tl.multiple_of",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "axis=1"
+      ],
+      "allowed_kwargs": [
+        "axis"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-num-programs-call"
+      ],
+      "name": "tl.num_programs",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "program-id axis grammar restricts values to literal 0, 1, or 2"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "2+"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-permute-call"
+      ],
+      "name": "tl.permute",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "axis=1"
+      ],
+      "allowed_kwargs": [
+        "axis"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-program-id-call"
+      ],
+      "name": "tl.program_id",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "program-id axis grammar restricts values to literal 0, 1, or 2"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+n_rounds"
+      ],
+      "allowed_kwargs": [
+        "n_rounds"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-random-call"
+      ],
+      "name": "tl.rand",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+n_rounds"
+      ],
+      "allowed_kwargs": [
+        "n_rounds"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-random-call"
+      ],
+      "name": "tl.randint",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+n_rounds"
+      ],
+      "allowed_kwargs": [
+        "n_rounds"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-random-call"
+      ],
+      "name": "tl.randint4x",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+n_rounds"
+      ],
+      "allowed_kwargs": [
+        "n_rounds"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-random-call"
+      ],
+      "name": "tl.randn",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "1+kwargs",
+        "2",
+        "2+kwargs",
+        "3",
+        "3+kwargs"
+      ],
+      "allowed_kwargs": [
+        "arg2",
+        "disable_licm",
+        "disallow_acc_multi_buffer",
+        "flatten",
+        "loop_unroll_factor",
+        "num_stages",
+        "step",
+        "warp_specialize"
+      ],
+      "contexts": [
+        "for_iterators"
+      ],
+      "grammar_rules": [
+        "tl-range-call"
+      ],
+      "name": "tl.range",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "boolean-valued parameters must be True or False literals",
+        "iterator keyword support is split by positional count: arg2 is accepted only before the second positional argument, step only before the third positional argument, and compiler loop kwargs remain available after documented positional forms"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "1+can_reorder"
+      ],
+      "allowed_kwargs": [
+        "can_reorder"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-ravel-call"
+      ],
+      "name": "tl.ravel",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "3",
+        "3+keep_dims"
+      ],
+      "allowed_kwargs": [
+        "keep_dims"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-reduce-call"
+      ],
+      "name": "tl.reduce",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2+",
+        "2+can_reorder"
+      ],
+      "allowed_kwargs": [
+        "can_reorder"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-reshape-call"
+      ],
+      "name": "tl.reshape",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-unary-math-call"
+      ],
+      "name": "tl.rsqrt",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-unary-math-call"
+      ],
+      "name": "tl.sigmoid",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-unary-math-call"
+      ],
+      "name": "tl.sin",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-unary-math-call"
+      ],
+      "name": "tl.softmax",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "1+dim",
+        "1+dim+descending"
+      ],
+      "allowed_kwargs": [
+        "descending",
+        "dim"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-sort-call"
+      ],
+      "name": "tl.sort",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-split-call"
+      ],
+      "name": "tl.split",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-sqrt-call"
+      ],
+      "name": "tl.sqrt",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-unary-math-call"
+      ],
+      "name": "tl.sqrt_rn",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-static-assert-call"
+      ],
+      "name": "tl.static_assert",
+      "notes": "Allowed in statement context; value use is restricted unless separately reachable from triton-value-call.",
+      "restrictions": [
+        "string-valued parameters must be string literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1+"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-static-print-call"
+      ],
+      "name": "tl.static_print",
+      "notes": "Allowed in statement context; value use is restricted unless separately reachable from triton-value-call.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "1+kwargs",
+        "2",
+        "2+kwargs",
+        "3"
+      ],
+      "allowed_kwargs": [
+        "arg2",
+        "step"
+      ],
+      "contexts": [
+        "for_iterators"
+      ],
+      "grammar_rules": [
+        "tl-static-range-call"
+      ],
+      "name": "tl.static_range",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "iterator keyword support is split by positional count: arg2 is accepted only before the second positional argument and step only before the third positional argument"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+kwargs"
+      ],
+      "allowed_kwargs": [
+        "boundary_check",
+        "cache_modifier",
+        "eviction_policy",
+        "mask"
+      ],
+      "contexts": [
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-store-call"
+      ],
+      "name": "tl.store",
+      "notes": "Allowed in statement context; value use is restricted unless separately reachable from triton-value-call.",
+      "restrictions": [
+        "string-valued parameters must be string literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "3"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-store-tensor-descriptor-call"
+      ],
+      "name": "tl.store_tensor_descriptor",
+      "notes": "Allowed in statement context; value use is restricted unless separately reachable from triton-value-call.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "2",
+        "2+dtype",
+        "2+dtype+keep_dims",
+        "2+keep_dims",
+        "2+keep_dims+dtype"
+      ],
+      "allowed_kwargs": [
+        "axis",
+        "dtype",
+        "keep_dims"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-optional-axis-reduction-call"
+      ],
+      "name": "tl.sum",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "dtype arguments are restricted to the dtype production",
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "5"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-swizzle2d-call"
+      ],
+      "name": "tl.swizzle2d",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2",
+        "2+dim",
+        "2+dim+descending"
+      ],
+      "allowed_kwargs": [
+        "descending",
+        "dim"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-topk-call"
+      ],
+      "name": "tl.topk",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "2+"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-trans-call"
+      ],
+      "name": "tl.trans",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-binary-math-call"
+      ],
+      "name": "tl.umulhi",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "2+"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-view-call"
+      ],
+      "name": "tl.view",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "3"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-where-call"
+      ],
+      "name": "tl.where",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1",
+        "2",
+        "2+keep_dims"
+      ],
+      "allowed_kwargs": [
+        "axis",
+        "keep_dims"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-optional-axis-reduction-call"
+      ],
+      "name": "tl.xor_sum",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "boolean-valued parameters must be True or False literals"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1+dtype"
+      ],
+      "allowed_kwargs": [
+        "dtype"
+      ],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-zeros-call"
+      ],
+      "name": "tl.zeros",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "dtype arguments are restricted to the dtype production"
+      ]
+    },
+    {
+      "allowed_arities": [
+        "1"
+      ],
+      "allowed_kwargs": [],
+      "contexts": [
+        "expressions",
+        "for_iterators",
+        "statements"
+      ],
+      "grammar_rules": [
+        "tl-zeros-like-call"
+      ],
+      "name": "tl.zeros_like",
+      "notes": "Extracted from explicit task-agnostic GBNF tl.* productions; no generic tl.<name> fallback exists.",
+      "restrictions": [
+        "arguments are restricted to grammar-level kernel expressions or literals"
+      ]
+    }
+  ],
+  "source_file": "cluster1/grammar/triton_kernel_agnostic.gbnf"
+}

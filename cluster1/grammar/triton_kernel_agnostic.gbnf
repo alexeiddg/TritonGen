@@ -166,14 +166,17 @@ tl-log-call ::= "tl.log(" kernel-expr ")"
 tl-sqrt-call ::= "tl.sqrt(" kernel-expr ")"
 tl-where-call ::= "tl.where(" kernel-expr ", " kernel-expr ", " kernel-expr ")"
 
-tl-reduction-call ::= tl-reduction-axis-call | tl-reduce-call
-tl-reduction-axis-call ::= tl-reduction-axis-name "(" kernel-expr ")"
-                         | tl-reduction-axis-name "(" kernel-expr ", " reduction-axis-arg ")"
-                         | tl-reduction-axis-name "(" kernel-expr ", " reduction-axis-arg ", keep_dims=" bool-literal ")"
-                         | "tl.sum(" kernel-expr ", " reduction-axis-arg ", dtype=" dtype ")"
-                         | "tl.sum(" kernel-expr ", " reduction-axis-arg ", keep_dims=" bool-literal ", dtype=" dtype ")"
-                         | "tl.sum(" kernel-expr ", " reduction-axis-arg ", dtype=" dtype ", keep_dims=" bool-literal ")"
-tl-reduction-axis-name ::= "tl.argmax" | "tl.argmin" | "tl.max" | "tl.min" | "tl.sum" | "tl.xor_sum"
+tl-reduction-call ::= tl-required-axis-reduction-call | tl-optional-axis-reduction-call | tl-reduce-call
+tl-required-axis-reduction-call ::= tl-required-axis-reduction-name "(" kernel-expr ", " reduction-axis-arg ")"
+                                  | tl-required-axis-reduction-name "(" kernel-expr ", " reduction-axis-arg ", keep_dims=" bool-literal ")"
+tl-optional-axis-reduction-call ::= tl-optional-axis-reduction-name "(" kernel-expr ")"
+                                  | tl-optional-axis-reduction-name "(" kernel-expr ", " reduction-axis-arg ")"
+                                  | tl-optional-axis-reduction-name "(" kernel-expr ", " reduction-axis-arg ", keep_dims=" bool-literal ")"
+                                  | "tl.sum(" kernel-expr ", " reduction-axis-arg ", dtype=" dtype ")"
+                                  | "tl.sum(" kernel-expr ", " reduction-axis-arg ", keep_dims=" bool-literal ", dtype=" dtype ")"
+                                  | "tl.sum(" kernel-expr ", " reduction-axis-arg ", dtype=" dtype ", keep_dims=" bool-literal ")"
+tl-required-axis-reduction-name ::= "tl.argmax" | "tl.argmin"
+tl-optional-axis-reduction-name ::= "tl.max" | "tl.min" | "tl.sum" | "tl.xor_sum"
 reduction-axis-arg ::= kernel-expr | "axis=" kernel-expr
 tl-reduce-call ::= "tl.reduce(" kernel-expr ", " kernel-expr ", " ident ")"
                  | "tl.reduce(" kernel-expr ", " kernel-expr ", " ident ", keep_dims=" bool-literal ")"
@@ -245,8 +248,40 @@ else-clause-level2 ::= indent2 "else:" nl kernel-stmt-level3+
 for-range-stmt-level1 ::= indent1 "for " ident sp "in" sp range-call ":" nl kernel-stmt-level2+
 for-range-stmt-level2 ::= indent2 "for " ident sp "in" sp range-call ":" nl kernel-stmt-level3+
 range-call ::= "range(" kernel-expr ", " kernel-expr ", " kernel-expr ")"
-             | "tl.range(" kernel-call-arg-list ")"
-             | "tl.static_range(" kernel-call-arg-list ")"
+             | tl-range-call
+             | tl-static-range-call
+
+tl-range-call ::= "tl.range(" tl-range-arg-list ")"
+tl-static-range-call ::= "tl.static_range(" tl-static-range-arg-list ")"
+tl-range-arg-list ::= kernel-expr
+                    | kernel-expr ", " tl-range-after-arg1-keyword-arg-list
+                    | kernel-expr ", " kernel-expr
+                    | kernel-expr ", " kernel-expr ", " tl-range-after-arg2-keyword-arg-list
+                    | kernel-expr ", " kernel-expr ", " kernel-expr
+                    | kernel-expr ", " kernel-expr ", " kernel-expr ", " tl-range-compiler-keyword-arg-list
+tl-static-range-arg-list ::= kernel-expr
+                           | kernel-expr ", " tl-static-range-after-arg1-keyword-arg-list
+                           | kernel-expr ", " kernel-expr
+                           | kernel-expr ", " kernel-expr ", " tl-static-range-after-arg2-keyword-arg-list
+                           | kernel-expr ", " kernel-expr ", " kernel-expr
+tl-range-after-arg1-keyword-arg-list ::= tl-range-after-arg1-keyword-arg (", " tl-range-after-arg1-keyword-arg)*
+tl-range-after-arg2-keyword-arg-list ::= tl-range-after-arg2-keyword-arg (", " tl-range-after-arg2-keyword-arg)*
+tl-range-compiler-keyword-arg-list ::= tl-range-compiler-keyword-arg (", " tl-range-compiler-keyword-arg)*
+tl-static-range-after-arg1-keyword-arg-list ::= tl-static-range-after-arg1-keyword-arg (", " tl-static-range-after-arg1-keyword-arg)*
+tl-static-range-after-arg2-keyword-arg-list ::= "step=" kernel-expr
+tl-range-after-arg1-keyword-arg ::= "arg2=" kernel-expr
+                                  | "step=" kernel-expr
+                                  | tl-range-compiler-keyword-arg
+tl-range-after-arg2-keyword-arg ::= "step=" kernel-expr
+                                  | tl-range-compiler-keyword-arg
+tl-range-compiler-keyword-arg ::= "num_stages=" kernel-expr
+                                | "loop_unroll_factor=" kernel-expr
+                                | "disallow_acc_multi_buffer=" bool-literal
+                                | "flatten=" bool-literal
+                                | "warp_specialize=" bool-literal
+                                | "disable_licm=" bool-literal
+tl-static-range-after-arg1-keyword-arg ::= "arg2=" kernel-expr
+                                         | "step=" kernel-expr
 
 # Autotune decorator. Config literals are generic over BLOCK_* meta-parameters
 # rather than enumerating benchmark-task block shapes.

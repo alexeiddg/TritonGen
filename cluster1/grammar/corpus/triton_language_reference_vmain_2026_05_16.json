@@ -1,0 +1,4312 @@
+{
+  "docs_version": "main",
+  "excluded_public_entries": [
+    {
+      "exclusion_reason": "Public programming-model class, not a tl.* function call in the grammar allow-list.",
+      "kind": "class",
+      "kwargs": [],
+      "name": "tl.tensor",
+      "parameter_names": [
+        "self",
+        "handle",
+        "type"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "self",
+          "raw": "self"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "handle",
+          "raw": "handle"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "type",
+          "raw": "type: dtype"
+        }
+      ],
+      "reference_name": "triton.language.tensor",
+      "section": "Programming Model",
+      "signature": "triton.language.tensor(self, handle, type: dtype)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.tensor.html"
+    },
+    {
+      "exclusion_reason": "Public programming-model class, not a tl.* function call in the grammar allow-list.",
+      "kind": "class",
+      "kwargs": [],
+      "name": "tl.tensor_descriptor",
+      "parameter_names": [
+        "self",
+        "handle",
+        "shape",
+        "strides",
+        "block_type"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "self",
+          "raw": "self"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "handle",
+          "raw": "handle"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "shape",
+          "raw": "shape: List[tensor]"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "strides",
+          "raw": "strides: List[tensor]"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "block_type",
+          "raw": "block_type: block_type"
+        }
+      ],
+      "reference_name": "triton.language.tensor_descriptor",
+      "section": "Programming Model",
+      "signature": "triton.language.tensor_descriptor(self, handle, shape: List[tensor], strides: List[tensor], block_type: block_type)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.tensor_descriptor.html"
+    }
+  ],
+  "extraction_timestamp_utc": "2026-05-16T00:00:00Z",
+  "extraction_version": "2026-05-16.1",
+  "function_count": 92,
+  "functions": [
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.program_id",
+      "parameter_names": [
+        "axis",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "axis",
+          "raw": "axis"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.program_id",
+      "section": "Programming Model",
+      "signature": "triton.language.program_id(axis, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.program_id.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.num_programs",
+      "parameter_names": [
+        "axis",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "axis",
+          "raw": "axis"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.num_programs",
+      "section": "Programming Model",
+      "signature": "triton.language.num_programs(axis, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.num_programs.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.arange",
+      "parameter_names": [
+        "start",
+        "end",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "start",
+          "raw": "start"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "end",
+          "raw": "end"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.arange",
+      "section": "Creation Ops",
+      "signature": "triton.language.arange(start, end, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.arange.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "can_reorder",
+        "dim"
+      ],
+      "name": "tl.cat",
+      "parameter_names": [
+        "input",
+        "other",
+        "can_reorder",
+        "dim",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "other",
+          "raw": "other"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "can_reorder",
+          "raw": "can_reorder=False"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "dim",
+          "raw": "dim=0"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.cat",
+      "section": "Creation Ops",
+      "signature": "triton.language.cat(input, other, can_reorder=False, dim=0, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.cat.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.full",
+      "parameter_names": [
+        "shape",
+        "value",
+        "dtype",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "shape",
+          "raw": "shape"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "value",
+          "raw": "value"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "dtype",
+          "raw": "dtype"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.full",
+      "section": "Creation Ops",
+      "signature": "triton.language.full(shape, value, dtype, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.full.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.zeros",
+      "parameter_names": [
+        "shape",
+        "dtype"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "shape",
+          "raw": "shape"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "dtype",
+          "raw": "dtype"
+        }
+      ],
+      "reference_name": "triton.language.zeros",
+      "section": "Creation Ops",
+      "signature": "triton.language.zeros(shape, dtype)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.zeros.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.zeros_like",
+      "parameter_names": [
+        "input"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        }
+      ],
+      "reference_name": "triton.language.zeros_like",
+      "section": "Creation Ops",
+      "signature": "triton.language.zeros_like(input)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.zeros_like.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "fp_downcast_rounding",
+        "bitcast"
+      ],
+      "name": "tl.cast",
+      "parameter_names": [
+        "input",
+        "dtype",
+        "fp_downcast_rounding",
+        "bitcast",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "dtype",
+          "raw": "dtype: dtype"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "fp_downcast_rounding",
+          "raw": "fp_downcast_rounding: str | None=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "bitcast",
+          "raw": "bitcast: bool=False"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.cast",
+      "section": "Creation Ops",
+      "signature": "triton.language.cast(input, dtype: dtype, fp_downcast_rounding: str | None=None, bitcast: bool=False, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.cast.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.broadcast",
+      "parameter_names": [
+        "input",
+        "other",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "other",
+          "raw": "other"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.broadcast",
+      "section": "Shape Manipulation Ops",
+      "signature": "triton.language.broadcast(input, other, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.broadcast.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.broadcast_to",
+      "parameter_names": [
+        "input",
+        "shape",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "var_positional",
+          "name": "shape",
+          "raw": "*shape"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.broadcast_to",
+      "section": "Shape Manipulation Ops",
+      "signature": "triton.language.broadcast_to(input, *shape, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.broadcast_to.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.expand_dims",
+      "parameter_names": [
+        "input",
+        "axis",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "axis",
+          "raw": "axis"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.expand_dims",
+      "section": "Shape Manipulation Ops",
+      "signature": "triton.language.expand_dims(input, axis, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.expand_dims.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.interleave",
+      "parameter_names": [
+        "a",
+        "b"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "a",
+          "raw": "a"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "b",
+          "raw": "b"
+        }
+      ],
+      "reference_name": "triton.language.interleave",
+      "section": "Shape Manipulation Ops",
+      "signature": "triton.language.interleave(a, b)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.interleave.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.join",
+      "parameter_names": [
+        "a",
+        "b",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "a",
+          "raw": "a"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "b",
+          "raw": "b"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.join",
+      "section": "Shape Manipulation Ops",
+      "signature": "triton.language.join(a, b, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.join.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.permute",
+      "parameter_names": [
+        "input",
+        "dims",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "var_positional",
+          "name": "dims",
+          "raw": "*dims"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.permute",
+      "section": "Shape Manipulation Ops",
+      "signature": "triton.language.permute(input, *dims, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.permute.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "can_reorder"
+      ],
+      "name": "tl.ravel",
+      "parameter_names": [
+        "x",
+        "can_reorder"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "can_reorder",
+          "raw": "can_reorder=False"
+        }
+      ],
+      "reference_name": "triton.language.ravel",
+      "section": "Shape Manipulation Ops",
+      "signature": "triton.language.ravel(x, can_reorder=False)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.ravel.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "can_reorder"
+      ],
+      "name": "tl.reshape",
+      "parameter_names": [
+        "input",
+        "shape",
+        "can_reorder",
+        "_semantic",
+        "_generator"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "var_positional",
+          "name": "shape",
+          "raw": "*shape"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "can_reorder",
+          "raw": "can_reorder=False"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_generator",
+          "raw": "_generator=None"
+        }
+      ],
+      "reference_name": "triton.language.reshape",
+      "section": "Shape Manipulation Ops",
+      "signature": "triton.language.reshape(input, *shape, can_reorder=False, _semantic=None, _generator=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.reshape.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.split",
+      "parameter_names": [
+        "a",
+        "_semantic",
+        "_generator"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "a",
+          "raw": "a"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_generator",
+          "raw": "_generator=None"
+        }
+      ],
+      "reference_name": "triton.language.split",
+      "section": "Shape Manipulation Ops",
+      "signature": "triton.language.split(a, _semantic=None, _generator=None) \u2192 tuple[tensor, tensor]",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.split.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.trans",
+      "parameter_names": [
+        "input",
+        "dims",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input: tensor"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "var_positional",
+          "name": "dims",
+          "raw": "*dims"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.trans",
+      "section": "Shape Manipulation Ops",
+      "signature": "triton.language.trans(input: tensor, *dims, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.trans.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.view",
+      "parameter_names": [
+        "input",
+        "shape",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "var_positional",
+          "name": "shape",
+          "raw": "*shape"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.view",
+      "section": "Shape Manipulation Ops",
+      "signature": "triton.language.view(input, *shape, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.view.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "acc",
+        "input_precision",
+        "allow_tf32",
+        "max_num_imprecise_acc",
+        "out_dtype"
+      ],
+      "name": "tl.dot",
+      "parameter_names": [
+        "input",
+        "other",
+        "acc",
+        "input_precision",
+        "allow_tf32",
+        "max_num_imprecise_acc",
+        "out_dtype",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "other",
+          "raw": "other"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "acc",
+          "raw": "acc=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input_precision",
+          "raw": "input_precision=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "allow_tf32",
+          "raw": "allow_tf32=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "max_num_imprecise_acc",
+          "raw": "max_num_imprecise_acc=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "out_dtype",
+          "raw": "out_dtype=triton.language.float32"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.dot",
+      "section": "Linear Algebra Ops",
+      "signature": "triton.language.dot(input, other, acc=None, input_precision=None, allow_tf32=None, max_num_imprecise_acc=None, out_dtype=triton.language.float32, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.dot.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "acc",
+        "fast_math",
+        "lhs_k_pack",
+        "rhs_k_pack",
+        "out_dtype"
+      ],
+      "name": "tl.dot_scaled",
+      "parameter_names": [
+        "lhs",
+        "lhs_scale",
+        "lhs_format",
+        "rhs",
+        "rhs_scale",
+        "rhs_format",
+        "acc",
+        "fast_math",
+        "lhs_k_pack",
+        "rhs_k_pack",
+        "out_dtype",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "lhs",
+          "raw": "lhs"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "lhs_scale",
+          "raw": "lhs_scale"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "lhs_format",
+          "raw": "lhs_format"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "rhs",
+          "raw": "rhs"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "rhs_scale",
+          "raw": "rhs_scale"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "rhs_format",
+          "raw": "rhs_format"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "acc",
+          "raw": "acc=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "fast_math",
+          "raw": "fast_math=False"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "lhs_k_pack",
+          "raw": "lhs_k_pack=True"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "rhs_k_pack",
+          "raw": "rhs_k_pack=True"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "out_dtype",
+          "raw": "out_dtype=triton.language.float32"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.dot_scaled",
+      "section": "Linear Algebra Ops",
+      "signature": "triton.language.dot_scaled(lhs, lhs_scale, lhs_format, rhs, rhs_scale, rhs_format, acc=None, fast_math=False, lhs_k_pack=True, rhs_k_pack=True, out_dtype=triton.language.float32, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.dot_scaled.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "mask",
+        "other",
+        "boundary_check",
+        "padding_option",
+        "cache_modifier",
+        "eviction_policy",
+        "volatile"
+      ],
+      "name": "tl.load",
+      "parameter_names": [
+        "pointer",
+        "mask",
+        "other",
+        "boundary_check",
+        "padding_option",
+        "cache_modifier",
+        "eviction_policy",
+        "volatile",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "pointer",
+          "raw": "pointer"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "mask",
+          "raw": "mask=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "other",
+          "raw": "other=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "boundary_check",
+          "raw": "boundary_check=()"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "padding_option",
+          "raw": "padding_option=''"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "cache_modifier",
+          "raw": "cache_modifier=''"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "eviction_policy",
+          "raw": "eviction_policy=''"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "volatile",
+          "raw": "volatile=False"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.load",
+      "section": "Memory/Pointer Ops",
+      "signature": "triton.language.load(pointer, mask=None, other=None, boundary_check=(), padding_option='', cache_modifier='', eviction_policy='', volatile=False, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.load.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "mask",
+        "boundary_check",
+        "cache_modifier",
+        "eviction_policy"
+      ],
+      "name": "tl.store",
+      "parameter_names": [
+        "pointer",
+        "value",
+        "mask",
+        "boundary_check",
+        "cache_modifier",
+        "eviction_policy",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "pointer",
+          "raw": "pointer"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "value",
+          "raw": "value"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "mask",
+          "raw": "mask=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "boundary_check",
+          "raw": "boundary_check=()"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "cache_modifier",
+          "raw": "cache_modifier=''"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "eviction_policy",
+          "raw": "eviction_policy=''"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.store",
+      "section": "Memory/Pointer Ops",
+      "signature": "triton.language.store(pointer, value, mask=None, boundary_check=(), cache_modifier='', eviction_policy='', _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.store.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "padding_option"
+      ],
+      "name": "tl.make_tensor_descriptor",
+      "parameter_names": [
+        "base",
+        "shape",
+        "strides",
+        "block_shape",
+        "padding_option",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "base",
+          "raw": "base: tensor"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "shape",
+          "raw": "shape: List[tensor]"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "strides",
+          "raw": "strides: List[tensor]"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "block_shape",
+          "raw": "block_shape: List[constexpr]"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "padding_option",
+          "raw": "padding_option='zero'"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.make_tensor_descriptor",
+      "section": "Memory/Pointer Ops",
+      "signature": "triton.language.make_tensor_descriptor(base: tensor, shape: List[tensor], strides: List[tensor], block_shape: List[constexpr], padding_option='zero', _semantic=None) \u2192 tensor_descriptor",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.make_tensor_descriptor.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.load_tensor_descriptor",
+      "parameter_names": [
+        "desc",
+        "offsets",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "desc",
+          "raw": "desc: tensor_descriptor_base"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "offsets",
+          "raw": "offsets: Sequence[constexpr | tensor]"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.load_tensor_descriptor",
+      "section": "Memory/Pointer Ops",
+      "signature": "triton.language.load_tensor_descriptor(desc: tensor_descriptor_base, offsets: Sequence[constexpr | tensor], _semantic=None) \u2192 tensor",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.load_tensor_descriptor.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.store_tensor_descriptor",
+      "parameter_names": [
+        "desc",
+        "offsets",
+        "value",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "desc",
+          "raw": "desc: tensor_descriptor_base"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "offsets",
+          "raw": "offsets: Sequence[constexpr | tensor]"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "value",
+          "raw": "value: tensor"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.store_tensor_descriptor",
+      "section": "Memory/Pointer Ops",
+      "signature": "triton.language.store_tensor_descriptor(desc: tensor_descriptor_base, offsets: Sequence[constexpr | tensor], value: tensor, _semantic=None) \u2192 tensor",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.store_tensor_descriptor.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.make_block_ptr",
+      "parameter_names": [
+        "base",
+        "shape",
+        "strides",
+        "offsets",
+        "block_shape",
+        "order",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "base",
+          "raw": "base: tensor"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "shape",
+          "raw": "shape"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "strides",
+          "raw": "strides"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "offsets",
+          "raw": "offsets"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "block_shape",
+          "raw": "block_shape"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "order",
+          "raw": "order"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.make_block_ptr",
+      "section": "Memory/Pointer Ops",
+      "signature": "triton.language.make_block_ptr(base: tensor, shape, strides, offsets, block_shape, order, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.make_block_ptr.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.advance",
+      "parameter_names": [
+        "base",
+        "offsets",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "base",
+          "raw": "base"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "offsets",
+          "raw": "offsets"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.advance",
+      "section": "Memory/Pointer Ops",
+      "signature": "triton.language.advance(base, offsets, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.advance.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "dim"
+      ],
+      "name": "tl.flip",
+      "parameter_names": [
+        "x",
+        "dim"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "dim",
+          "raw": "dim=None"
+        }
+      ],
+      "reference_name": "triton.language.flip",
+      "section": "Indexing Ops",
+      "signature": "triton.language.flip(x, dim=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.flip.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.where",
+      "parameter_names": [
+        "condition",
+        "x",
+        "y",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "condition",
+          "raw": "condition"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "y",
+          "raw": "y"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.where",
+      "section": "Indexing Ops",
+      "signature": "triton.language.where(condition, x, y, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.where.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.swizzle2d",
+      "parameter_names": [
+        "i",
+        "j",
+        "size_i",
+        "size_j",
+        "size_g"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "i",
+          "raw": "i"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "j",
+          "raw": "j"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "size_i",
+          "raw": "size_i"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "size_j",
+          "raw": "size_j"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "size_g",
+          "raw": "size_g"
+        }
+      ],
+      "reference_name": "triton.language.swizzle2d",
+      "section": "Indexing Ops",
+      "signature": "triton.language.swizzle2d(i, j, size_i, size_j, size_g)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.swizzle2d.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.abs",
+      "parameter_names": [
+        "x",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.abs",
+      "section": "Math Ops",
+      "signature": "triton.language.abs(x, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.abs.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.cdiv",
+      "parameter_names": [
+        "x",
+        "div"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "div",
+          "raw": "div"
+        }
+      ],
+      "reference_name": "triton.language.cdiv",
+      "section": "Math Ops",
+      "signature": "triton.language.cdiv(x, div)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.cdiv.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.ceil",
+      "parameter_names": [
+        "x",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.ceil",
+      "section": "Math Ops",
+      "signature": "triton.language.ceil(x, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.ceil.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "propagate_nan"
+      ],
+      "name": "tl.clamp",
+      "parameter_names": [
+        "x",
+        "min",
+        "max",
+        "propagate_nan",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "min",
+          "raw": "min"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "max",
+          "raw": "max"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "propagate_nan",
+          "raw": "propagate_nan: constexpr=<PROPAGATE_NAN.NONE: 0>"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.clamp",
+      "section": "Math Ops",
+      "signature": "triton.language.clamp(x, min, max, propagate_nan: constexpr=<PROPAGATE_NAN.NONE: 0>, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.clamp.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.cos",
+      "parameter_names": [
+        "x",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.cos",
+      "section": "Math Ops",
+      "signature": "triton.language.cos(x, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.cos.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.div_rn",
+      "parameter_names": [
+        "x",
+        "y",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "y",
+          "raw": "y"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.div_rn",
+      "section": "Math Ops",
+      "signature": "triton.language.div_rn(x, y, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.div_rn.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.erf",
+      "parameter_names": [
+        "x",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.erf",
+      "section": "Math Ops",
+      "signature": "triton.language.erf(x, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.erf.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.exp",
+      "parameter_names": [
+        "x",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.exp",
+      "section": "Math Ops",
+      "signature": "triton.language.exp(x, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.exp.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.exp2",
+      "parameter_names": [
+        "x",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.exp2",
+      "section": "Math Ops",
+      "signature": "triton.language.exp2(x, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.exp2.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "ieee_rounding"
+      ],
+      "name": "tl.fdiv",
+      "parameter_names": [
+        "x",
+        "y",
+        "ieee_rounding",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "y",
+          "raw": "y"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "ieee_rounding",
+          "raw": "ieee_rounding=False"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.fdiv",
+      "section": "Math Ops",
+      "signature": "triton.language.fdiv(x, y, ieee_rounding=False, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.fdiv.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.floor",
+      "parameter_names": [
+        "x",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.floor",
+      "section": "Math Ops",
+      "signature": "triton.language.floor(x, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.floor.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.fma",
+      "parameter_names": [
+        "x",
+        "y",
+        "z",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "y",
+          "raw": "y"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "z",
+          "raw": "z"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.fma",
+      "section": "Math Ops",
+      "signature": "triton.language.fma(x, y, z, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.fma.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.log",
+      "parameter_names": [
+        "x",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.log",
+      "section": "Math Ops",
+      "signature": "triton.language.log(x, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.log.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.log2",
+      "parameter_names": [
+        "x",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.log2",
+      "section": "Math Ops",
+      "signature": "triton.language.log2(x, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.log2.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "propagate_nan"
+      ],
+      "name": "tl.maximum",
+      "parameter_names": [
+        "x",
+        "y",
+        "propagate_nan",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "y",
+          "raw": "y"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "propagate_nan",
+          "raw": "propagate_nan: constexpr=<PROPAGATE_NAN.NONE: 0>"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.maximum",
+      "section": "Math Ops",
+      "signature": "triton.language.maximum(x, y, propagate_nan: constexpr=<PROPAGATE_NAN.NONE: 0>, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.maximum.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "propagate_nan"
+      ],
+      "name": "tl.minimum",
+      "parameter_names": [
+        "x",
+        "y",
+        "propagate_nan",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "y",
+          "raw": "y"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "propagate_nan",
+          "raw": "propagate_nan: constexpr=<PROPAGATE_NAN.NONE: 0>"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.minimum",
+      "section": "Math Ops",
+      "signature": "triton.language.minimum(x, y, propagate_nan: constexpr=<PROPAGATE_NAN.NONE: 0>, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.minimum.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.rsqrt",
+      "parameter_names": [
+        "x",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.rsqrt",
+      "section": "Math Ops",
+      "signature": "triton.language.rsqrt(x, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.rsqrt.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.sigmoid",
+      "parameter_names": [
+        "x"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        }
+      ],
+      "reference_name": "triton.language.sigmoid",
+      "section": "Math Ops",
+      "signature": "triton.language.sigmoid(x)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.sigmoid.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.sin",
+      "parameter_names": [
+        "x",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.sin",
+      "section": "Math Ops",
+      "signature": "triton.language.sin(x, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.sin.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "dim",
+        "keep_dims",
+        "ieee_rounding"
+      ],
+      "name": "tl.softmax",
+      "parameter_names": [
+        "x",
+        "dim",
+        "keep_dims",
+        "ieee_rounding"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "dim",
+          "raw": "dim=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "keep_dims",
+          "raw": "keep_dims=False"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "ieee_rounding",
+          "raw": "ieee_rounding=False"
+        }
+      ],
+      "reference_name": "triton.language.softmax",
+      "section": "Math Ops",
+      "signature": "triton.language.softmax(x, dim=None, keep_dims=False, ieee_rounding=False)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.softmax.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.sqrt",
+      "parameter_names": [
+        "x",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.sqrt",
+      "section": "Math Ops",
+      "signature": "triton.language.sqrt(x, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.sqrt.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.sqrt_rn",
+      "parameter_names": [
+        "x",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.sqrt_rn",
+      "section": "Math Ops",
+      "signature": "triton.language.sqrt_rn(x, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.sqrt_rn.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.umulhi",
+      "parameter_names": [
+        "x",
+        "y",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "y",
+          "raw": "y"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.umulhi",
+      "section": "Math Ops",
+      "signature": "triton.language.umulhi(x, y, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.umulhi.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "tie_break_left",
+        "keep_dims"
+      ],
+      "name": "tl.argmax",
+      "parameter_names": [
+        "input",
+        "axis",
+        "tie_break_left",
+        "keep_dims"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "axis",
+          "raw": "axis"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "tie_break_left",
+          "raw": "tie_break_left=True"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "keep_dims",
+          "raw": "keep_dims=False"
+        }
+      ],
+      "reference_name": "triton.language.argmax",
+      "section": "Reduction Ops",
+      "signature": "triton.language.argmax(input, axis, tie_break_left=True, keep_dims=False)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.argmax.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "tie_break_left",
+        "keep_dims"
+      ],
+      "name": "tl.argmin",
+      "parameter_names": [
+        "input",
+        "axis",
+        "tie_break_left",
+        "keep_dims"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "axis",
+          "raw": "axis"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "tie_break_left",
+          "raw": "tie_break_left=True"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "keep_dims",
+          "raw": "keep_dims=False"
+        }
+      ],
+      "reference_name": "triton.language.argmin",
+      "section": "Reduction Ops",
+      "signature": "triton.language.argmin(input, axis, tie_break_left=True, keep_dims=False)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.argmin.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "axis",
+        "return_indices",
+        "return_indices_tie_break_left",
+        "keep_dims"
+      ],
+      "name": "tl.max",
+      "parameter_names": [
+        "input",
+        "axis",
+        "return_indices",
+        "return_indices_tie_break_left",
+        "keep_dims"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "axis",
+          "raw": "axis=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "return_indices",
+          "raw": "return_indices=False"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "return_indices_tie_break_left",
+          "raw": "return_indices_tie_break_left=True"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "keep_dims",
+          "raw": "keep_dims=False"
+        }
+      ],
+      "reference_name": "triton.language.max",
+      "section": "Reduction Ops",
+      "signature": "triton.language.max(input, axis=None, return_indices=False, return_indices_tie_break_left=True, keep_dims=False)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.max.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "axis",
+        "return_indices",
+        "return_indices_tie_break_left",
+        "keep_dims"
+      ],
+      "name": "tl.min",
+      "parameter_names": [
+        "input",
+        "axis",
+        "return_indices",
+        "return_indices_tie_break_left",
+        "keep_dims"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "axis",
+          "raw": "axis=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "return_indices",
+          "raw": "return_indices=False"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "return_indices_tie_break_left",
+          "raw": "return_indices_tie_break_left=True"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "keep_dims",
+          "raw": "keep_dims=False"
+        }
+      ],
+      "reference_name": "triton.language.min",
+      "section": "Reduction Ops",
+      "signature": "triton.language.min(input, axis=None, return_indices=False, return_indices_tie_break_left=True, keep_dims=False)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.min.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "keep_dims"
+      ],
+      "name": "tl.reduce",
+      "parameter_names": [
+        "input",
+        "axis",
+        "combine_fn",
+        "keep_dims",
+        "_semantic",
+        "_generator"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "axis",
+          "raw": "axis"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "combine_fn",
+          "raw": "combine_fn"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "keep_dims",
+          "raw": "keep_dims=False"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_generator",
+          "raw": "_generator=None"
+        }
+      ],
+      "reference_name": "triton.language.reduce",
+      "section": "Reduction Ops",
+      "signature": "triton.language.reduce(input, axis, combine_fn, keep_dims=False, _semantic=None, _generator=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.reduce.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "axis",
+        "keep_dims",
+        "dtype"
+      ],
+      "name": "tl.sum",
+      "parameter_names": [
+        "input",
+        "axis",
+        "keep_dims",
+        "dtype"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "axis",
+          "raw": "axis=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "keep_dims",
+          "raw": "keep_dims=False"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "dtype",
+          "raw": "dtype: constexpr=None"
+        }
+      ],
+      "reference_name": "triton.language.sum",
+      "section": "Reduction Ops",
+      "signature": "triton.language.sum(input, axis=None, keep_dims=False, dtype: constexpr=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.sum.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "axis",
+        "keep_dims"
+      ],
+      "name": "tl.xor_sum",
+      "parameter_names": [
+        "input",
+        "axis",
+        "keep_dims"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "axis",
+          "raw": "axis=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "keep_dims",
+          "raw": "keep_dims=False"
+        }
+      ],
+      "reference_name": "triton.language.xor_sum",
+      "section": "Reduction Ops",
+      "signature": "triton.language.xor_sum(input, axis=None, keep_dims=False)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.xor_sum.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "reverse"
+      ],
+      "name": "tl.associative_scan",
+      "parameter_names": [
+        "input",
+        "axis",
+        "combine_fn",
+        "reverse",
+        "_semantic",
+        "_generator"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "axis",
+          "raw": "axis"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "combine_fn",
+          "raw": "combine_fn"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "reverse",
+          "raw": "reverse=False"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_generator",
+          "raw": "_generator=None"
+        }
+      ],
+      "reference_name": "triton.language.associative_scan",
+      "section": "Scan/Sort Ops",
+      "signature": "triton.language.associative_scan(input, axis, combine_fn, reverse=False, _semantic=None, _generator=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.associative_scan.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "axis",
+        "reverse"
+      ],
+      "name": "tl.cumprod",
+      "parameter_names": [
+        "input",
+        "axis",
+        "reverse"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "axis",
+          "raw": "axis=0"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "reverse",
+          "raw": "reverse=False"
+        }
+      ],
+      "reference_name": "triton.language.cumprod",
+      "section": "Scan/Sort Ops",
+      "signature": "triton.language.cumprod(input, axis=0, reverse=False)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.cumprod.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "axis",
+        "reverse",
+        "dtype"
+      ],
+      "name": "tl.cumsum",
+      "parameter_names": [
+        "input",
+        "axis",
+        "reverse",
+        "dtype"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "axis",
+          "raw": "axis=0"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "reverse",
+          "raw": "reverse=False"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "dtype",
+          "raw": "dtype: constexpr=None"
+        }
+      ],
+      "reference_name": "triton.language.cumsum",
+      "section": "Scan/Sort Ops",
+      "signature": "triton.language.cumsum(input, axis=0, reverse=False, dtype: constexpr=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.cumsum.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "mask"
+      ],
+      "name": "tl.histogram",
+      "parameter_names": [
+        "input",
+        "num_bins",
+        "mask",
+        "_semantic",
+        "_generator"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "num_bins",
+          "raw": "num_bins"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "mask",
+          "raw": "mask=None"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_generator",
+          "raw": "_generator=None"
+        }
+      ],
+      "reference_name": "triton.language.histogram",
+      "section": "Scan/Sort Ops",
+      "signature": "triton.language.histogram(input, num_bins, mask=None, _semantic=None, _generator=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.histogram.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "dim",
+        "descending"
+      ],
+      "name": "tl.sort",
+      "parameter_names": [
+        "x",
+        "dim",
+        "descending"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "dim",
+          "raw": "dim: constexpr=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "descending",
+          "raw": "descending: constexpr=constexpr[0]"
+        }
+      ],
+      "reference_name": "triton.language.sort",
+      "section": "Scan/Sort Ops",
+      "signature": "triton.language.sort(x, dim: constexpr=None, descending: constexpr=constexpr[0])",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.sort.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "dim",
+        "descending"
+      ],
+      "name": "tl.topk",
+      "parameter_names": [
+        "x",
+        "k",
+        "dim",
+        "descending"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "x",
+          "raw": "x"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "k",
+          "raw": "k: constexpr"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "dim",
+          "raw": "dim: constexpr=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "descending",
+          "raw": "descending: constexpr=True"
+        }
+      ],
+      "reference_name": "triton.language.topk",
+      "section": "Scan/Sort Ops",
+      "signature": "triton.language.topk(x, k: constexpr, dim: constexpr=None, descending: constexpr=True)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.topk.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.gather",
+      "parameter_names": [
+        "src",
+        "index",
+        "axis",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "src",
+          "raw": "src"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "index",
+          "raw": "index"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "axis",
+          "raw": "axis"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.gather",
+      "section": "Scan/Sort Ops",
+      "signature": "triton.language.gather(src, index, axis, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.gather.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "mask",
+        "sem",
+        "scope"
+      ],
+      "name": "tl.atomic_add",
+      "parameter_names": [
+        "pointer",
+        "val",
+        "mask",
+        "sem",
+        "scope",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "pointer",
+          "raw": "pointer"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "val",
+          "raw": "val"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "mask",
+          "raw": "mask=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "sem",
+          "raw": "sem=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "scope",
+          "raw": "scope=None"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.atomic_add",
+      "section": "Atomic Ops",
+      "signature": "triton.language.atomic_add(pointer, val, mask=None, sem=None, scope=None, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.atomic_add.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "mask",
+        "sem",
+        "scope"
+      ],
+      "name": "tl.atomic_and",
+      "parameter_names": [
+        "pointer",
+        "val",
+        "mask",
+        "sem",
+        "scope",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "pointer",
+          "raw": "pointer"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "val",
+          "raw": "val"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "mask",
+          "raw": "mask=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "sem",
+          "raw": "sem=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "scope",
+          "raw": "scope=None"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.atomic_and",
+      "section": "Atomic Ops",
+      "signature": "triton.language.atomic_and(pointer, val, mask=None, sem=None, scope=None, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.atomic_and.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "sem",
+        "scope"
+      ],
+      "name": "tl.atomic_cas",
+      "parameter_names": [
+        "pointer",
+        "cmp",
+        "val",
+        "sem",
+        "scope",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "pointer",
+          "raw": "pointer"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "cmp",
+          "raw": "cmp"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "val",
+          "raw": "val"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "sem",
+          "raw": "sem=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "scope",
+          "raw": "scope=None"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.atomic_cas",
+      "section": "Atomic Ops",
+      "signature": "triton.language.atomic_cas(pointer, cmp, val, sem=None, scope=None, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.atomic_cas.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "mask",
+        "sem",
+        "scope"
+      ],
+      "name": "tl.atomic_max",
+      "parameter_names": [
+        "pointer",
+        "val",
+        "mask",
+        "sem",
+        "scope",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "pointer",
+          "raw": "pointer"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "val",
+          "raw": "val"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "mask",
+          "raw": "mask=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "sem",
+          "raw": "sem=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "scope",
+          "raw": "scope=None"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.atomic_max",
+      "section": "Atomic Ops",
+      "signature": "triton.language.atomic_max(pointer, val, mask=None, sem=None, scope=None, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.atomic_max.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "mask",
+        "sem",
+        "scope"
+      ],
+      "name": "tl.atomic_min",
+      "parameter_names": [
+        "pointer",
+        "val",
+        "mask",
+        "sem",
+        "scope",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "pointer",
+          "raw": "pointer"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "val",
+          "raw": "val"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "mask",
+          "raw": "mask=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "sem",
+          "raw": "sem=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "scope",
+          "raw": "scope=None"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.atomic_min",
+      "section": "Atomic Ops",
+      "signature": "triton.language.atomic_min(pointer, val, mask=None, sem=None, scope=None, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.atomic_min.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "mask",
+        "sem",
+        "scope"
+      ],
+      "name": "tl.atomic_or",
+      "parameter_names": [
+        "pointer",
+        "val",
+        "mask",
+        "sem",
+        "scope",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "pointer",
+          "raw": "pointer"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "val",
+          "raw": "val"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "mask",
+          "raw": "mask=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "sem",
+          "raw": "sem=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "scope",
+          "raw": "scope=None"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.atomic_or",
+      "section": "Atomic Ops",
+      "signature": "triton.language.atomic_or(pointer, val, mask=None, sem=None, scope=None, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.atomic_or.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "mask",
+        "sem",
+        "scope"
+      ],
+      "name": "tl.atomic_xchg",
+      "parameter_names": [
+        "pointer",
+        "val",
+        "mask",
+        "sem",
+        "scope",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "pointer",
+          "raw": "pointer"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "val",
+          "raw": "val"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "mask",
+          "raw": "mask=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "sem",
+          "raw": "sem=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "scope",
+          "raw": "scope=None"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.atomic_xchg",
+      "section": "Atomic Ops",
+      "signature": "triton.language.atomic_xchg(pointer, val, mask=None, sem=None, scope=None, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.atomic_xchg.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "mask",
+        "sem",
+        "scope"
+      ],
+      "name": "tl.atomic_xor",
+      "parameter_names": [
+        "pointer",
+        "val",
+        "mask",
+        "sem",
+        "scope",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "pointer",
+          "raw": "pointer"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "val",
+          "raw": "val"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "mask",
+          "raw": "mask=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "sem",
+          "raw": "sem=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "scope",
+          "raw": "scope=None"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.atomic_xor",
+      "section": "Atomic Ops",
+      "signature": "triton.language.atomic_xor(pointer, val, mask=None, sem=None, scope=None, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.atomic_xor.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "n_rounds"
+      ],
+      "name": "tl.randint4x",
+      "parameter_names": [
+        "seed",
+        "offset",
+        "n_rounds"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "seed",
+          "raw": "seed"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "offset",
+          "raw": "offset"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "n_rounds",
+          "raw": "n_rounds: constexpr=constexpr[10]"
+        }
+      ],
+      "reference_name": "triton.language.randint4x",
+      "section": "Random Number Generation",
+      "signature": "triton.language.randint4x(seed, offset, n_rounds: constexpr=constexpr[10])",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.randint4x.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "n_rounds"
+      ],
+      "name": "tl.randint",
+      "parameter_names": [
+        "seed",
+        "offset",
+        "n_rounds"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "seed",
+          "raw": "seed"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "offset",
+          "raw": "offset"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "n_rounds",
+          "raw": "n_rounds: constexpr=constexpr[10]"
+        }
+      ],
+      "reference_name": "triton.language.randint",
+      "section": "Random Number Generation",
+      "signature": "triton.language.randint(seed, offset, n_rounds: constexpr=constexpr[10])",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.randint.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "n_rounds"
+      ],
+      "name": "tl.rand",
+      "parameter_names": [
+        "seed",
+        "offset",
+        "n_rounds"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "seed",
+          "raw": "seed"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "offset",
+          "raw": "offset"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "n_rounds",
+          "raw": "n_rounds: constexpr=constexpr[10]"
+        }
+      ],
+      "reference_name": "triton.language.rand",
+      "section": "Random Number Generation",
+      "signature": "triton.language.rand(seed, offset, n_rounds: constexpr=constexpr[10])",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.rand.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "n_rounds"
+      ],
+      "name": "tl.randn",
+      "parameter_names": [
+        "seed",
+        "offset",
+        "n_rounds"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "seed",
+          "raw": "seed"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "offset",
+          "raw": "offset"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "n_rounds",
+          "raw": "n_rounds: constexpr=constexpr[10]"
+        }
+      ],
+      "reference_name": "triton.language.randn",
+      "section": "Random Number Generation",
+      "signature": "triton.language.randn(seed, offset, n_rounds: constexpr=constexpr[10])",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.randn.html"
+    },
+    {
+      "kind": "class",
+      "kwargs": [
+        "arg2",
+        "step",
+        "num_stages",
+        "loop_unroll_factor",
+        "disallow_acc_multi_buffer",
+        "flatten",
+        "warp_specialize",
+        "disable_licm"
+      ],
+      "name": "tl.range",
+      "parameter_names": [
+        "self",
+        "arg1",
+        "arg2",
+        "step",
+        "num_stages",
+        "loop_unroll_factor",
+        "disallow_acc_multi_buffer",
+        "flatten",
+        "warp_specialize",
+        "disable_licm"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "self",
+          "raw": "self"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "arg1",
+          "raw": "arg1"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "arg2",
+          "raw": "arg2=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "step",
+          "raw": "step=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "num_stages",
+          "raw": "num_stages=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "loop_unroll_factor",
+          "raw": "loop_unroll_factor=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "disallow_acc_multi_buffer",
+          "raw": "disallow_acc_multi_buffer=False"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "flatten",
+          "raw": "flatten=False"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "warp_specialize",
+          "raw": "warp_specialize=False"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "disable_licm",
+          "raw": "disable_licm=False"
+        }
+      ],
+      "reference_name": "triton.language.range",
+      "section": "Iterators",
+      "signature": "triton.language.range(self, arg1, arg2=None, step=None, num_stages=None, loop_unroll_factor=None, disallow_acc_multi_buffer=False, flatten=False, warp_specialize=False, disable_licm=False)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.range.html"
+    },
+    {
+      "kind": "class",
+      "kwargs": [
+        "arg2",
+        "step"
+      ],
+      "name": "tl.static_range",
+      "parameter_names": [
+        "self",
+        "arg1",
+        "arg2",
+        "step"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "self",
+          "raw": "self"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "arg1",
+          "raw": "arg1"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "arg2",
+          "raw": "arg2=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "step",
+          "raw": "step=None"
+        }
+      ],
+      "reference_name": "triton.language.static_range",
+      "section": "Iterators",
+      "signature": "triton.language.static_range(self, arg1, arg2=None, step=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.static_range.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.inline_asm_elementwise",
+      "parameter_names": [
+        "asm",
+        "constraints",
+        "args",
+        "dtype",
+        "is_pure",
+        "pack",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "asm",
+          "raw": "asm: str"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "constraints",
+          "raw": "constraints: str"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "args",
+          "raw": "args: Sequence"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "dtype",
+          "raw": "dtype: dtype | Sequence[dtype]"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "is_pure",
+          "raw": "is_pure: bool"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "pack",
+          "raw": "pack: int"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.inline_asm_elementwise",
+      "section": "Inline Assembly",
+      "signature": "triton.language.inline_asm_elementwise(asm: str, constraints: str, args: Sequence, dtype: dtype | Sequence[dtype], is_pure: bool, pack: int, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.inline_asm_elementwise.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.assume",
+      "parameter_names": [
+        "cond",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "cond",
+          "raw": "cond"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.assume",
+      "section": "Compiler Hint Ops",
+      "signature": "triton.language.assume(cond, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.assume.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.debug_barrier",
+      "parameter_names": [
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.debug_barrier",
+      "section": "Compiler Hint Ops",
+      "signature": "triton.language.debug_barrier(_semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.debug_barrier.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.max_constancy",
+      "parameter_names": [
+        "input",
+        "values",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "values",
+          "raw": "values"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.max_constancy",
+      "section": "Compiler Hint Ops",
+      "signature": "triton.language.max_constancy(input, values, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.max_constancy.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.max_contiguous",
+      "parameter_names": [
+        "input",
+        "values",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "values",
+          "raw": "values"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.max_contiguous",
+      "section": "Compiler Hint Ops",
+      "signature": "triton.language.max_contiguous(input, values, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.max_contiguous.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [],
+      "name": "tl.multiple_of",
+      "parameter_names": [
+        "input",
+        "values",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "input",
+          "raw": "input"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "values",
+          "raw": "values"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.multiple_of",
+      "section": "Compiler Hint Ops",
+      "signature": "triton.language.multiple_of(input, values, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.multiple_of.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "sep",
+        "end",
+        "file",
+        "flush"
+      ],
+      "name": "tl.static_print",
+      "parameter_names": [
+        "values",
+        "sep",
+        "end",
+        "file",
+        "flush",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "var_positional",
+          "name": "values",
+          "raw": "*values"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "sep",
+          "raw": "sep: str=' '"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "end",
+          "raw": "end: str='\\n'"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "file",
+          "raw": "file=None"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "flush",
+          "raw": "flush=False"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.static_print",
+      "section": "Debug Ops",
+      "signature": "triton.language.static_print(*values, sep: str=' ', end: str='\\n', file=None, flush=False, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.static_print.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "msg"
+      ],
+      "name": "tl.static_assert",
+      "parameter_names": [
+        "cond",
+        "msg",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "cond",
+          "raw": "cond"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "msg",
+          "raw": "msg=''"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.static_assert",
+      "section": "Debug Ops",
+      "signature": "triton.language.static_assert(cond, msg='', _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.static_assert.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "hex"
+      ],
+      "name": "tl.device_print",
+      "parameter_names": [
+        "prefix",
+        "args",
+        "hex",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "prefix",
+          "raw": "prefix"
+        },
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "var_positional",
+          "name": "args",
+          "raw": "*args"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "hex",
+          "raw": "hex=False"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.device_print",
+      "section": "Debug Ops",
+      "signature": "triton.language.device_print(prefix, *args, hex=False, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.device_print.html"
+    },
+    {
+      "kind": "function",
+      "kwargs": [
+        "msg",
+        "mask"
+      ],
+      "name": "tl.device_assert",
+      "parameter_names": [
+        "cond",
+        "msg",
+        "mask",
+        "_semantic"
+      ],
+      "parameters": [
+        {
+          "has_default": false,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "cond",
+          "raw": "cond"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "msg",
+          "raw": "msg=''"
+        },
+        {
+          "has_default": true,
+          "is_private": false,
+          "kind": "positional_or_keyword",
+          "name": "mask",
+          "raw": "mask=None"
+        },
+        {
+          "has_default": true,
+          "is_private": true,
+          "kind": "positional_or_keyword",
+          "name": "_semantic",
+          "raw": "_semantic=None"
+        }
+      ],
+      "reference_name": "triton.language.device_assert",
+      "section": "Debug Ops",
+      "signature": "triton.language.device_assert(cond, msg='', mask=None, _semantic=None)",
+      "source_url": "https://triton-lang.org/main/python-api/generated/triton.language.device_assert.html"
+    }
+  ],
+  "source_title": "triton.language \u2014 Triton documentation",
+  "source_url": "https://triton-lang.org/main/python-api/triton.language.html"
+}

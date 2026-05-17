@@ -112,6 +112,28 @@ It may still constrain:
 - block-size literal families and hardware-safe ranges;
 - parseable expressions, indexing, masks, and control flow.
 
+## Task-Agnostic API Reference Evidence
+
+The task-agnostic grammar's `triton.language` allow-list is verified against a
+pinned official docs snapshot:
+
+- Reference source: `https://triton-lang.org/main/python-api/triton.language.html`
+- Docs source label: `main` as fetched on `2026-05-16T00:00:00Z`
+- Local pasted corpus gate: `.contracts/agentic/reference/triton_corpus.md`
+- Snapshot: `cluster1/grammar/corpus/triton_language_reference_vmain_2026_05_16.json`
+- Snapshot SHA-256: `a7a637be7f80d59a0764838a6d21a945e7d17e85f1781992fa5089c67b6a1b80`
+- Extracted grammar allow-list: `cluster1/grammar/corpus/grammar_allowlist_extracted.json`
+- Coverage report: `cluster1/grammar/corpus/api_coverage_report.md`
+- Offline CI guard: `cluster1/tests/test_api_coverage.py`
+- Targeted validation: `.venv/bin/python -m pytest cluster1/tests/test_api_coverage.py cluster1/tests/test_grammar_acceptance.py -v`
+
+CI compares against the pinned JSON snapshot and its SHA-256 and does not fetch
+live docs. Treat Triton `main` as the upstream source label, not as a stable
+citation target. Paper and reviewer-facing docs should cite the local snapshot
+path, extraction timestamp, and SHA-256 above. To refresh the reference, run the
+extractor manually with network access and then regenerate the grammar
+allow-list, coverage report, and expected SHA in the same commit.
+
 ## In Scope
 
 Cluster 1 may do only these things:

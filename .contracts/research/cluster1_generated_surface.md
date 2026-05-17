@@ -19,6 +19,29 @@ This is not a universal Triton grammar and must not be described as one. Future
 KernelBench expansion requires explicit grammar generalization beyond these
 family-specific wrappers.
 
+## Task-Agnostic API Reference Coverage
+
+For the task-agnostic grammar, the `triton.language` API allow-list is evidenced
+by `cluster1/grammar/corpus/api_coverage_report.md`. That report is the
+canonical audit artifact tying `cluster1/grammar/triton_kernel_agnostic.gbnf`
+to the pinned official Triton language reference snapshot in
+`cluster1/grammar/corpus/triton_language_reference_vmain_2026_05_16.json`.
+That snapshot's current SHA-256 is
+`a7a637be7f80d59a0764838a6d21a945e7d17e85f1781992fa5089c67b6a1b80`.
+The grammar allow-list evidence must be extracted from the GBNF alternatives,
+not from a hand-maintained Triton signature table.
+The pasted Triton corpus at `.contracts/agentic/reference/triton_corpus.md` is
+the first offline gate before the pinned official reference snapshot: it must
+enumerate the same public `triton.language` function and parameter surface.
+
+Paper methodology should cite the coverage report version/source when describing
+G as a harness-imposed structural surface plus a documented `triton.language`
+API allow-list. Do not claim universal Triton API coverage or complete grammar
+coverage beyond the functions and in-scope grammar forms audited in that report.
+Because the upstream source URL is Triton `main`, paper-facing citations must
+identify the pinned local JSON snapshot by path, extraction timestamp, and
+SHA-256 rather than citing `main` as a stable version.
+
 ## Canonical Module Shape
 
 Every generated Cluster 1 source must be one complete Python module with no

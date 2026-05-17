@@ -38,6 +38,7 @@ outputs/
 .contracts/agentic/*
 !.contracts/agentic/cluster1_contract.md
 !.contracts/agentic/cluster2_contract.md
+.contracts/agentic/reference/*
 _legacy
 docs
 audits
