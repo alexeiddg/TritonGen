@@ -17,6 +17,7 @@ from cluster2.constants import (
     CLUSTER2_CONDITIONS,
     DEFAULT_C2_MODAL_EVAL_GPU,
     DEFAULT_C2_MODAL_GENERATION_GPU,
+    DEFAULT_MAX_NEW_TOKENS,
     DTYPE_NAMES,
     GENERATED_SOURCE_CLASS,
     NEW_GENERATION_CONDITIONS,
@@ -163,7 +164,7 @@ class RemoteC2GenerationRequest(_StrictC2Schema):
     model_id: str
     model_revision: str
     tokenizer_revision: str
-    max_new_tokens: int = 1024
+    max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS
     temperature: float = 0.2
     generation_seed: int | None = None
     grammar_variant: str | None = None

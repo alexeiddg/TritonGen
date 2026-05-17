@@ -15,7 +15,7 @@ from cluster1.data.kernels import get_kernel_spec
 from cluster1.constraints.hardware_checker import HardwareChecker
 from cluster1.generation import grammar_loader
 from cluster1.generation.constrained_decoding import TritonGrammarLogitsProcessor
-from cluster1.generation.constrained_gen import generate_source
+from cluster1.generation.constrained_gen import DEFAULT_MAX_NEW_TOKENS, generate_source
 from cluster1.grammar.acceptance_fixtures import GOOD_KERNELS
 from cluster1.grammar.triton_kernel_validator import accepts_source
 from shared.eval.levels.level0_parse import check_signature
@@ -335,6 +335,8 @@ def test_generation_token_budgets_cover_measured_canonical_modules() -> None:
     current_default = inspect.signature(generate_source).parameters["max_new_tokens"].default
     smoke_max_new_tokens = _smoke_generation_max_new_tokens()
 
+    assert current_default == DEFAULT_MAX_NEW_TOKENS
+    assert current_default >= 1024
     assert MEASURED_QWEN_GOLDEN_TOKEN_LENGTHS["relu"] > 128
     assert max(MEASURED_QWEN_GOLDEN_TOKEN_LENGTHS.values()) <= smoke_max_new_tokens
     assert max(MEASURED_QWEN_GOLDEN_TOKEN_LENGTHS.values()) <= current_default

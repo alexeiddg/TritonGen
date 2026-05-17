@@ -458,6 +458,15 @@ def test_validate_paired_replay_dataframe_rejects_nested_metadata_mismatch() -> 
         validate_paired_replay_dataframe(df, treatment_condition="C")
 
 
+def test_validate_paired_replay_dataframe_allows_generated_token_budget_migration() -> None:
+    generated = _generated_row(base_seed=0)
+    replay = _replay_row(base_seed=0)
+    generated["generated_metadata"]["max_new_tokens"] = 1536
+    df = pd.DataFrame([generated, replay])
+
+    validate_paired_replay_dataframe(df, treatment_condition="C")
+
+
 def test_validate_paired_replay_dataframe_rejects_replay_base_seed_mismatch() -> None:
     generated = _generated_row(base_seed=0)
     replay = _replay_row(base_seed=0)

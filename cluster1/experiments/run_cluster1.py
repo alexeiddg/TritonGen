@@ -17,7 +17,7 @@ from cluster1.data.kernels import KERNEL_SPECS, get_kernel_spec
 from cluster1.data.kernels.spec import KernelSpec
 from cluster1.data.prompts.prompt_contract import build_prompt
 from cluster1.constraints.hardware_checker import HardwareChecker
-from cluster1.generation.constrained_gen import generate_source
+from cluster1.generation.constrained_gen import DEFAULT_MAX_NEW_TOKENS, generate_source
 from cluster1.generation.grammar_loader import load_compiled_grammar
 from cluster1.results.dataclass import (
     DEFAULT_GRAMMAR_VARIANT,
@@ -63,7 +63,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_GRAMMAR_VARIANT,
     )
     parser.add_argument("--temperature", type=float, default=0.2)
-    parser.add_argument("--max-new-tokens", type=int, default=1024)
+    parser.add_argument("--max-new-tokens", type=int, default=DEFAULT_MAX_NEW_TOKENS)
     return parser.parse_args(argv)
 
 

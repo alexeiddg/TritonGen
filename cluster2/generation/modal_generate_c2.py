@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from cluster2.constants import DEFAULT_C2_MODAL_GENERATION_GPU
+from cluster2.constants import DEFAULT_C2_MODAL_GENERATION_GPU, DEFAULT_MAX_NEW_TOKENS
 from cluster2.modal.generation import (
     REMOTE_C2_GENERATION_GPU,
     remote_c2_generator_for_gpu,
@@ -26,7 +26,7 @@ def build_c2_generation_request(
     tokenizer_revision: str,
     generation_seed: int | None,
     temperature: float = 0.2,
-    max_new_tokens: int = 1024,
+    max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS,
     grammar_variant: str | None = None,
 ) -> RemoteC2GenerationRequest:
     """Build a strict C2 generation request for ``C`` or ``G+C`` only."""
@@ -56,7 +56,7 @@ def generate_source_c2_modal(
     tokenizer_revision: str,
     generation_seed: int | None,
     temperature: float = 0.2,
-    max_new_tokens: int = 1024,
+    max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS,
     grammar_variant: str | None = None,
     modal_generation_gpu: str = DEFAULT_C2_MODAL_GENERATION_GPU,
     remote_call: RemoteC2GenerationCall | None = None,

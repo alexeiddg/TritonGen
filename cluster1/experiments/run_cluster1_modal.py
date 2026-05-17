@@ -40,6 +40,8 @@ from typing import Any
 
 from shared.modal_harness.app import app
 
+from cluster1.constants import DEFAULT_MAX_NEW_TOKENS
+
 # Modal hydrates ``@app.cls`` / ``@app.function`` references at the moment
 # ``app.run()`` enters. Anything registered later — e.g. via lazy imports
 # inside ``main`` — comes back as ``ExecutionError: Function has not been
@@ -1179,7 +1181,7 @@ def main(
     grammar_variant: str = DEFAULT_GRAMMAR_VARIANT,
     grammar_path: str | None = None,
     temperature: float = 0.2,
-    max_new_tokens: int = 1024,
+    max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS,
     modal_generation_gpu: str = DEFAULT_GENERATION_GPU,
     compile_backend: str = "modal",
     generation_backend: str = "modal",

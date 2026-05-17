@@ -49,6 +49,7 @@ from typing import Any
 from cluster2.constants import (
     DEFAULT_C2_MODAL_EVAL_GPU,
     DEFAULT_C2_MODAL_GENERATION_GPU,
+    DEFAULT_MAX_NEW_TOKENS,
     DEFAULT_REPAIR_BUDGET,
     generation_mode_for_condition,
     source_class_for_condition,
@@ -80,7 +81,7 @@ BASE_SEED = 731
 DEFAULT_DTYPE = "fp32"
 F2_SMOKE_SCHEMA_VERSION = "canonical_f2_smoke.v1"
 MODEL_ID_DEFAULT = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
-MAX_NEW_TOKENS_DEFAULT = 1024
+MAX_NEW_TOKENS_DEFAULT = DEFAULT_MAX_NEW_TOKENS
 IMMUTABLE_REVISION_PATTERN = re.compile(r"\A[0-9a-f]{40}\Z", re.IGNORECASE)
 MOCK_REPAIR_CORRECT = "correct"
 MOCK_REPAIR_UNCHANGED = "unchanged"

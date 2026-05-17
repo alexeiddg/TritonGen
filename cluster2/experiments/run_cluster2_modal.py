@@ -23,6 +23,7 @@ from cluster2.constants import (
     DEFAULT_C2_MODAL_EVAL_GPU,
     DEFAULT_C2_MODAL_GENERATION_GPU,
     DEFAULT_FROZEN_CLUSTER1_MANIFEST,
+    DEFAULT_MAX_NEW_TOKENS,
     DEFAULT_REPAIR_BUDGET,
     DTYPE_NAMES,
     NEW_GENERATION_CONDITIONS,
@@ -65,7 +66,7 @@ from shared.eval.correctness_shapes import LOCKED_KERNEL_CLASSES, get_shape_meta
 
 
 MODEL_ID_DEFAULT = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
-MAX_NEW_TOKENS_DEFAULT = 512
+MAX_NEW_TOKENS_DEFAULT = DEFAULT_MAX_NEW_TOKENS
 UNAVAILABLE_FROZEN_REVISION = "unavailable_in_frozen_cluster1_artifact"
 GRAMMAR_VARIANT_TASK_AGNOSTIC = "task_agnostic"
 GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND = "template_upper_bound"
@@ -965,7 +966,6 @@ def _validate_generation_pairing_context(
         "prompt_sha256": prompt_sha256,
         "model_id": config.model_id,
         "temperature": float(config.temperature),
-        "max_new_tokens": config.max_new_tokens,
     }
     observed = {
         "kernel_class": pairing_entry.kernel_class,
@@ -975,8 +975,10 @@ def _validate_generation_pairing_context(
         "prompt_sha256": pairing_entry.prompt_sha256,
         "model_id": pairing_entry.model_id,
         "temperature": float(pairing_entry.temperature),
-        "max_new_tokens": pairing_entry.max_new_tokens,
     }
+    # Replay token budgets are frozen provenance, not a constraint on the
+    # current fresh-generation budget. This lets budget migrations avoid
+    # rewriting historical replay manifests.
     if _known_frozen_revision(pairing_entry.model_revision):
         expected["model_revision"] = config.model_revision
         observed["model_revision"] = pairing_entry.model_revision

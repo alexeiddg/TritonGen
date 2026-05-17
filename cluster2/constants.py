@@ -33,6 +33,9 @@ G_PLUS_C_GENERATION_MODE: Cluster2GenerationMode = "new_c2_generation_with_G_ada
 DEFAULT_REPAIR_BUDGET = 5
 DEFAULT_EQUAL_ATTEMPTS_N = DEFAULT_REPAIR_BUDGET + 1
 
+# Raised to avoid budget-exhaustion confound for full launcher + kernel generations.
+DEFAULT_MAX_NEW_TOKENS = 1536
+
 DEFAULT_C2_MODAL_GENERATION_GPU = "L4"
 DEFAULT_C2_MODAL_EVAL_GPU = "L4"
 

@@ -232,6 +232,29 @@ def test_lift_rejects_pair_metadata_mismatch() -> None:
         )
 
 
+def test_lift_allows_generated_token_budget_migration() -> None:
+    generated_payload = _generated_row(
+        condition="C",
+        base_seed=0,
+        attempt_index=0,
+        success=True,
+    ).to_dict()
+    generated_payload["generated_metadata"]["max_new_tokens"] = 1536
+    treatment = [Cluster2EvalRow.from_dict(generated_payload)]
+    control = [
+        _replay_row(condition="none", base_seed=0, attempt_index=0, success=False),
+    ]
+
+    result = compute_lift_with_bootstrap_ci(
+        treatment,
+        control,
+        n=1,
+        bootstrap_resamples=50,
+    )
+
+    assert result.lift == 1.0
+
+
 def test_lift_rejects_known_revision_metadata_mismatch() -> None:
     treatment = [
         _generated_row(condition="C", base_seed=0, attempt_index=0, success=True),

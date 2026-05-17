@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 import cluster2.experiments.run_cluster2_modal as runner_mod
-from cluster2.constants import DEFAULT_FROZEN_CLUSTER1_MANIFEST
+from cluster2.constants import DEFAULT_FROZEN_CLUSTER1_MANIFEST, DEFAULT_MAX_NEW_TOKENS
 from cluster2.experiments.run_f2_repair_smoke import _corrected_source, run_f2_repair_smoke
 from cluster2.experiments.run_cluster2_modal import (
     Cluster2RunnerConfig,
@@ -134,6 +134,65 @@ def test_runner_routes_c_to_c2_generation(tmp_path: Path) -> None:
     assert result.rows[0].generated_metadata.replay_generation_seed == 0
     assert result.rows[0].replay_metadata is None
     assert result.route_audit[0].route == "c2_repair_loop"
+
+
+def test_task_agnostic_gc_generation_uses_canonical_token_budget(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_replay_fixture(
+        tmp_path,
+        condition="G",
+        row_count=1,
+        grammar_variant="task_agnostic",
+        max_new_tokens=DEFAULT_MAX_NEW_TOKENS,
+    )
+    generation_calls: list[dict[str, Any]] = []
+
+    run_cluster2(
+        _config(
+            tmp_path,
+            condition="G+C",
+            manifest=manifest,
+            repair_budget=0,
+            n=1,
+            grammar_variant="task_agnostic",
+            max_new_tokens=DEFAULT_MAX_NEW_TOKENS,
+        ),
+        dependencies=RunnerDependencies(
+            generation=_fake_generation(generation_calls),
+            correctness=_success_correctness([]),
+        ),
+    )
+
+    assert DEFAULT_MAX_NEW_TOKENS >= 1024
+    assert generation_calls[0]["grammar_variant"] == "task_agnostic"
+    assert generation_calls[0]["max_new_tokens"] == DEFAULT_MAX_NEW_TOKENS
+
+
+def test_default_frozen_manifest_allows_fresh_generation_budget_migration(
+    tmp_path: Path,
+) -> None:
+    generation_calls: list[dict[str, Any]] = []
+
+    result = run_cluster2(
+        _config(
+            tmp_path,
+            condition="C",
+            manifest=Path(DEFAULT_FROZEN_CLUSTER1_MANIFEST),
+            repair_budget=0,
+            n=1,
+            max_new_tokens=DEFAULT_MAX_NEW_TOKENS,
+        ),
+        dependencies=RunnerDependencies(
+            generation=_fake_generation(generation_calls),
+            correctness=_success_correctness([]),
+        ),
+    )
+
+    assert len(generation_calls) == 1
+    assert generation_calls[0]["max_new_tokens"] == DEFAULT_MAX_NEW_TOKENS
+    assert result.rows[0].generated_metadata is not None
+    assert result.rows[0].generated_metadata.max_new_tokens == DEFAULT_MAX_NEW_TOKENS
 
 
 def test_runner_c_non_f2_failure_does_not_request_repair_generation(
@@ -269,11 +328,11 @@ def test_runner_preflights_all_requested_cells_before_generation(
     artifact = payload["artifacts"][0]
     for schedule in artifact["seed_schedule"]["records"]:
         if schedule["kernel_class"] == "elementwise" and schedule["dtype"] == "fp16":
-            schedule["max_new_tokens"] = 999
+            schedule["temperature"] = 0.9
             for line_number in schedule["line_numbers"]:
                 for record in artifact["row_records"]:
                     if record["line_number"] == line_number:
-                        record["max_new_tokens"] = 999
+                        record["temperature"] = 0.9
             break
     manifest.write_text(
         json.dumps(payload, sort_keys=True, indent=2) + "\n",
@@ -281,7 +340,7 @@ def test_runner_preflights_all_requested_cells_before_generation(
     )
     generation_calls: list[dict[str, Any]] = []
 
-    with pytest.raises(ValueError, match="max_new_tokens"):
+    with pytest.raises(ValueError, match="temperature"):
         run_cluster2(
             _config(
                 tmp_path,
@@ -316,11 +375,11 @@ def test_runner_preflights_all_generated_conditions_before_generation(
     )
     for schedule in artifact["seed_schedule"]["records"]:
         if schedule["kernel_class"] == "elementwise" and schedule["dtype"] == "fp32":
-            schedule["max_new_tokens"] = 999
+            schedule["temperature"] = 0.9
             for line_number in schedule["line_numbers"]:
                 for record in artifact["row_records"]:
                     if record["line_number"] == line_number:
-                        record["max_new_tokens"] = 999
+                        record["temperature"] = 0.9
             break
     manifest.write_text(
         json.dumps(payload, sort_keys=True, indent=2) + "\n",
@@ -328,7 +387,7 @@ def test_runner_preflights_all_generated_conditions_before_generation(
     )
     generation_calls: list[dict[str, Any]] = []
 
-    with pytest.raises(ValueError, match="max_new_tokens"):
+    with pytest.raises(ValueError, match="temperature"):
         run_cluster2(
             _config(
                 tmp_path,
@@ -732,6 +791,8 @@ def test_cli_defaults_gc_grammar_variant_to_task_agnostic(tmp_path: Path) -> Non
     )
 
     assert config.grammar_variant == "task_agnostic"
+    assert config.max_new_tokens == DEFAULT_MAX_NEW_TOKENS
+    assert config.max_new_tokens >= 1024
 
 
 def test_cli_accepts_explicit_template_upper_bound_diagnostic(

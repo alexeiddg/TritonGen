@@ -32,7 +32,8 @@ def test_parse_args_defaults(tmp_path: Path) -> None:
     assert args.grammar_path == runner.DEFAULT_GRAMMAR_PATH
     assert args.grammar_variant == "template_upper_bound"
     assert args.temperature == 0.2
-    assert args.max_new_tokens == 1024
+    assert args.max_new_tokens == runner.DEFAULT_MAX_NEW_TOKENS
+    assert args.max_new_tokens >= 1024
 
 
 def test_iter_experiment_cells_n20() -> None:

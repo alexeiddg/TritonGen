@@ -1419,6 +1419,9 @@ def _validate_pair_metadata_columns(
         "temperature",
         "max_new_tokens",
     )
+    paired_identity_columns = tuple(
+        column for column in required_metadata_columns if column != "max_new_tokens"
+    )
     revision_columns = ("model_revision", "tokenizer_revision")
     treatment_meta = _pair_metadata_frame(
         treatment,
@@ -1432,8 +1435,8 @@ def _validate_pair_metadata_columns(
         required_metadata_fields=required_metadata_columns,
         optional_metadata_fields=revision_columns,
     )
-    if not treatment_meta[list(required_metadata_columns)].equals(
-        control_meta[list(required_metadata_columns)]
+    if not treatment_meta[list(paired_identity_columns)].equals(
+        control_meta[list(paired_identity_columns)]
     ):
         raise ValueError("metadata mismatch in paired replay dataframe")
     _validate_seed_metadata_matches_pair_key(treatment_meta)

@@ -654,8 +654,9 @@ def _validate_generated_pair_metadata(
         "prompt_sha256": replay.prompt_sha256,
         "model_id": replay.model_id,
         "temperature": replay.temperature,
-        "max_new_tokens": replay.max_new_tokens,
     }
+    # Fresh generated rows may use a larger token budget than historical replay
+    # controls. Keep max_new_tokens as per-side provenance, not pair identity.
     if _known_frozen_revision(replay.model_revision):
         expected["model_revision"] = replay.model_revision
     if _known_frozen_revision(replay.tokenizer_revision):

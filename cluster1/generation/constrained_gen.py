@@ -6,6 +6,7 @@ import argparse
 from dataclasses import dataclass
 from pathlib import Path
 
+from cluster1.constants import DEFAULT_MAX_NEW_TOKENS
 from cluster1.constraints.hardware_checker import HardwareChecker
 from cluster1.generation.constrained_decoding import TritonGrammarLogitsProcessor
 from cluster1.generation.grammar_loader import load_compiled_grammar
@@ -26,7 +27,7 @@ def generate_source(
     grammar_active: bool,
     compiled_grammar=None,
     hardware_checker: HardwareChecker | None = None,
-    max_new_tokens: int = 1024,
+    max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS,
     temperature: float = 0.2,
     seed: int | None = None,
 ) -> DecodedKernel:
@@ -151,7 +152,7 @@ def main() -> int:
     parser.add_argument("--prompt", required=True)
     parser.add_argument("--grammar-active", type=_parse_bool, default=True)
     parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--max-new-tokens", type=int, default=1024)
+    parser.add_argument("--max-new-tokens", type=int, default=DEFAULT_MAX_NEW_TOKENS)
     parser.add_argument("--temperature", type=float, default=0.2)
     args = parser.parse_args()
 
