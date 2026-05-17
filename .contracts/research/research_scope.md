@@ -43,6 +43,18 @@ C+P
 G+C+P
 ```
 
+## Current Iteration Scope
+
+The current iteration analyzes a temporary 2² subset over G and C: none, G, C,
+and G+C.
+
+The full 2³ factorial over G, C, and P remains the defined project goal.
+P-containing cells are deferred for this iteration and are not included in
+current paper-claiming outputs. Current 2² outputs must not be described as
+completion of the full factorial.
+
+This is a current-status scope statement, not a methodology realignment.
+
 ## Triton-Only Boundary
 
 The generated artifact under study is a Python module containing Triton kernels

@@ -8,12 +8,19 @@ ReLU/pointwise, Softmax/reduction, and GEMM/tiled matmul.
 
 ## Scope
 
+- Current iteration scope: temporary 2² subset analysis over `none`, `G`, `C`,
+  and `G+C`.
 - Primary comparison: `C` versus frozen Cluster 1 `none` replay controls.
 - Secondary comparison: `G+C` versus frozen Cluster 1 `G` replay controls.
 - New generation conditions: only `C` and `G+C`.
 - Replay-only controls: `none` and `G`.
 - Equal attempts means equal candidate-source count, not token cost, wall time,
   or GPU cost.
+
+The full 2³ factorial over G, C, and P remains the defined project goal.
+P-containing cells are deferred for this iteration and are not included in
+current paper-claiming outputs. This is a current-status scope statement, not a
+methodology realignment.
 
 Template replay controls are frozen from:
 

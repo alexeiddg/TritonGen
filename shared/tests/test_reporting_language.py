@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from shared.eval.reporting.grammar_language import (
@@ -95,6 +97,30 @@ def test_factorial_markdown_report_accepts_template_reference_label() -> None:
     markdown = render_factorial_markdown_report(analysis)
 
     assert "template G reference" in markdown
+
+
+def test_research_scope_locks_temporary_subset_without_dropping_full_goal() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    scope_text = (
+        repo_root / ".contracts" / "research" / "research_scope.md"
+    ).read_text(encoding="utf-8")
+
+    assert (
+        "The current iteration analyzes a temporary 2² subset over G and C: "
+        "none, G, C,\nand G+C."
+    ) in scope_text
+    assert (
+        "The full 2³ factorial over G, C, and P remains the defined project goal."
+        in scope_text
+    )
+    assert (
+        "P-containing cells are deferred for this iteration and are not included in\n"
+        "current paper-claiming outputs."
+    ) in scope_text
+    assert (
+        "This is a current-status scope statement, not a methodology realignment."
+        in scope_text
+    )
 
 
 def _minimal_factorial_analysis(*, condition_label: str) -> dict[str, object]:

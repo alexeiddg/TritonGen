@@ -21,6 +21,31 @@ FACTORIAL_TABLE_SECTION_KEYS = (
     "table_2_paired_comparisons",
     "table_3_factorial_terms",
 )
+CURRENT_SUBSET_ANALYSIS_LABEL = "current 2² subset analysis over G and C"
+FULL_FACTORIAL_ANALYSIS_LABEL = "full 2³ factorial analysis"
+PARTIAL_FACTORIAL_ANALYSIS_LABEL = "partial factorial analysis"
+CURRENT_ITERATION_SCOPE_STATEMENT = (
+    "The current iteration analyzes a temporary 2² subset over G and C: "
+    "none, G, C, and G+C."
+)
+FULL_FACTORIAL_GOAL_STATEMENT = (
+    "The full 2³ factorial over G, C, and P remains the defined project goal."
+)
+P_CELL_DEFERRAL_STATEMENT = (
+    "P-containing cells are deferred for this iteration and are not included "
+    "in current paper-claiming outputs."
+)
+CURRENT_STATUS_SCOPE_STATEMENT = (
+    "This is a current-status scope statement, not a methodology realignment."
+)
+PARTIAL_P_COVERAGE_STATEMENT = (
+    "P-containing cell coverage is partial; current outputs must not be "
+    "described as full 2³ factorial completion."
+)
+PARTIAL_NON_P_COVERAGE_STATEMENT = (
+    "Canonical non-P cell coverage is partial; current outputs must not be "
+    "described as completion of the full factorial."
+)
 
 
 def comparison_label(treatment_condition: str, control_condition: str) -> str:
@@ -142,7 +167,10 @@ def render_factorial_markdown_report(analysis: Mapping[str, Any]) -> str:
     """Render the analyzer's Table 1-3 rows as markdown."""
 
     tables = build_factorial_paper_tables(analysis)
-    parts = ["# Factorial Analysis"]
+    title, scope_statements = _factorial_report_scope(analysis)
+    parts = [f"# {title}"]
+    if scope_statements:
+        parts.append("\n".join(["", *scope_statements]))
     table_columns = {
         "table_1_cell_summaries": (
             "metric_name",
@@ -199,6 +227,74 @@ def render_factorial_markdown_report(analysis: Mapping[str, Any]) -> str:
     report = "\n".join(parts)
     assert_paper_facing_grammar_language(report)
     return report
+
+
+def _factorial_report_scope(analysis: Mapping[str, Any]) -> tuple[str, tuple[str, ...]]:
+    model_types = _factorial_model_types(analysis)
+    derived_label, derived_statements = _scope_from_model_types(model_types)
+    if model_types:
+        return _title_case_first(derived_label), derived_statements
+    metadata = analysis.get("metadata")
+    if isinstance(metadata, Mapping):
+        label = metadata.get("analysis_label")
+        statements = metadata.get("scope_statements", ())
+        if isinstance(label, str):
+            return _title_case_first(label), _tupleify_scope_statements(statements)
+    return _title_case_first(derived_label), derived_statements
+
+
+def _factorial_model_types(analysis: Mapping[str, Any]) -> set[Any]:
+    paper_tables = analysis.get("paper_tables")
+    if not isinstance(paper_tables, Mapping):
+        return set()
+    return {
+        row.get("model_type")
+        for row in _mapping_rows(paper_tables.get("table_3_factorial_terms", ()))
+    }
+
+
+def _scope_from_model_types(model_types: set[Any]) -> tuple[str, tuple[str, ...]]:
+    if model_types == {"full_eight_cell"}:
+        return FULL_FACTORIAL_ANALYSIS_LABEL, (FULL_FACTORIAL_GOAL_STATEMENT,)
+    if model_types == {"reduced_four_cell"}:
+        return CURRENT_SUBSET_ANALYSIS_LABEL, (
+            CURRENT_ITERATION_SCOPE_STATEMENT,
+            FULL_FACTORIAL_GOAL_STATEMENT,
+            P_CELL_DEFERRAL_STATEMENT,
+            CURRENT_STATUS_SCOPE_STATEMENT,
+        )
+    if model_types == {"partial_eight_cell_not_reportable"}:
+        return PARTIAL_FACTORIAL_ANALYSIS_LABEL, (
+            FULL_FACTORIAL_GOAL_STATEMENT,
+            PARTIAL_P_COVERAGE_STATEMENT,
+        )
+    if model_types == {"partial_four_cell_not_reportable"}:
+        return PARTIAL_FACTORIAL_ANALYSIS_LABEL, (
+            FULL_FACTORIAL_GOAL_STATEMENT,
+            P_CELL_DEFERRAL_STATEMENT,
+            PARTIAL_NON_P_COVERAGE_STATEMENT,
+        )
+    if any(str(model_type).startswith("partial_") for model_type in model_types):
+        return PARTIAL_FACTORIAL_ANALYSIS_LABEL, (
+            FULL_FACTORIAL_GOAL_STATEMENT,
+            "Current outputs must not be described as completion of the full factorial.",
+        )
+    return PARTIAL_FACTORIAL_ANALYSIS_LABEL, ()
+
+
+def _tupleify_scope_statements(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value,)
+    try:
+        return tuple(str(item) for item in value)
+    except TypeError:
+        return ()
+
+
+def _title_case_first(value: str) -> str:
+    if not value:
+        return value
+    return value[0].upper() + value[1:]
 
 
 def render_markdown_table(

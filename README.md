@@ -73,6 +73,13 @@ paper-scale task-agnostic G condition should use the planned task-agnostic
 Triton grammar unless a future contract explicitly adds a new task-aware
 upper-bound control.
 
+For this week/current testing iteration, current analysis outputs are scoped to
+a temporary 2² subset over G and C: `none`, `G`, `C`, and `G+C`. The full 2³
+factorial over G, C, and P remains the defined project goal. P-containing cells
+are deferred for this iteration and are not included in current paper-claiming
+outputs. This is a current-status scope statement, not a methodology
+realignment.
+
 ---
 
 ## Repository Layout
@@ -106,7 +113,7 @@ TritonGen/
 │           ├── valid_kernels/     # Known-good Triton kernels
 │           └── invalid_kernels/   # Known-bad rejection fixtures
 │
-├── cluster2/                      # C-factor: Test-Driven Feedback (NOT STARTED)
+├── cluster2/                      # C-factor: Test-driven feedback current-iteration scope
 │   └── README.md                  # Scope, boundary rules, C1 dependencies
 │
 ├── cluster3/                      # P-factor: Compiler/Profiler Repair (NOT STARTED)
@@ -116,7 +123,7 @@ TritonGen/
 │   ├── stats/pass_at_k.py         # Unbiased HumanEval pass@k estimator
 │   ├── models/loader.py           # Shared model/tokenizer loading
 │   ├── modal_harness/             # Shared Modal GPU generation/compile infra
-│   ├── analysis/factorial.py      # 2³ factorial interaction analysis
+│   ├── analysis/factorial.py      # Current 2² subset labels; planned 2³ interaction analysis
 │   └── configs/experiment.yaml    # Shared experiment configuration
 │
 ├── outputs/                       # Generated results — gitignored
@@ -227,9 +234,11 @@ through the compile-only gate, which checks the canonical Cluster 1 shapes for
 all three dtypes and records compile errors as result fields rather than using
 them as feedback.
 
-Cluster 2 and Cluster 3 remain out of the active execution path. Their
-factor cells (`C`, `P`, `G+C`, `G+P`, `C+P`, `G+C+P`) are reserved in the
-schema vocabulary but rejected by validation until those clusters are built.
+The current iteration's active study scope is the temporary 2² subset over G
+and C: `none`, `G`, `C`, and `G+C`. P-containing cells (`P`, `G+P`, `C+P`,
+`G+C+P`) are deferred for this iteration and are not included in current
+paper-claiming outputs. The full 2³ factorial over G, C, and P remains the
+defined project goal.
 
 Frozen Cluster 1 result: the final controlled L4 compile-only comparison uses
 `outputs/cluster1/baseline_repaired_l4_n20.jsonl` and
@@ -341,9 +350,9 @@ performance-score fields are present in the shared Cluster 1 schemas.
 |---------|--------|--------|
 | Cluster 1 | Grammar (G) | Frozen - final L4 compile-only comparison is baseline 0/180 vs template G reference 180/180 |
 | Shared Modal infra | GPU execution | Stable for Cluster 1 freeze - remote generation and compile-only validation |
-| Cluster 2 | Test-driven feedback (C) | Not started - contract TBD |
+| Cluster 2 | Test-driven feedback (C) | Active current-iteration 2² subset analysis over none/G/C/G+C |
 | Cluster 3 | Compiler/profiler repair (P) | Not started - contract TBD |
-| Factorial analysis | G*C*P | Not started |
+| Factorial analysis | G*C*P | Current temporary 2² subset over G and C; full 2³ goal deferred, not abandoned |
 
 ---
 

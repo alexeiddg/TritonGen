@@ -3,8 +3,10 @@
 The paper-primary Cluster 2 path uses Level 2 ``functional_success`` and
 paired-by-seed replay-control comparisons. Compile success remains available as
 a secondary structural-validity diagnostic. The current populated design is the
-four-cell ``none``, ``G``, ``C``, ``G+C`` subset; P-containing cells are reported
-as not populated until Cluster 3 data exists.
+temporary 2² subset over G and C: ``none``, ``G``, ``C``, and ``G+C``.
+P-containing cells are deferred for this iteration and reported as not
+populated until Cluster 3 data exists. The full 2³ factorial remains the
+defined project goal.
 """
 from __future__ import annotations
 
@@ -64,6 +66,23 @@ MODE_COLLAPSE_FLAG = "mode_collapse_warning"
 MODE_COLLAPSE_TEXT = (
     "this cell shows mode collapse - interpret as template instantiation "
     "control, not as evidence of grammar-constrained generation"
+)
+CURRENT_SUBSET_ANALYSIS_LABEL = "current 2² subset analysis over G and C"
+FULL_FACTORIAL_ANALYSIS_LABEL = "full 2³ factorial analysis"
+PARTIAL_FACTORIAL_ANALYSIS_LABEL = "partial factorial analysis"
+CURRENT_ITERATION_SCOPE_STATEMENT = (
+    "The current iteration analyzes a temporary 2² subset over G and C: "
+    "none, G, C, and G+C."
+)
+FULL_FACTORIAL_GOAL_STATEMENT = (
+    "The full 2³ factorial over G, C, and P remains the defined project goal."
+)
+P_CELL_DEFERRAL_STATEMENT = (
+    "P-containing cells are deferred for this iteration and are not included "
+    "in current paper-claiming outputs."
+)
+CURRENT_STATUS_SCOPE_STATEMENT = (
+    "This is a current-status scope statement, not a methodology realignment."
 )
 
 
@@ -258,10 +277,12 @@ def analyze_factorial(
         missing_cells=missing_cells,
         global_flags=global_flags,
     )
+    scope_metadata = _scope_metadata(populated_cells, missing_cells)
     metadata = {
         "analyzer_version": ANALYZER_VERSION,
         "response_variable": response_variable,
         "analysis_scope": scope,
+        **scope_metadata,
         "primary_response_variable": PRIMARY_RESPONSE_VARIABLE,
         "secondary_response_variable": SECONDARY_RESPONSE_VARIABLE,
         "paired_primary_comparisons": [
@@ -1062,6 +1083,10 @@ def _diagnostics(
         "response_variable": response_variable,
         "rows_loaded": int(len(df)),
         "missing_cells": list(missing_cells),
+        **_scope_metadata(
+            [condition for condition in CANONICAL_CONDITIONS if condition not in missing_cells],
+            missing_cells,
+        ),
         "unpaired_primary_comparisons_allowed": False,
         "mixed_scale_policy": "reject_by_default",
         "interpretation_flags": list(global_flags),
@@ -1073,6 +1098,60 @@ def _diagnostics(
         "mode_collapse_warning_text": (
             MODE_COLLAPSE_TEXT if not mode_collapse_rows.empty else None
         ),
+    }
+
+
+def _scope_metadata(
+    populated_cells: Sequence[str],
+    missing_cells: Sequence[str],
+) -> dict[str, Any]:
+    populated = set(populated_cells)
+    missing = set(missing_cells)
+    has_current_four = populated == set(CURRENT_FOUR_CELL_CONDITIONS)
+    has_all_eight = set(CANONICAL_CONDITIONS).issubset(populated)
+    p_cells_populated = any(condition in populated for condition in P_CONDITIONS)
+    p_cells_missing = any(condition in missing for condition in P_CONDITIONS)
+    if has_all_eight:
+        analysis_label = FULL_FACTORIAL_ANALYSIS_LABEL
+        scope_kind = "full_2^3_factorial"
+        p_cell_status = "P-containing cells are populated."
+        statements = [FULL_FACTORIAL_GOAL_STATEMENT]
+    elif has_current_four:
+        analysis_label = CURRENT_SUBSET_ANALYSIS_LABEL
+        scope_kind = "temporary_2^2_subset"
+        p_cell_status = P_CELL_DEFERRAL_STATEMENT
+        statements = [
+            CURRENT_ITERATION_SCOPE_STATEMENT,
+            FULL_FACTORIAL_GOAL_STATEMENT,
+            P_CELL_DEFERRAL_STATEMENT,
+            CURRENT_STATUS_SCOPE_STATEMENT,
+        ]
+    else:
+        analysis_label = PARTIAL_FACTORIAL_ANALYSIS_LABEL
+        scope_kind = "partial_factorial"
+        if p_cells_populated and p_cells_missing:
+            p_cell_status = (
+                "P-containing cell coverage is partial; current outputs must not "
+                "be described as full 2³ factorial completion."
+            )
+        elif p_cells_missing:
+            p_cell_status = P_CELL_DEFERRAL_STATEMENT
+        else:
+            p_cell_status = (
+                "P-containing cells are populated, but canonical non-P cell "
+                "coverage is partial."
+            )
+        statements = [
+            FULL_FACTORIAL_GOAL_STATEMENT,
+            p_cell_status,
+        ]
+    return {
+        "analysis_label": analysis_label,
+        "scope_kind": scope_kind,
+        "scope_statements": statements,
+        "full_factorial_goal": FULL_FACTORIAL_GOAL_STATEMENT,
+        "p_cell_status": p_cell_status,
+        "current_status_scope": CURRENT_STATUS_SCOPE_STATEMENT,
     }
 
 

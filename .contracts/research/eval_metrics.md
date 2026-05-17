@@ -9,10 +9,13 @@
 > **Current status note (2026-05-11):** This file remains the metric and schema
 > reference, but it is not the phased implementation plan. The research scope
 > lives in `.contracts/research/research_scope.md`; internal execution notes
-> live under `.contracts/agentic/` when present. The current scope is Cluster 2
-> as test-driven feedback and Cluster 3 as compiler/profiler repair. The core
-> metric ladder, null-field gating convention, and result-schema intent remain
-> valid.
+> live under `.contracts/agentic/` when present. The current iteration analyzes
+> a temporary 2² subset over G and C: none, G, C, and G+C. The full 2³ factorial
+> over G, C, and P remains the defined project goal. P-containing cells are
+> deferred for this iteration and are not included in current paper-claiming
+> outputs. This is a current-status scope statement, not a methodology
+> realignment. The core metric ladder, null-field gating convention, and
+> result-schema intent remain valid.
 
 ---
 
@@ -1015,11 +1018,14 @@ discordance p-values, and Holm correction for the planned paired tests.
 output only. It may be emitted by the same analyzer when explicitly requested,
 but it must not be used as the headline Cluster 2 result.
 
-Until Cluster 3 / factor `P` data exists, the valid current design is the
-four-cell subset `none`, `G`, `C`, and `G+C`. The analyzer must mark `P`,
-`G+P`, `C+P`, and `G+C+P` as `not_populated` rather than treating them as
-failures or blocking current Cluster 2 tables. Absence of P cells prevents
-full three-factor claims.
+For the current week/iteration/early testing cycle, the valid current design is
+the temporary 2² subset over G and C: `none`, `G`, `C`, and `G+C`. The analyzer
+must mark `P`, `G+P`, `C+P`, and `G+C+P` as `not_populated` and describe those
+P-containing cells as deferred for this iteration rather than treating them as
+failures or blocking current Cluster 2 tables. Current 2² outputs must not be
+described as completion of the full factorial. The full 2³ factorial over G, C,
+and P remains the defined project goal; this is a current-status scope
+statement, not a methodology realignment.
 
 For binary outcomes (`compile_success`, `functional_success`, `fast_tc@1.0`), use a logistic model:
 

@@ -66,9 +66,26 @@ def test_analyze_factorial_emits_primary_four_cell_output() -> None:
     assert result["metadata"]["response_variable"] == "functional_success"
     assert result["metadata"]["analysis_scope"] == "primary_functional"
     assert result["metadata"]["reportable"] is True
+    assert result["metadata"]["analysis_label"] == "current 2² subset analysis over G and C"
+    assert result["metadata"]["scope_kind"] == "temporary_2^2_subset"
+    assert (
+        result["metadata"]["full_factorial_goal"]
+        == "The full 2³ factorial over G, C, and P remains the defined project goal."
+    )
+    assert (
+        result["metadata"]["p_cell_status"]
+        == "P-containing cells are deferred for this iteration and are not included "
+        "in current paper-claiming outputs."
+    )
+    assert "full 2³ factorial analysis" not in result["metadata"]["analysis_label"]
     assert result["metadata"]["cells_populated"] == ["none", "G", "C", "G+C"]
     assert set(result["metadata"]["cells_missing"]) == {"P", "G+P", "C+P", "G+C+P"}
     assert "p_cells_not_populated" in result["metadata"]["interpretation_flags"]
+    assert (
+        "This is a current-status scope statement, not a methodology realignment."
+        in result["metadata"]["scope_statements"]
+    )
+    assert result["diagnostics"]["analysis_label"] == "current 2² subset analysis over G and C"
 
     comparisons = {
         row["comparison"]: row for row in result["paired_comparisons"]
@@ -307,9 +324,33 @@ def test_full_eight_cell_design_emits_p_terms() -> None:
 
     result = analyze_factorial(rows, bootstrap_samples=100)
 
+    assert result["metadata"]["analysis_label"] == "full 2³ factorial analysis"
+    assert result["metadata"]["scope_kind"] == "full_2^3_factorial"
+    assert result["metadata"]["p_cell_status"] == "P-containing cells are populated."
+    assert "p_cells_not_populated" not in result["metadata"]["interpretation_flags"]
     assert result["factorial_model"]["model_type"] == "full_eight_cell"
     terms = {row["term"] for row in result["factorial_model"]["terms"]}
     assert {"P", "G:P", "C:P", "G:C:P"}.issubset(terms)
+
+
+def test_partial_p_cell_coverage_is_not_labeled_deferred() -> None:
+    rows = _four_cell_rows()
+    for seed in range(4):
+        rows.append(
+            _generic_factor_row(
+                condition="P",
+                base_seed=seed,
+                functional_success=True,
+            )
+        )
+
+    result = analyze_factorial(rows, bootstrap_samples=100)
+
+    assert result["metadata"]["analysis_label"] == "partial factorial analysis"
+    assert result["metadata"]["scope_kind"] == "partial_factorial"
+    assert "P-containing cell coverage is partial" in result["metadata"]["p_cell_status"]
+    assert "deferred for this iteration" not in result["metadata"]["p_cell_status"]
+    assert result["factorial_model"]["model_type"] == "partial_eight_cell_not_reportable"
 
 
 def test_pairing_keeps_distinct_kernel_ids_with_same_seed() -> None:
