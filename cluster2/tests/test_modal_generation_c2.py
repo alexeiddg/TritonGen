@@ -635,6 +635,21 @@ def test_g_hash_gate_accepts_approved_instrumented_code_only() -> None:
         )
 
 
+def test_g_hash_gate_passes_current_approved_surface() -> None:
+    observed = c2_generation.verify_phase_minus1_g_generation_hashes()
+
+    assert observed["frozen_g_asset:cluster1/grammar/triton_kernel_agnostic.gbnf"] == (
+        PHASE_MINUS1_G_GENERATION_SOURCE_HASHES[
+            "cluster1/grammar/triton_kernel_agnostic.gbnf"
+        ]
+    )
+    assert observed["instrumented_current:cluster1/generation/grammar_variants.py"] == (
+        APPROVED_INSTRUMENTED_G_GENERATION_SOURCE_HASHES[
+            "cluster1/generation/grammar_variants.py"
+        ]
+    )
+
+
 def test_remote_generator_hash_gate_rejects_unapproved_drift(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -652,7 +667,7 @@ def test_g_plus_c_hash_gate_rejects_frozen_g_source_drift(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     drifted_hashes = dict(PHASE_MINUS1_G_GENERATION_SOURCE_HASHES)
-    drifted_hashes["cluster1/generation/grammar_variants.py"] = "0" * 64
+    drifted_hashes["cluster1/generation/grammar_loader.py"] = "0" * 64
     monkeypatch.setattr(
         c2_generation,
         "PHASE_MINUS1_G_GENERATION_SOURCE_HASHES",

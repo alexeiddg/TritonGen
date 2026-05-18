@@ -126,6 +126,9 @@ PHASE_MINUS1_G_GENERATION_SOURCE_HASHES: dict[str, str] = {
     ),
 }
 APPROVED_INSTRUMENTED_G_GENERATION_SOURCE_HASHES: dict[str, str] = {
+    "cluster1/generation/grammar_variants.py": (
+        "3bdf49d3420c927a413b591cc3029b37eed1bf6750856da558a058f4deb68379"
+    ),
     "cluster1/generation/constrained_gen.py": (
         "123304d9f7a7c57c36e218532df4e28240b96ceefa1088e351c4d90b025093f5"
     ),
