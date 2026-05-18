@@ -69,6 +69,24 @@ class EvalResult:
     compile_error: str | None
     failure_code: str | None
 
+    grammar_active: bool | None = None
+    grammar_variant: str | None = None
+    grammar_sha: str | None = None
+    grammar_path: str | None = None
+    gbnf_parse_valid: bool | None = None
+    semantic_valid: bool | None = None
+    grammar_valid: bool | None = None
+    rejection_layer: str | None = None
+    stop_reason: str | None = None
+    xgrammar_version: str | None = None
+    transformers_version: str | None = None
+    tokenizers_version: str | None = None
+    model_revision: str | None = None
+    tokenizer_revision: str | None = None
+    modal_image_sha: str | None = None
+    modal_image_provenance_sha256: str | None = None
+    modal_image_provenance_components: dict[str, Any] | None = None
+
     gpu_model: str = ""
     gpu_clock_mhz: int | None = None
     tokens_input: int = 0

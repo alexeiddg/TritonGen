@@ -45,6 +45,23 @@ def eval_result_from_generation_result(
         compile_success=row.compile_success,
         compile_error=row.compile_error_msg,
         failure_code=row.failure_code or row.compile_error_type,
+        grammar_active=row.grammar_active,
+        grammar_variant=row.grammar_variant,
+        grammar_sha=row.grammar_sha,
+        grammar_path=row.grammar_path,
+        gbnf_parse_valid=row.gbnf_parse_valid,
+        semantic_valid=row.semantic_valid,
+        grammar_valid=row.grammar_valid,
+        rejection_layer=row.rejection_layer,
+        stop_reason=row.stop_reason,
+        xgrammar_version=row.xgrammar_version,
+        transformers_version=row.transformers_version,
+        tokenizers_version=row.tokenizers_version,
+        model_revision=row.model_revision,
+        tokenizer_revision=row.tokenizer_revision,
+        modal_image_sha=row.modal_image_sha,
+        modal_image_provenance_sha256=row.modal_image_provenance_sha256,
+        modal_image_provenance_components=row.modal_image_provenance_components,
     )
 
 

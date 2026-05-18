@@ -7,6 +7,9 @@ from shared.eval.schema import EvalResult
 
 FAILURE_CODES = {
     "F0_PARSE",
+    "F0_GBNF_PARSE",
+    "F0_SEMANTIC_INVALID",
+    "F0_GRAMMAR_INVALID",
     "F0_NO_DECORATOR",
     "F0_BAD_SIGNATURE",
     "F0_SURFACE_VIOLATION",
@@ -38,6 +41,11 @@ def classify_failure(result: EvalResult) -> str | None:
 
     if result.failure_code in FAILURE_CODES:
         return result.failure_code
+
+    grammar_failure = _classify_grammar_failure(result)
+    if grammar_failure is not None:
+        return grammar_failure
+
     if result.failure_code in LEGACY_FAILURE_CODE_MAP:
         return LEGACY_FAILURE_CODE_MAP[result.failure_code]
 
@@ -75,6 +83,16 @@ def classify_failure(result: EvalResult) -> str | None:
         return "F3_OOB"
 
     return None
+
+
+def _classify_grammar_failure(result: EvalResult) -> str | None:
+    if result.grammar_active is not True or result.grammar_valid is not False:
+        return None
+    if result.gbnf_parse_valid is False:
+        return "F0_GBNF_PARSE"
+    if result.gbnf_parse_valid is True and result.semantic_valid is False:
+        return "F0_SEMANTIC_INVALID"
+    return "F0_GRAMMAR_INVALID"
 
 
 def _classify_sanitizer_failure(result: EvalResult) -> str | None:

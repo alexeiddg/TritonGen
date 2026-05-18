@@ -33,11 +33,58 @@ from shared.eval.reporting.grammar_language import (
     grammar_variant_label,
     grammar_variant_metadata_label,
 )
+from shared.generation_metadata import GENERATION_METADATA_SCHEMA_VERSION, UNKNOWN
 
 
 REQUIRED_GROUP_SIZE = 20
 COMPILE_SUCCESS_SCOPE = "all_dtype_strict"
 PASS_K_VALUES = (1, 5, 10)
+GRAMMAR_METADATA_FIELDS = frozenset(
+    {
+        "grammar_sha",
+        "grammar_path",
+        "grammar_variant",
+        "gbnf_parse_valid",
+        "semantic_valid",
+        "grammar_valid",
+        "rejection_layer",
+    }
+)
+METADATA_COMPLETENESS_FIELDS = (
+    "grammar_sha",
+    "gbnf_parse_valid",
+    "semantic_valid",
+    "grammar_valid",
+    "rejection_layer",
+    "stop_reason",
+    "xgrammar_version",
+    "transformers_version",
+    "tokenizers_version",
+    "model_revision",
+    "tokenizer_revision",
+    "modal_image_sha",
+    "modal_image_provenance_sha256",
+    "modal_image_provenance_components",
+)
+PROVENANCE_FIELDS = (
+    "grammar_sha",
+    "grammar_path",
+    "stop_reason",
+    "xgrammar_version",
+    "transformers_version",
+    "tokenizers_version",
+    "model_revision",
+    "tokenizer_revision",
+    "modal_image_sha",
+    "modal_image_provenance_sha256",
+    "modal_image_provenance_components",
+)
+FALLBACK_MODAL_PROVENANCE_FIELDS = frozenset(
+    {
+        "modal_image_provenance_sha256",
+        "modal_image_provenance_components",
+    }
+)
 
 
 def unique_solution_rate(rows: list[GenerationResult]) -> float:
@@ -211,6 +258,18 @@ def build_compile_summary_markdown(
             "## Failure Codes",
             "",
             _failure_code_distribution_markdown(rows),
+            "",
+            "## Metadata Completeness",
+            "",
+            _metadata_completeness_markdown(rows),
+            "",
+            "## Grammar Rejections",
+            "",
+            _grammar_rejection_markdown(rows),
+            "",
+            "## Provenance Metadata",
+            "",
+            _provenance_metadata_markdown(rows),
             "",
             "## Compile Error Types",
             "",
@@ -709,6 +768,151 @@ def _failure_code_distribution_markdown(rows: list[GenerationResult]) -> str:
             f"{failure_code} | {count} |"
         )
     return "\n".join(lines)
+
+
+def _metadata_completeness_markdown(rows: list[GenerationResult]) -> str:
+    current_rows = _current_schema_rows(rows)
+    if not current_rows:
+        return "No current-schema result rows found."
+
+    lines = [
+        "| metadata_field | expected_rows | present | unknown | missing |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for field_name in METADATA_COMPLETENESS_FIELDS:
+        expected_rows = [
+            row for row in current_rows if _metadata_field_expected(row, field_name)
+        ]
+        present = 0
+        unknown = 0
+        missing = 0
+        for row in expected_rows:
+            value = getattr(row, field_name)
+            if value is None:
+                missing += 1
+            elif value == UNKNOWN:
+                unknown += 1
+            else:
+                present += 1
+        lines.append(
+            f"| {field_name} | {len(expected_rows)} | {present} | "
+            f"{unknown} | {missing} |"
+        )
+    return "\n".join(lines)
+
+
+def _grammar_rejection_markdown(rows: list[GenerationResult]) -> str:
+    rejected_rows = [
+        row for row in rows if row.grammar_active and row.grammar_valid is False
+    ]
+    if not rejected_rows:
+        return "No grammar-invalid rows found."
+
+    counts: dict[tuple[str | None, str, str, str, str, str, str, str], int] = {}
+    for sample_index, row in enumerate(rejected_rows):
+        eval_result = eval_result_from_generation_result(
+            row,
+            sample_index=sample_index,
+        )
+        failure_code = classify_failure(eval_result) or "None"
+        key = (
+            row.grammar_variant,
+            row.kernel_class,
+            row.dtype,
+            row.rejection_layer or "unknown",
+            _tri_state(row.gbnf_parse_valid),
+            _tri_state(row.semantic_valid),
+            _tri_state(row.grammar_valid),
+            failure_code,
+        )
+        counts[key] = counts.get(key, 0) + 1
+
+    lines = [
+        "| grammar_variant | kernel_class | dtype | rejection_layer | "
+        "gbnf_parse_valid | semantic_valid | grammar_valid | failure_code | count |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for (
+        grammar_variant,
+        kernel_class,
+        dtype,
+        rejection_layer,
+        gbnf_parse_valid,
+        semantic_valid,
+        grammar_valid,
+        failure_code,
+    ), count in sorted(counts.items()):
+        lines.append(
+            f"| {_grammar_variant_display_value(grammar_variant)} | "
+            f"{kernel_class} | {dtype} | {rejection_layer} | "
+            f"{gbnf_parse_valid} | {semantic_valid} | {grammar_valid} | "
+            f"{failure_code} | {count} |"
+        )
+    return "\n".join(lines)
+
+
+def _provenance_metadata_markdown(rows: list[GenerationResult]) -> str:
+    current_rows = _current_schema_rows(rows)
+    if not current_rows:
+        return "No current-schema result rows found."
+
+    counts: dict[tuple[str, str], int] = {}
+    for row in current_rows:
+        for field_name in PROVENANCE_FIELDS:
+            if not _metadata_field_expected(row, field_name):
+                continue
+            label = _metadata_value_label(getattr(row, field_name))
+            key = (field_name, label)
+            counts[key] = counts.get(key, 0) + 1
+
+    lines = [
+        "| metadata_field | value | count |",
+        "| --- | --- | --- |",
+    ]
+    for (field_name, value), count in sorted(counts.items()):
+        lines.append(f"| {field_name} | {value} | {count} |")
+    return "\n".join(lines)
+
+
+def _current_schema_rows(rows: list[GenerationResult]) -> list[GenerationResult]:
+    return [
+        row
+        for row in rows
+        if row.generation_metadata_schema_version >= GENERATION_METADATA_SCHEMA_VERSION
+    ]
+
+
+def _metadata_field_expected(row: GenerationResult, field_name: str) -> bool:
+    if field_name in GRAMMAR_METADATA_FIELDS:
+        return row.grammar_active
+    if field_name in FALLBACK_MODAL_PROVENANCE_FIELDS:
+        fallback_present = (
+            row.modal_image_provenance_sha256 is not None
+            or row.modal_image_provenance_components is not None
+        )
+        return row.modal_image_sha in (None, UNKNOWN) or fallback_present
+    return True
+
+
+def _metadata_value_label(value: object) -> str:
+    if value is None:
+        return "missing"
+    if value == UNKNOWN:
+        return "unknown"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, dict):
+        return "present"
+    text = str(value)
+    if len(text) > 72:
+        return text[:69] + "..."
+    return text
+
+
+def _tri_state(value: bool | None) -> str:
+    if value is None:
+        return "unknown"
+    return "true" if value else "false"
 
 
 def _condition_for_row(row: GenerationResult) -> str:
