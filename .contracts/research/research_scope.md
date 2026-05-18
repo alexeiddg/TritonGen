@@ -43,6 +43,33 @@ C+P
 G+C+P
 ```
 
+## Current Evaluation And Replay Contract
+
+Evaluation semantics are shared across clusters. `shared/eval/` is the source of
+truth for shape schedules, Level 0 parse/signature behavior, Level 1 compile
+failure codes, Level 2 correctness behavior, and canonical failure taxonomy.
+Cluster-specific code may preserve legacy fields for compatibility, but primary
+analysis and replay decisions use canonical `failure_code` values.
+
+Cluster 1 compile evaluation is Level 0 plus Level 1 only. Level 0 is explicit
+AST parse and launcher-signature validation, followed by Level 1 runtime import,
+secondary `inspect.signature` validation, and dummy Triton launches. Cluster 1
+compile shapes are derived from shared compile-shape helpers, not independent
+per-spec schedules.
+
+Cluster 2 replay controls consume frozen Cluster 1 rows through the shared
+Cluster 1 adapter and shared failure taxonomy. Frozen rows are not rewritten on
+disk. Legacy fields such as `compile_error_type` remain historical diagnostics;
+row-level canonical `failure_code`, or syntax-aware canonicalization from legacy
+compile labels and messages, is the replay and analysis contract.
+
+The frozen none baseline was revalidated after alignment through the Phase 4
+Modal L4 diagnostic. The accepted post-fix evidence artifact is
+`outputs/cluster1/diagnostics/baseline_revalidation_aligned_pipeline_parse_reclassification.jsonl`.
+It records zero compile-success drift, zero C1/C2 entrypoint disagreement, and
+the expected syntax-aware reclassification of legacy `SignatureError` wrappers
+to `F0_PARSE`.
+
 ## G Enforcement Model
 
 ### G acceptance contract

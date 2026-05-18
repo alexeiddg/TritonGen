@@ -33,6 +33,18 @@
 > cite the pinned local JSON snapshot by path, extraction timestamp, and SHA-256:
 > `a7a637be7f80d59a0764838a6d21a945e7d17e85f1781992fa5089c67b6a1b80`.
 
+> **EVALUATION ALIGNMENT ADDENDUM:** Cluster 1 evaluation delegates shared
+> semantics to `shared/eval/`. Compile validation owns the explicit ordering:
+> shared Level 0 AST parse and launcher-signature validation first, then Level 1
+> runtime import, secondary `inspect.signature` validation, and dummy Triton
+> launches. `KernelSpec.shapes_by_dtype` is derived from
+> `shared.eval.correctness_shapes.get_compile_shapes()`. New Cluster 1 rows
+> carry canonical `failure_code` in addition to legacy `compile_error_type`;
+> legacy labels remain secondary diagnostics only. Grammar instrumentation fields
+> (`gbnf_parse_valid`, `semantic_valid`, `grammar_valid`, `rejection_layer`,
+> stop/provenance fields, and Modal image provenance) are part of the analysis
+> surface and feed the shared grammar failure taxonomy.
+
 ---
 
 ## Table of Contents
@@ -186,7 +198,7 @@ def generate(
     grammar_active: bool,           # THE experimental flag
     compiled_grammar=None,          # Required if grammar_active=True
     hardware_checker=None,          # Required if grammar_active=True
-    max_new_tokens: int = 1024,
+    max_new_tokens: int = 1536,
     temperature: float = 0.2,
     seed: int | None = None,        # Must pass through to torch.manual_seed
 ) -> GenerationResult
@@ -206,11 +218,26 @@ Triton compiles lazily. A clean `triton.jit()` call or import **does not** trigg
 
 | Step | Required Action | Wrong Approach |
 |---|---|---|
-| 1. Signature validation | Use `inspect.signature()` to verify generated function params match the locked reference signature BEFORE attempting compilation | Attempting compilation with wrong signature wastes time and produces misleading error types |
-| 2. Dummy launch | Call the kernel with small inputs: `shape=(16,16)` or `(32,)`, `dtype=torch.float32`, `device=cuda` | Calling `triton.jit()` alone — Triton compiles lazily, this does not trigger JIT |
-| 3. Error taxonomy | Catch `triton.compiler.errors.CompilationError` SEPARATELY from `RuntimeError` | Catching `Exception` broadly — these are different failure modes requiring different logging |
-| 4. Multi-dtype check | Run dummy launch for `fp32`, `fp16`, `bf16` — log pass/fail per dtype | Testing only `fp32` — bf16 failures are common and thesis-relevant |
-| 5. Result population | Set `compile_success=True` only if ALL dtype launches succeed | Setting `compile_success` from parse result or import success |
+| 1. Shared Level 0 parse/signature | Run `shared.eval.levels.level0_parse.check_parse()` and `check_signature()` before runtime import | Importing generated code before rejecting syntax or launcher contract errors |
+| 2. Runtime signature guard | After Level 0 passes, import the module and keep `inspect.signature()` as a secondary dynamic guard | Treating runtime inspection as the primary signature authority |
+| 3. Dummy launch | Call the kernel with shared compile shapes from `get_compile_shapes()`, all required dtypes, and `device=cuda` | Calling `triton.jit()` alone, or using independent C1-only shape schedules |
+| 4. Error taxonomy | Catch `triton.compiler.errors.CompilationError` separately from runtime failures and record canonical `failure_code` | Reporting only legacy `compile_error_type` and losing F0/F1 distinctions |
+| 5. Multi-dtype check | Run dummy launch for `fp32`, `fp16`, `bf16` and log pass/fail per dtype | Testing only `fp32`, since bf16/fp16 failures are common and thesis-relevant |
+| 6. Result population | Set `compile_success=True` only if all dtype launches succeed; successful rows have `failure_code=None` | Setting `compile_success` from parse result, import success, or one dtype |
+
+Canonical compile-path failure codes are:
+
+- `F0_PARSE` for AST parse failures, including syntax errors previously wrapped
+  under legacy `SignatureError`.
+- `F0_BAD_SIGNATURE` for Python source whose launcher does not satisfy the
+  locked signature contract.
+- `F1_COMPILE` for Triton compiler failures during dummy launch.
+- `F1_RUNTIME` for import, launch, or runtime failures that are not signature or
+  compiler failures.
+
+Legacy `compile_error_type` remains populated for compatibility with frozen
+artifacts and historical reports, but current rows and analyses must use
+canonical `failure_code` as the primary classification.
 
 ### 2.6 Result Dataclass Specification (`results/dataclass.py`)
 
@@ -227,12 +254,21 @@ Every generation run must produce a `GenerationResult`. All fields are required 
 | `compile_success` | `bool` | True only if all dtype launches pass | |
 | `compile_error_type` | `str \| None` | `CompilationError` \| `RuntimeError` \| `SignatureError` \| `None` | |
 | `compile_error_msg` | `str \| None` | Raw error message | Truncated to 500 chars |
+| `failure_code` | `str \| None` | Canonical shared failure code | `None` when `compile_success=True`; required for new failed rows |
 | `masked_token_rate` | `float \| None` | Avg fraction of vocab masked per step | `None` if `grammar_active=False` |
 | `unique_solution_hash` | `str` | AST hash or normalized source hash | For diversity / mode collapse detection |
 | `generation_seed` | `int \| None` | Seed passed to `torch.manual_seed` | |
 | `temperature` | `float` | Sampling temperature used | |
 | `run_id` | `str` | UUID for this specific generation | |
 | `timestamp_utc` | `str` | ISO 8601 UTC timestamp | |
+
+Current G/G+C rows also carry grammar and provenance metadata:
+`grammar_sha`, `gbnf_parse_valid`, `semantic_valid`, `grammar_valid`,
+`rejection_layer`, `stop_reason`, `xgrammar_version`, `transformers_version`,
+`tokenizers_version`, `model_revision`, `tokenizer_revision`,
+`modal_image_sha`, and fallback Modal image provenance when the image digest is
+unknown. `grammar_valid=true` means both GBNF parse and semantic validation
+passed; `grammar_active=true` alone is not G acceptance.
 
 ### 2.7 Prompt Contract (`data/prompts/prompt_contract.py`)
 
@@ -353,26 +389,32 @@ import triton
 import triton.compiler.errors
 import torch
 import inspect
+from shared.eval.levels.level0_parse import check_parse, check_signature
 
-def check_compiles(source: str, reference_sig, dtype=torch.float32) -> tuple[bool, str | None, str]:
-    # Step 1: signature check
+def check_compiles(source: str, kernel_spec, dtype=torch.float32):
+    # Step 1: shared Level 0 checks before runtime import.
+    parse_ok, parse_error = check_parse(source)
+    if not parse_ok:
+        return False, "SyntaxError", str(parse_error)[:500], "F0_PARSE"
+    signature_ok, signature_error = check_signature(source, kernel_spec)
+    if not signature_ok:
+        return False, "SignatureError", str(signature_error)[:500], "F0_BAD_SIGNATURE"
+
+    # Step 2: runtime import and secondary signature guard.
+    module = load_generated_module(source)
+    launcher = getattr(module, kernel_spec.launcher_name)
+    if inspect.signature(launcher) != kernel_spec.compile_spec.reference_signature:
+        return False, "SignatureError", "Signature mismatch", "F0_BAD_SIGNATURE"
+
+    # Step 3: dummy launch over shared compile shapes to trigger JIT compilation.
     try:
-        exec_globals = {}
-        exec(source, exec_globals)
-        fn = [v for v in exec_globals.values() if callable(v)][0]
-        if inspect.signature(fn) != reference_sig:
-            return False, 'SignatureError', 'Signature mismatch'
-    except Exception as e:
-        return False, 'ParseError', str(e)[:500]
-    # Step 2: dummy launch (triggers JIT compilation)
-    try:
-        x = torch.randn(32, 32, dtype=dtype, device='cuda')
-        fn[(1,)](x, ...)  # adjust args to match signature
-        return True, None, ''
+        x = torch.randn(32, dtype=dtype, device="cuda")
+        launcher[(1,)](x, ...)  # adjust args to match signature
+        return True, None, "", None
     except triton.compiler.errors.CompilationError as e:
-        return False, 'CompilationError', str(e)[:500]
+        return False, "CompilationError", str(e)[:500], "F1_COMPILE"
     except RuntimeError as e:
-        return False, 'RuntimeError', str(e)[:500]
+        return False, "RuntimeError", str(e)[:500], "F1_RUNTIME"
 ```
 
 ### 3.4 Model Configuration
@@ -382,7 +424,7 @@ def check_compiles(source: str, reference_sig, dtype=torch.float32) -> tuple[boo
 | Primary model | `Qwen/Qwen3-Coder` (latest) or `Qwen/Qwen2.5-Coder-32B-Instruct` | Strongest open-weight code model as of May 2026; thesis requires open-weight for reproducibility |
 | Secondary model (cross-check) | `DeepSeek-Coder-V2-Instruct` | Verify findings generalize beyond one model's training distribution |
 | Temperature | `0.2` | Low enough for reproducibility; high enough to avoid mode collapse in pass@k stats |
-| `max_new_tokens` | `1024` | Sufficient for all three kernel classes; cap prevents runaway generation |
+| `max_new_tokens` | `1536` | Current code default; avoids budget-exhaustion confounds for complete launcher plus kernel generations |
 | Seed | Enumerated: `0..19` for n=20 runs | Reproducible; each run gets a different seed so diversity is real, not seeded collapse |
 | Quantization | 4-bit or 8-bit if VRAM constrained | Document quantization level in every result — it affects generation quality |
 
@@ -440,9 +482,9 @@ Cluster 1 is complete when ALL of the following are checked. No exceptions.
 | ID | Deliverable | Definition of Done | Owner Tag |
 |---|---|---|---|
 | V1 | Dummy launch triggers JIT | Compilation check uses actual kernel launch, not `triton.jit()` call alone | @validation |
-| V2 | `CompilationError` vs `RuntimeError` split | Both caught separately; logged to `compile_error_type` field | @validation |
+| V2 | `CompilationError` vs `RuntimeError` split | Both caught separately; logged to `compile_error_type` and canonical `failure_code` fields | @validation |
 | V3 | Multi-dtype check | `fp32`, `fp16`, `bf16` all tested; pass/fail logged per dtype | @validation |
-| V4 | Signature validation before compile | `inspect.signature()` mismatch caught before compilation attempt; logged as `SignatureError` | @validation |
+| V4 | Signature validation before compile | Shared Level 0 parse/signature runs before import; runtime `inspect.signature()` remains a secondary guard; failures record canonical F0 codes | @validation |
 | V5 | No Cluster 2/3 leakage | Code review: no `torch.allclose`, no timing, no repair loop in `compile_check.py` | @validation |
 
 ### 4.5 Data & Runs
@@ -450,7 +492,7 @@ Cluster 1 is complete when ALL of the following are checked. No exceptions.
 | ID | Deliverable | Definition of Done | Owner Tag |
 |---|---|---|---|
 | R1 | 3 KernelBench kernels present | ReLU, Softmax, GEMM — reference signatures locked in `prompt_contract.py` | @data |
-| R2 | `GenerationResult` dataclass complete | All 15 fields from Section 2.6 present and populated in every result | @results |
+| R2 | `GenerationResult` dataclass complete | All required fields from Section 2.6 present and populated in every result, including canonical `failure_code` for new failed rows | @results |
 | R3 | JSONL logger works | Results append-write to `.jsonl`; loadable with pandas for analysis | @results |
 | R4 | Baseline runs (`grammar_active=False`) | n≥20 unconstrained generations per kernel class; logged as ∅ condition | @experiments |
 | R5 | Constrained runs (`grammar_active=True`) | n≥20 constrained generations per kernel class; `compile_success` rate computed | @experiments |

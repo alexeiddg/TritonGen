@@ -342,13 +342,22 @@ cost_adjusted_pass1 = pass@1 / mean_total_tokens_per_trial
 
 #### 2.3.1 Failure Taxonomy
 
-Every failed generation is categorized into exactly one failure class:
+Every failed generation is categorized into exactly one canonical failure class.
+The shared implementation is `shared/eval/failure_taxonomy.py`, and canonical
+`failure_code` is the primary analysis and replay field. Legacy Cluster 1
+`compile_error_type` labels remain secondary diagnostics and are converted to
+canonical codes at read, analysis, and replay time. Explicit row-level canonical
+`failure_code` values are never overridden.
 
 | Code | Category | Level Failed | Detection |
 |------|----------|-------------|-----------|
 | `F0_PARSE` | Syntax error — not valid Python | 0 | `ast.parse()` raises `SyntaxError` |
+| `F0_GBNF_PARSE` | Grammar-layer parse rejection | 0 | GBNF parse failed or generation ended as an incomplete grammar prefix |
+| `F0_SEMANTIC_INVALID` | Offline semantic validator rejection | 0 | GBNF and AST passed, semantic/surface validation failed |
+| `F0_GRAMMAR_INVALID` | Grammar rejection with incomplete layer attribution | 0 | `grammar_valid=false` but the exact rejection layer is unknown |
 | `F0_NO_DECORATOR` | Valid Python but no `@triton.jit` | 0 | AST scan finds no `triton.jit` decorator |
-| `F0_BAD_SIGNATURE` | Wrong function signature | 0 | `inspect.signature` mismatch vs spec |
+| `F0_BAD_SIGNATURE` | Wrong launcher signature | 0 | Shared Level 0 AST signature check rejects, or runtime signature guard rejects |
+| `F0_SURFACE_VIOLATION` | Surface-policy violation | 0 | Sanitizer or semantic surface checks identify forbidden generated structure |
 | `F1_COMPILE` | Triton compilation failure | 1 | `CompilationError` on dummy launch |
 | `F1_RUNTIME` | Runtime crash during dummy launch | 1 | `RuntimeError` during launch |
 | `F2_NUMERIC_LARGE` | Output deviates beyond tolerance | 2 | `allclose` fails, `max_abs_diff > atol` |
@@ -361,6 +370,12 @@ Every failed generation is categorized into exactly one failure class:
 - **Implementation:** `classify_failure(result: EvalResult) -> str` returns exactly one code.
 - **Storage:** `EvalResult.failure_code: Optional[str]` — `None` if Level 4 reached.
 - **Paper output:** Stacked bar chart per condition showing failure distribution.
+
+Syntax-aware legacy mapping is part of the taxonomy. A frozen Cluster 1 row with
+`compile_error_type="SignatureError"` and syntax-error text maps to `F0_PARSE`;
+a true launcher/signature mismatch maps to `F0_BAD_SIGNATURE`. This keeps the
+Phase 4 baseline revalidation disposition consistent with current Level 0
+semantics while preserving the frozen baseline JSONL unchanged.
 
 #### 2.3.2 Diversity / Mode Collapse Detection
 
@@ -724,6 +739,11 @@ def check_correctness(
 ```
 
 ### 4.4 Signature Contract Enforcement (Level 0)
+
+Cluster 1 owns the explicit Level 0 then Level 1 ordering. It calls shared
+Level 0 parse/signature checks before importing generated code. Runtime
+`inspect.signature()` remains a secondary guard after import; it is not the
+primary signature authority. Level 1 compile does not implicitly run Level 0.
 
 ```python
 import ast

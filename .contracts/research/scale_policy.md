@@ -58,6 +58,51 @@ Promotion requirements:
 - no prompt, grammar, harness, or eval change is made after a paper-scale run
   starts unless the run is invalidated and restarted under a new `run_id`.
 
+## Current N5/N20 Gates
+
+Task-agnostic `G` development-scale `n=5` is gated on evaluation alignment, not
+only on generation infrastructure. It may proceed only after:
+
+- Phase 1 shape schedules are shared-derived and verified;
+- Phase 2 signature gating records canonical `failure_code` values while
+  preserving legacy `compile_error_type`;
+- Phase 3 and Phase 3.4 make canonical taxonomy and grammar metadata primary in
+  analysis;
+- Phase 3.5 makes Cluster 2 replay consume canonical failure codes through the
+  shared adapter/taxonomy path;
+- Phase 4 has acceptable Modal L4 baseline revalidation evidence, or an
+  explicitly documented A10 fallback;
+- the post-Phase-4 Cluster 1 grammar hash gate has been reconciled;
+- Phase 5 cross-cluster re-audit tests pass; and
+- Phase 5.5 contracts reflect the implemented behavior.
+
+`n=20` task-agnostic G remains blocked until `n=5` passes these gates and its
+results justify promotion. Neither `n=5` nor `n=20` may be used to bypass a stale
+contract, unresolved grammar hash gate, unexplained baseline drift, or C1/C2
+entrypoint disagreement.
+
+## Phase 4 Evidence And Grammar Hash Sequencing
+
+Baseline revalidation is diagnostic comparison, not regeneration. The frozen
+none baseline artifact must not be rewritten. The accepted post-fix Phase 4
+evidence path is
+`outputs/cluster1/diagnostics/baseline_revalidation_aligned_pipeline_parse_reclassification.jsonl`.
+It must show all 180 frozen rows evaluated under the aligned C1 and C2
+entrypoints, zero compile-success drift, and zero entrypoint disagreement.
+
+Real baseline revalidation requires a Modal GPU environment because Triton dummy
+compile is CUDA-dependent. L4 is the preferred evidence class because the
+original baseline used L4; A10 is the only acceptable documented fallback. T4 or
+lower and local-only mocked evidence are insufficient to close the baseline
+comparability gate.
+
+The Cluster 1 grammar hash gate is sequenced after passing Phase 4 evidence and
+before Phase 5. The hash gate is not resolved by evaluation alignment itself.
+Re-recording or reconciling grammar provenance before baseline revalidation is
+complete is not acceptable, because the baseline evidence is what establishes
+that the current aligned pipeline is stable enough to trust the provenance
+update.
+
 ## Artifact Naming
 
 Future artifact names should make the scale obvious without opening the file.

@@ -44,6 +44,36 @@ Parallel ad hoc analysis scripts are diagnostic only and are not canonical
 paper-table sources. `compile_success` output from the analyzer is secondary
 structural-validity diagnostic output, not the headline Cluster 2 claim.
 
+## Replay Failure-Code Canonicalization
+
+Frozen Cluster 1 replay artifacts remain unchanged on disk. Cluster 2 must read
+them through the shared Cluster 1 adapter and shared failure taxonomy so replay
+rows expose canonical `failure_code` values even when the frozen row only has
+legacy `compile_error_type`.
+
+Canonicalization rules:
+
+- Explicit row-level canonical `failure_code` wins.
+- Legacy `SignatureError` with syntax-error text canonicalizes to `F0_PARSE`.
+- Legacy `SignatureError` without parse indicators canonicalizes to
+  `F0_BAD_SIGNATURE`.
+- Legacy `CompilationError` canonicalizes to `F1_COMPILE`.
+- Legacy `RuntimeError` canonicalizes to `F1_RUNTIME`.
+
+Cluster 2 result rows should preserve replay provenance and expose the frozen
+Cluster 1 canonical failure code in replay metadata. Legacy labels may be
+retained only as diagnostics; primary replay summaries, feedback routing, and
+cross-cluster comparisons use canonical shared codes.
+
+## Generation Token Budget
+
+The current Cluster 2 generation path uses
+`cluster2.constants.DEFAULT_MAX_NEW_TOKENS = 1536`. This `max_new_tokens=1536`
+default is part of the current replay/generation contract and must be recorded
+in generated-row metadata. Replay enforcement must treat token-budget mismatch
+against frozen controls as a hard failure rather than silently substituting a
+new budget.
+
 ## Cluster 1 Freeze
 
 Do not modify:
