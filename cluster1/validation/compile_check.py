@@ -16,7 +16,11 @@ import types
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
-from cluster1.results.dataclass import CompileErrorType
+from cluster1.results.dataclass import (
+    CompileErrorType,
+    canonical_failure_code_for_compile_error_type,
+)
+from shared.eval.levels.level0_parse import check_parse, check_signature
 
 try:
     import torch as _torch
@@ -41,6 +45,7 @@ class CompileResult:
     error_msg: str | None
     dtype: str
     n_shapes_tested: int
+    failure_code: str | None = None
 
     def __post_init__(self):
         if self.error_msg is not None and len(self.error_msg) > 500:
@@ -183,20 +188,47 @@ def check_compiles(
     dtype,
     shapes: list[tuple[int, ...]],
 ) -> CompileResult:
-    """Validate signature then trigger Triton JIT via dummy launches."""
+    """Validate Level 0 parse/signature, then trigger Triton JIT launches."""
     dtype_str = _dtype_str(dtype)
     module: types.ModuleType | None = None
+
+    parse_ok, parse_error = check_parse(source)
+    if not parse_ok:
+        return CompileResult(
+            success=False,
+            error_type="SignatureError",
+            error_msg=(parse_error or "SyntaxError")[:500],
+            dtype=dtype_str,
+            n_shapes_tested=0,
+            failure_code="F0_PARSE",
+        )
+
+    signature_ok, signature_error = check_signature(
+        source,
+        _level0_kernel_spec_adapter(spec),
+    )
+    if not signature_ok:
+        return CompileResult(
+            success=False,
+            error_type="SignatureError",
+            error_msg=(signature_error or "Signature mismatch")[:500],
+            dtype=dtype_str,
+            n_shapes_tested=0,
+            failure_code="F0_BAD_SIGNATURE",
+        )
 
     # Step 1: load module and validate signature before any compilation attempt.
     try:
         module = load_generated_module(source)
     except ValueError as exc:
+        error_type, failure_code = _classify_import_error(exc)
         return CompileResult(
             success=False,
-            error_type="SignatureError",
+            error_type=error_type,
             error_msg=str(exc)[:500],
             dtype=dtype_str,
             n_shapes_tested=0,
+            failure_code=failure_code,
         )
 
     try:
@@ -208,6 +240,7 @@ def check_compiles(
                 error_msg=sig_error[:500],
                 dtype=dtype_str,
                 n_shapes_tested=0,
+                failure_code="F0_BAD_SIGNATURE",
             )
 
         launcher = getattr(module, spec.launcher_name)
@@ -225,6 +258,9 @@ def check_compiles(
                     error_msg=str(exc)[:500],
                     dtype=dtype_str,
                     n_shapes_tested=n_tested,
+                    failure_code=canonical_failure_code_for_compile_error_type(
+                        error_type
+                    ),
                 )
 
         return CompileResult(
@@ -233,6 +269,7 @@ def check_compiles(
             error_msg=None,
             dtype=dtype_str,
             n_shapes_tested=len(shapes),
+            failure_code=None,
         )
     finally:
         cleanup_generated_module(module)
@@ -272,6 +309,19 @@ def _classify_error(exc: Exception) -> CompileErrorType:
     if type(exc).__name__ == "CompilationError":
         return "CompilationError"
     return "RuntimeError"
+
+
+def _level0_kernel_spec_adapter(spec: CompileSpec) -> types.SimpleNamespace:
+    return types.SimpleNamespace(compile_spec=spec, launcher_name=spec.launcher_name)
+
+
+def _classify_import_error(exc: ValueError) -> tuple[CompileErrorType, str]:
+    error_text = str(exc).lower()
+    if "syntax error" in error_text:
+        return "SignatureError", "F0_PARSE"
+    if "signature mismatch" in error_text or "launcher" in error_text:
+        return "SignatureError", "F0_BAD_SIGNATURE"
+    return "RuntimeError", "F1_RUNTIME"
 
 
 def _dtype_str(dtype) -> str:

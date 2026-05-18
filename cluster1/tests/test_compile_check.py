@@ -93,6 +93,18 @@ def relu(x):
     return x
 """
 
+_SIMPLE_LEVEL0_SOURCE = """\
+def jit(fn):
+    return fn
+
+@jit
+def relu_kernel(x):
+    return x
+
+def relu(x):
+    return x
+"""
+
 
 # ---------------------------------------------------------------------------
 # Task 4.1 — CompileResult
@@ -211,6 +223,7 @@ def test_signature_error_precedes_compile() -> None:
     result = check_compiles(_VALID_SOURCE, spec, dtype, [(32,)])
 
     assert result.error_type == "SignatureError"
+    assert result.failure_code == "F0_BAD_SIGNATURE"
     assert result.success is False
     assert not launch_attempted, "build_args must not be called before signature check"
 
@@ -226,6 +239,7 @@ def test_signature_error_on_syntax_bad_source() -> None:
 
     result = check_compiles(_SYNTAX_ERROR_SOURCE, spec, dtype, [(32,)])
     assert result.error_type == "SignatureError"
+    assert result.failure_code == "F0_PARSE"
     assert result.success is False
     assert result.n_shapes_tested == 0
 
@@ -241,6 +255,7 @@ def test_signature_error_on_missing_launcher() -> None:
 
     result = check_compiles(_MISSING_LAUNCHER_SOURCE, spec, dtype, [(32,)])
     assert result.error_type == "SignatureError"
+    assert result.failure_code == "F0_BAD_SIGNATURE"
     assert result.success is False
     assert result.n_shapes_tested == 0
 
@@ -252,9 +267,10 @@ def test_check_compiles_cleans_generated_module_after_launch() -> None:
     spec = CompileSpec("relu", _sig("x"), build_args)
     before = _generated_module_names()
 
-    result = check_compiles(_SIMPLE_SOURCE, spec, "fp32", [(32,), (64,)])
+    result = check_compiles(_SIMPLE_LEVEL0_SOURCE, spec, "fp32", [(32,), (64,)])
 
     assert result.success is True
+    assert result.failure_code is None
     assert result.n_shapes_tested == 2
     assert _generated_module_names() == before
 
@@ -331,6 +347,7 @@ def bad_kernel_launcher(x):
     result = check_compiles(bad_compile_source, spec, torch.float32, [(64,)])
     # Must be one of the two allowed error types — not a broad Exception catch.
     assert result.error_type in {"CompilationError", "RuntimeError"}
+    assert result.failure_code in {"F1_COMPILE", "F1_RUNTIME"}
     assert result.success is False
     assert result.error_msg is not None
 
@@ -380,4 +397,5 @@ def test_check_compiles_all_dtypes_signature_error_without_cuda() -> None:
     assert len(results) == 3
     for r in results:
         assert r.error_type == "SignatureError"
+        assert r.failure_code == "F0_BAD_SIGNATURE"
         assert r.success is False

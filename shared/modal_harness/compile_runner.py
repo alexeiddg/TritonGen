@@ -50,6 +50,7 @@ def main() -> None:
                 "compile_results_by_dtype": {},
                 "compile_error_type": "UnknownError",
                 "compile_error_msg": f"failed to read request file: {exc}",
+                "failure_code": "F1_RUNTIME",
                 "n_shapes_tested": 0,
             },
         )
@@ -59,6 +60,9 @@ def main() -> None:
     # crash the runner before it can return a structured error.
     try:
         from cluster1.data.kernels import get_kernel_spec
+        from cluster1.results.dataclass import (
+            canonical_failure_code_for_compile_error_type,
+        )
         from cluster1.validation.compile_check import check_compiles_all_dtypes
     except Exception as exc:
         _write_result(
@@ -68,6 +72,7 @@ def main() -> None:
                 "compile_results_by_dtype": {},
                 "compile_error_type": "UnknownError",
                 "compile_error_msg": f"cluster1 import failed: {exc}",
+                "failure_code": "F1_RUNTIME",
                 "n_shapes_tested": 0,
                 "traceback": traceback.format_exc(),
             },
@@ -88,6 +93,7 @@ def main() -> None:
                 "compile_results_by_dtype": {},
                 "compile_error_type": "SignatureError",
                 "compile_error_msg": str(exc),
+                "failure_code": "F0_BAD_SIGNATURE",
                 "n_shapes_tested": 0,
             },
         )
@@ -104,6 +110,7 @@ def main() -> None:
                     f"kernel_name mismatch: spec for {kernel_class!r} expects "
                     f"{spec.name!r}, got {kernel_name!r}"
                 ),
+                "failure_code": "F0_BAD_SIGNATURE",
                 "n_shapes_tested": 0,
             },
         )
@@ -123,6 +130,7 @@ def main() -> None:
                 "compile_results_by_dtype": {},
                 "compile_error_type": "UnknownError",
                 "compile_error_msg": f"check_compiles_all_dtypes raised: {exc}",
+                "failure_code": "F1_RUNTIME",
                 "n_shapes_tested": 0,
                 "traceback": traceback.format_exc(),
             },
@@ -142,6 +150,13 @@ def main() -> None:
             "compile_results_by_dtype": compile_results_by_dtype,
             "compile_error_type": first_error.error_type if first_error else None,
             "compile_error_msg": first_error.error_msg if first_error else None,
+            "failure_code": (
+                first_error.failure_code
+                if first_error and first_error.failure_code is not None
+                else canonical_failure_code_for_compile_error_type(
+                    first_error.error_type if first_error else None
+                )
+            ),
             "n_shapes_tested": n_shapes_tested,
         },
     )

@@ -79,6 +79,7 @@ def test_generation_result_has_all_required_fields():
         "compile_error_type", "compile_error_msg",
         "masked_token_rate", "unique_solution_hash", "n_shapes_tested",
         "generation_seed", "temperature", "run_id", "timestamp_utc",
+        "failure_code",
         "generation_metadata_schema_version", "grammar_sha", "grammar_path",
         "gbnf_parse_valid", "semantic_valid", "grammar_valid",
         "rejection_layer", "stop_reason", "xgrammar_version",
@@ -263,6 +264,48 @@ def test_legacy_row_deserialization_adds_metadata_defaults() -> None:
     assert updated["grammar_sha"] is None
     assert updated["stop_reason"] == "unknown"
     assert updated["xgrammar_version"] == "unknown"
+    assert updated["failure_code"] is None
+
+
+def test_legacy_failed_row_deserialization_adds_canonical_failure_code() -> None:
+    record = _make_result(
+        compile_success=False,
+        compile_results_by_dtype={"fp32": False, "fp16": False, "bf16": False},
+        compile_error_type="SignatureError",
+        compile_error_msg="signature mismatch",
+    ).__dict__.copy()
+    record.pop("failure_code", None)
+
+    updated = generation_result_record_for_deserialization(record)
+
+    assert updated["compile_error_type"] == "SignatureError"
+    assert updated["failure_code"] == "F0_BAD_SIGNATURE"
+
+
+def test_failure_code_is_required_for_new_failed_rows() -> None:
+    result = _make_result(
+        compile_success=False,
+        compile_results_by_dtype={"fp32": False, "fp16": False, "bf16": False},
+        compile_error_type="RuntimeError",
+        compile_error_msg="launch failed",
+        failure_code=None,
+    )
+
+    with pytest.raises(ValueError, match="failure_code is required"):
+        validate_result_invariants(result)
+
+
+def test_failure_code_must_match_legacy_compile_error_type() -> None:
+    result = _make_result(
+        compile_success=False,
+        compile_results_by_dtype={"fp32": False, "fp16": False, "bf16": False},
+        compile_error_type="CompilationError",
+        compile_error_msg="bad IR",
+        failure_code="F1_RUNTIME",
+    )
+
+    with pytest.raises(ValueError, match="inconsistent"):
+        validate_result_invariants(result)
 
 
 def test_paper_scale_metadata_gate_rejects_legacy_g_row() -> None:
@@ -525,6 +568,7 @@ def test_append_result_jsonl_creates_file(tmp_path: Path):
     record = json.loads(lines[0])
     assert record["model_id"] == "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
     assert record["kernel_class"] == "elementwise"
+    assert record["failure_code"] is None
 
 
 def test_append_result_jsonl_appends(tmp_path: Path):

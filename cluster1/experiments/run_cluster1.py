@@ -31,6 +31,7 @@ from cluster1.results.dataclass import (
     DEFAULT_GRAMMAR_VARIANT,
     GENERATION_METADATA_SCHEMA_VERSION,
     GenerationResult,
+    canonical_failure_code_for_compile_error_type,
     compute_unique_solution_hash,
     grammar_variant_for_cell,
     validate_paper_scale_metadata,
@@ -185,6 +186,13 @@ def run_one_generation(
     )
     dtype_result = _compile_result_for_dtype(compile_results, dtype)
     first_error = next((result for result in compile_results if result.error_type is not None), None)
+    failure_code = (
+        first_error.failure_code
+        if first_error is not None and first_error.failure_code is not None
+        else canonical_failure_code_for_compile_error_type(
+            first_error.error_type if first_error is not None else None
+        )
+    )
     result = GenerationResult(
         source=decoded.source,
         model_id=args.model_id,
@@ -221,6 +229,7 @@ def run_one_generation(
             if first_error is not None and first_error.error_msg is not None
             else None
         ),
+        failure_code=failure_code,
         masked_token_rate=decoded.masked_token_rate if grammar_active else None,
         unique_solution_hash=compute_unique_solution_hash(decoded.source),
         n_shapes_tested=dtype_result.n_shapes_tested,

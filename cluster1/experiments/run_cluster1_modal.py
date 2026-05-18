@@ -58,6 +58,7 @@ from cluster1.results.dataclass import (  # noqa: E402
     DEFAULT_GRAMMAR_VARIANT,
     GENERATION_METADATA_SCHEMA_VERSION,
     VALID_GRAMMAR_VARIANTS,
+    canonical_failure_code_for_compile_error_type,
     generation_result_record_for_deserialization,
     grammar_variant_for_cell,
     validate_grammar_path_variant_invariants,
@@ -838,6 +839,11 @@ def remote_results_to_generation_result(
         if raw_error is not None
         else None
     )
+    failure_code = (
+        compile_.failure_code
+        if compile_.failure_code is not None
+        else canonical_failure_code_for_compile_error_type(mapped_error)
+    )
 
     return GenerationResult(
         source=generation.source,
@@ -873,6 +879,7 @@ def remote_results_to_generation_result(
             if compile_.compile_error_msg is not None
             else None
         ),
+        failure_code=failure_code,
         masked_token_rate=generation.masked_token_rate if grammar_active else None,
         unique_solution_hash=compute_unique_solution_hash(generation.source),
         n_shapes_tested=n_shapes_for_dtype,

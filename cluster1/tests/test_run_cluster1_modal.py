@@ -422,6 +422,7 @@ def test_conversion_baseline_produces_valid_generation_result() -> None:
     }
     assert result.compile_error_type is None
     assert result.compile_error_msg is None
+    assert result.failure_code is None
     assert result.n_shapes_tested == len(spec.shapes_by_dtype["fp32"])
     assert result.unique_solution_hash  # nonempty
     assert result.run_id == "rid-baseline"
@@ -451,6 +452,7 @@ def test_conversion_g_failure_produces_valid_failed_row() -> None:
     assert result.compile_success is False
     assert result.compile_error_type == "CompilationError"
     assert result.compile_error_msg == "bad IR"
+    assert result.failure_code == "F1_COMPILE"
     # fp32 is the row's dtype and it failed → 0 shapes credited.
     assert result.n_shapes_tested == 0
 
@@ -616,6 +618,37 @@ def test_conversion_maps_unknown_error_to_runtime_error() -> None:
     # it into RuntimeError so existing analyzers keep working.
     assert result.compile_error_type == "RuntimeError"
     assert result.compile_error_msg == "harness-side oops"
+    assert result.failure_code == "F1_RUNTIME"
+
+
+def test_conversion_preserves_remote_canonical_failure_code() -> None:
+    spec = get_kernel_spec("elementwise")
+    generation, _ = _baseline_remote_pair()
+    compile_ = RemoteCompileResult(
+        compile_success=False,
+        compile_results_by_dtype={"fp32": False, "fp16": False, "bf16": False},
+        compile_error_type="SignatureError",
+        compile_error_msg="SyntaxError: broken",
+        failure_code="F0_PARSE",
+        n_shapes_tested=0,
+        run_id="rid-baseline",
+        factor_cell="none",
+    )
+
+    result = runner.remote_results_to_generation_result(
+        generation=generation,
+        compile_=compile_,
+        spec=spec,
+        dtype="fp32",
+        grammar_active=False,
+        seed=0,
+        temperature=0.2,
+        model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+        run_id="rid-baseline",
+    )
+
+    assert result.compile_error_type == "SignatureError"
+    assert result.failure_code == "F0_PARSE"
 
 
 def test_conversion_truncates_long_compile_error_msg() -> None:
@@ -837,6 +870,7 @@ def test_run_writes_three_rows_for_elementwise_baseline_n1(
     assert {row["dtype"] for row in lines} == {"fp32", "fp16", "bf16"}
     for row in lines:
         assert row["compile_success"] is True
+        assert row["failure_code"] is None
         assert row["grammar_active"] is False
         assert row["grammar_variant"] is None
         assert row["masked_token_rate"] is None
@@ -1303,6 +1337,7 @@ def test_run_remote_compile_failure_row_exits_zero(monkeypatch, tmp_path) -> Non
     assert len(lines) == 3
     assert {row["compile_success"] for row in lines} == {False}
     assert {row["compile_error_type"] for row in lines} == {"SignatureError"}
+    assert {row["failure_code"] for row in lines} == {"F0_BAD_SIGNATURE"}
 
 
 def test_resume_requires_metadata_sidecar_for_non_empty_output(

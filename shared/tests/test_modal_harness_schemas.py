@@ -395,6 +395,7 @@ def test_result_minimal_construction() -> None:
         run_id="rid",
     )
     assert result.compile_error_type is None
+    assert result.failure_code is None
     assert result.stdout == ""
     assert result.metadata == {}
 
@@ -405,6 +406,7 @@ def test_result_round_trip() -> None:
         compile_results_by_dtype={"fp32": False, "fp16": False, "bf16": False},
         compile_error_type="CompilationError",
         compile_error_msg="bad IR",
+        failure_code="F1_COMPILE",
         n_shapes_tested=0,
         stdout="hello",
         stderr="oops",
@@ -470,6 +472,7 @@ def test_remote_compile_result_to_cluster1_fields() -> None:
         "compile_results_by_dtype": {"fp32": False, "fp16": True, "bf16": True},
         "compile_error_type": "RuntimeError",
         "compile_error_msg": "x" * 500,
+        "failure_code": "F1_RUNTIME",
         "n_shapes_tested": 2,
     }
 

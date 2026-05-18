@@ -79,6 +79,7 @@ def _run_remote_compile(req_dict: dict) -> dict:
                 compile_results_by_dtype={"fp32": False, "fp16": False, "bf16": False},
                 compile_error_type="TimeoutError",
                 compile_error_msg=f"compile subprocess timed out after {req.timeout_s}s",
+                failure_code="F1_RUNTIME",
                 n_shapes_tested=0,
                 stdout=truncate_output(exc.stdout or ""),
                 stderr=truncate_output(exc.stderr or ""),
@@ -93,6 +94,7 @@ def _run_remote_compile(req_dict: dict) -> dict:
                 compile_results_by_dtype={"fp32": False, "fp16": False, "bf16": False},
                 compile_error_type="UnknownError",
                 compile_error_msg=str(exc),
+                failure_code="F1_RUNTIME",
                 n_shapes_tested=0,
                 traceback=traceback.format_exc(),
                 run_id=req.run_id,
@@ -113,6 +115,7 @@ def _run_remote_compile(req_dict: dict) -> dict:
                 compile_error_msg=(
                     f"compile_runner did not produce a result file (exit={proc.returncode})"
                 ),
+                failure_code="F1_RUNTIME",
                 n_shapes_tested=0,
                 stdout=truncate_output(proc.stdout),
                 stderr=stderr,
@@ -130,6 +133,7 @@ def _run_remote_compile(req_dict: dict) -> dict:
                     f"compile_runner result file was not valid JSON (exit="
                     f"{proc.returncode}): {exc}"
                 ),
+                failure_code="F1_RUNTIME",
                 n_shapes_tested=0,
                 stdout=truncate_output(proc.stdout),
                 stderr=stderr,
@@ -146,6 +150,7 @@ def _run_remote_compile(req_dict: dict) -> dict:
             ),
             compile_error_type=child_payload.get("compile_error_type"),
             compile_error_msg=child_payload.get("compile_error_msg"),
+            failure_code=child_payload.get("failure_code"),
             n_shapes_tested=int(child_payload.get("n_shapes_tested", 0)),
             stdout="",
             stderr=stderr,

@@ -70,6 +70,7 @@ def test_run_remote_compile_ignores_stray_stdout(monkeypatch) -> None:
                     },
                     "compile_error_type": None,
                     "compile_error_msg": None,
+                    "failure_code": None,
                     "n_shapes_tested": 9,
                 }
             )
@@ -115,6 +116,7 @@ def test_run_remote_compile_missing_result_file_is_structured_error(monkeypatch)
 
     assert result["compile_success"] is False
     assert result["compile_error_type"] == "UnknownError"
+    assert result["failure_code"] == "F1_RUNTIME"
     assert "did not produce a result file" in (result["compile_error_msg"] or "")
     # Stdout/stderr preserved on failure for debugging.
     assert "garbled output" in result["stdout"]
@@ -133,6 +135,7 @@ def test_run_remote_compile_invalid_json_is_structured_error(monkeypatch) -> Non
 
     assert result["compile_success"] is False
     assert result["compile_error_type"] == "UnknownError"
+    assert result["failure_code"] == "F1_RUNTIME"
     assert "not valid JSON" in (result["compile_error_msg"] or "")
 
 
@@ -147,6 +150,7 @@ def test_run_remote_compile_timeout_is_structured(monkeypatch) -> None:
 
     assert result["compile_success"] is False
     assert result["compile_error_type"] == "TimeoutError"
+    assert result["failure_code"] == "F1_RUNTIME"
     # Even on timeout, the dtype dictionary is populated so analysis code
     # never has to handle a missing key.
     assert result["compile_results_by_dtype"] == {
@@ -188,4 +192,5 @@ def test_compile_runner_module_writes_result_file(tmp_path) -> None:
     payload = json.loads(result_path.read_text(encoding="utf-8"))
     assert payload["compile_success"] is False
     assert payload["compile_error_type"] == "SignatureError"
+    assert payload["failure_code"] == "F0_BAD_SIGNATURE"
     assert payload["n_shapes_tested"] == 0

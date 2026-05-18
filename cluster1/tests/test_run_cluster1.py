@@ -126,6 +126,7 @@ def test_run_one_generation_assembles_generation_result(monkeypatch: pytest.Monk
     }
     assert result.compile_error_type == "RuntimeError"
     assert result.compile_error_msg == "launch failed"
+    assert result.failure_code == "F1_RUNTIME"
     assert result.masked_token_rate == 0.4
     assert result.unique_solution_hash
     assert result.n_shapes_tested == 2

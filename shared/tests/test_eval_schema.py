@@ -102,6 +102,7 @@ def test_generation_result_converts_to_eval_result_for_g() -> None:
         compile_results_by_dtype={"fp32": True, "fp16": False, "bf16": True},
         compile_error_type="CompilationError",
         compile_error_msg="bad generated IR",
+        failure_code="F1_COMPILE",
     )
 
     result = eval_result_from_generation_result(row)
@@ -109,8 +110,23 @@ def test_generation_result_converts_to_eval_result_for_g() -> None:
     assert result.condition == "G"
     assert result.compile_success is False
     assert result.compile_error == "bad generated IR"
-    assert result.failure_code == "CompilationError"
+    assert result.failure_code == "F1_COMPILE"
     assert result.level_reached == 0
+
+
+def test_generation_result_adapter_falls_back_to_legacy_compile_error_type() -> None:
+    row = _make_generation_result(
+        grammar_active=True,
+        masked_token_rate=0.25,
+        compile_success=False,
+        compile_results_by_dtype={"fp32": False, "fp16": False, "bf16": False},
+        compile_error_type="SignatureError",
+        compile_error_msg="signature mismatch",
+    )
+
+    result = eval_result_from_generation_result(row)
+
+    assert result.failure_code == "SignatureError"
 
 
 def test_generation_result_adapter_accepts_explicit_condition() -> None:

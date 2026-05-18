@@ -44,7 +44,7 @@ def eval_result_from_generation_result(
         signature_valid=None,
         compile_success=row.compile_success,
         compile_error=row.compile_error_msg,
-        failure_code=row.compile_error_type,
+        failure_code=row.failure_code or row.compile_error_type,
     )
 
 

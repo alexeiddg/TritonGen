@@ -20,6 +20,7 @@ from cluster1.results.dataclass import (
     DEFAULT_GRAMMAR_VARIANT,
     GENERATION_METADATA_SCHEMA_VERSION,
     GrammarVariant,
+    canonical_failure_code_for_compile_error_type,
     validate_grammar_variant_invariants,
 )
 from shared.generation_metadata import (
@@ -283,6 +284,7 @@ class RemoteCompileResult(BaseModel):
     compile_results_by_dtype: dict[str, bool]
     compile_error_type: str | None = None
     compile_error_msg: str | None = None
+    failure_code: str | None = None
     n_shapes_tested: int
     stdout: str = ""
     stderr: str = ""
@@ -314,6 +316,13 @@ def remote_compile_result_to_cluster1_fields(
         "compile_results_by_dtype": dict(result.compile_results_by_dtype),
         "compile_error_type": result.compile_error_type,
         "compile_error_msg": error_msg[:500] if error_msg is not None else None,
+        "failure_code": (
+            result.failure_code
+            if result.failure_code is not None
+            else canonical_failure_code_for_compile_error_type(
+                result.compile_error_type
+            )
+        ),
         "n_shapes_tested": result.n_shapes_tested,
     }
 

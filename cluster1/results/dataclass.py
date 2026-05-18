@@ -22,10 +22,22 @@ from shared.generation_metadata import (
     is_immutable_hub_revision,
     modal_image_provenance_digest,
 )
+from shared.eval.failure_taxonomy import FAILURE_CODES, LEGACY_FAILURE_CODE_MAP
 
 
 # Task 5.1
 CompileErrorType = Literal["CompilationError", "RuntimeError", "SignatureError", None]
+FailureCode = str | None
+_FAILURE_CODES_BY_COMPILE_ERROR_TYPE = {
+    "CompilationError": LEGACY_FAILURE_CODE_MAP["CompilationError"],
+    "RuntimeError": LEGACY_FAILURE_CODE_MAP["RuntimeError"],
+    "SignatureError": LEGACY_FAILURE_CODE_MAP["SignatureError"],
+}
+_ALLOWED_FAILURE_CODES_BY_COMPILE_ERROR_TYPE = {
+    "CompilationError": frozenset({"F1_COMPILE"}),
+    "RuntimeError": frozenset({"F1_RUNTIME"}),
+    "SignatureError": frozenset({"F0_PARSE", "F0_BAD_SIGNATURE"}),
+}
 _VALID_GRAMMAR_VARIANT_SET = frozenset(VALID_GRAMMAR_VARIANTS)
 PAPER_SCALE_METADATA_FIELD_NAMES: tuple[str, ...] = (
     *PAPER_SCALE_GRAMMAR_REQUIRED_METADATA_FIELD_NAMES,
@@ -57,6 +69,7 @@ class GenerationResult:
     temperature: float
     run_id: str
     timestamp_utc: str
+    failure_code: FailureCode = None
     generation_metadata_schema_version: int = 0
     grammar_sha: str | None = None
     grammar_path: str | None = None
@@ -84,7 +97,47 @@ def validate_result_invariants(result: GenerationResult) -> None:
         raise ValueError("masked_token_rate must be None when grammar_active is False")
     if result.grammar_active and result.masked_token_rate is None:
         raise ValueError("masked_token_rate must not be None when grammar_active is True")
+    validate_failure_code_invariants(result)
     validate_generation_metadata_invariants(result)
+
+
+def validate_failure_code_invariants(result: GenerationResult) -> None:
+    """Validate the canonical failure code while preserving legacy labels."""
+
+    if (
+        result.failure_code is not None
+        and result.failure_code not in FAILURE_CODES
+    ):
+        raise ValueError(f"failure_code must be canonical; got {result.failure_code!r}")
+    if result.compile_success:
+        if result.failure_code is not None:
+            raise ValueError("failure_code must be None when compile_success is True")
+        return
+
+    if result.compile_error_type is None:
+        return
+
+    if result.failure_code is None:
+        raise ValueError("failure_code is required when compile_error_type is present")
+
+    allowed = _ALLOWED_FAILURE_CODES_BY_COMPILE_ERROR_TYPE.get(result.compile_error_type)
+    if allowed is not None and result.failure_code not in allowed:
+        allowed_list = ", ".join(sorted(allowed))
+        raise ValueError(
+            f"failure_code {result.failure_code!r} is inconsistent with "
+            f"compile_error_type {result.compile_error_type!r}; expected one of "
+            f"{allowed_list}"
+        )
+
+
+def canonical_failure_code_for_compile_error_type(
+    compile_error_type: str | None,
+) -> str | None:
+    """Return the canonical shared failure code for a legacy C1 compile label."""
+
+    if compile_error_type is None:
+        return None
+    return _FAILURE_CODES_BY_COMPILE_ERROR_TYPE.get(compile_error_type)
 
 
 def validate_generation_metadata_invariants(result: GenerationResult) -> None:
@@ -407,6 +460,10 @@ def generation_result_record_for_deserialization(
     updated.setdefault("modal_image_sha", UNKNOWN)
     updated.setdefault("modal_image_provenance_sha256", None)
     updated.setdefault("modal_image_provenance_components", None)
+    if "failure_code" not in updated:
+        updated["failure_code"] = canonical_failure_code_for_compile_error_type(
+            updated.get("compile_error_type")
+        )
     return updated
 
 
