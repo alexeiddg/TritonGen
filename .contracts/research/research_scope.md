@@ -45,13 +45,21 @@ G+C+P
 
 ## G Enforcement Model
 
-G consists of two enforcement layers. During generation, XGrammar applies
-token-level masking against a context-free grammar defined in GBNF. After
-generation, a semantic validator performs additional structural and surface
-checks that the context-free grammar cannot express. A generation is counted as
-G-accepting only if it passes both layers; rows that pass decoding but fail
-semantic validation are recorded as grammar-rejected with explicit
-failure-layer attribution.
+### G acceptance contract
+
+G-acceptance requires both GBNF final-state acceptance and semantic validation.
+During generation, XGrammar applies token-level masking against the GBNF
+grammar. After generation, the semantic validator checks structural and surface
+constraints that are not fully captured by the context-free grammar. GBNF
+final-state acceptance is necessary but not sufficient. A row is counted as
+G-accepted only when `grammar_valid=true`, which requires both grammar-layer
+acceptance and semantic validation. Rows that do not satisfy the joint contract
+are labeled `grammar_valid=false` and include `rejection_layer` attribution.
+
+`grammar_active=true` means constrained decoding was attempted.
+`grammar_active=true` does not imply G-acceptance. `masked_token_rate` is a
+diagnostic for masking activity, not an acceptance metric. `grammar_valid` is
+the acceptance field. `rejection_layer` explains where acceptance failed.
 
 Short methodology label:
 

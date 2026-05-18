@@ -123,6 +123,20 @@ def test_research_scope_locks_temporary_subset_without_dropping_full_goal() -> N
     )
 
 
+def test_research_scope_locks_g_acceptance_contract_fields() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    scope_text = (
+        repo_root / ".contracts" / "research" / "research_scope.md"
+    ).read_text(encoding="utf-8")
+
+    assert "G-acceptance requires both GBNF final-state acceptance" in scope_text
+    assert "`grammar_valid=true`" in scope_text
+    assert "`grammar_valid=false`" in scope_text
+    assert "`rejection_layer` attribution" in scope_text
+    assert "`grammar_active=true` does not imply G-acceptance" in scope_text
+    assert "`masked_token_rate` is a\ndiagnostic for masking activity" in scope_text
+
+
 def _minimal_factorial_analysis(*, condition_label: str) -> dict[str, object]:
     return {
         "paper_tables": {
