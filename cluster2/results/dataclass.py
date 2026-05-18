@@ -193,6 +193,8 @@ class Cluster2ReplayRowMetadata:
     frozen_cluster1_source_hash: str
     frozen_cluster1_generation_hashes: dict[str, str]
     frozen_cluster1_row_hash: str | None = None
+    frozen_cluster1_failure_code: str | None = None
+    legacy_compile_error_type: str | None = None
     replay_pair_id: str | None = None
     replay_base_seed: int | None = None
     replay_generation_seed: int | None = None
@@ -217,6 +219,18 @@ class Cluster2ReplayRowMetadata:
         _validate_optional_sha256(
             self.frozen_cluster1_row_hash,
             "frozen_cluster1_row_hash",
+        )
+        if (
+            self.frozen_cluster1_failure_code is not None
+            and self.frozen_cluster1_failure_code not in FAILURE_CODES
+        ):
+            raise ValueError(
+                "frozen_cluster1_failure_code must be canonical; got "
+                f"{self.frozen_cluster1_failure_code!r}"
+            )
+        _require_optional_non_empty_str(
+            self.legacy_compile_error_type,
+            "legacy_compile_error_type",
         )
         _validate_pairing_metadata(
             replay_pair_id=self.replay_pair_id,
@@ -661,6 +675,8 @@ def replay_control_row(
     frozen_cluster1_artifact_id: str,
     frozen_cluster1_generation_hashes: dict[str, str],
     frozen_cluster1_row_hash: str | None = None,
+    frozen_cluster1_failure_code: str | None = None,
+    legacy_compile_error_type: str | None = None,
     replay_pair_id: str | None = None,
     replay_base_seed: int | None = None,
     replay_generation_seed: int | None = None,
@@ -696,6 +712,8 @@ def replay_control_row(
             frozen_cluster1_source_hash=source_hash,
             frozen_cluster1_generation_hashes=frozen_cluster1_generation_hashes,
             frozen_cluster1_row_hash=frozen_cluster1_row_hash,
+            frozen_cluster1_failure_code=frozen_cluster1_failure_code,
+            legacy_compile_error_type=legacy_compile_error_type,
             replay_pair_id=replay_pair_id,
             replay_base_seed=replay_base_seed,
             replay_generation_seed=replay_generation_seed,

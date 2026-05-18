@@ -350,6 +350,35 @@ def test_replay_rows_preserve_frozen_cluster1_hash_semantics() -> None:
     assert sidecar.generated_condition_hashes == {}
 
 
+def test_replay_metadata_preserves_frozen_failure_diagnostics() -> None:
+    source_text = "import triton\n@triton.jit\ndef replay_bad_signature(): pass"
+    row = replay_control_row(
+        condition="none",
+        attempt_index=0,
+        kernel_class="elementwise",
+        kernel_name="relu",
+        dtype="fp32",
+        base_seed=11,
+        source_hash=_source_hash(source_text),
+        functional_success=False,
+        repair_set_success=False,
+        eval_set_success=False,
+        failure_code="F0_BAD_SIGNATURE",
+        frozen_cluster1_artifact_id="none_baseline_n20_l4",
+        frozen_cluster1_generation_hashes=_frozen_hashes("none"),
+        frozen_cluster1_row_hash="a" * 64,
+        frozen_cluster1_failure_code="F0_BAD_SIGNATURE",
+        legacy_compile_error_type="SignatureError",
+    )
+
+    rebuilt = Cluster2EvalRow.from_dict(json.loads(row.to_json()))
+
+    assert rebuilt.replay_metadata is not None
+    assert rebuilt.failure_code == "F0_BAD_SIGNATURE"
+    assert rebuilt.replay_metadata.frozen_cluster1_failure_code == "F0_BAD_SIGNATURE"
+    assert rebuilt.replay_metadata.legacy_compile_error_type == "SignatureError"
+
+
 def test_generated_rows_preserve_c2_generation_hash_semantics() -> None:
     row = _generated_row(condition="C")
     sidecar = _sidecar([row])
@@ -481,6 +510,7 @@ def test_cluster1_generation_result_schema_includes_generation_metadata() -> Non
         "temperature",
         "run_id",
         "timestamp_utc",
+        "failure_code",
         "generation_metadata_schema_version",
         "grammar_sha",
         "grammar_path",

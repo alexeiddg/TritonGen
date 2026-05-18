@@ -83,6 +83,45 @@ def test_runner_routes_none_to_replay_adapter(tmp_path: Path) -> None:
     assert all(row.generated_metadata is None for row in result.rows)
 
 
+def test_runner_preserves_canonical_frozen_replay_failure_metadata(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_replay_fixture(
+        tmp_path,
+        condition="none",
+        row_count=1,
+        compile_success=False,
+        compile_error_type="SignatureError",
+        compile_error_msg="signature mismatch",
+    )
+
+    def bad_signature_correctness(request: Any) -> dict[str, Any]:
+        return {
+            "correctness_result": {
+                "identity": request.identity.model_dump(),
+                "functional_success": False,
+                "repair_set_success": False,
+                "eval_set_success": False,
+                "failure_code": "F0_BAD_SIGNATURE",
+                "correctness_error": "signature mismatch",
+            }
+        }
+
+    result = run_cluster2(
+        _config(tmp_path, condition="none", manifest=manifest, n=1),
+        dependencies=RunnerDependencies(
+            generation=_forbidden_generation([]),
+            correctness=bad_signature_correctness,
+        ),
+    )
+
+    row = result.rows[0]
+    assert row.failure_code == "F0_BAD_SIGNATURE"
+    assert row.replay_metadata is not None
+    assert row.replay_metadata.frozen_cluster1_failure_code == "F0_BAD_SIGNATURE"
+    assert row.replay_metadata.legacy_compile_error_type == "SignatureError"
+
+
 def test_runner_routes_g_to_replay_adapter(tmp_path: Path) -> None:
     manifest = _write_replay_fixture(
         tmp_path,

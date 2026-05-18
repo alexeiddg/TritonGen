@@ -594,6 +594,8 @@ def _evaluate_replay_mapping(
                 frozen_cluster1_artifact_id=candidate.artifact_id,
                 frozen_cluster1_generation_hashes=hashes,
                 frozen_cluster1_row_hash=candidate.row_sha256,
+                frozen_cluster1_failure_code=candidate.failure_code,
+                legacy_compile_error_type=candidate.legacy_compile_error_type,
                 replay_pair_id=candidate.replay_pair_id,
                 replay_base_seed=candidate.base_seed,
                 replay_generation_seed=candidate.generation_seed,

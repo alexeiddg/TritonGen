@@ -10,10 +10,14 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any
 
+from cluster1.results.dataclass import (
+    GenerationResult,
+    generation_result_record_for_deserialization,
+)
 from cluster2.constants import (
     DEFAULT_FROZEN_CLUSTER1_MANIFEST,
     DTYPE_NAMES,
@@ -30,12 +34,15 @@ from shared.eval.content_hashes import (
     file_sha256,
 )
 from shared.eval.correctness_shapes import LOCKED_KERNEL_CLASSES, get_shape_metadata
+from shared.eval.adapter_cluster1 import eval_result_from_generation_result
+from shared.eval.failure_taxonomy import classify_failure
 
 
 COVERAGE_FAILURE_MISSING_FROZEN_CONTROL = (
     "coverage_failure_missing_frozen_control"
 )
 REPLAY_MAPPING_OK = "ok"
+_GENERATION_RESULT_FIELD_NAMES = frozenset(field.name for field in fields(GenerationResult))
 
 
 @dataclass(frozen=True)
@@ -67,6 +74,8 @@ class FrozenReplayCandidate:
     artifact_sha256: str
     grammar_active: bool
     grammar_variant: str | None
+    failure_code: str | None
+    legacy_compile_error_type: str | None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -592,6 +601,7 @@ def _candidate_from_record(
         dtype=dtype,
         grammar_active=grammar_active,
     )
+    canonical_failure_code = canonical_failure_code_for_replay_row(raw_row)
 
     return FrozenReplayCandidate(
         condition=condition,
@@ -619,7 +629,23 @@ def _candidate_from_record(
         artifact_sha256=artifact_sha256,
         grammar_active=grammar_active,
         grammar_variant=_optional_str(record.get("grammar_variant")),
+        failure_code=canonical_failure_code,
+        legacy_compile_error_type=_optional_str(raw_row.get("compile_error_type")),
     )
+
+
+def canonical_failure_code_for_replay_row(raw_row: dict[str, Any]) -> str | None:
+    """Canonicalize a frozen C1 row through the shared adapter/taxonomy path."""
+
+    record = generation_result_record_for_deserialization(raw_row)
+    generation_payload = {
+        field_name: record[field_name]
+        for field_name in _GENERATION_RESULT_FIELD_NAMES
+        if field_name in record
+    }
+    generation_result = GenerationResult(**generation_payload)
+    eval_result = eval_result_from_generation_result(generation_result)
+    return classify_failure(eval_result)
 
 
 def _validate_raw_row_matches_record(

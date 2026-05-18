@@ -9,6 +9,10 @@ from typing import Any
 
 import pytest
 
+from cluster1.results.dataclass import (
+    GenerationResult,
+    generation_result_record_for_deserialization,
+)
 from cluster1.data.kernels import KERNEL_SPECS
 from cluster1.data.prompts.prompt_contract import build_prompt
 from cluster2.replay.cluster1_controls import (
@@ -16,6 +20,8 @@ from cluster2.replay.cluster1_controls import (
     map_replay_candidates,
     replay_generation_hashes,
 )
+from shared.eval.adapter_cluster1 import eval_result_from_generation_result
+from shared.eval.failure_taxonomy import classify_failure
 
 
 def test_replay_adapter_maps_exactly_n_candidates(tmp_path: Path) -> None:
@@ -65,6 +71,8 @@ def test_replay_adapter_preserves_hashes_and_attempt_indexes(tmp_path: Path) -> 
     assert first.frozen_attempt_index == 0
     assert first.replay_pair_id == "elementwise:fp32:0"
     assert first.max_new_tokens == 64
+    assert first.failure_code is None
+    assert first.legacy_compile_error_type is None
 
 
 def test_replay_adapter_maps_task_agnostic_g_when_requested(tmp_path: Path) -> None:
@@ -89,6 +97,97 @@ def test_replay_adapter_maps_task_agnostic_g_when_requested(tmp_path: Path) -> N
     assert first.grammar_active is True
     assert first.grammar_variant == "task_agnostic"
     assert first.artifact_id == "g_task_agnostic_n5_l4_rerun"
+
+
+def test_replay_adapter_canonicalizes_legacy_cluster1_failure_code(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_replay_fixture(
+        tmp_path,
+        condition="none",
+        row_count=1,
+        compile_success=False,
+        compile_error_type="SignatureError",
+        compile_error_msg="signature mismatch",
+    )
+    artifact_path = _manifest_artifact_path(manifest)
+    manifest_before = manifest.read_bytes()
+    artifact_before = artifact_path.read_bytes()
+
+    mapping = map_replay_candidates(
+        condition="none",
+        kernel_class="elementwise",
+        dtype="fp32",
+        candidate_count=1,
+        manifest_path=manifest,
+    )
+
+    assert mapping.ok
+    candidate = mapping.candidates[0]
+    assert candidate.failure_code == "F0_BAD_SIGNATURE"
+    assert candidate.legacy_compile_error_type == "SignatureError"
+    assert manifest.read_bytes() == manifest_before
+    assert artifact_path.read_bytes() == artifact_before
+
+
+def test_replay_adapter_honors_row_level_canonical_failure_code(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_replay_fixture(
+        tmp_path,
+        condition="none",
+        row_count=1,
+        compile_success=False,
+        compile_error_type="RuntimeError",
+        compile_error_msg="runtime launch failure",
+        failure_code="F1_RUNTIME",
+    )
+
+    mapping = map_replay_candidates(
+        condition="none",
+        kernel_class="elementwise",
+        dtype="fp32",
+        candidate_count=1,
+        manifest_path=manifest,
+    )
+
+    assert mapping.ok
+    assert mapping.candidates[0].failure_code == "F1_RUNTIME"
+    assert mapping.candidates[0].legacy_compile_error_type == "RuntimeError"
+
+
+def test_replay_adapter_matches_shared_taxonomy_for_legacy_rows(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_replay_fixture(
+        tmp_path,
+        condition="none",
+        row_count=2,
+        compile_success=False,
+        compile_error_type="SignatureError",
+        compile_error_msg="signature mismatch",
+    )
+
+    mapping = map_replay_candidates(
+        condition="none",
+        kernel_class="elementwise",
+        dtype="fp32",
+        candidate_count=2,
+        manifest_path=manifest,
+    )
+
+    raw_rows = _artifact_rows(manifest)
+    expected = [
+        classify_failure(
+            eval_result_from_generation_result(
+                GenerationResult(
+                    **generation_result_record_for_deserialization(raw_row)
+                )
+            )
+        )
+        for raw_row in raw_rows
+    ]
+    assert [candidate.failure_code for candidate in mapping.candidates] == expected
 
 
 def test_replay_adapter_marks_missing_rows_coverage_failure(tmp_path: Path) -> None:
@@ -418,6 +517,10 @@ def _write_replay_fixture(
     row_count: int,
     grammar_variant: str = "template_upper_bound",
     max_new_tokens: int = 64,
+    compile_success: bool = True,
+    compile_error_type: str | None = None,
+    compile_error_msg: str | None = None,
+    failure_code: str | None = None,
 ) -> Path:
     tmp_path.mkdir(parents=True, exist_ok=True)
     grammar_active = condition == "G"
@@ -450,14 +553,14 @@ def _write_replay_fixture(
             "kernel_class": "elementwise",
             "kernel_name": "relu",
             "dtype": "fp32",
-            "compile_success": True,
+            "compile_success": compile_success,
             "compile_results_by_dtype": {
-                "fp32": True,
-                "fp16": True,
-                "bf16": True,
+                "fp32": compile_success,
+                "fp16": compile_success,
+                "bf16": compile_success,
             },
-            "compile_error_type": None,
-            "compile_error_msg": None,
+            "compile_error_type": compile_error_type,
+            "compile_error_msg": compile_error_msg,
             "masked_token_rate": 0.9 if grammar_active else None,
             "unique_solution_hash": hashlib.sha256(source.encode("utf-8")).hexdigest(),
             "n_shapes_tested": 5,
@@ -466,6 +569,8 @@ def _write_replay_fixture(
             "run_id": f"run-{condition}-{index}",
             "timestamp_utc": "2026-05-12T00:00:00+00:00",
         }
+        if failure_code is not None:
+            raw_row["failure_code"] = failure_code
         raw_line = (
             json.dumps(raw_row, sort_keys=True, separators=(",", ":")) + "\n"
         ).encode("utf-8")
@@ -585,3 +690,17 @@ def _write_replay_fixture(
 def _manifest_row_records(manifest: Path) -> list[dict[str, Any]]:
     payload = json.loads(manifest.read_text(encoding="utf-8"))
     return payload["artifacts"][0]["row_records"]
+
+
+def _manifest_artifact_path(manifest: Path) -> Path:
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    return Path(payload["artifacts"][0]["path"])
+
+
+def _artifact_rows(manifest: Path) -> list[dict[str, Any]]:
+    artifact_path = _manifest_artifact_path(manifest)
+    return [
+        json.loads(line)
+        for line in artifact_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
