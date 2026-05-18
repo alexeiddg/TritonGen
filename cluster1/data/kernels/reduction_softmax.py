@@ -13,6 +13,7 @@ from cluster1.data.prompts.prompt_contract import (
     PROMPT_TEMPLATE,
     REDUCTION_AUTOTUNE_CONFIGS,
 )
+from shared.eval.correctness_shapes import get_compile_shapes
 
 REFERENCE_CODE = """\
 import torch
@@ -66,14 +67,8 @@ SOFTMAX_SPEC = KernelSpec(
     prompt_template=PROMPT_TEMPLATE,
     autotune_configs=REDUCTION_AUTOTUNE_CONFIGS,
     shapes_by_dtype={
-        # (16, 64)        — smaller-than-block rows, power-of-2 cols
-        # (33, 100)       — non-power-of-2 both dims, non-divisible cols
-        # (64, 256)       — power-of-2
-        # (128, 1001)     — non-divisible cols (1001 not divisible by 64)
-        # (4096, 393216)  — large, 393216 = 3×2^17 (non-power-of-2)
-        "fp32": [(16, 64), (33, 100), (64, 256), (128, 1001), (4096, 393216)],
-        "fp16": [(16, 64), (33, 100), (64, 256), (128, 1001), (4096, 393216)],
-        "bf16": [(16, 64), (33, 100), (64, 256), (128, 1001), (4096, 393216)],
+        dtype: list(get_compile_shapes("reduction", dtype))
+        for dtype in ("fp32", "fp16", "bf16")
     },
     dataset_id="ScalingIntelligence/KernelBench",
     dataset_problem_id=23,

@@ -111,6 +111,31 @@ _ANCHOR_SHAPES: dict[ShapePattern, dict[ShapeSplit, tuple[Shape, ...]]] = {
     },
 }
 
+_COMPILE_SHAPE_ANCHORS: dict[KernelClass, tuple[Shape, ...]] = {
+    # Elementwise compile probes cover the common 1D launcher cases and the
+    # rank edge shared with C2 correctness anchors. The selected anchors cover
+    # smaller-than-block work, non-power-of-two and non-divisible lengths,
+    # a power-of-two length, and both repair/eval 2D edge shapes without
+    # reintroducing the old oversized C1-only tensors.
+    "elementwise": ((32,), (100,), (1024,), (3, 257), (5, 129)),
+    # Reduction compile probes exercise a small power-of-two row/column case,
+    # non-power-of-two rows and columns, a non-divisible long-column case, and
+    # both row-major and column-major cap edges under the shared MAX_DIM and
+    # MAX_ELEMENTS policy.
+    "reduction": ((16, 64), (33, 100), (128, 1001), (16384, 1), (1, 16384)),
+    # Matmul compile probes cover below-block square work, non-power-of-two
+    # square work, a rectangular power-of-two K edge, an irregular square case,
+    # and a shared cap-edge case. Larger stress shapes require an explicit
+    # compile-only cap policy instead of bypassing the C2 caps here.
+    "matmul": (
+        (24, 24, 24),
+        (48, 48, 48),
+        (128, 128, 64),
+        (100, 100, 100),
+        (16384, 1, 1),
+    ),
+}
+
 _EDGE_DIMS: tuple[int, ...] = (
     1,
     2,
@@ -207,6 +232,17 @@ def generate_correctness_shape_sets(
         base_seed=base_seed,
         repair_shape_set=repair_shapes,
         eval_shape_set=eval_shapes,
+    )
+
+
+def get_compile_shapes(kernel_class: str, dtype: str) -> tuple[Shape, ...]:
+    """Return deterministic C1 compile probes from the shared shape schema."""
+
+    metadata = get_shape_metadata(kernel_class)
+    _require_dtype(dtype)
+    return tuple(
+        validate_shape_for_kernel(metadata.kernel_class, shape)
+        for shape in _COMPILE_SHAPE_ANCHORS[metadata.kernel_class]
     )
 
 

@@ -13,6 +13,7 @@ from cluster1.data.prompts.prompt_contract import (
     MATMUL_AUTOTUNE_CONFIGS,
     PROMPT_TEMPLATE,
 )
+from shared.eval.correctness_shapes import get_compile_shapes
 
 REFERENCE_CODE = """\
 import torch
@@ -69,14 +70,8 @@ GEMM_SPEC = KernelSpec(
     prompt_template=PROMPT_TEMPLATE,
     autotune_configs=MATMUL_AUTOTUNE_CONFIGS,
     shapes_by_dtype={
-        # (24, 24, 24)        — smaller than min BLOCK_M=32 (smaller-than-block)
-        # (48, 48, 48)        — non-power-of-2
-        # (128, 128, 64)      — power-of-2
-        # (100, 100, 100)     — non-power-of-2, not divisible by 32
-        # (4096, 4096, 4096)  — large, power-of-2
-        "fp32": [(24, 24, 24), (48, 48, 48), (128, 128, 64), (100, 100, 100), (4096, 4096, 4096)],
-        "fp16": [(24, 24, 24), (48, 48, 48), (128, 128, 64), (100, 100, 100), (4096, 4096, 4096)],
-        "bf16": [(24, 24, 24), (48, 48, 48), (128, 128, 64), (100, 100, 100), (4096, 4096, 4096)],
+        dtype: list(get_compile_shapes("matmul", dtype))
+        for dtype in ("fp32", "fp16", "bf16")
     },
     dataset_id="ScalingIntelligence/KernelBench",
     dataset_problem_id=1,

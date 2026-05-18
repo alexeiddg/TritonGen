@@ -13,6 +13,7 @@ from cluster1.data.prompts.prompt_contract import (
     ELEMENTWISE_AUTOTUNE_CONFIGS,
     PROMPT_TEMPLATE,
 )
+from shared.eval.correctness_shapes import get_compile_shapes
 
 REFERENCE_CODE = """\
 import torch
@@ -66,14 +67,8 @@ RELU_SPEC = KernelSpec(
     prompt_template=PROMPT_TEMPLATE,
     autotune_configs=ELEMENTWISE_AUTOTUNE_CONFIGS,
     shapes_by_dtype={
-        # (32,)         — smaller than min BLOCK_SIZE=64 (smaller-than-block)
-        # (100,)        — non-power-of-2, not divisible by 64 (non-divisible)
-        # (1024,)       — power-of-2, divisible
-        # (4096, 303)   — 2D, non-power-of-2 columns, not divisible by 64
-        # (4096, 393216)— 2D, large, 393216 = 3×2^17 (non-power-of-2)
-        "fp32": [(32,), (100,), (1024,), (4096, 303), (4096, 393216)],
-        "fp16": [(32,), (100,), (1024,), (4096, 303), (4096, 393216)],
-        "bf16": [(32,), (100,), (1024,), (4096, 303), (4096, 393216)],
+        dtype: list(get_compile_shapes("elementwise", dtype))
+        for dtype in ("fp32", "fp16", "bf16")
     },
     dataset_id="ScalingIntelligence/KernelBench",
     dataset_problem_id=19,

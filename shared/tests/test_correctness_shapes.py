@@ -14,6 +14,7 @@ from shared.eval.correctness_shapes import (
     CorrectnessShapeSets,
     derive_deterministic_seed,
     generate_correctness_shape_sets,
+    get_compile_shapes,
     get_shape_metadata,
     get_shape_metadata_by_kernel_name,
     validate_shape_for_kernel,
@@ -101,6 +102,29 @@ def test_shape_caps_reject_oversized_shapes() -> None:
         validate_shape_for_kernel("elementwise", (MAX_DIM + 1,))
     with pytest.raises(ValueError, match="MAX_ELEMENTS"):
         validate_shape_for_kernel("reduction", (MAX_DIM, MAX_DIM))
+
+
+@pytest.mark.parametrize("kernel_class", LOCKED_KERNEL_CLASSES)
+@pytest.mark.parametrize("dtype", ["fp32", "fp16", "bf16"])
+def test_compile_shapes_are_deterministic_and_valid(
+    kernel_class: str, dtype: str
+) -> None:
+    first = get_compile_shapes(kernel_class, dtype)
+    second = get_compile_shapes(kernel_class, dtype)
+
+    assert first == second
+    assert first
+    for shape in first:
+        assert validate_shape_for_kernel(kernel_class, shape) == shape
+        assert max(shape) <= MAX_DIM
+        assert math.prod(shape) <= MAX_ELEMENTS
+
+
+def test_compile_shapes_validate_kernel_class_and_dtype() -> None:
+    with pytest.raises(KeyError, match="unsupported C2 kernel_class"):
+        get_compile_shapes("layernorm", "fp32")
+    with pytest.raises(ValueError, match="unsupported dtype"):
+        get_compile_shapes("elementwise", "float32")
 
 
 def test_dtype_participates_in_seed_derivation() -> None:

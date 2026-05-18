@@ -2,10 +2,12 @@
 
 import pytest
 
+from cluster2.constants import DTYPE_NAMES
 from cluster1.data.kernels import KERNEL_SPECS, get_kernel_spec
 from cluster1.data.kernels.spec import KernelSpec
 from cluster1.data.prompts.prompt_contract import build_prompt
 from cluster1.validation.compile_check import CompileSpec
+from shared.eval.correctness_shapes import get_compile_shapes
 
 
 class _FakeTorch:
@@ -37,6 +39,15 @@ class TestKernelSpecsPresent:
         for dtype_key, shapes in spec.shapes_by_dtype.items():
             assert len(shapes) >= 5, (
                 f"{kernel_class}/{dtype_key} has only {len(shapes)} shapes, need >=5"
+            )
+
+    @pytest.mark.parametrize("kernel_class", ["elementwise", "reduction", "matmul"])
+    def test_compile_shapes_derive_from_shared_schedule(self, kernel_class: str):
+        spec = get_kernel_spec(kernel_class)
+
+        for dtype in DTYPE_NAMES:
+            assert spec.shapes_by_dtype[dtype] == list(
+                get_compile_shapes(spec.kernel_class, dtype)
             )
 
     @pytest.mark.parametrize("kernel_class", ["elementwise", "reduction", "matmul"])
