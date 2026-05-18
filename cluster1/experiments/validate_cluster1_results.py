@@ -13,6 +13,7 @@ from cluster1.results.dataclass import (
     VALID_GRAMMAR_VARIANTS,
     GenerationResult,
     generation_result_record_for_deserialization,
+    validate_paper_scale_metadata,
     validate_result_invariants,
 )
 
@@ -60,6 +61,7 @@ class Cluster1ValidationReport:
     deserialization_failures: tuple[str, ...] = ()
     invariant_failures: tuple[str, ...] = ()
     masked_token_rate_failures: tuple[str, ...] = ()
+    generation_metadata_failures: tuple[str, ...] = ()
     compile_results_by_dtype_failures: tuple[str, ...] = ()
     missing_cells: tuple[str, ...] = ()
     unexpected_cells: tuple[str, ...] = ()
@@ -76,6 +78,7 @@ class Cluster1ValidationReport:
                 self.deserialization_failures,
                 self.invariant_failures,
                 self.masked_token_rate_failures,
+                self.generation_metadata_failures,
                 self.compile_results_by_dtype_failures,
                 self.missing_cells,
                 self.unexpected_cells,
@@ -117,6 +120,10 @@ class Cluster1ValidationReport:
             self._section("invariant_failures", self.invariant_failures),
             self._section("masked_token_rate_failures", self.masked_token_rate_failures),
             self._section(
+                "generation_metadata_failures",
+                self.generation_metadata_failures,
+            ),
+            self._section(
                 "compile_results_by_dtype_failures",
                 self.compile_results_by_dtype_failures,
             ),
@@ -145,6 +152,7 @@ def validate_cluster1_results(
     n: int,
     grammar_variants: tuple[str, ...] = DEFAULT_EXPECTED_GRAMMAR_VARIANTS,
     require_full_n20: bool = False,
+    require_generation_metadata: bool = False,
     allow_duplicate_identities: bool = False,
 ) -> Cluster1ValidationReport:
     expected_conditions = _expected_conditions(condition)
@@ -169,6 +177,7 @@ def validate_cluster1_results(
     deserialization_failures: list[str] = []
     invariant_failures: list[str] = []
     masked_token_rate_failures: list[str] = []
+    generation_metadata_failures: list[str] = []
     compile_results_by_dtype_failures: list[str] = []
     unexpected_cells: list[str] = []
     duplicate_identities: list[str] = []
@@ -214,6 +223,12 @@ def validate_cluster1_results(
             row_label,
             masked_token_rate_failures,
         )
+        if require_generation_metadata or require_full_n20:
+            _check_generation_metadata(
+                row,
+                row_label,
+                generation_metadata_failures,
+            )
         _check_compile_results_by_dtype(
             row,
             row_label,
@@ -270,6 +285,7 @@ def validate_cluster1_results(
         deserialization_failures=tuple(deserialization_failures),
         invariant_failures=tuple(invariant_failures),
         masked_token_rate_failures=tuple(masked_token_rate_failures),
+        generation_metadata_failures=tuple(generation_metadata_failures),
         compile_results_by_dtype_failures=tuple(compile_results_by_dtype_failures),
         missing_cells=missing_cells,
         unexpected_cells=tuple(unexpected_cells),
@@ -309,7 +325,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--require-full-n20",
         action="store_true",
-        help="Require --n 20 for full Cluster 1 sample-size validation.",
+        help=(
+            "Require --n 20 for full Cluster 1 sample-size validation and "
+            "enforce the generation metadata gate."
+        ),
+    )
+    parser.add_argument(
+        "--require-generation-metadata",
+        action="store_true",
+        help="Reject rows missing the current generation metadata fields.",
     )
     parser.add_argument(
         "--allow-duplicate-identities",
@@ -328,6 +352,7 @@ def main(argv: list[str] | None = None) -> int:
         n=args.n,
         grammar_variants=tuple(args.grammar_variants or DEFAULT_EXPECTED_GRAMMAR_VARIANTS),
         require_full_n20=args.require_full_n20,
+        require_generation_metadata=args.require_generation_metadata,
         allow_duplicate_identities=args.allow_duplicate_identities,
     )
     print(report.render())
@@ -521,6 +546,17 @@ def _check_masked_token_rate(
         failures.append(f"{row_label} baseline/none row has masked_token_rate")
     if row.grammar_active and row.masked_token_rate is None:
         failures.append(f"{row_label} G row missing masked_token_rate")
+
+
+def _check_generation_metadata(
+    row: GenerationResult,
+    row_label: str,
+    failures: list[str],
+) -> None:
+    try:
+        validate_paper_scale_metadata(row)
+    except ValueError as exc:
+        failures.append(f"{row_label} {exc}")
 
 
 def _check_compile_results_by_dtype(

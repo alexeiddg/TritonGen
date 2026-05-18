@@ -36,6 +36,7 @@ EVAL_PIPELINE_SOURCE_PATHS: tuple[str, ...] = (
 )
 
 C2_GENERATION_SOURCE_PATHS: tuple[str, ...] = (
+    "cluster1/generation/provenance.py",
     "cluster2/modal/schemas.py",
     "cluster2/modal/generation.py",
     "cluster2/generation/modal_generate_c2.py",

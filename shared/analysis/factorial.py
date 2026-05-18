@@ -178,6 +178,42 @@ def normalize_result_rows(
                     nested=generated_metadata,
                     default=None,
                 ),
+                "grammar_valid": _bool_or_none(
+                    _first_present(
+                        payload,
+                        "grammar_valid",
+                        nested=generated_metadata,
+                        default=None,
+                    )
+                ),
+                "gbnf_parse_valid": _bool_or_none(
+                    _first_present(
+                        payload,
+                        "gbnf_parse_valid",
+                        nested=generated_metadata,
+                        default=None,
+                    )
+                ),
+                "semantic_valid": _bool_or_none(
+                    _first_present(
+                        payload,
+                        "semantic_valid",
+                        nested=generated_metadata,
+                        default=None,
+                    )
+                ),
+                "rejection_layer": _first_present(
+                    payload,
+                    "rejection_layer",
+                    nested=generated_metadata,
+                    default=None,
+                ),
+                "stop_reason": _first_present(
+                    payload,
+                    "stop_reason",
+                    nested=generated_metadata,
+                    default="unknown",
+                ),
                 "unique_ratio_ast": _float_or_none(payload.get("unique_ratio_ast")),
                 "repair_traces": _first_present(
                     payload,
@@ -1094,11 +1130,73 @@ def _diagnostics(
             df,
             response_variable=response_variable,
         ),
+        "grammar_acceptance_summary": _grammar_acceptance_summary(df),
+        "rejection_layer_breakdown": _value_breakdown(
+            df,
+            column="rejection_layer",
+            condition_filter="G",
+        ),
+        "stop_reason_breakdown": _value_breakdown(df, column="stop_reason"),
         "mode_collapse_warning_rows": int(len(mode_collapse_rows)),
         "mode_collapse_warning_text": (
             MODE_COLLAPSE_TEXT if not mode_collapse_rows.empty else None
         ),
     }
+
+
+def _grammar_acceptance_summary(df: pd.DataFrame) -> list[dict[str, Any]]:
+    if "grammar_valid" not in df.columns:
+        return []
+    grammar_rows = df[df["condition"].astype(str).str.contains("G", regex=False)]
+    grammar_rows = grammar_rows[grammar_rows["grammar_valid"].notna()]
+    if grammar_rows.empty:
+        return []
+    rows: list[dict[str, Any]] = []
+    for condition, group in grammar_rows.groupby("condition", sort=True):
+        rows.append(
+            {
+                "condition": condition,
+                "n_rows": int(len(group)),
+                "grammar_valid_count": int(group["grammar_valid"].sum()),
+                "grammar_valid_rate": float(group["grammar_valid"].mean()),
+                "gbnf_parse_valid_rate": _nullable_bool_mean(
+                    group,
+                    "gbnf_parse_valid",
+                ),
+                "semantic_valid_rate": _nullable_bool_mean(
+                    group,
+                    "semantic_valid",
+                ),
+            }
+        )
+    return rows
+
+
+def _nullable_bool_mean(df: pd.DataFrame, column: str) -> float | None:
+    if column not in df.columns or not df[column].notna().any():
+        return None
+    return float(df[column].dropna().astype(bool).mean())
+
+
+def _value_breakdown(
+    df: pd.DataFrame,
+    *,
+    column: str,
+    condition_filter: str | None = None,
+) -> list[dict[str, Any]]:
+    if column not in df.columns:
+        return []
+    subset = df
+    if condition_filter is not None:
+        subset = subset[subset["condition"].astype(str).str.contains(condition_filter, regex=False)]
+    subset = subset[subset[column].notna()]
+    if subset.empty:
+        return []
+    grouped = subset.groupby(["condition", column], sort=True).size()
+    return [
+        {"condition": condition, column: value, "count": int(count)}
+        for (condition, value), count in grouped.items()
+    ]
 
 
 def _scope_metadata(

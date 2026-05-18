@@ -54,6 +54,7 @@ from cluster2.results.dataclass import (
     Cluster2EvalRow,
     generated_row,
     replay_control_row,
+    validate_generated_paper_scale_metadata,
 )
 from cluster2.results.logger import (
     collect_content_hash_sidecar_for_conditions,
@@ -63,6 +64,7 @@ from cluster2.results.logger import (
 )
 from shared.eval.content_hashes import collect_c2_generation_hashes
 from shared.eval.correctness_shapes import LOCKED_KERNEL_CLASSES, get_shape_metadata
+from shared.generation_metadata import normalize_immutable_hub_revision
 
 
 MODEL_ID_DEFAULT = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
@@ -115,8 +117,16 @@ class Cluster2RunnerConfig:
         _require_non_empty_str(self.frozen_cluster1_manifest, "frozen_cluster1_manifest")
         _require_non_empty_str(self.model_id, "model_id")
         if any(condition in NEW_GENERATION_CONDITIONS for condition in self.conditions):
-            _require_non_empty_str(self.model_revision, "model_revision")
-            _require_non_empty_str(self.tokenizer_revision, "tokenizer_revision")
+            model_revision = _normalize_required_hub_revision(
+                self.model_revision,
+                "model_revision",
+            )
+            tokenizer_revision = _normalize_required_hub_revision(
+                self.tokenizer_revision,
+                "tokenizer_revision",
+            )
+            object.__setattr__(self, "model_revision", model_revision)
+            object.__setattr__(self, "tokenizer_revision", tokenizer_revision)
         _require_member(self.grammar_variant, GRAMMAR_VARIANT_CHOICES, "grammar_variant")
         _require_dtypes(self.dtypes)
         _require_non_negative_float(self.temperature, "temperature")
@@ -473,6 +483,7 @@ def run_cluster2(
             after_failures=len(coverage_failures),
         )
 
+    _validate_paper_scale_generation_metadata(config, rows)
     _write_rows(config, rows, content_hash_sidecar)
     return Cluster2RunResult(
         rows=tuple(rows),
@@ -766,15 +777,34 @@ def _run_generated_cell(
                 generation_seed=record.generation_seed,
                 grammar_variant=grammar_metadata["grammar_variant"],
                 grammar_path=grammar_metadata["grammar_path"],
+                grammar_sha=grammar_metadata["grammar_sha"],
                 grammar_claim_scope=grammar_metadata["grammar_claim_scope"],
+                gbnf_parse_valid=grammar_metadata["gbnf_parse_valid"],
+                semantic_valid=grammar_metadata["semantic_valid"],
+                grammar_valid=grammar_metadata["grammar_valid"],
+                rejection_layer=grammar_metadata["rejection_layer"],
+                stop_reason=grammar_metadata["stop_reason"],
+                xgrammar_version=grammar_metadata["xgrammar_version"],
+                transformers_version=grammar_metadata["transformers_version"],
+                tokenizers_version=grammar_metadata["tokenizers_version"],
+                modal_image_sha=grammar_metadata["modal_image_sha"],
+                modal_image_provenance_sha256=grammar_metadata[
+                    "modal_image_provenance_sha256"
+                ],
+                modal_image_provenance_components=grammar_metadata[
+                    "modal_image_provenance_components"
+                ],
+                generation_metadata_schema_version=grammar_metadata[
+                    "generation_metadata_schema_version"
+                ],
                 replay_pair_id=pairing_entry.replay_pair_id,
                 replay_control_condition=replay_control_condition,
                 replay_base_seed=pairing_entry.base_seed,
                 replay_generation_seed=pairing_entry.generation_seed,
                 prompt_sha256=pairing_entry.prompt_sha256,
                 model_id=config.model_id,
-                model_revision=config.model_revision,
-                tokenizer_revision=config.tokenizer_revision,
+                model_revision=grammar_metadata["model_revision"],
+                tokenizer_revision=grammar_metadata["tokenizer_revision"],
                 temperature=config.temperature,
                 max_new_tokens=config.max_new_tokens,
             )
@@ -1014,6 +1044,33 @@ def _write_rows(
     )
 
 
+def _validate_paper_scale_generation_metadata(
+    config: Cluster2RunnerConfig,
+    rows: Sequence[Cluster2EvalRow],
+) -> None:
+    if config.scale_tier != "paper":
+        return
+    failures: list[str] = []
+    for row in rows:
+        if row.condition not in NEW_GENERATION_CONDITIONS:
+            continue
+        if row.generated_metadata is None:
+            failures.append(f"{row.condition}/{row.kernel_class}/{row.dtype}: missing generated_metadata")
+            continue
+        try:
+            validate_generated_paper_scale_metadata(row.generated_metadata)
+        except ValueError as exc:
+            failures.append(
+                f"{row.condition}/{row.kernel_class}/{row.dtype}/"
+                f"attempt={row.attempt_index}: {exc}"
+            )
+    if failures:
+        raise ValueError(
+            "paper-scale Cluster 2 generated rows are missing generation metadata: "
+            + " | ".join(failures[:5])
+        )
+
+
 def _default_generation_call(**kwargs: Any) -> dict[str, Any]:
     from cluster2.generation.modal_generate_c2 import generate_source_c2_modal
 
@@ -1102,14 +1159,28 @@ def _generation_grammar_metadata_from_payload(
     payload: dict[str, Any],
     *,
     condition: str,
-) -> dict[str, str | None]:
+) -> dict[str, Any]:
     generation_identity = payload.get("generation_identity")
+    runtime_identity = payload.get("runtime_identity")
+    model_identity = payload.get("model_identity")
+    generation_result = payload.get("generation_result")
+    defaults = _default_generation_metadata_from_payload(
+        model_identity=model_identity,
+        runtime_identity=runtime_identity,
+        generation_result=generation_result,
+    )
     if condition == "C":
         if generation_identity is None:
             return {
                 "grammar_variant": None,
                 "grammar_path": None,
+                "grammar_sha": None,
                 "grammar_claim_scope": None,
+                "gbnf_parse_valid": None,
+                "semantic_valid": None,
+                "grammar_valid": None,
+                "rejection_layer": None,
+                **defaults,
             }
         if not isinstance(generation_identity, dict):
             raise ValueError("generation_identity must be a mapping")
@@ -1119,12 +1190,21 @@ def _generation_grammar_metadata_from_payload(
             raise ValueError("C generation payload must not record grammar_variant")
         if generation_identity.get("grammar_path") is not None:
             raise ValueError("C generation payload must not record grammar_path")
+        if generation_identity.get("grammar_sha") is not None:
+            raise ValueError("C generation payload must not record grammar_sha")
         if generation_identity.get("grammar_claim_scope") is not None:
             raise ValueError("C generation payload must not record grammar_claim_scope")
+        _reject_c_generation_validation_evidence(generation_identity)
         return {
             "grammar_variant": None,
             "grammar_path": None,
+            "grammar_sha": None,
             "grammar_claim_scope": None,
+            "gbnf_parse_valid": None,
+            "semantic_valid": None,
+            "grammar_valid": None,
+            "rejection_layer": None,
+            **defaults,
         }
 
     if condition != "G+C":
@@ -1135,6 +1215,7 @@ def _generation_grammar_metadata_from_payload(
         raise ValueError("G+C generation payload must record grammar_active=True")
     grammar_variant = generation_identity.get("grammar_variant")
     grammar_path = generation_identity.get("grammar_path")
+    grammar_sha = generation_identity.get("grammar_sha")
     grammar_claim_scope = generation_identity.get("grammar_claim_scope")
     for field_name, value in (
         ("grammar_variant", grammar_variant),
@@ -1145,10 +1226,140 @@ def _generation_grammar_metadata_from_payload(
             raise ValueError(
                 f"G+C generation payload must record non-empty {field_name}"
             )
+    if not isinstance(grammar_sha, str) or len(grammar_sha) != 64:
+        raise ValueError("G+C generation payload must record grammar_sha")
+    observed_validation = {
+        "gbnf_parse_valid": generation_identity.get("gbnf_parse_valid"),
+        "semantic_valid": generation_identity.get("semantic_valid"),
+        "grammar_valid": generation_identity.get("grammar_valid"),
+        "rejection_layer": generation_identity.get("rejection_layer"),
+    }
+    _validate_gc_generation_metadata_against_local(
+        payload=payload,
+        grammar_variant=grammar_variant,
+        grammar_path=grammar_path,
+        grammar_sha=grammar_sha,
+        observed_validation=observed_validation,
+    )
     return {
         "grammar_variant": grammar_variant,
         "grammar_path": grammar_path,
+        "grammar_sha": grammar_sha,
         "grammar_claim_scope": grammar_claim_scope,
+        **observed_validation,
+        **defaults,
+    }
+
+
+def _validate_gc_generation_metadata_against_local(
+    *,
+    payload: dict[str, Any],
+    grammar_variant: str,
+    grammar_path: str,
+    grammar_sha: str,
+    observed_validation: dict[str, Any],
+) -> None:
+    """Audit Modal G+C validation evidence against local canonical grammar."""
+
+    source = payload.get("source")
+    if not isinstance(source, str) or not source:
+        raise ValueError("G+C generation payload must include source for local audit")
+
+    from cluster1.generation.grammar_variants import grammar_path_for_variant
+    from cluster1.generation.provenance import sha256_file
+    from cluster1.grammar.triton_kernel_validator import validate_source_layers
+
+    local_grammar_relpath = grammar_path_for_variant(grammar_variant)
+    observed_path = grammar_path.replace("\\", "/")
+    if not observed_path.endswith(local_grammar_relpath):
+        raise ValueError(
+            "G+C generation payload grammar_path does not match grammar_variant: "
+            f"variant={grammar_variant!r} path={grammar_path!r} "
+            f"expected_suffix={local_grammar_relpath!r}"
+        )
+    local_grammar_path = REPO_ROOT / local_grammar_relpath
+    local_sha = sha256_file(local_grammar_path)
+    if local_sha != grammar_sha:
+        raise ValueError(
+            "G+C Modal grammar_sha does not match local canonical grammar: "
+            f"variant={grammar_variant!r} modal={grammar_sha} local={local_sha}"
+        )
+    local_validation = validate_source_layers(
+        source,
+        grammar_path=local_grammar_path,
+    )
+    expected_validation = local_validation.to_row_fields()
+    if observed_validation != expected_validation:
+        raise ValueError(
+            "G+C Modal validation fields disagree with local revalidation after "
+            f"grammar_sha match: observed={observed_validation!r} "
+            f"expected={expected_validation!r}"
+        )
+
+
+def _reject_c_generation_validation_evidence(generation_identity: dict[str, Any]) -> None:
+    present = [
+        field_name
+        for field_name in (
+            "gbnf_parse_valid",
+            "semantic_valid",
+            "grammar_valid",
+            "rejection_layer",
+        )
+        if generation_identity.get(field_name) is not None
+    ]
+    if present:
+        raise ValueError(
+            "C generation payload must not record grammar validation fields: "
+            + ", ".join(present)
+        )
+
+
+def _default_generation_metadata_from_payload(
+    *,
+    model_identity: Any,
+    runtime_identity: Any,
+    generation_result: Any,
+) -> dict[str, Any]:
+    result = generation_result if isinstance(generation_result, dict) else {}
+    model = model_identity if isinstance(model_identity, dict) else {}
+    runtime = runtime_identity if isinstance(runtime_identity, dict) else {}
+    return {
+        "model_revision": result.get("model_revision")
+        or model.get("observed_model_revision")
+        or model.get("model_revision")
+        or "unknown",
+        "tokenizer_revision": result.get("tokenizer_revision")
+        or model.get("observed_tokenizer_revision")
+        or model.get("tokenizer_revision")
+        or "unknown",
+        "stop_reason": result.get("stop_reason")
+        or runtime.get("stop_reason")
+        or "unknown",
+        "xgrammar_version": runtime.get("xgrammar_version")
+        or result.get("xgrammar_version")
+        or "unknown",
+        "transformers_version": runtime.get("transformers_version")
+        or result.get("transformers_version")
+        or "unknown",
+        "tokenizers_version": runtime.get("tokenizers_version")
+        or result.get("tokenizers_version")
+        or "unknown",
+        "modal_image_sha": runtime.get("modal_image_sha")
+        or result.get("modal_image_sha")
+        or "unknown",
+        "modal_image_provenance_sha256": runtime.get(
+            "modal_image_provenance_sha256"
+        )
+        or result.get("modal_image_provenance_sha256"),
+        "modal_image_provenance_components": runtime.get(
+            "modal_image_provenance_components"
+        )
+        or result.get("modal_image_provenance_components"),
+        "generation_metadata_schema_version": result.get(
+            "generation_metadata_schema_version",
+            0,
+        ),
     }
 
 
@@ -1234,6 +1445,13 @@ def _require_non_empty_str(value: object, field_name: str) -> None:
         raise TypeError(f"{field_name} must be a string")
     if not value:
         raise ValueError(f"{field_name} must not be empty")
+
+
+def _normalize_required_hub_revision(value: str | None, field_name: str) -> str:
+    revision = normalize_immutable_hub_revision(value, field_name=field_name)
+    if revision is None:
+        raise ValueError(f"{field_name} must be a non-empty immutable Hub revision")
+    return revision
 
 
 if __name__ == "__main__":

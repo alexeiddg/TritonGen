@@ -102,6 +102,13 @@ Every run should record:
 - `seed_schedule`;
 - `dtypes`;
 - `grammar_variant` when G is enabled;
+- per-row G metadata for current G/G+C rows:
+  `grammar_sha`, `grammar_path`, `gbnf_parse_valid`, `semantic_valid`,
+  `grammar_valid`, `rejection_layer`, and `stop_reason`;
+- per-row runtime/model provenance:
+  `xgrammar_version`, `transformers_version`, `tokenizers_version`,
+  `model_revision`, `tokenizer_revision`, and `modal_image_sha` or
+  `modal_image_provenance_sha256`;
 - `repair_budget`;
 - `max_eval_level`;
 - `modal_generation_gpu`;
@@ -112,7 +119,9 @@ Every run should record:
 
 For paper-scale runs, also record the final prompt version, grammar version,
 feedback-template version, eval-suite version, and whether a secondary model
-replication was run.
+replication was run. Paper-scale current-grammar rows must pass the generation
+metadata gate; legacy rows with `unknown`/missing provenance remain readable but
+are not reportable paper-scale evidence.
 
 ## Analysis Rules
 

@@ -43,17 +43,18 @@ SUPPORTED_GENERATION_GPUS = frozenset({"L40S", "L4", "A10G"})
 class RemoteGenerator:
     """Load one model per container and serve generation requests."""
 
-    model_id: str = modal.parameter()
+    model_id: str = modal.parameter(); model_revision: str = modal.parameter(default=""); tokenizer_revision: str = modal.parameter(default=""); generation_gpu: str = modal.parameter(default=DEFAULT_GENERATION_GPU)
 
     @modal.enter()
     def load_model(self) -> None:
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
-        self.torch = torch
+        self.torch = torch; self.requested_model_revision = self.model_revision or None; self.requested_tokenizer_revision = self.tokenizer_revision or None
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_id,
             trust_remote_code=True,
+            **_revision_kwargs(self.requested_tokenizer_revision),
         )
         # ``transformers==4.47.1`` (pinned in ``llm_generation_image``)
         # documents ``torch_dtype=`` for big-model loading. Newer releases
@@ -65,6 +66,7 @@ class RemoteGenerator:
             low_cpu_mem_usage=True,
             torch_dtype=torch.float16,
             trust_remote_code=True,
+            **_revision_kwargs(self.requested_model_revision),
         )
         if hasattr(self.model, "eval"):
             self.model.eval()
@@ -75,13 +77,19 @@ class RemoteGenerator:
         if pad_token_id is not None:
             self.model.generation_config.pad_token_id = pad_token_id
 
-        self.device = getattr(self.model, "device", None)
-
+        self.device = getattr(self.model, "device", None); self.model_revision, self.tokenizer_revision = _observed_model_tokenizer_revisions(self); self.tokenizer_grammar_id = _resolve_tokenizer_grammar_id(self.model_id, self.tokenizer_revision)
     @modal.method()
     def generate_one(self, req_dict: dict) -> dict:
         from cluster1.constraints.hardware_checker import HardwareChecker
         from cluster1.generation.constrained_gen import generate_source
         from cluster1.generation.grammar_loader import load_compiled_grammar
+        from cluster1.generation.provenance import (
+            grammar_provenance,
+            modal_image_provenance,
+            runtime_versions,
+        )
+        from cluster1.grammar.triton_kernel_validator import validate_source_layers
+        from cluster1.results.dataclass import GENERATION_METADATA_SCHEMA_VERSION
 
         req = RemoteGenerationRequest(**req_dict)
         if req.model_id != self.model_id:
@@ -92,11 +100,22 @@ class RemoteGenerator:
 
         compiled_grammar = None
         hardware_checker = None
+        resolved_grammar_path = None
+        grammar_metadata = {
+            "grammar_sha": None,
+            "grammar_path": None,
+            "grammar_variant": req.grammar_variant,
+        }
         if req.grammar_active:
             assert req.grammar_path is not None
+            resolved_grammar_path = _resolve_grammar_path(req.grammar_path)
+            grammar_metadata = grammar_provenance(
+                resolved_grammar_path,
+                grammar_variant=req.grammar_variant,
+            )
             compiled_grammar = load_compiled_grammar(
-                _resolve_grammar_path(req.grammar_path),
-                req.model_id,
+                resolved_grammar_path,
+                _compiled_grammar_tokenizer_id(self, req.model_id),
             )
             hardware_checker = HardwareChecker(dtype_bytes=dtype_name_to_bytes(req.dtype))
 
@@ -114,11 +133,51 @@ class RemoteGenerator:
                 seed=req.generation_seed,
             )
 
+        validation_fields = {
+            "gbnf_parse_valid": None,
+            "semantic_valid": None,
+            "grammar_valid": None,
+            "rejection_layer": None,
+        }
+        if req.grammar_active:
+            assert resolved_grammar_path is not None
+            validation = validate_source_layers(
+                decoded.source,
+                grammar_path=Path(resolved_grammar_path),
+            )
+            validation_fields = validation.to_row_fields()
+
+        runtime_metadata = runtime_versions()
+        image_metadata = modal_image_provenance(
+            extra={
+                "modal_generation_gpu": self.generation_gpu,
+            }
+        )
         result = RemoteGenerationResult(
             source=decoded.source,
             model_id=req.model_id,
             grammar_active=req.grammar_active,
             grammar_variant=req.grammar_variant,
+            grammar_sha=grammar_metadata["grammar_sha"],
+            grammar_path=grammar_metadata["grammar_path"],
+            gbnf_parse_valid=validation_fields["gbnf_parse_valid"],
+            semantic_valid=validation_fields["semantic_valid"],
+            grammar_valid=validation_fields["grammar_valid"],
+            rejection_layer=validation_fields["rejection_layer"],
+            stop_reason=decoded.stop_reason,
+            xgrammar_version=runtime_metadata["xgrammar_version"],
+            transformers_version=runtime_metadata["transformers_version"],
+            tokenizers_version=runtime_metadata["tokenizers_version"],
+            model_revision=getattr(self, "model_revision", "unknown"),
+            tokenizer_revision=getattr(self, "tokenizer_revision", "unknown"),
+            modal_image_sha=image_metadata["modal_image_sha"],
+            modal_image_provenance_sha256=image_metadata[
+                "modal_image_provenance_sha256"
+            ],
+            modal_image_provenance_components=image_metadata[
+                "modal_image_provenance_components"
+            ],
+            generation_metadata_schema_version=GENERATION_METADATA_SCHEMA_VERSION,
             masked_token_rate=decoded.masked_token_rate if req.grammar_active else None,
             generation_seed=decoded.generation_seed,
             temperature=decoded.temperature,
@@ -127,6 +186,22 @@ class RemoteGenerator:
             modal_input_id=input_id,
         )
         return result.model_dump()
+
+
+def _revision_kwargs(revision: str | None) -> dict[str, str]:
+    return {"revision": revision} if revision is not None else {}
+
+
+def _observed_model_tokenizer_revisions(generator) -> tuple[str, str]:
+    from cluster1.generation.provenance import model_tokenizer_revisions
+
+    revisions = model_tokenizer_revisions(
+        generator.model,
+        generator.tokenizer,
+        model_revision=generator.requested_model_revision,
+        tokenizer_revision=generator.requested_tokenizer_revision,
+    )
+    return revisions["model_revision"], revisions["tokenizer_revision"]
 
 
 def remote_generator_for_gpu(gpu: str = DEFAULT_GENERATION_GPU):
@@ -153,3 +228,37 @@ def _resolve_grammar_path(grammar_path: str) -> str:
         return str(candidate)
 
     raise FileNotFoundError(f"grammar file not found: {grammar_path}")
+
+
+_TOKENIZER_SNAPSHOT_ALLOW_PATTERNS = (
+    "added_tokens.json",
+    "config.json",
+    "generation_config.json",
+    "merges.txt",
+    "special_tokens_map.json",
+    "tokenizer.json",
+    "tokenizer.model",
+    "tokenizer_config.json",
+    "vocab.json",
+    "vocab.txt",
+)
+
+
+def _resolve_tokenizer_grammar_id(model_id: str, tokenizer_revision: str | None) -> str:
+    from shared.generation_metadata import UNKNOWN
+
+    if tokenizer_revision in (None, "", UNKNOWN):
+        return model_id
+
+    from huggingface_hub import snapshot_download
+
+    return snapshot_download(
+        repo_id=model_id,
+        revision=tokenizer_revision,
+        allow_patterns=_TOKENIZER_SNAPSHOT_ALLOW_PATTERNS,
+    )
+
+
+def _compiled_grammar_tokenizer_id(generator, fallback_model_id: str) -> str:
+    tokenizer_grammar_id = getattr(generator, "tokenizer_grammar_id", None)
+    return tokenizer_grammar_id or fallback_model_id

@@ -10,14 +10,12 @@ from cluster1.results.dataclass import (
     VALID_GRAMMAR_VARIANTS,
     validate_grammar_variant_invariants,
 )
+from shared.generation_metadata import GRAMMAR_PATHS_BY_VARIANT as _SHARED_GRAMMAR_PATHS
 
-TEMPLATE_UPPER_BOUND_GRAMMAR_PATH = "cluster1/grammar/triton_kernel.gbnf"
-TASK_AGNOSTIC_GRAMMAR_PATH = "cluster1/grammar/triton_kernel_agnostic.gbnf"
+TEMPLATE_UPPER_BOUND_GRAMMAR_PATH = _SHARED_GRAMMAR_PATHS["template_upper_bound"]
+TASK_AGNOSTIC_GRAMMAR_PATH = _SHARED_GRAMMAR_PATHS["task_agnostic"]
 
-GRAMMAR_PATHS_BY_VARIANT: dict[GrammarVariant, str] = {
-    "template_upper_bound": TEMPLATE_UPPER_BOUND_GRAMMAR_PATH,
-    "task_agnostic": TASK_AGNOSTIC_GRAMMAR_PATH,
-}
+GRAMMAR_PATHS_BY_VARIANT: dict[GrammarVariant, str] = dict(_SHARED_GRAMMAR_PATHS)
 
 DEFAULT_GRAMMAR_PATH = GRAMMAR_PATHS_BY_VARIANT[DEFAULT_GRAMMAR_VARIANT]
 

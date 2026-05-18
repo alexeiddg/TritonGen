@@ -22,6 +22,18 @@ from cluster2.constants import (
     source_class_for_condition,
 )
 from cluster2.feedback.trace import TraceSummary
+from shared.generation_metadata import (
+    CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION,
+    GRAMMAR_CLAIM_SCOPE_BY_VARIANT,
+    GRAMMAR_PATHS_BY_VARIANT,
+    PAPER_SCALE_BASE_REQUIRED_METADATA_FIELD_NAMES,
+    PAPER_SCALE_GRAMMAR_REQUIRED_METADATA_FIELD_NAMES,
+    UNKNOWN,
+    VALID_REJECTION_LAYERS,
+    VALID_STOP_REASONS,
+    is_immutable_hub_revision,
+    modal_image_provenance_digest,
+)
 from shared.eval.correctness_shapes import LOCKED_KERNEL_CLASSES, get_shape_metadata
 from shared.eval.failure_taxonomy import FAILURE_CODES
 
@@ -237,7 +249,20 @@ class Cluster2GeneratedRowMetadata:
     generation_seed: int | None = None
     grammar_variant: str | None = None
     grammar_path: str | None = None
+    grammar_sha: str | None = None
     grammar_claim_scope: str | None = None
+    gbnf_parse_valid: bool | None = None
+    semantic_valid: bool | None = None
+    grammar_valid: bool | None = None
+    rejection_layer: str | None = None
+    stop_reason: str = UNKNOWN
+    xgrammar_version: str = UNKNOWN
+    transformers_version: str = UNKNOWN
+    tokenizers_version: str = UNKNOWN
+    modal_image_sha: str = UNKNOWN
+    modal_image_provenance_sha256: str | None = None
+    modal_image_provenance_components: dict[str, Any] | None = None
+    generation_metadata_schema_version: int = 0
     replay_pair_id: str | None = None
     replay_control_condition: str | None = None
     replay_base_seed: int | None = None
@@ -261,6 +286,23 @@ class Cluster2GeneratedRowMetadata:
             grammar_variant=self.grammar_variant,
             grammar_path=self.grammar_path,
             grammar_claim_scope=self.grammar_claim_scope,
+        )
+        _validate_generated_runtime_metadata(
+            generation_metadata_schema_version=(
+                self.generation_metadata_schema_version
+            ),
+            grammar_variant=self.grammar_variant,
+            grammar_sha=self.grammar_sha,
+            gbnf_parse_valid=self.gbnf_parse_valid,
+            semantic_valid=self.semantic_valid,
+            grammar_valid=self.grammar_valid,
+            rejection_layer=self.rejection_layer,
+            stop_reason=self.stop_reason,
+            modal_image_sha=self.modal_image_sha,
+            modal_image_provenance_sha256=self.modal_image_provenance_sha256,
+            modal_image_provenance_components=(
+                self.modal_image_provenance_components
+            ),
         )
         if self.replay_control_condition is not None:
             if self.replay_control_condition not in REPLAY_CONTROL_CONDITIONS:
@@ -686,7 +728,20 @@ def generated_row(
     generation_seed: int | None = None,
     grammar_variant: str | None = None,
     grammar_path: str | None = None,
+    grammar_sha: str | None = None,
     grammar_claim_scope: str | None = None,
+    gbnf_parse_valid: bool | None = None,
+    semantic_valid: bool | None = None,
+    grammar_valid: bool | None = None,
+    rejection_layer: str | None = None,
+    stop_reason: str = UNKNOWN,
+    xgrammar_version: str = UNKNOWN,
+    transformers_version: str = UNKNOWN,
+    tokenizers_version: str = UNKNOWN,
+    modal_image_sha: str = UNKNOWN,
+    modal_image_provenance_sha256: str | None = None,
+    modal_image_provenance_components: dict[str, Any] | None = None,
+    generation_metadata_schema_version: int = 0,
     replay_pair_id: str | None = None,
     replay_control_condition: str | None = None,
     replay_base_seed: int | None = None,
@@ -724,7 +779,20 @@ def generated_row(
             generation_seed=generation_seed,
             grammar_variant=grammar_variant,
             grammar_path=grammar_path,
+            grammar_sha=grammar_sha,
             grammar_claim_scope=grammar_claim_scope,
+            gbnf_parse_valid=gbnf_parse_valid,
+            semantic_valid=semantic_valid,
+            grammar_valid=grammar_valid,
+            rejection_layer=rejection_layer,
+            stop_reason=stop_reason,
+            xgrammar_version=xgrammar_version,
+            transformers_version=transformers_version,
+            tokenizers_version=tokenizers_version,
+            modal_image_sha=modal_image_sha,
+            modal_image_provenance_sha256=modal_image_provenance_sha256,
+            modal_image_provenance_components=modal_image_provenance_components,
+            generation_metadata_schema_version=generation_metadata_schema_version,
             replay_pair_id=replay_pair_id,
             replay_control_condition=replay_control_condition,
             replay_base_seed=replay_base_seed,
@@ -776,6 +844,32 @@ def _validate_optional_sha256(value: str | None, field_name: str) -> None:
     _validate_sha256(value, field_name)
 
 
+def _validate_optional_stable_image_sha(value: str | None, field_name: str) -> None:
+    if value is None or value == UNKNOWN:
+        return
+    _validate_sha256(value.removeprefix("sha256:"), field_name)
+
+
+def _validate_modal_image_provenance_components(
+    *,
+    modal_image_provenance_sha256: str | None,
+    modal_image_provenance_components: dict[str, Any] | None,
+) -> None:
+    if modal_image_provenance_components is None:
+        return
+    if modal_image_provenance_sha256 is None:
+        raise ValueError(
+            "modal_image_provenance_sha256 is required when "
+            "modal_image_provenance_components is present"
+        )
+    expected = modal_image_provenance_digest(modal_image_provenance_components)
+    if modal_image_provenance_sha256 != expected:
+        raise ValueError(
+            "modal_image_provenance_sha256 must equal the digest of "
+            "modal_image_provenance_components"
+        )
+
+
 def _validate_hash_mapping(
     value: dict[str, str],
     field_name: str,
@@ -807,23 +901,199 @@ def _validate_generated_grammar_metadata(
             )
         return
 
-    expected_paths = {
-        "task_agnostic": "cluster1/grammar/triton_kernel_agnostic.gbnf",
-        "template_upper_bound": "cluster1/grammar/triton_kernel.gbnf",
-    }
-    expected_scopes = {
-        "task_agnostic": "primary",
-        "template_upper_bound": "diagnostic_non_primary",
-    }
+    expected_paths = GRAMMAR_PATHS_BY_VARIANT
+    expected_scopes = GRAMMAR_CLAIM_SCOPE_BY_VARIANT
     if grammar_variant not in expected_paths:
         allowed = ", ".join(sorted(expected_paths))
         raise ValueError(
             f"grammar_variant must be one of: {allowed}; got {grammar_variant!r}"
         )
-    if grammar_path != expected_paths[grammar_variant]:
+    expected_path = expected_paths[grammar_variant]
+    if grammar_path != expected_path and not str(grammar_path).endswith(expected_path):
         raise ValueError("grammar_path does not match grammar_variant")
     if grammar_claim_scope != expected_scopes[grammar_variant]:
         raise ValueError("grammar_claim_scope does not match grammar_variant")
+
+
+def _validate_generated_runtime_metadata(
+    *,
+    generation_metadata_schema_version: int,
+    grammar_variant: str | None,
+    grammar_sha: str | None,
+    gbnf_parse_valid: bool | None,
+    semantic_valid: bool | None,
+    grammar_valid: bool | None,
+    rejection_layer: str | None,
+    stop_reason: str,
+    modal_image_sha: str | None,
+    modal_image_provenance_sha256: str | None,
+    modal_image_provenance_components: dict[str, Any] | None,
+) -> None:
+    if stop_reason not in VALID_STOP_REASONS:
+        allowed = ", ".join(sorted(VALID_STOP_REASONS))
+        raise ValueError(f"stop_reason must be one of {allowed}; got {stop_reason!r}")
+    if rejection_layer is not None and rejection_layer not in VALID_REJECTION_LAYERS:
+        allowed = ", ".join(sorted(VALID_REJECTION_LAYERS))
+        raise ValueError(
+            f"rejection_layer must be one of {allowed} or None; "
+            f"got {rejection_layer!r}"
+        )
+    _validate_optional_sha256(grammar_sha, "grammar_sha")
+    _validate_optional_sha256(
+        modal_image_provenance_sha256,
+        "modal_image_provenance_sha256",
+    )
+    _validate_optional_stable_image_sha(modal_image_sha, "modal_image_sha")
+    _validate_modal_image_provenance_components(
+        modal_image_provenance_sha256=modal_image_provenance_sha256,
+        modal_image_provenance_components=modal_image_provenance_components,
+    )
+    if (
+        generation_metadata_schema_version >= CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
+        and modal_image_sha in (None, UNKNOWN)
+    ):
+        if not modal_image_provenance_sha256:
+            raise ValueError(
+                "current-schema generated metadata with unknown modal_image_sha "
+                "requires modal_image_provenance_sha256"
+            )
+        if modal_image_provenance_components is None:
+            raise ValueError(
+                "current-schema generated metadata with unknown modal_image_sha "
+                "requires modal_image_provenance_components"
+            )
+    validation_values = (gbnf_parse_valid, semantic_valid, grammar_valid)
+    if grammar_variant is None:
+        if grammar_sha is not None:
+            raise ValueError("grammar_sha must be None without grammar_variant")
+        if any(value is not None for value in validation_values):
+            raise ValueError(
+                "grammar validation fields must be None without grammar_variant"
+            )
+        return
+    if generation_metadata_schema_version >= CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION:
+        missing_current_schema_fields = [
+            field_name
+            for field_name, value in (
+                ("grammar_sha", grammar_sha),
+                ("gbnf_parse_valid", gbnf_parse_valid),
+                ("semantic_valid", semantic_valid),
+                ("grammar_valid", grammar_valid),
+            )
+            if value is None
+        ]
+        if missing_current_schema_fields:
+            missing = ", ".join(sorted(missing_current_schema_fields))
+            raise ValueError(
+                "current-schema generated grammar metadata requires: "
+                f"{missing}"
+            )
+    if all(value is not None for value in validation_values):
+        expected = bool(gbnf_parse_valid and semantic_valid)
+        if grammar_valid is not expected:
+            raise ValueError(
+                "grammar_valid must equal gbnf_parse_valid and semantic_valid"
+            )
+        if grammar_valid and rejection_layer is not None:
+            raise ValueError("rejection_layer must be None when grammar_valid=True")
+        if not grammar_valid and rejection_layer is None:
+            raise ValueError("rejection_layer is required when grammar_valid=False")
+
+
+def validate_generated_paper_scale_metadata(
+    metadata: Cluster2GeneratedRowMetadata,
+) -> None:
+    """Reject generated rows that cannot satisfy the paper-scale metadata gate."""
+
+    missing: list[str] = []
+    required = list(PAPER_SCALE_BASE_REQUIRED_METADATA_FIELD_NAMES)
+    if metadata.grammar_variant is not None:
+        required.extend(PAPER_SCALE_GRAMMAR_REQUIRED_METADATA_FIELD_NAMES)
+    for field_name in required:
+        value = getattr(metadata, field_name)
+        if value is None or value == UNKNOWN:
+            missing.append(field_name)
+    malformed: list[str] = []
+    if metadata.model_revision not in (None, UNKNOWN):
+        _append_if_not_immutable_hub_revision(
+            malformed,
+            "model_revision",
+            metadata.model_revision,
+        )
+    if metadata.tokenizer_revision not in (None, UNKNOWN):
+        _append_if_not_immutable_hub_revision(
+            malformed,
+            "tokenizer_revision",
+            metadata.tokenizer_revision,
+        )
+    if metadata.modal_image_sha not in (None, UNKNOWN):
+        _append_if_not_stable_image_sha(
+            malformed,
+            "modal_image_sha",
+            metadata.modal_image_sha,
+        )
+    if metadata.modal_image_provenance_sha256 is not None:
+        _append_if_not_sha256_hex(
+            malformed,
+            "modal_image_provenance_sha256",
+            metadata.modal_image_provenance_sha256,
+        )
+    if metadata.modal_image_sha in (None, UNKNOWN) and not metadata.modal_image_provenance_sha256:
+        missing.append("modal_image_sha_or_modal_image_provenance_sha256")
+    if (
+        metadata.modal_image_sha in (None, UNKNOWN)
+        and metadata.modal_image_provenance_components is None
+    ):
+        missing.append("modal_image_provenance_components")
+    if metadata.modal_image_provenance_components is not None:
+        try:
+            _validate_modal_image_provenance_components(
+                modal_image_provenance_sha256=(
+                    metadata.modal_image_provenance_sha256
+                ),
+                modal_image_provenance_components=(
+                    metadata.modal_image_provenance_components
+                ),
+            )
+        except ValueError:
+            malformed.append("modal_image_provenance_components_mismatch")
+    if metadata.generation_metadata_schema_version < CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION:
+        missing.append("generation_metadata_schema_version")
+    if missing or malformed:
+        problems = sorted(set(missing)) + sorted(set(malformed))
+        raise ValueError(
+            "paper-scale generated rows require generation metadata: "
+            + ", ".join(problems)
+        )
+
+
+def _append_if_not_sha256_hex(
+    failures: list[str],
+    field_name: str,
+    value: str,
+) -> None:
+    try:
+        _validate_sha256(value, field_name)
+    except ValueError:
+        failures.append(f"{field_name}_malformed")
+
+
+def _append_if_not_stable_image_sha(
+    failures: list[str],
+    field_name: str,
+    value: str,
+) -> None:
+    candidate = value.removeprefix("sha256:")
+    _append_if_not_sha256_hex(failures, field_name, candidate)
+
+
+def _append_if_not_immutable_hub_revision(
+    failures: list[str],
+    field_name: str,
+    value: str,
+) -> None:
+    if not is_immutable_hub_revision(value):
+        failures.append(f"{field_name}_not_immutable")
 
 
 def _validate_pairing_metadata(

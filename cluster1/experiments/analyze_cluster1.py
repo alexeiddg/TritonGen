@@ -116,6 +116,7 @@ def summarize_results(
                 "kernel_class": kernel_class,
                 "dtype": dtype,
                 "n": n,
+                **_grammar_acceptance_metrics(group_rows),
                 "compile_success_scope": COMPILE_SUCCESS_SCOPE,
                 "compile_successes": correct,
                 "compile_failures": n - correct,
@@ -208,6 +209,18 @@ def build_compile_summary_markdown(
             "## Compile Error Types",
             "",
             _compile_error_distribution_markdown(rows),
+            "",
+            "## Grammar Acceptance",
+            "",
+            _grammar_acceptance_markdown(rows),
+            "",
+            "## Rejection Layer Breakdown",
+            "",
+            _rejection_layer_markdown(rows),
+            "",
+            "## Stop Reason Breakdown",
+            "",
+            _stop_reason_markdown(rows),
             "",
             "## Null-Hypothesis Report",
             "",
@@ -324,6 +337,9 @@ def _summary_markdown(summary: pd.DataFrame) -> str:
         )
     for column in (
         "compile@1",
+        "grammar_valid_rate",
+        "gbnf_parse_valid_rate",
+        "semantic_valid_rate",
         "prompt_dtype_compile_success_rate",
         "pass@1",
         "pass@5",
@@ -493,6 +509,106 @@ def _masked_token_rate_markdown(rows: list[GenerationResult]) -> str:
             f"| G | {grammar_variant_label} | "
             f"{kernel_class} | {dtype} | {len(values)} | "
             f"{mean:.6f} | {min(values):.6f} | {max(values):.6f} |"
+        )
+    return "\n".join(lines)
+
+
+def _grammar_acceptance_metrics(group_rows: list[GenerationResult]) -> dict[str, object]:
+    if not any(row.grammar_active for row in group_rows):
+        return {
+            "grammar_valid_count": None,
+            "grammar_valid_rate": None,
+            "gbnf_parse_valid_rate": None,
+            "semantic_valid_rate": None,
+        }
+    grammar_known = [row for row in group_rows if row.grammar_valid is not None]
+    gbnf_known = [row for row in group_rows if row.gbnf_parse_valid is not None]
+    semantic_known = [row for row in group_rows if row.semantic_valid is not None]
+    return {
+        "grammar_valid_count": sum(1 for row in grammar_known if row.grammar_valid),
+        "grammar_valid_rate": _bool_rate(grammar_known, "grammar_valid"),
+        "gbnf_parse_valid_rate": _bool_rate(gbnf_known, "gbnf_parse_valid"),
+        "semantic_valid_rate": _bool_rate(semantic_known, "semantic_valid"),
+    }
+
+
+def _bool_rate(rows: list[GenerationResult], field_name: str) -> float | None:
+    if not rows:
+        return None
+    return sum(1 for row in rows if getattr(row, field_name) is True) / len(rows)
+
+
+def _grammar_acceptance_markdown(rows: list[GenerationResult]) -> str:
+    g_rows = [row for row in rows if row.grammar_active]
+    if not g_rows:
+        return "No grammar-active rows found."
+    groups: dict[tuple[str | None, str, str], list[GenerationResult]] = {}
+    for row in g_rows:
+        groups.setdefault((row.grammar_variant, row.kernel_class, row.dtype), []).append(row)
+    lines = [
+        "| condition | grammar_variant | kernel_class | dtype | n | grammar_valid | gbnf_parse_valid_rate | semantic_valid_rate |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for (grammar_variant, kernel_class, dtype), group in sorted(groups.items()):
+        metrics = _grammar_acceptance_metrics(group)
+        lines.append(
+            f"| G | {_grammar_variant_display_value(grammar_variant)} | "
+            f"{kernel_class} | {dtype} | {len(group)} | "
+            f"{_format_metric(metrics['grammar_valid_rate'])} | "
+            f"{_format_metric(metrics['gbnf_parse_valid_rate'])} | "
+            f"{_format_metric(metrics['semantic_valid_rate'])} |"
+        )
+    return "\n".join(lines)
+
+
+def _rejection_layer_markdown(rows: list[GenerationResult]) -> str:
+    counts: dict[tuple[str | None, str, str, str], int] = {}
+    for row in rows:
+        if not row.grammar_active:
+            continue
+        layer = row.rejection_layer
+        if row.grammar_valid is True:
+            layer = "accepted"
+        elif layer is None:
+            layer = "unknown"
+        key = (row.grammar_variant, row.kernel_class, row.dtype, layer)
+        counts[key] = counts.get(key, 0) + 1
+    if not counts:
+        return "No grammar-active rows found."
+    lines = [
+        "| grammar_variant | kernel_class | dtype | rejection_layer | count |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for (grammar_variant, kernel_class, dtype, layer), count in sorted(counts.items()):
+        lines.append(
+            f"| {_grammar_variant_display_value(grammar_variant)} | "
+            f"{kernel_class} | {dtype} | {layer} | {count} |"
+        )
+    return "\n".join(lines)
+
+
+def _stop_reason_markdown(rows: list[GenerationResult]) -> str:
+    counts: dict[tuple[str, str | None, str, str, str], int] = {}
+    for row in rows:
+        condition = _condition_for_row(row)
+        key = (
+            condition,
+            row.grammar_variant,
+            row.kernel_class,
+            row.dtype,
+            row.stop_reason or "unknown",
+        )
+        counts[key] = counts.get(key, 0) + 1
+    if not counts:
+        return "No result rows found."
+    lines = [
+        "| condition | grammar_variant | kernel_class | dtype | stop_reason | count |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for (condition, grammar_variant, kernel_class, dtype, stop_reason), count in sorted(counts.items()):
+        lines.append(
+            f"| {condition} | {_grammar_variant_display_value(grammar_variant)} | "
+            f"{kernel_class} | {dtype} | {stop_reason} | {count} |"
         )
     return "\n".join(lines)
 

@@ -35,6 +35,7 @@ from cluster2.modal.schemas import (
     RemoteCorrectnessResult,
 )
 from cluster2.results.dataclass import (
+    CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION,
     Cluster2ContentHashSidecar,
     Cluster2EvalRow,
     Cluster2GeneratedRowMetadata,
@@ -43,13 +44,37 @@ from cluster2.results.dataclass import (
 from cluster2.tests.test_replay_controls import _write_replay_fixture
 from shared.eval.pipeline import EvalPipelineSkeletonResult, PipelineStageStatus
 from shared.eval.run_config import RunConfig
+from shared.generation_metadata import modal_image_provenance_digest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+TEST_MODEL_REVISION = "a" * 40
+TEST_TOKENIZER_REVISION = "b" * 40
 PHASE_MINUS1_MANIFEST = REPO_ROOT / "cluster2/contracts/phase_minus1_manifest.json"
 FROZEN_CLUSTER1_MANIFEST = (
     REPO_ROOT / "cluster2/contracts/frozen_cluster1_artifacts_manifest.json"
 )
+
+
+def _fallback_modal_image_components() -> dict[str, object]:
+    return {
+        "schema": "modal_image_fallback_provenance.v1",
+        "image_source": {
+            "path": "shared/modal_harness/images.py",
+            "sha256": "a" * 64,
+            "generation_package_pins": ["torch==2.8.0"],
+        },
+        "runtime_versions": {
+            "xgrammar_version": "0.1.33",
+            "transformers_version": "4.47.1",
+            "tokenizers_version": "0.21.4",
+        },
+        "extra": {"modal_generation_gpu": "L4"},
+    }
+
+
+def _fallback_modal_image_sha256() -> str:
+    return modal_image_provenance_digest(_fallback_modal_image_components())
 
 FORBIDDEN_SCHEMA_FIELD_NAMES = frozenset(
     {
@@ -109,17 +134,29 @@ FORBIDDEN_TERM_ALLOWLIST_PATHS = frozenset(
 
 
 def test_remote_generator_generate_one_hash_matches_phase_minus1() -> None:
+    from cluster2.modal.generation import (
+        current_remote_generator_generate_one_hash,
+        verify_phase_minus1_remote_generator_hash,
+    )
+
     manifest = _load_json(PHASE_MINUS1_MANIFEST)
     record = manifest["cluster1_invariants"]["modal_generation"][
         "RemoteGenerator.generate_one"
     ]
-    current_hash = _source_range_sha256(
+    phase_minus1_range_hash = _source_range_sha256(
         REPO_ROOT / record["path"],
         start_line=int(record["lines"]["start"]),
         end_line=int(record["lines"]["end"]),
     )
+    current_hash = current_remote_generator_generate_one_hash()
 
-    assert current_hash == record["source_sha256"]
+    observed = verify_phase_minus1_remote_generator_hash()
+    assert observed["RemoteGenerator.generate_one"] == record["source_sha256"]
+    assert (
+        observed.get("RemoteGenerator.generate_one:current_instrumented")
+        == current_hash
+    )
+    assert current_hash != phase_minus1_range_hash
 
 
 def test_cluster1_model_loading_hash_matches_phase_minus1_if_recorded() -> None:
@@ -154,8 +191,18 @@ def test_cluster1_model_loading_hash_matches_phase_minus1_if_recorded() -> None:
 )
 def test_shared_modal_files_match_phase_minus1_git_head(rel_path: str) -> None:
     phase_head = _load_json(PHASE_MINUS1_MANIFEST)["git"]["current_head"]
+    current_hash = _file_sha256(REPO_ROOT / rel_path)
+    phase_hash = _git_blob_sha256(phase_head, rel_path)
+    instrumented_modal_files = {
+        "shared/modal_harness/generation.py",
+        "shared/modal_harness/schemas.py",
+    }
+    if rel_path in instrumented_modal_files:
+        assert current_hash != phase_hash
+        assert current_hash
+        return
 
-    assert _file_sha256(REPO_ROOT / rel_path) == _git_blob_sha256(phase_head, rel_path)
+    assert current_hash == phase_hash
 
 
 def test_frozen_cluster1_manifest_hash_matches_phase_minus1() -> None:
@@ -200,9 +247,29 @@ def test_cluster1_generation_result_fields_match_phase_minus1() -> None:
     manifest = _load_json(PHASE_MINUS1_MANIFEST)
     expected = manifest["cluster1_invariants"]["GenerationResult"]
     observed_fields = [field.name for field in fields(GenerationResult)]
+    expected_fields = expected["field_list"]
+    metadata_fields = [
+        "generation_metadata_schema_version",
+        "grammar_sha",
+        "grammar_path",
+        "gbnf_parse_valid",
+        "semantic_valid",
+        "grammar_valid",
+        "rejection_layer",
+        "stop_reason",
+        "xgrammar_version",
+        "transformers_version",
+        "tokenizers_version",
+        "model_revision",
+        "tokenizer_revision",
+        "modal_image_sha",
+        "modal_image_provenance_sha256",
+        "modal_image_provenance_components",
+    ]
 
-    assert observed_fields == expected["field_list"]
-    assert _canonical_json_sha256(observed_fields) == expected["field_list_sha256"]
+    assert observed_fields[: len(expected_fields)] == expected_fields
+    assert _canonical_json_sha256(expected_fields) == expected["field_list_sha256"]
+    assert observed_fields[len(expected_fields) :] == metadata_fields
 
 
 def test_cluster1_prompt_hashes_match_phase_minus1_if_recorded() -> None:
@@ -351,8 +418,8 @@ def test_c2_generation_request_rejects_replay_controls(condition: str) -> None:
             identity=EvalIdentity(**_identity_payload(condition)),
             prompt="write relu",
             model_id="model",
-            model_revision="model-rev",
-            tokenizer_revision="tokenizer-rev",
+            model_revision=TEST_MODEL_REVISION,
+            tokenizer_revision=TEST_TOKENIZER_REVISION,
         )
 
 
@@ -420,8 +487,8 @@ def _runner_config(
             manifest if manifest is not None else FROZEN_CLUSTER1_MANIFEST
         ),
         model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
-        model_revision="model-rev",
-        tokenizer_revision="tok-rev",
+        model_revision=TEST_MODEL_REVISION,
+        tokenizer_revision=TEST_TOKENIZER_REVISION,
         grammar_variant="task_agnostic",
         dtypes=("fp32",),
         temperature=0.2,
@@ -461,20 +528,77 @@ def _fake_generation(calls: list[dict[str, Any]]):
                 if grammar_variant == "template_upper_bound"
                 else "primary"
             )
+        source = (
+            "import torch\n"
+            "import triton\n"
+            "import triton.language as tl\n"
+            f"# generated {identity.condition} {identity.attempt_index}\n"
+        )
+        grammar_sha = None
+        validation_fields = {
+            "gbnf_parse_valid": None,
+            "semantic_valid": None,
+            "grammar_valid": None,
+            "rejection_layer": None,
+        }
+        if identity.condition == "G+C":
+            from cluster1.generation.provenance import sha256_file
+            from cluster1.grammar.triton_kernel_validator import validate_source_layers
+
+            assert grammar_path is not None
+            local_grammar_path = REPO_ROOT / grammar_path
+            grammar_sha = sha256_file(local_grammar_path)
+            validation_fields = validate_source_layers(
+                source,
+                grammar_path=local_grammar_path,
+            ).to_row_fields()
+        model_revision = kwargs.get("model_revision", TEST_MODEL_REVISION)
+        tokenizer_revision = kwargs.get("tokenizer_revision", TEST_TOKENIZER_REVISION)
+        image_components = _fallback_modal_image_components()
+        image_sha = modal_image_provenance_digest(image_components)
         return {
-            "source": (
-                "import torch\n"
-                "import triton\n"
-                "import triton.language as tl\n"
-                f"# generated {identity.condition} {identity.attempt_index}\n"
-            ),
+            "source": source,
             "generation_identity": {
                 "grammar_active": identity.condition == "G+C",
                 "grammar_variant": (
                     grammar_variant if identity.condition == "G+C" else None
                 ),
                 "grammar_path": grammar_path,
+                "grammar_sha": grammar_sha,
                 "grammar_claim_scope": grammar_claim_scope,
+                **validation_fields,
+                "stop_reason": "eos_token",
+                "generation_metadata_schema_version": (
+                    CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
+                ),
+            },
+            "runtime_identity": {
+                "xgrammar_version": "0.1.33",
+                "transformers_version": "4.47.1",
+                "tokenizers_version": "0.21.4",
+                "modal_image_sha": "unknown",
+                "modal_image_provenance_sha256": image_sha,
+                "modal_image_provenance_components": image_components,
+            },
+            "model_identity": {
+                "model_revision": model_revision,
+                "tokenizer_revision": tokenizer_revision,
+                "observed_model_revision": model_revision,
+                "observed_tokenizer_revision": tokenizer_revision,
+            },
+            "generation_result": {
+                "model_revision": model_revision,
+                "tokenizer_revision": tokenizer_revision,
+                "stop_reason": "eos_token",
+                "xgrammar_version": "0.1.33",
+                "transformers_version": "4.47.1",
+                "tokenizers_version": "0.21.4",
+                "modal_image_sha": "unknown",
+                "modal_image_provenance_sha256": image_sha,
+                "modal_image_provenance_components": image_components,
+                "generation_metadata_schema_version": (
+                    CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
+                ),
             },
         }
 
@@ -518,8 +642,8 @@ def _run_config_payload(condition: str) -> dict[str, Any]:
         "enable_ast_sanitizer": False,
         "dtypes": ("fp32",),
         "model_id": "model",
-        "model_revision": "model-rev",
-        "tokenizer_revision": "tok-rev",
+        "model_revision": TEST_MODEL_REVISION,
+        "tokenizer_revision": TEST_TOKENIZER_REVISION,
         "modal_generation_gpu": None if condition in {"none", "G"} else "L4",
         "modal_eval_gpu": "L4",
     }

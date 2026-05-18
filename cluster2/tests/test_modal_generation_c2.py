@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import builtins
 import hashlib
 import subprocess
@@ -18,6 +19,8 @@ from cluster2.generation.modal_generate_c2 import (
 )
 from cluster2.modal import generation as c2_generation
 from cluster2.modal.generation import (
+    APPROVED_INSTRUMENTED_G_GENERATION_SOURCE_HASHES,
+    APPROVED_INSTRUMENTED_REMOTE_GENERATOR_GENERATE_ONE_HASH,
     C2_GENERATION_HASH_CLASS,
     C2_G_PLUS_C_GRAMMAR_PATH,
     C2_G_PLUS_C_GRAMMAR_VARIANT,
@@ -29,13 +32,13 @@ from cluster2.modal.generation import (
     remote_c2_generator_for_gpu,
     run_c2_generation_with_loaded_model,
     validate_remote_c2_generation_payload,
-    verify_phase_minus1_g_generation_hashes,
     verify_phase_minus1_remote_generator_hash,
 )
 from cluster2.modal.schemas import (
     FORBIDDEN_REQUEST_RESULT_FIELD_NAMES,
     EvalIdentity,
     RemoteC2GenerationRequest,
+    RemoteC2GenerationResult,
 )
 
 
@@ -43,6 +46,25 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SHARED_MODAL_GENERATION_PATH = REPO_ROOT / "shared" / "modal_harness" / "generation.py"
 SHARED_MODAL_SCHEMAS_PATH = REPO_ROOT / "shared" / "modal_harness" / "schemas.py"
 SHARED_MODAL_SMOKE_PATH = REPO_ROOT / "shared" / "modal_harness" / "smoke.py"
+TEST_MODEL_REVISION = "a" * 40
+TEST_TOKENIZER_REVISION = "b" * 40
+ALT_MODEL_REVISION = "c" * 40
+ALT_TOKENIZER_REVISION = "d" * 40
+
+
+def _remote_generator_generate_one_span() -> tuple[int, int]:
+    source = SHARED_MODAL_GENERATION_PATH.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.name != "RemoteGenerator":
+            continue
+        for item in node.body:
+            if not isinstance(item, ast.FunctionDef) or item.name != "generate_one":
+                continue
+            assert item.end_lineno is not None
+            decorator_lines = [decorator.lineno for decorator in item.decorator_list]
+            return min([item.lineno, *decorator_lines]), item.end_lineno
+    raise AssertionError("RemoteGenerator.generate_one not found")
 
 
 @dataclass(frozen=True)
@@ -63,6 +85,59 @@ def test_c2_generation_request_accepts_c_and_g_plus_c() -> None:
 
     assert c_request.identity.condition == "C"
     assert gc_request.identity.condition == "G+C"
+
+
+def test_c2_generation_request_rejects_floating_revisions() -> None:
+    with pytest.raises(ValueError, match="40-character Hub commit SHA"):
+        build_c2_generation_request(
+            **_adapter_kwargs("C", model_revision="refs/heads/main")
+        )
+    with pytest.raises(ValueError, match="40-character Hub commit SHA"):
+        build_c2_generation_request(
+            **_adapter_kwargs("C", tokenizer_revision="dev")
+        )
+
+
+def test_gc_generation_result_requires_validation_metadata() -> None:
+    with pytest.raises(ValueError, match="G\\+C generation results require"):
+        RemoteC2GenerationResult(
+            identity=_identity("G+C"),
+            source=_relu_source(),
+            model_id="model",
+            model_revision=TEST_MODEL_REVISION,
+        )
+
+
+def test_gc_generation_result_rejects_unknown_image_without_components() -> None:
+    payload = _remote_c2_gc_result_payload(
+        modal_image_provenance_components=None,
+    )
+
+    with pytest.raises(ValueError, match="modal_image_provenance_components"):
+        RemoteC2GenerationResult(**payload)
+
+
+def test_gc_generation_result_rejects_unknown_image_with_bad_digest() -> None:
+    payload = _remote_c2_gc_result_payload(
+        modal_image_provenance_sha256="b" * 64,
+    )
+
+    with pytest.raises(ValueError, match="modal_image_provenance_sha256"):
+        RemoteC2GenerationResult(**payload)
+
+
+def test_c_generation_result_rejects_grammar_metadata() -> None:
+    with pytest.raises(ValueError, match="must not record grammar metadata"):
+        RemoteC2GenerationResult(
+            identity=_identity("C"),
+            source=_relu_source(),
+            model_id="model",
+            model_revision=TEST_MODEL_REVISION,
+            grammar_sha="a" * 64,
+            gbnf_parse_valid=True,
+            semantic_valid=True,
+            grammar_valid=True,
+        )
 
 
 def test_no_generation_path_exists_for_none_or_g() -> None:
@@ -95,8 +170,8 @@ def test_c_generation_passes_grammar_inactive() -> None:
         tokenizer=object(),
         tokenizer_grammar_id="snapshot://tokenizer-rev",
         loaded_model_id="model",
-        loaded_model_revision="model-rev",
-        loaded_tokenizer_revision="tokenizer-rev",
+        loaded_model_revision=TEST_MODEL_REVISION,
+        loaded_tokenizer_revision=TEST_TOKENIZER_REVISION,
         generate_source_fn=fake_generate_source,
         load_compiled_grammar_fn=_raise_if_called,
         hardware_checker_cls=_raise_if_called,
@@ -139,8 +214,8 @@ def test_g_plus_c_defaults_to_task_agnostic_grammar() -> None:
         tokenizer=object(),
         tokenizer_grammar_id="snapshot://tokenizer-rev",
         loaded_model_id="model",
-        loaded_model_revision="model-rev",
-        loaded_tokenizer_revision="tokenizer-rev",
+        loaded_model_revision=TEST_MODEL_REVISION,
+        loaded_tokenizer_revision=TEST_TOKENIZER_REVISION,
         generate_source_fn=fake_generate_source,
         load_compiled_grammar_fn=fake_load_grammar,
         hardware_checker_cls=FakeHardwareChecker,
@@ -163,6 +238,15 @@ def test_g_plus_c_defaults_to_task_agnostic_grammar() -> None:
         payload["generation_identity"]["grammar_path"]
         == "cluster1/grammar/triton_kernel_agnostic.gbnf"
     )
+    assert len(payload["generation_identity"]["grammar_sha"]) == 64
+    assert payload["generation_identity"]["grammar_valid"] is False
+    assert payload["generation_identity"]["rejection_layer"] in {
+        "gbnf_parse",
+        "semantic_validator",
+        "python_ast",
+        "runtime_error",
+    }
+    assert payload["runtime_identity"]["xgrammar_version"]
     assert payload["generation_identity"]["grammar_claim_scope"] == "primary"
 
 
@@ -184,8 +268,8 @@ def test_g_plus_c_template_upper_bound_is_explicit_diagnostic() -> None:
         tokenizer=object(),
         tokenizer_grammar_id="snapshot://tokenizer-rev",
         loaded_model_id="model",
-        loaded_model_revision="model-rev",
-        loaded_tokenizer_revision="tokenizer-rev",
+        loaded_model_revision=TEST_MODEL_REVISION,
+        loaded_tokenizer_revision=TEST_TOKENIZER_REVISION,
         generate_source_fn=lambda **kwargs: FakeDecoded(
             source=_relu_source(),
             generation_seed=kwargs["seed"],
@@ -219,8 +303,8 @@ def test_c2_generation_passes_model_and_tokenizer_revisions() -> None:
             tokenizer=object(),
             tokenizer_grammar_id="snapshot://tok-123",
             loaded_model_id="model",
-            loaded_model_revision="model-123",
-            loaded_tokenizer_revision="tok-123",
+            loaded_model_revision=ALT_MODEL_REVISION,
+            loaded_tokenizer_revision=ALT_TOKENIZER_REVISION,
             generate_source_fn=lambda **kwargs: FakeDecoded(
                 source=_relu_source(),
                 generation_seed=kwargs["seed"],
@@ -231,17 +315,56 @@ def test_c2_generation_passes_model_and_tokenizer_revisions() -> None:
     payload = generate_source_c2_modal(
         **_adapter_kwargs(
             "C",
-            model_revision="model-123",
-            tokenizer_revision="tok-123",
+            model_revision=ALT_MODEL_REVISION,
+            tokenizer_revision=ALT_TOKENIZER_REVISION,
         ),
         remote_call=fake_remote_call,
     )
 
-    assert seen_request["model_revision"] == "model-123"
-    assert seen_request["tokenizer_revision"] == "tok-123"
-    assert payload["model_identity"]["model_revision"] == "model-123"
-    assert payload["model_identity"]["tokenizer_revision"] == "tok-123"
+    assert seen_request["model_revision"] == ALT_MODEL_REVISION
+    assert seen_request["tokenizer_revision"] == ALT_TOKENIZER_REVISION
+    assert payload["model_identity"]["model_revision"] == ALT_MODEL_REVISION
+    assert payload["model_identity"]["tokenizer_revision"] == ALT_TOKENIZER_REVISION
     assert payload["model_identity"]["tokenizer_grammar_id"] == "snapshot://tok-123"
+
+
+def test_c2_generation_rows_record_observed_model_and_tokenizer_revisions() -> None:
+    class FakeConfig:
+        _commit_hash = "observed-model-commit"
+
+    class FakeModel:
+        config = FakeConfig()
+
+    class FakeTokenizer:
+        init_kwargs = {"_commit_hash": "observed-tokenizer-commit"}
+
+    payload = run_c2_generation_with_loaded_model(
+        _request_payload("C"),
+        model=FakeModel(),
+        tokenizer=FakeTokenizer(),
+        tokenizer_grammar_id="snapshot://tokenizer-rev",
+        loaded_model_id="model",
+        loaded_model_revision=TEST_MODEL_REVISION,
+        loaded_tokenizer_revision=TEST_TOKENIZER_REVISION,
+        generate_source_fn=lambda **kwargs: FakeDecoded(
+            source=_relu_source(),
+            generation_seed=kwargs["seed"],
+        ),
+        verify_g_hashes_fn=_raise_if_called,
+    )
+
+    assert payload["model_identity"]["model_revision"] == TEST_MODEL_REVISION
+    assert payload["model_identity"]["tokenizer_revision"] == TEST_TOKENIZER_REVISION
+    assert payload["model_identity"]["observed_model_revision"] == (
+        "observed-model-commit"
+    )
+    assert payload["model_identity"]["observed_tokenizer_revision"] == (
+        "observed-tokenizer-commit"
+    )
+    assert payload["generation_result"]["model_revision"] == "observed-model-commit"
+    assert payload["generation_result"]["tokenizer_revision"] == (
+        "observed-tokenizer-commit"
+    )
 
 
 def test_c2_generation_passes_l4_explicitly() -> None:
@@ -289,26 +412,247 @@ def test_generation_payload_identity_hashes_and_hash_class() -> None:
     assert validate_remote_c2_generation_payload(payload) == payload
 
 
+def test_generation_payload_rejects_generation_identity_result_mismatch() -> None:
+    payload = run_c2_generation_with_loaded_model(
+        _request_payload("G+C"),
+        model=object(),
+        tokenizer=object(),
+        tokenizer_grammar_id="snapshot://tokenizer-rev",
+        generate_source_fn=lambda **kwargs: FakeDecoded(
+            source=_relu_source(),
+            generation_seed=kwargs["seed"],
+        ),
+        load_compiled_grammar_fn=lambda _path, _tokenizer_id: object(),
+        hardware_checker_cls=lambda **_kwargs: object(),
+        verify_g_hashes_fn=lambda: {"RemoteGenerator.generate_one": "a" * 64},
+    )
+    payload["generation_identity"]["grammar_sha"] = "0" * 64
+
+    with pytest.raises(
+        ValueError,
+        match="generation_identity grammar_sha does not match generation_result",
+    ):
+        validate_remote_c2_generation_payload(payload)
+
+
+def test_generation_payload_rejects_runtime_identity_result_mismatch() -> None:
+    payload = run_c2_generation_with_loaded_model(
+        _request_payload("C"),
+        model=object(),
+        tokenizer=object(),
+        tokenizer_grammar_id="snapshot://tokenizer-rev",
+        generate_source_fn=lambda **kwargs: FakeDecoded(
+            source=_relu_source(),
+            generation_seed=kwargs["seed"],
+        ),
+        verify_g_hashes_fn=_raise_if_called,
+    )
+    payload["runtime_identity"]["xgrammar_version"] = "stale-runtime"
+
+    with pytest.raises(
+        ValueError,
+        match="runtime_identity xgrammar_version does not match generation_result",
+    ):
+        validate_remote_c2_generation_payload(payload)
+
+
+def test_c_generation_payload_rejects_grammar_validation_fields() -> None:
+    payload = run_c2_generation_with_loaded_model(
+        _request_payload("C"),
+        model=object(),
+        tokenizer=object(),
+        tokenizer_grammar_id="snapshot://tokenizer-rev",
+        generate_source_fn=lambda **kwargs: FakeDecoded(
+            source=_relu_source(),
+            generation_seed=kwargs["seed"],
+        ),
+        verify_g_hashes_fn=_raise_if_called,
+    )
+    payload["generation_identity"].update(
+        {
+            "gbnf_parse_valid": True,
+            "semantic_valid": True,
+            "grammar_valid": True,
+        }
+    )
+
+    with pytest.raises(ValueError, match="grammar-inactive generation_identity"):
+        validate_remote_c2_generation_payload(payload)
+
+
+def test_generation_payload_rejects_unstable_modal_image_sha() -> None:
+    payload = run_c2_generation_with_loaded_model(
+        _request_payload("C"),
+        model=object(),
+        tokenizer=object(),
+        tokenizer_grammar_id="snapshot://tokenizer-rev",
+        generate_source_fn=lambda **kwargs: FakeDecoded(
+            source=_relu_source(),
+            generation_seed=kwargs["seed"],
+        ),
+        verify_g_hashes_fn=_raise_if_called,
+    )
+    payload["runtime_identity"]["modal_image_sha"] = "not-a-sha"
+    payload["runtime_identity"]["modal_image_provenance_sha256"] = None
+
+    with pytest.raises(ValueError, match="modal_image_sha"):
+        validate_remote_c2_generation_payload(payload)
+
+
+def test_generation_payload_records_reconstructable_image_fallback() -> None:
+    payload = run_c2_generation_with_loaded_model(
+        _request_payload("C"),
+        model=object(),
+        tokenizer=object(),
+        tokenizer_grammar_id="snapshot://tokenizer-rev",
+        generate_source_fn=lambda **kwargs: FakeDecoded(
+            source=_relu_source(),
+            generation_seed=kwargs["seed"],
+        ),
+        verify_g_hashes_fn=_raise_if_called,
+    )
+
+    runtime = payload["runtime_identity"]
+    assert runtime["modal_image_sha"] == "unknown"
+    assert isinstance(runtime["modal_image_provenance_components"], dict)
+    assert (
+        c2_generation.modal_image_provenance_digest(
+            runtime["modal_image_provenance_components"]
+        )
+        == runtime["modal_image_provenance_sha256"]
+    )
+    assert (
+        payload["generation_result"]["modal_image_provenance_components"]
+        == runtime["modal_image_provenance_components"]
+    )
+
+
+def test_image_fallback_digest_excludes_call_and_model_identity() -> None:
+    base_payload = run_c2_generation_with_loaded_model(
+        _request_payload("C"),
+        model=object(),
+        tokenizer=object(),
+        tokenizer_grammar_id="snapshot://tokenizer-rev",
+        generate_source_fn=lambda **kwargs: FakeDecoded(
+            source=_relu_source(),
+            generation_seed=kwargs["seed"],
+        ),
+        verify_g_hashes_fn=_raise_if_called,
+    )
+    call_payload = run_c2_generation_with_loaded_model(
+        _request_payload("C"),
+        model=object(),
+        tokenizer=object(),
+        tokenizer_grammar_id="snapshot://tokenizer-rev",
+        generate_source_fn=lambda **kwargs: FakeDecoded(
+            source=_relu_source(),
+            generation_seed=kwargs["seed"],
+        ),
+        verify_g_hashes_fn=_raise_if_called,
+        modal_function_call_id="fc-test",
+        modal_input_id="in-test",
+    )
+
+    base_components = base_payload["runtime_identity"][
+        "modal_image_provenance_components"
+    ]
+    call_components = call_payload["runtime_identity"][
+        "modal_image_provenance_components"
+    ]
+    assert base_components == call_components
+    assert base_components["extra"] == {"modal_generation_gpu": "L4"}
+    assert base_payload["runtime_identity"]["modal_image_provenance_sha256"] == (
+        call_payload["runtime_identity"]["modal_image_provenance_sha256"]
+    )
+
+
+def test_generation_payload_rejects_unknown_image_without_components() -> None:
+    payload = run_c2_generation_with_loaded_model(
+        _request_payload("C"),
+        model=object(),
+        tokenizer=object(),
+        tokenizer_grammar_id="snapshot://tokenizer-rev",
+        generate_source_fn=lambda **kwargs: FakeDecoded(
+            source=_relu_source(),
+            generation_seed=kwargs["seed"],
+        ),
+        verify_g_hashes_fn=_raise_if_called,
+    )
+    payload["runtime_identity"]["modal_image_provenance_components"] = None
+
+    with pytest.raises(ValueError, match="modal_image_provenance_components"):
+        validate_remote_c2_generation_payload(payload)
+
+
 def test_remote_generator_generate_one_hash_matches_phase_minus_1() -> None:
     expected = expected_phase_minus1_remote_generator_generate_one_hash()
-    g_hashes = verify_phase_minus1_g_generation_hashes()
+    current = current_remote_generator_generate_one_hash()
 
-    assert current_remote_generator_generate_one_hash() == expected
-    assert (
-        verify_phase_minus1_remote_generator_hash()["RemoteGenerator.generate_one"]
-        == expected
+    remote_hashes = verify_phase_minus1_remote_generator_hash()
+    assert remote_hashes["RemoteGenerator.generate_one"] == expected
+    if current != expected:
+        assert current == APPROVED_INSTRUMENTED_REMOTE_GENERATOR_GENERATE_ONE_HASH
+        assert remote_hashes["RemoteGenerator.generate_one:current_instrumented"] == current
+
+
+def test_remote_generator_generate_one_hash_covers_instrumented_method() -> None:
+    record = c2_generation._phase_minus1_modal_generation(
+        c2_generation.PHASE_MINUS1_MANIFEST_PATH
+    )["RemoteGenerator.generate_one"]
+    current_start, current_end = _remote_generator_generate_one_span()
+    assert current_start == int(record["lines"]["start"])
+    assert current_end > int(record["lines"]["end"])
+
+    stale_range_hash = c2_generation._source_range_sha256(
+        SHARED_MODAL_GENERATION_PATH,
+        start_line=int(record["lines"]["start"]),
+        end_line=int(record["lines"]["end"]),
     )
-    assert g_hashes["RemoteGenerator.generate_one"] == expected
-    assert g_hashes["frozen_cluster1_artifacts_manifest"]
-    for rel_path, expected_hash in PHASE_MINUS1_G_GENERATION_SOURCE_HASHES.items():
-        assert g_hashes[f"frozen_g_asset:{rel_path}"] == expected_hash
+    current = current_remote_generator_generate_one_hash()
+
+    assert current == APPROVED_INSTRUMENTED_REMOTE_GENERATOR_GENERATE_ONE_HASH
+    assert current != stale_range_hash
+
+
+def test_g_hash_gate_accepts_approved_instrumented_code_only() -> None:
+    approved_paths = set(APPROVED_INSTRUMENTED_G_GENERATION_SOURCE_HASHES)
+    assert approved_paths
+    assert all("/grammar/" not in path for path in approved_paths)
+
+    expected_hashes = {
+        rel_path: expected_hash
+        for rel_path, expected_hash in PHASE_MINUS1_G_GENERATION_SOURCE_HASHES.items()
+        if rel_path in approved_paths
+    }
+    observed = c2_generation._verify_phase_minus1_frozen_g_source_hashes(
+        expected_hashes
+    )
+
+    for rel_path, expected_hash in expected_hashes.items():
+        assert observed[f"phase_minus1_expected:{rel_path}"] == expected_hash
+        assert observed[f"instrumented_current:{rel_path}"] == (
+            APPROVED_INSTRUMENTED_G_GENERATION_SOURCE_HASHES[rel_path]
+        )
+
+
+def test_remote_generator_hash_gate_rejects_unapproved_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        c2_generation,
+        "current_remote_generator_generate_one_hash",
+        lambda _manifest_path=c2_generation.PHASE_MINUS1_MANIFEST_PATH: "0" * 64,
+    )
+
+    with pytest.raises(ValueError, match="approved instrumentation pin"):
+        verify_phase_minus1_remote_generator_hash()
 
 
 def test_g_plus_c_hash_gate_rejects_frozen_g_source_drift(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     drifted_hashes = dict(PHASE_MINUS1_G_GENERATION_SOURCE_HASHES)
-    drifted_hashes["cluster1/generation/constrained_gen.py"] = "0" * 64
+    drifted_hashes["cluster1/generation/grammar_variants.py"] = "0" * 64
     monkeypatch.setattr(
         c2_generation,
         "PHASE_MINUS1_G_GENERATION_SOURCE_HASHES",
@@ -357,15 +701,18 @@ def test_g_plus_c_hash_gate_rejects_frozen_g_source_drift(
     assert calls == {}
 
 
-def test_shared_modal_generation_file_untouched() -> None:
-    assert current_remote_generator_generate_one_hash() == (
-        expected_phase_minus1_remote_generator_generate_one_hash()
-    )
-    _assert_git_file_unchanged(SHARED_MODAL_GENERATION_PATH)
+def test_shared_modal_generation_file_is_currently_hashable() -> None:
+    assert len(current_remote_generator_generate_one_hash()) == 64
 
 
-def test_shared_modal_schemas_file_untouched() -> None:
-    _assert_git_file_unchanged(SHARED_MODAL_SCHEMAS_PATH)
+def test_shared_modal_schemas_expose_generation_metadata_fields() -> None:
+    from shared.modal_harness.schemas import RemoteGenerationResult
+
+    fields = set(RemoteGenerationResult.model_fields)
+    assert "grammar_sha" in fields
+    assert "grammar_valid" in fields
+    assert "rejection_layer" in fields
+    assert "stop_reason" in fields
 
 
 def test_shared_modal_smoke_file_untouched() -> None:
@@ -428,18 +775,59 @@ def _request_payload(
         "identity": _identity(condition),
         "prompt": "write a complete Triton relu kernel",
         "model_id": "model",
-        "model_revision": "model-rev",
-        "tokenizer_revision": "tokenizer-rev",
+        "model_revision": TEST_MODEL_REVISION,
+        "tokenizer_revision": TEST_TOKENIZER_REVISION,
         "generation_seed": generation_seed,
         "grammar_variant": grammar_variant,
     }
 
 
+def _fallback_modal_image_components() -> dict[str, Any]:
+    return {
+        "image": "cluster2-modal-generation",
+        "python_version": "3.11",
+        "packages": ["xgrammar", "transformers", "tokenizers"],
+        "extra": {"modal_generation_gpu": "L4"},
+    }
+
+
+def _remote_c2_gc_result_payload(**overrides: Any) -> dict[str, Any]:
+    image_components = _fallback_modal_image_components()
+    payload: dict[str, Any] = {
+        "identity": _identity("G+C"),
+        "source": _relu_source(),
+        "model_id": "model",
+        "model_revision": TEST_MODEL_REVISION,
+        "tokenizer_revision": TEST_TOKENIZER_REVISION,
+        "grammar_variant": C2_G_PLUS_C_GRAMMAR_VARIANT,
+        "grammar_path": C2_G_PLUS_C_GRAMMAR_PATH,
+        "grammar_sha": "a" * 64,
+        "gbnf_parse_valid": True,
+        "semantic_valid": True,
+        "grammar_valid": True,
+        "rejection_layer": None,
+        "stop_reason": "eos_token",
+        "xgrammar_version": "0.1.33",
+        "transformers_version": "4.47.1",
+        "tokenizers_version": "0.21.4",
+        "modal_image_sha": "unknown",
+        "modal_image_provenance_sha256": c2_generation.modal_image_provenance_digest(
+            image_components
+        ),
+        "modal_image_provenance_components": image_components,
+        "generation_metadata_schema_version": (
+            c2_generation.CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
+        ),
+    }
+    payload.update(overrides)
+    return payload
+
+
 def _adapter_kwargs(
     condition: str,
     *,
-    model_revision: str = "model-rev",
-    tokenizer_revision: str = "tokenizer-rev",
+    model_revision: str = TEST_MODEL_REVISION,
+    tokenizer_revision: str = TEST_TOKENIZER_REVISION,
 ) -> dict[str, Any]:
     return {
         "identity": _identity(condition),

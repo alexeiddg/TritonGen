@@ -56,9 +56,12 @@ from cluster1.generation.modal_generate import (  # noqa: E402
 from cluster1.generation.grammar_variants import grammar_path_for_cell  # noqa: E402
 from cluster1.results.dataclass import (  # noqa: E402
     DEFAULT_GRAMMAR_VARIANT,
+    GENERATION_METADATA_SCHEMA_VERSION,
     VALID_GRAMMAR_VARIANTS,
     generation_result_record_for_deserialization,
     grammar_variant_for_cell,
+    validate_grammar_path_variant_invariants,
+    validate_paper_scale_metadata,
 )
 from cluster1.validation.modal_compile_check import check_compiles_modal  # noqa: E402
 from shared.modal_harness.generation import DEFAULT_GENERATION_GPU  # noqa: E402
@@ -75,6 +78,7 @@ SUPPORTED_KERNEL_CLASSES: tuple[str, ...] = (
     "all",
 )
 SUPPORTED_DTYPES: tuple[str, ...] = ("fp32", "fp16", "bf16")
+SUPPORTED_SCALE_TIERS: tuple[str, ...] = ("smoke", "development", "paper")
 RUNNING_STATUS = "running"
 COMPLETED_STATUS = "completed"
 FAILED_PARTIAL_STATUS = "failed_partial"
@@ -177,6 +181,32 @@ def _run_config_from_args(args) -> dict[str, Any]:
     }
 
 
+def _normalize_revision_args(args) -> None:
+    from cluster1.generation.provenance import (
+        normalize_explicit_revision,
+        resolve_tokenizer_revision,
+        tokenizer_revision_policy,
+    )
+
+    model_revision = normalize_explicit_revision(
+        getattr(args, "model_revision", None),
+        field_name="model_revision",
+    )
+    tokenizer_revision = resolve_tokenizer_revision(
+        model_id=args.model_id,
+        model_revision=model_revision,
+        tokenizer_revision=getattr(args, "tokenizer_revision", None),
+    )
+    policy = tokenizer_revision_policy(
+        model_id=args.model_id,
+        model_revision=model_revision,
+        tokenizer_revision=getattr(args, "tokenizer_revision", None),
+    )
+    setattr(args, "model_revision", model_revision)
+    setattr(args, "tokenizer_revision", tokenizer_revision)
+    setattr(args, "tokenizer_revision_policy", policy)
+
+
 def _build_initial_metadata(
     *,
     output: Path,
@@ -192,6 +222,14 @@ def _build_initial_metadata(
         "grammar_variant": _metadata_grammar_variant(args),
         "n": args.n,
         "model_id": args.model_id,
+        "model_revision": getattr(args, "model_revision", None),
+        "tokenizer_revision": getattr(args, "tokenizer_revision", None),
+        "tokenizer_revision_policy": getattr(
+            args,
+            "tokenizer_revision_policy",
+            "best_effort_extraction",
+        ),
+        "scale_tier": getattr(args, "scale_tier", "smoke"),
         "expected_rows": expected_rows,
         "written_rows": 0,
         "infrastructure_failures": 0,
@@ -200,6 +238,7 @@ def _build_initial_metadata(
         "finished_at_utc": None,
         "git_commit": _git_commit_or_none(),
         "run_config": _run_config_from_args(args),
+        "generation_metadata_schema_version": GENERATION_METADATA_SCHEMA_VERSION,
     }
     if resume:
         metadata.update(
@@ -399,7 +438,13 @@ def _validate_resume_metadata(
 
     run_config = metadata.get("run_config")
     if isinstance(run_config, dict):
-        comparable_keys = ["dataset_id", "temperature", "max_new_tokens"]
+        comparable_keys = [
+            "dataset_id",
+            "temperature",
+            "max_new_tokens",
+            "model_revision",
+            "tokenizer_revision",
+        ]
         if args.condition != "baseline":
             comparable_keys.append("grammar_variant")
         for key in comparable_keys:
@@ -775,6 +820,7 @@ def remote_results_to_generation_result(
         compute_unique_solution_hash,
     )
 
+    _validate_remote_generation_metadata_against_local(generation, grammar_active)
     compile_results_by_dtype = dict(compile_.compile_results_by_dtype)
     dtype_success = bool(compile_results_by_dtype.get(dtype, False))
     # The remote returns one ``n_shapes_tested`` summed across dtypes, not a
@@ -798,6 +844,24 @@ def remote_results_to_generation_result(
         model_id=model_id,
         grammar_active=grammar_active,
         grammar_variant=generation.grammar_variant,
+        generation_metadata_schema_version=generation.generation_metadata_schema_version,
+        grammar_sha=generation.grammar_sha,
+        grammar_path=generation.grammar_path,
+        gbnf_parse_valid=generation.gbnf_parse_valid,
+        semantic_valid=generation.semantic_valid,
+        grammar_valid=generation.grammar_valid,
+        rejection_layer=generation.rejection_layer,
+        stop_reason=generation.stop_reason,
+        xgrammar_version=generation.xgrammar_version,
+        transformers_version=generation.transformers_version,
+        tokenizers_version=generation.tokenizers_version,
+        model_revision=generation.model_revision,
+        tokenizer_revision=generation.tokenizer_revision,
+        modal_image_sha=generation.modal_image_sha,
+        modal_image_provenance_sha256=generation.modal_image_provenance_sha256,
+        modal_image_provenance_components=(
+            generation.modal_image_provenance_components
+        ),
         kernel_class=spec.kernel_class,
         kernel_name=spec.name,
         dtype=dtype,
@@ -817,6 +881,61 @@ def remote_results_to_generation_result(
         run_id=run_id,
         timestamp_utc=datetime.now(UTC).isoformat(),
     )
+
+
+def _validate_remote_generation_metadata_against_local(
+    generation,
+    grammar_active: bool,
+) -> None:
+    """Audit Modal validation evidence against the local grammar when possible."""
+
+    if not grammar_active:
+        return
+    if generation.generation_metadata_schema_version < GENERATION_METADATA_SCHEMA_VERSION:
+        raise ValueError(
+            "grammar-active Modal row is missing current generation metadata "
+            f"schema: expected >= {GENERATION_METADATA_SCHEMA_VERSION}, "
+            f"got {generation.generation_metadata_schema_version}"
+        )
+    if (
+        generation.grammar_variant is None
+        or generation.grammar_sha is None
+        or generation.grammar_path is None
+    ):
+        raise ValueError("grammar-active Modal row is missing grammar provenance")
+    validate_grammar_path_variant_invariants(
+        grammar_path=generation.grammar_path,
+        grammar_variant=generation.grammar_variant,
+    )
+
+    from cluster1.generation.grammar_variants import grammar_path_for_variant
+    from cluster1.generation.provenance import sha256_file
+    from cluster1.grammar.triton_kernel_validator import validate_source_layers
+
+    local_grammar_path = Path(grammar_path_for_variant(generation.grammar_variant))
+    local_sha = sha256_file(local_grammar_path)
+    if local_sha != generation.grammar_sha:
+        raise ValueError(
+            "Modal grammar_sha does not match local canonical grammar: "
+            f"variant={generation.grammar_variant!r} "
+            f"modal={generation.grammar_sha} local={local_sha}"
+        )
+    local_validation = validate_source_layers(
+        generation.source,
+        grammar_path=local_grammar_path,
+    )
+    expected = local_validation.to_row_fields()
+    observed = {
+        "gbnf_parse_valid": generation.gbnf_parse_valid,
+        "semantic_valid": generation.semantic_valid,
+        "grammar_valid": generation.grammar_valid,
+        "rejection_layer": generation.rejection_layer,
+    }
+    if observed != expected:
+        raise ValueError(
+            "Modal validation fields disagree with local revalidation after "
+            f"grammar_sha match: observed={observed!r} expected={expected!r}"
+        )
 
 
 def _build_progress_line(result, factor_cell: str) -> str:
@@ -853,6 +972,12 @@ def _build_failure_line(
     )
 
 
+def _validate_result_for_scale_tier(result, *, scale_tier: str) -> None:
+    if scale_tier != "paper":
+        return
+    validate_paper_scale_metadata(result)
+
+
 # ---------------------------------------------------------------------------
 # Per-cell remote roundtrip + main loop
 # ---------------------------------------------------------------------------
@@ -867,6 +992,8 @@ def _run_one_cell(
     dtype: str,
     seed: int,
     model_id: str,
+    model_revision: str | None,
+    tokenizer_revision: str | None,
     temperature: float,
     max_new_tokens: int,
     run_id: str,
@@ -880,6 +1007,8 @@ def _run_one_cell(
     generation = generate_source_modal(
         prompt=prompt,
         model_id=model_id,
+        model_revision=model_revision,
+        tokenizer_revision=tokenizer_revision,
         kernel_class=spec.kernel_class,
         kernel_name=spec.name,
         dtype=dtype,
@@ -944,6 +1073,12 @@ def _run(*, args) -> int:
                 f"--kernel-class={args.kernel_class!r} not in "
                 f"{list(SUPPORTED_KERNEL_CLASSES)}"
             )
+        scale_tier = getattr(args, "scale_tier", "smoke")
+        if scale_tier not in SUPPORTED_SCALE_TIERS:
+            raise ValueError(
+                f"--scale-tier={scale_tier!r} not in {list(SUPPORTED_SCALE_TIERS)}"
+            )
+        _normalize_revision_args(args)
         _validate_grammar_variant_request(
             condition=args.condition,
             grammar_variant=args.grammar_variant,
@@ -1011,6 +1146,15 @@ def _run(*, args) -> int:
                     )
                 )
             existing_identities = _load_resume_identities(output)
+            if scale_tier == "paper":
+                for identity, result in existing_identities.items():
+                    try:
+                        validate_paper_scale_metadata(result)
+                    except ValueError as exc:
+                        raise ValueError(
+                            "existing paper-scale resume row is missing "
+                            f"generation metadata: {identity.label()}: {exc}"
+                        ) from exc
             unexpected = sorted(
                 set(existing_identities) - expected_identities,
                 key=lambda identity: identity.label(),
@@ -1064,6 +1208,8 @@ def _run(*, args) -> int:
                     dtype=dtype,
                     seed=seed,
                     model_id=args.model_id,
+                    model_revision=getattr(args, "model_revision", None),
+                    tokenizer_revision=getattr(args, "tokenizer_revision", None),
                     temperature=args.temperature,
                     max_new_tokens=args.max_new_tokens,
                     run_id=run_id,
@@ -1078,6 +1224,7 @@ def _run(*, args) -> int:
                     ),
                 )
                 validate_result_invariants(result)
+                _validate_result_for_scale_tier(result, scale_tier=scale_tier)
                 append_result_jsonl(output, result)
                 print(_build_progress_line(result, factor_cell), flush=True)
                 newly_written_rows += 1
@@ -1128,6 +1275,7 @@ def _run(*, args) -> int:
                     args.condition,
                     args.grammar_variant,
                 ),
+                require_generation_metadata=scale_tier == "paper",
             )
             if not report.passed:
                 print(report.render(), flush=True)
@@ -1177,12 +1325,15 @@ def main(
     n: int,
     output: str,
     model_id: str = DEFAULT_MODEL_ID,
+    model_revision: str | None = None,
+    tokenizer_revision: str | None = None,
     dataset_id: str = DEFAULT_DATASET_ID,
     grammar_variant: str = DEFAULT_GRAMMAR_VARIANT,
     grammar_path: str | None = None,
     temperature: float = 0.2,
     max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS,
     modal_generation_gpu: str = DEFAULT_GENERATION_GPU,
+    scale_tier: str = "smoke",
     compile_backend: str = "modal",
     generation_backend: str = "modal",
     fail_fast: bool = False,
@@ -1196,12 +1347,15 @@ def main(
         n=n,
         output=output,
         model_id=model_id,
+        model_revision=model_revision,
+        tokenizer_revision=tokenizer_revision,
         dataset_id=dataset_id,
         grammar_variant=grammar_variant,
         grammar_path=grammar_path,
         temperature=temperature,
         max_new_tokens=max_new_tokens,
         modal_generation_gpu=modal_generation_gpu,
+        scale_tier=scale_tier,
         compile_backend=compile_backend,
         generation_backend=generation_backend,
         fail_fast=fail_fast,

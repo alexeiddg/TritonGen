@@ -27,6 +27,14 @@ from cluster2.constants import (
     require_generated_condition,
     source_class_for_condition,
 )
+from shared.generation_metadata import (
+    CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION,
+    UNKNOWN,
+    VALID_REJECTION_LAYERS,
+    VALID_STOP_REASONS,
+    modal_image_provenance_digest,
+    normalize_immutable_hub_revision,
+)
 
 
 C2_MODAL_SCHEMA_VERSION = 1
@@ -174,6 +182,14 @@ class RemoteC2GenerationRequest(_StrictC2Schema):
     def _non_empty_strings(cls, value: str) -> str:
         return _require_non_empty_string(value)
 
+    @field_validator("model_revision", "tokenizer_revision")
+    @classmethod
+    def _immutable_revisions(cls, value: str, info) -> str:
+        revision = normalize_immutable_hub_revision(value, field_name=info.field_name)
+        if revision is None:
+            raise ValueError(f"{info.field_name} must be a non-empty immutable Hub revision")
+        return revision
+
     @field_validator("max_new_tokens")
     @classmethod
     def _positive_max_new_tokens(cls, value: int) -> int:
@@ -229,6 +245,22 @@ class RemoteC2GenerationResult(_StrictC2Schema):
     source: str | None = None
     model_id: str
     model_revision: str
+    tokenizer_revision: str | None = None
+    grammar_sha: str | None = None
+    grammar_path: str | None = None
+    grammar_variant: str | None = None
+    gbnf_parse_valid: bool | None = None
+    semantic_valid: bool | None = None
+    grammar_valid: bool | None = None
+    rejection_layer: str | None = None
+    stop_reason: str = UNKNOWN
+    xgrammar_version: str = UNKNOWN
+    transformers_version: str = UNKNOWN
+    tokenizers_version: str = UNKNOWN
+    modal_image_sha: str = UNKNOWN
+    modal_image_provenance_sha256: str | None = None
+    modal_image_provenance_components: dict[str, Any] | None = None
+    generation_metadata_schema_version: int = 0
     generation_seed: int | None = None
     error_type: str | None = None
     error_msg: str | None = None
@@ -254,10 +286,113 @@ class RemoteC2GenerationResult(_StrictC2Schema):
 
     @model_validator(mode="after")
     def _validate_generated_condition(self) -> "RemoteC2GenerationResult":
-        require_c2_generation_condition(self.identity.condition)
+        condition = require_c2_generation_condition(self.identity.condition)
         if self.source is None and self.error_type is None:
             raise ValueError("source is required when error_type is None")
+        if self.stop_reason not in VALID_STOP_REASONS:
+            raise ValueError("unsupported stop_reason")
+        if (
+            self.rejection_layer is not None
+            and self.rejection_layer not in VALID_REJECTION_LAYERS
+        ):
+            raise ValueError("unsupported rejection_layer")
+        if condition == "C":
+            self._validate_c_generation_metadata_absent()
+        if condition == "G+C" and self.error_type is None:
+            self._validate_gc_generation_metadata()
+        validation_values = (
+            self.gbnf_parse_valid,
+            self.semantic_valid,
+            self.grammar_valid,
+        )
+        if (
+            self.generation_metadata_schema_version
+            >= CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
+            and self.modal_image_sha == UNKNOWN
+        ):
+            if not self.modal_image_provenance_components:
+                raise ValueError(
+                    "modal_image_provenance_components is required when "
+                    "modal_image_sha is unknown"
+                )
+            if self.modal_image_provenance_sha256 is None:
+                raise ValueError(
+                    "modal_image_provenance_sha256 is required when "
+                    "modal_image_sha is unknown"
+                )
+        if self.modal_image_provenance_components is not None:
+            if self.modal_image_provenance_sha256 is None:
+                raise ValueError(
+                    "modal_image_provenance_sha256 is required when "
+                    "modal_image_provenance_components is present"
+                )
+            if (
+                self.modal_image_provenance_sha256
+                != modal_image_provenance_digest(
+                    self.modal_image_provenance_components
+                )
+            ):
+                raise ValueError(
+                    "modal_image_provenance_sha256 must equal the digest of "
+                    "modal_image_provenance_components"
+                )
+        if all(value is not None for value in validation_values):
+            if self.grammar_valid is not bool(
+                self.gbnf_parse_valid and self.semantic_valid
+            ):
+                raise ValueError(
+                    "grammar_valid must equal gbnf_parse_valid and semantic_valid"
+                )
+            if self.grammar_valid and self.rejection_layer is not None:
+                raise ValueError("rejection_layer must be None when grammar_valid=True")
+            if not self.grammar_valid and self.rejection_layer is None:
+                raise ValueError("rejection_layer is required when grammar_valid=False")
         return self
+
+    def _validate_gc_generation_metadata(self) -> None:
+        missing: list[str] = []
+        if (
+            self.generation_metadata_schema_version
+            < CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
+        ):
+            missing.append("generation_metadata_schema_version")
+        for field_name in (
+            "grammar_sha",
+            "grammar_path",
+            "grammar_variant",
+            "gbnf_parse_valid",
+            "semantic_valid",
+            "grammar_valid",
+        ):
+            if getattr(self, field_name) is None:
+                missing.append(field_name)
+        if missing:
+            raise ValueError(
+                "G+C generation results require generation metadata: "
+                + ", ".join(sorted(set(missing)))
+            )
+        assert self.grammar_sha is not None
+        _validate_sha256(self.grammar_sha, "grammar_sha")
+
+    def _validate_c_generation_metadata_absent(self) -> None:
+        present = [
+            field_name
+            for field_name in (
+                "grammar_sha",
+                "grammar_path",
+                "grammar_variant",
+                "gbnf_parse_valid",
+                "semantic_valid",
+                "grammar_valid",
+                "rejection_layer",
+            )
+            if getattr(self, field_name) is not None
+        ]
+        if present:
+            raise ValueError(
+                "C generation results must not record grammar metadata: "
+                + ", ".join(present)
+            )
 
 
 class RemoteCorrectnessRequest(_StrictC2Schema):
@@ -408,6 +543,15 @@ def _require_non_empty_string(value: str) -> str:
     if not value:
         raise ValueError("value must not be empty")
     return value
+
+
+def _validate_sha256(value: str, field_name: str) -> None:
+    if not isinstance(value, str) or len(value) != 64:
+        raise ValueError(f"{field_name} must be a 64-character SHA256 hex digest")
+    try:
+        int(value, 16)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be a SHA256 hex digest") from exc
 
 
 def _require_member(value: str, allowed: tuple[str, ...], field_name: str) -> str:

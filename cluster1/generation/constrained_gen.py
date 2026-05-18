@@ -10,6 +10,7 @@ from cluster1.constants import DEFAULT_MAX_NEW_TOKENS
 from cluster1.constraints.hardware_checker import HardwareChecker
 from cluster1.generation.constrained_decoding import TritonGrammarLogitsProcessor
 from cluster1.generation.grammar_loader import load_compiled_grammar
+from cluster1.generation.provenance import UNKNOWN, classify_stop_reason
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,9 @@ class DecodedKernel:
     masked_token_rate: float | None
     generation_seed: int | None
     temperature: float
+    stop_reason: str = UNKNOWN
+    generated_token_count: int | None = None
+    grammar_final_state_observed: bool | None = None
 
 
 def generate_source(
@@ -63,13 +67,30 @@ def generate_source(
         generate_kwargs["logits_processor"] = [processor]
 
     output_ids = model.generate(**generate_kwargs)
+    generated_token_ids = _new_token_ids(output_ids, prompt_len)
+    grammar_final_state_observed = None
+    if processor is not None:
+        try:
+            processor.observe_generated_tokens(output_ids)
+            grammar_final_state_observed = processor.grammar_final_state_observed()
+        except Exception:
+            grammar_final_state_observed = None
     source = _decode_new_tokens(tokenizer, output_ids, prompt_len)
     masked_rate = processor.masked_token_rate() if processor is not None else None
+    eos_token_id = _eos_token_id(tokenizer)
     return DecodedKernel(
         source=source,
         masked_token_rate=masked_rate,
         generation_seed=seed,
         temperature=temperature,
+        stop_reason=classify_stop_reason(
+            generated_token_ids=generated_token_ids,
+            max_new_tokens=max_new_tokens,
+            eos_token_id=eos_token_id,
+            grammar_final_state_observed=grammar_final_state_observed,
+        ),
+        generated_token_count=len(generated_token_ids),
+        grammar_final_state_observed=grammar_final_state_observed,
     )
 
 
@@ -120,6 +141,13 @@ def _decode_new_tokens(tokenizer, output_ids, prompt_len: int) -> str:
     if isinstance(output_ids, str):
         return output_ids
 
+    new_tokens = _new_token_ids(output_ids, prompt_len)
+    return tokenizer.decode(new_tokens, skip_special_tokens=True)
+
+
+def _new_token_ids(output_ids, prompt_len: int) -> list[int]:
+    if isinstance(output_ids, str):
+        return []
     sequence = output_ids[0] if _is_batched(output_ids) else output_ids
     try:
         new_tokens = sequence[prompt_len:]
@@ -127,7 +155,17 @@ def _decode_new_tokens(tokenizer, output_ids, prompt_len: int) -> str:
         new_tokens = sequence[:, prompt_len:]
     if hasattr(new_tokens, "tolist"):
         new_tokens = new_tokens.tolist()
-    return tokenizer.decode(new_tokens, skip_special_tokens=True)
+    return [int(token_id) for token_id in new_tokens]
+
+
+def _eos_token_id(tokenizer) -> int | None:
+    value = getattr(tokenizer, "eos_token_id", None)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _is_batched(output_ids) -> bool:

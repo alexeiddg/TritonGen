@@ -17,6 +17,7 @@ from cluster1.results.dataclass import GenerationResult
 from cluster1.results.logger import append_result_jsonl
 from cluster2.feedback.trace import TraceSummary
 from cluster2.results.dataclass import (
+    CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION,
     CLUSTER2_RESULTS_SCHEMA_VERSION,
     FORBIDDEN_CLUSTER2_RESULT_FIELDS,
     Cluster2ContentHashSidecar,
@@ -26,6 +27,7 @@ from cluster2.results.dataclass import (
     Cluster2ReplayRowMetadata,
     generated_row,
     replay_control_row,
+    validate_generated_paper_scale_metadata,
 )
 from cluster2.results.logger import (
     Cluster2ResultsLogger,
@@ -36,6 +38,7 @@ from cluster2.results.logger import (
     validate_content_hash_sidecar_for_rows,
     write_cluster2_results_jsonl,
 )
+from shared.generation_metadata import modal_image_provenance_digest
 
 
 def test_cluster2_eval_row_serialization_is_deterministic() -> None:
@@ -199,8 +202,141 @@ def test_replay_and_generated_rows_serialize_distinct_source_classes() -> None:
         generated_payload["generated_metadata"]["grammar_path"]
         == "cluster1/grammar/triton_kernel_agnostic.gbnf"
     )
+    assert "grammar_sha" in generated_payload["generated_metadata"]
+    assert "grammar_valid" in generated_payload["generated_metadata"]
+    assert "stop_reason" in generated_payload["generated_metadata"]
+    assert "xgrammar_version" in generated_payload["generated_metadata"]
     assert generated_payload["replay_metadata"] is None
     assert generated_payload["trace_summary"] is not None
+
+
+def test_generated_row_rejects_malformed_modal_image_sha() -> None:
+    with pytest.raises(ValueError, match="modal_image_sha"):
+        _generated_row(condition="C", modal_image_sha="not-a-sha")
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    (
+        "grammar_sha",
+        "gbnf_parse_valid",
+        "semantic_valid",
+        "grammar_valid",
+    ),
+)
+def test_generated_current_schema_gc_requires_complete_grammar_metadata(
+    field_name: str,
+) -> None:
+    overrides = {
+        "generation_metadata_schema_version": (
+            CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
+        ),
+        "grammar_sha": "a" * 64,
+        "gbnf_parse_valid": True,
+        "semantic_valid": True,
+        "grammar_valid": True,
+        "rejection_layer": None,
+        "modal_image_sha": "sha256:" + "a" * 64,
+    }
+    overrides[field_name] = None
+
+    with pytest.raises(ValueError, match=field_name):
+        _generated_row(condition="G+C", **overrides)
+
+
+def test_generated_current_schema_gc_requires_invalid_rejection_layer() -> None:
+    with pytest.raises(ValueError, match="rejection_layer is required"):
+        _generated_row(
+            condition="G+C",
+            generation_metadata_schema_version=(
+                CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
+            ),
+            grammar_sha="a" * 64,
+            gbnf_parse_valid=False,
+            semantic_valid=True,
+            grammar_valid=False,
+            rejection_layer=None,
+            modal_image_sha="sha256:" + "a" * 64,
+        )
+
+
+def test_generated_current_schema_unknown_modal_image_requires_fallback_components() -> None:
+    with pytest.raises(ValueError, match="modal_image_provenance_components"):
+        _generated_row(
+            condition="C",
+            generation_metadata_schema_version=(
+                CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
+            ),
+            modal_image_sha="unknown",
+            modal_image_provenance_sha256="b" * 64,
+            modal_image_provenance_components=None,
+        )
+
+
+def test_generated_current_schema_rejects_modal_image_fallback_digest_mismatch() -> None:
+    with pytest.raises(
+        ValueError,
+        match="modal_image_provenance_sha256 must equal",
+    ):
+        _generated_row(
+            condition="C",
+            generation_metadata_schema_version=(
+                CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
+            ),
+            modal_image_sha="unknown",
+            modal_image_provenance_sha256="b" * 64,
+            modal_image_provenance_components=_fallback_modal_image_components(),
+        )
+
+
+def test_generated_current_schema_accepts_valid_modal_image_fallback() -> None:
+    row = _generated_row(
+        condition="C",
+        generation_metadata_schema_version=(
+            CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
+        ),
+        modal_image_sha="unknown",
+        modal_image_provenance_sha256=_fallback_modal_image_sha256(),
+        modal_image_provenance_components=_fallback_modal_image_components(),
+    )
+
+    assert row.generated_metadata is not None
+    assert row.generated_metadata.modal_image_sha == "unknown"
+
+
+def test_generated_paper_scale_metadata_accepts_stable_modal_image_sha() -> None:
+    row = _generated_row(
+        condition="C",
+        stop_reason="eos_token",
+        xgrammar_version="0.1.33",
+        transformers_version="4.51.0",
+        tokenizers_version="0.21.0",
+        model_revision="a" * 40,
+        tokenizer_revision="b" * 40,
+        modal_image_sha="sha256:" + "a" * 64,
+        generation_metadata_schema_version=1,
+    )
+
+    assert row.generated_metadata is not None
+    validate_generated_paper_scale_metadata(row.generated_metadata)
+
+
+def test_generated_paper_scale_metadata_rejects_floating_revision() -> None:
+    row = _generated_row(
+        condition="C",
+        stop_reason="eos_token",
+        xgrammar_version="0.1.33",
+        transformers_version="4.51.0",
+        tokenizers_version="0.21.0",
+        model_revision="refs/heads/main",
+        tokenizer_revision="b" * 40,
+        modal_image_sha="sha256:" + "a" * 64,
+        generation_metadata_schema_version=1,
+    )
+
+    assert row.generated_metadata is not None
+    with pytest.raises(ValueError, match="model_revision_not_immutable"):
+        validate_generated_paper_scale_metadata(row.generated_metadata)
 
 
 def test_replay_rows_preserve_frozen_cluster1_hash_semantics() -> None:
@@ -325,7 +461,7 @@ def test_optional_diagnostics_are_not_required_runtime_paths(tmp_path: Path) -> 
     assert Cluster2ContentHashSidecar.from_dict(with_diagnostics.to_dict()) == with_diagnostics
 
 
-def test_cluster1_generation_result_schema_remains_untouched() -> None:
+def test_cluster1_generation_result_schema_includes_generation_metadata() -> None:
     assert [field.name for field in fields(GenerationResult)] == [
         "source",
         "model_id",
@@ -345,6 +481,22 @@ def test_cluster1_generation_result_schema_remains_untouched() -> None:
         "temperature",
         "run_id",
         "timestamp_utc",
+        "generation_metadata_schema_version",
+        "grammar_sha",
+        "grammar_path",
+        "gbnf_parse_valid",
+        "semantic_valid",
+        "grammar_valid",
+        "rejection_layer",
+        "stop_reason",
+        "xgrammar_version",
+        "transformers_version",
+        "tokenizers_version",
+        "model_revision",
+        "tokenizer_revision",
+        "modal_image_sha",
+        "modal_image_provenance_sha256",
+        "modal_image_provenance_components",
     ]
 
 
@@ -368,6 +520,7 @@ def _generated_row(
     kernel_name: str = "relu",
     source_text: str = "import triton\n@triton.jit\ndef k(): pass",
     functional_success: bool = True,
+    **metadata_overrides: Any,
 ) -> Cluster2EvalRow:
     source_hash = _source_hash(source_text)
     return generated_row(
@@ -404,6 +557,7 @@ def _generated_row(
             else None
         ),
         grammar_claim_scope="primary" if condition == "G+C" else None,
+        **metadata_overrides,
     )
 
 
@@ -479,6 +633,27 @@ def _external_pins() -> dict[str, str]:
 
 def _source_hash(source_text: str) -> str:
     return hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+
+
+def _fallback_modal_image_components() -> dict[str, object]:
+    return {
+        "schema": "modal_image_fallback_provenance.v1",
+        "image_source": {
+            "path": "shared/modal_harness/images.py",
+            "sha256": "a" * 64,
+            "generation_package_pins": ["torch==2.8.0"],
+        },
+        "runtime_versions": {
+            "xgrammar_version": "0.1.33",
+            "transformers_version": "4.47.1",
+            "tokenizers_version": "0.21.4",
+        },
+        "extra": {"modal_generation_gpu": "L4"},
+    }
+
+
+def _fallback_modal_image_sha256() -> str:
+    return modal_image_provenance_digest(_fallback_modal_image_components())
 
 
 def _recursive_keys(payload: Any) -> set[str]:

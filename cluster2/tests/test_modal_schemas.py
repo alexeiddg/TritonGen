@@ -24,6 +24,8 @@ from cluster2.modal.schemas import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = REPO_ROOT / "cluster2" / "modal" / "schemas.py"
 SHARED_MODAL_SCHEMA_PATH = REPO_ROOT / "shared" / "modal_harness" / "schemas.py"
+TEST_MODEL_REVISION = "a" * 40
+TEST_TOKENIZER_REVISION = "b" * 40
 FORBIDDEN_IMPORT_MODULES = (
     "modal",
     "torch",
@@ -342,8 +344,8 @@ def _generation_request_payload(
         "identity": _identity(condition),
         "prompt": "write a complete Triton relu kernel",
         "model_id": "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
-        "model_revision": "model-rev",
-        "tokenizer_revision": "tokenizer-rev",
+        "model_revision": TEST_MODEL_REVISION,
+        "tokenizer_revision": TEST_TOKENIZER_REVISION,
         "generation_seed": None,
     }
     payload.update(overrides)

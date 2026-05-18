@@ -25,6 +25,22 @@ from cluster2.modal.schemas import (
     modal_surface_metadata,
     require_c2_generation_condition,
 )
+from cluster1.generation.provenance import (
+    classify_stop_reason,
+    grammar_provenance,
+    modal_image_provenance,
+    model_tokenizer_revisions,
+    runtime_versions,
+)
+from shared.generation_metadata import (
+    CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION,
+    GRAMMAR_CLAIM_SCOPE_BY_VARIANT,
+    GRAMMAR_PATHS_BY_VARIANT,
+    UNKNOWN,
+    VALID_REJECTION_LAYERS,
+    VALID_STOP_REASONS,
+    modal_image_provenance_digest,
+)
 from shared.eval.content_hashes import (
     collect_c2_generation_hashes,
 )
@@ -35,13 +51,15 @@ from shared.modal_harness.secrets import hf_secrets
 from shared.modal_harness.volumes import hf_cache_volume
 
 
-C2_GENERATION_PAYLOAD_SCHEMA_VERSION = 1
+C2_GENERATION_PAYLOAD_SCHEMA_VERSION = 2
 C2_GENERATION_SURFACE = "c2_remote_generation"
 C2_GENERATION_HASH_CLASS = "c2_generation_pipeline"
 C2_G_PLUS_C_GRAMMAR_VARIANT = "task_agnostic"
-C2_G_PLUS_C_GRAMMAR_PATH = "cluster1/grammar/triton_kernel_agnostic.gbnf"
+C2_G_PLUS_C_GRAMMAR_PATH = GRAMMAR_PATHS_BY_VARIANT[C2_G_PLUS_C_GRAMMAR_VARIANT]
 C2_G_PLUS_C_TEMPLATE_UPPER_BOUND_GRAMMAR_VARIANT = "template_upper_bound"
-C2_G_PLUS_C_TEMPLATE_UPPER_BOUND_GRAMMAR_PATH = "cluster1/grammar/triton_kernel.gbnf"
+C2_G_PLUS_C_TEMPLATE_UPPER_BOUND_GRAMMAR_PATH = GRAMMAR_PATHS_BY_VARIANT[
+    C2_G_PLUS_C_TEMPLATE_UPPER_BOUND_GRAMMAR_VARIANT
+]
 C2_GRAMMAR_PATHS_BY_VARIANT = {
     C2_G_PLUS_C_GRAMMAR_VARIANT: C2_G_PLUS_C_GRAMMAR_PATH,
     C2_G_PLUS_C_TEMPLATE_UPPER_BOUND_GRAMMAR_VARIANT: (
@@ -49,8 +67,14 @@ C2_GRAMMAR_PATHS_BY_VARIANT = {
     ),
 }
 C2_GRAMMAR_CLAIM_SCOPE_BY_VARIANT = {
-    C2_G_PLUS_C_GRAMMAR_VARIANT: "primary",
-    C2_G_PLUS_C_TEMPLATE_UPPER_BOUND_GRAMMAR_VARIANT: "diagnostic_non_primary",
+    C2_G_PLUS_C_GRAMMAR_VARIANT: GRAMMAR_CLAIM_SCOPE_BY_VARIANT[
+        C2_G_PLUS_C_GRAMMAR_VARIANT
+    ],
+    C2_G_PLUS_C_TEMPLATE_UPPER_BOUND_GRAMMAR_VARIANT: (
+        GRAMMAR_CLAIM_SCOPE_BY_VARIANT[
+            C2_G_PLUS_C_TEMPLATE_UPPER_BOUND_GRAMMAR_VARIANT
+        ]
+    ),
 }
 C2_FROZEN_G_ARTIFACT_BY_GRAMMAR_VARIANT = {
     C2_G_PLUS_C_GRAMMAR_VARIANT: "g_task_agnostic_n5_l4_rerun",
@@ -101,6 +125,17 @@ PHASE_MINUS1_G_GENERATION_SOURCE_HASHES: dict[str, str] = {
         "cc1fc4e02156c659466f5b7ab75f7ff037e99f936e223b042750e356cdad9bab"
     ),
 }
+APPROVED_INSTRUMENTED_G_GENERATION_SOURCE_HASHES: dict[str, str] = {
+    "cluster1/generation/constrained_gen.py": (
+        "123304d9f7a7c57c36e218532df4e28240b96ceefa1088e351c4d90b025093f5"
+    ),
+    "cluster1/generation/constrained_decoding.py": (
+        "4243512e56c684880362179f0f4f6e8ba1709860431eda0628984dff954633d1"
+    ),
+}
+APPROVED_INSTRUMENTED_REMOTE_GENERATOR_GENERATE_ONE_HASH = (
+    "8a01b00ec4753bd7077ddace432c562a9f598d6ece8a028586fca667c10ce724"
+)
 
 c2_generation_image = llm_generation_image.add_local_python_source("cluster2")
 
@@ -124,6 +159,9 @@ class _DecodedC2Kernel:
     source: str
     generation_seed: int | None
     temperature: float
+    stop_reason: str = UNKNOWN
+    generated_token_count: int | None = None
+    grammar_final_state_observed: bool | None = None
 
 
 @app.cls(
@@ -285,6 +323,18 @@ def run_c2_generation_with_loaded_model(
         condition,
         grammar_variant=request.grammar_variant,
     )
+    runtime_metadata = runtime_versions()
+    revision_metadata = model_tokenizer_revisions(
+        model,
+        tokenizer,
+        model_revision=request.model_revision,
+        tokenizer_revision=request.tokenizer_revision,
+    )
+    image_metadata = modal_image_provenance(
+        extra={
+            "modal_generation_gpu": REMOTE_C2_GENERATION_GPU,
+        }
+    )
     if condition == "G+C":
         if verify_g_hashes_fn is None:
             verify_phase_minus1_g_generation_hashes(
@@ -295,8 +345,19 @@ def run_c2_generation_with_loaded_model(
 
     compiled_grammar = None
     hardware_checker = None
+    resolved_grammar_path = None
+    grammar_metadata = {
+        "grammar_sha": None,
+        "grammar_path": None,
+        "grammar_variant": routing.grammar_variant,
+    }
     if routing.grammar_active:
         assert routing.grammar_path is not None
+        resolved_grammar_path = _resolve_grammar_path(routing.grammar_path)
+        grammar_metadata = grammar_provenance(
+            resolved_grammar_path,
+            grammar_variant=routing.grammar_variant,
+        )
         if load_compiled_grammar_fn is None:
             from cluster1.generation.grammar_loader import load_compiled_grammar
 
@@ -307,7 +368,7 @@ def run_c2_generation_with_loaded_model(
             hardware_checker_cls = HardwareChecker
 
         compiled_grammar = load_compiled_grammar_fn(
-            _resolve_grammar_path(routing.grammar_path),
+            resolved_grammar_path,
             tokenizer_grammar_id,
         )
         hardware_checker = hardware_checker_cls(
@@ -354,11 +415,47 @@ def run_c2_generation_with_loaded_model(
                 seed=request.generation_seed,
             )
 
+    validation_fields = {
+        "gbnf_parse_valid": None,
+        "semantic_valid": None,
+        "grammar_valid": None,
+        "rejection_layer": None,
+    }
+    if routing.grammar_active:
+        assert resolved_grammar_path is not None
+        from cluster1.grammar.triton_kernel_validator import validate_source_layers
+
+        validation = validate_source_layers(
+            _decoded_source(decoded),
+            grammar_path=Path(resolved_grammar_path),
+        )
+        validation_fields = validation.to_row_fields()
+
     result = RemoteC2GenerationResult(
         identity=request.identity,
         source=_decoded_source(decoded),
         model_id=request.model_id,
-        model_revision=request.model_revision,
+        model_revision=revision_metadata["model_revision"],
+        tokenizer_revision=revision_metadata["tokenizer_revision"],
+        grammar_sha=grammar_metadata["grammar_sha"],
+        grammar_path=grammar_metadata["grammar_path"],
+        grammar_variant=routing.grammar_variant,
+        gbnf_parse_valid=validation_fields["gbnf_parse_valid"],
+        semantic_valid=validation_fields["semantic_valid"],
+        grammar_valid=validation_fields["grammar_valid"],
+        rejection_layer=validation_fields["rejection_layer"],
+        stop_reason=_decoded_stop_reason(decoded),
+        xgrammar_version=runtime_metadata["xgrammar_version"],
+        transformers_version=runtime_metadata["transformers_version"],
+        tokenizers_version=runtime_metadata["tokenizers_version"],
+        modal_image_sha=image_metadata["modal_image_sha"],
+        modal_image_provenance_sha256=image_metadata[
+            "modal_image_provenance_sha256"
+        ],
+        modal_image_provenance_components=image_metadata[
+            "modal_image_provenance_components"
+        ],
+        generation_metadata_schema_version=CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION,
         generation_seed=_decoded_generation_seed(decoded, request.generation_seed),
     )
     return build_success_payload(
@@ -366,6 +463,9 @@ def run_c2_generation_with_loaded_model(
         result,
         routing,
         tokenizer_grammar_id=tokenizer_grammar_id,
+        runtime_metadata=runtime_metadata,
+        revision_metadata=revision_metadata,
+        image_metadata=image_metadata,
         modal_function_call_id=modal_function_call_id,
         modal_input_id=modal_input_id,
     )
@@ -377,6 +477,9 @@ def build_success_payload(
     routing: C2GenerationRouting,
     *,
     tokenizer_grammar_id: str,
+    runtime_metadata: dict[str, str] | None = None,
+    revision_metadata: dict[str, str] | None = None,
+    image_metadata: dict[str, str | None] | None = None,
     modal_function_call_id: str | None,
     modal_input_id: str | None,
 ) -> dict[str, Any]:
@@ -384,6 +487,22 @@ def build_success_payload(
 
     if result.source is None:
         raise ValueError("generated C2 result must include source")
+    runtime_metadata = runtime_metadata or {
+        "xgrammar_version": result.xgrammar_version,
+        "transformers_version": result.transformers_version,
+        "tokenizers_version": result.tokenizers_version,
+    }
+    revision_metadata = revision_metadata or {
+        "model_revision": result.model_revision,
+        "tokenizer_revision": result.tokenizer_revision or request.tokenizer_revision,
+    }
+    image_metadata = image_metadata or {
+        "modal_image_sha": result.modal_image_sha,
+        "modal_image_provenance_sha256": result.modal_image_provenance_sha256,
+        "modal_image_provenance_components": (
+            result.modal_image_provenance_components
+        ),
+    }
     source_sha256 = hashlib.sha256(result.source.encode("utf-8")).hexdigest()
     payload = {
         "schema_version": C2_GENERATION_PAYLOAD_SCHEMA_VERSION,
@@ -408,15 +527,40 @@ def build_success_payload(
         "generation_identity": {
             "grammar_active": routing.grammar_active,
             "grammar_variant": routing.grammar_variant,
-            "grammar_path": routing.grammar_path,
+            "grammar_path": result.grammar_path
+            if result.grammar_path is not None
+            else routing.grammar_path,
+            "grammar_sha": result.grammar_sha,
             "grammar_claim_scope": routing.grammar_claim_scope,
             "generation_seed": result.generation_seed,
+            "gbnf_parse_valid": result.gbnf_parse_valid,
+            "semantic_valid": result.semantic_valid,
+            "grammar_valid": result.grammar_valid,
+            "rejection_layer": result.rejection_layer,
+            "stop_reason": result.stop_reason,
+            "generation_metadata_schema_version": (
+                result.generation_metadata_schema_version
+            ),
         },
         "model_identity": {
             "model_id": request.model_id,
             "model_revision": request.model_revision,
             "tokenizer_revision": request.tokenizer_revision,
             "tokenizer_grammar_id": tokenizer_grammar_id,
+            "observed_model_revision": revision_metadata["model_revision"],
+            "observed_tokenizer_revision": revision_metadata["tokenizer_revision"],
+        },
+        "runtime_identity": {
+            "xgrammar_version": runtime_metadata["xgrammar_version"],
+            "transformers_version": runtime_metadata["transformers_version"],
+            "tokenizers_version": runtime_metadata["tokenizers_version"],
+            "modal_image_sha": image_metadata["modal_image_sha"],
+            "modal_image_provenance_sha256": image_metadata[
+                "modal_image_provenance_sha256"
+            ],
+            "modal_image_provenance_components": image_metadata[
+                "modal_image_provenance_components"
+            ],
         },
         "generation_result": result.model_dump(),
         "generation_hashes": collect_c2_generation_hashes(request.identity.condition),
@@ -446,6 +590,7 @@ def validate_remote_c2_generation_payload(payload: dict[str, Any]) -> dict[str, 
         "source_identity",
         "generation_identity",
         "model_identity",
+        "runtime_identity",
         "generation_result",
         "generation_hashes",
         "modal_context",
@@ -475,9 +620,57 @@ def validate_remote_c2_generation_payload(payload: dict[str, Any]) -> dict[str, 
         raise ValueError("generation_result source does not match wrapper source")
     _validate_source_identity(payload["source_identity"], identity, payload["source"])
     _validate_generation_identity(payload["generation_identity"], identity)
+    _validate_generation_identity_matches_result(
+        payload["generation_identity"],
+        result,
+    )
     _validate_model_identity(payload["model_identity"], result)
+    _validate_runtime_identity(payload["runtime_identity"])
+    _validate_runtime_identity_matches_result(payload["runtime_identity"], result)
     _validate_modal_context(payload["modal_context"])
     return payload
+
+
+def _validate_generation_identity_matches_result(
+    generation_identity: dict[str, Any],
+    result: RemoteC2GenerationResult,
+) -> None:
+    for field_name in (
+        "grammar_sha",
+        "grammar_path",
+        "grammar_variant",
+        "gbnf_parse_valid",
+        "semantic_valid",
+        "grammar_valid",
+        "rejection_layer",
+        "stop_reason",
+        "generation_metadata_schema_version",
+        "generation_seed",
+    ):
+        if generation_identity.get(field_name) != getattr(result, field_name):
+            raise ValueError(
+                "generation_identity "
+                f"{field_name} does not match generation_result"
+            )
+
+
+def _validate_runtime_identity_matches_result(
+    runtime_identity: dict[str, Any],
+    result: RemoteC2GenerationResult,
+) -> None:
+    for field_name in (
+        "xgrammar_version",
+        "transformers_version",
+        "tokenizers_version",
+        "modal_image_sha",
+        "modal_image_provenance_sha256",
+        "modal_image_provenance_components",
+    ):
+        if runtime_identity.get(field_name) != getattr(result, field_name):
+            raise ValueError(
+                "runtime_identity "
+                f"{field_name} does not match generation_result"
+            )
 
 
 def current_remote_generator_generate_one_hash(
@@ -488,11 +681,10 @@ def current_remote_generator_generate_one_hash(
     modal_generation = _phase_minus1_modal_generation(manifest_path)
     record = modal_generation["RemoteGenerator.generate_one"]
     source_path = REPO_ROOT / record["path"]
-    lines = record["lines"]
-    return _source_range_sha256(
+    return _class_method_source_sha256(
         source_path,
-        start_line=int(lines["start"]),
-        end_line=int(lines["end"]),
+        class_name="RemoteGenerator",
+        method_name="generate_one",
     )
 
 
@@ -508,18 +700,25 @@ def expected_phase_minus1_remote_generator_generate_one_hash(
 def verify_phase_minus1_remote_generator_hash(
     manifest_path: str | Path = PHASE_MINUS1_MANIFEST_PATH,
 ) -> dict[str, str]:
-    """Validate that the frozen Cluster 1 remote generation method is unchanged."""
+    """Validate the frozen or explicitly approved instrumented C1 generator."""
 
     modal_generation = _phase_minus1_modal_generation(manifest_path)
     expected_hash = str(
         modal_generation["RemoteGenerator.generate_one"]["source_sha256"]
     )
     current_hash = current_remote_generator_generate_one_hash(manifest_path)
+    result_hashes = {"RemoteGenerator.generate_one": expected_hash}
     if current_hash != expected_hash:
-        raise ValueError(
-            "RemoteGenerator.generate_one hash mismatch against Phase -1: "
-            f"expected {expected_hash}, got {current_hash}"
-        )
+        if current_hash != APPROVED_INSTRUMENTED_REMOTE_GENERATOR_GENERATE_ONE_HASH:
+            raise ValueError(
+                "RemoteGenerator.generate_one hash mismatch against Phase -1 "
+                "and approved instrumentation pin: "
+                f"phase_minus1={expected_hash}, "
+                "approved_instrumented="
+                f"{APPROVED_INSTRUMENTED_REMOTE_GENERATOR_GENERATE_ONE_HASH}, "
+                f"current={current_hash}"
+            )
+        result_hashes["RemoteGenerator.generate_one:current_instrumented"] = current_hash
 
     expected_gpu = str(modal_generation["DEFAULT_GENERATION_GPU"])
     current_gpu = str(
@@ -533,7 +732,7 @@ def verify_phase_minus1_remote_generator_hash(
             "DEFAULT_GENERATION_GPU mismatch against Phase -1: "
             f"expected {expected_gpu!r}, got {current_gpu!r}"
         )
-    return {"RemoteGenerator.generate_one": current_hash}
+    return result_hashes
 
 
 def verify_phase_minus1_g_generation_hashes(
@@ -561,6 +760,16 @@ def _verify_phase_minus1_frozen_g_source_hashes(
             raise FileNotFoundError(f"frozen Cluster 1 G asset not found: {rel_path}")
         current_hash = _file_sha256(source_path)
         if current_hash != expected_hash:
+            approved_instrumented_hash = (
+                APPROVED_INSTRUMENTED_G_GENERATION_SOURCE_HASHES.get(rel_path)
+            )
+            if (
+                approved_instrumented_hash is not None
+                and current_hash == approved_instrumented_hash
+            ):
+                current_hashes[f"phase_minus1_expected:{rel_path}"] = expected_hash
+                current_hashes[f"instrumented_current:{rel_path}"] = current_hash
+                continue
             raise ValueError(
                 "Cluster 1 frozen G asset hash mismatch against Phase -1: "
                 f"{rel_path} expected {expected_hash}, got {current_hash}"
@@ -634,6 +843,32 @@ def _source_range_sha256(
     lines = Path(path).read_text(encoding="utf-8").splitlines(keepends=True)
     source = "".join(lines[start_line - 1 : end_line]).strip()
     return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+
+def _class_method_source_sha256(
+    path: str | Path,
+    *,
+    class_name: str,
+    method_name: str,
+) -> str:
+    source_text = Path(path).read_text(encoding="utf-8")
+    lines = source_text.splitlines(keepends=True)
+    tree = ast.parse(source_text)
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.name != class_name:
+            continue
+        for item in node.body:
+            if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if item.name != method_name:
+                continue
+            if item.end_lineno is None:
+                raise ValueError(f"{class_name}.{method_name} end line unavailable")
+            decorator_lines = [decorator.lineno for decorator in item.decorator_list]
+            start_line = min([item.lineno, *decorator_lines])
+            source = "".join(lines[start_line - 1 : item.end_lineno]).strip()
+            return hashlib.sha256(source.encode("utf-8")).hexdigest()
+    raise ValueError(f"{class_name}.{method_name} not found in {path}")
 
 
 def _literal_assignment_value(path: str | Path, name: str) -> Any:
@@ -711,10 +946,17 @@ def _generate_unconstrained_source(
     generate_kwargs.update(encoded)
 
     output_ids = model.generate(**generate_kwargs)
+    generated_token_ids = _new_token_ids(output_ids, prompt_len)
     return _DecodedC2Kernel(
         source=_decode_new_tokens(tokenizer, output_ids, prompt_len),
         generation_seed=seed,
         temperature=temperature,
+        stop_reason=classify_stop_reason(
+            generated_token_ids=generated_token_ids,
+            max_new_tokens=max_new_tokens,
+            eos_token_id=_eos_token_id(tokenizer),
+        ),
+        generated_token_count=len(generated_token_ids),
     )
 
 
@@ -799,6 +1041,15 @@ def _decode_new_tokens(tokenizer: Any, output_ids: Any, prompt_len: int) -> str:
     if isinstance(output_ids, str):
         return output_ids
 
+    return tokenizer.decode(
+        _new_token_ids(output_ids, prompt_len),
+        skip_special_tokens=True,
+    )
+
+
+def _new_token_ids(output_ids: Any, prompt_len: int) -> list[int]:
+    if isinstance(output_ids, str):
+        return []
     sequence = output_ids[0] if _is_batched(output_ids) else output_ids
     try:
         new_tokens = sequence[prompt_len:]
@@ -806,7 +1057,17 @@ def _decode_new_tokens(tokenizer: Any, output_ids: Any, prompt_len: int) -> str:
         new_tokens = sequence[:, prompt_len:]
     if hasattr(new_tokens, "tolist"):
         new_tokens = new_tokens.tolist()
-    return tokenizer.decode(new_tokens, skip_special_tokens=True)
+    return [int(token_id) for token_id in new_tokens]
+
+
+def _eos_token_id(tokenizer: Any) -> int | None:
+    value = getattr(tokenizer, "eos_token_id", None)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _is_batched(output_ids: Any) -> bool:
@@ -840,6 +1101,14 @@ def _decoded_generation_seed(decoded: Any, fallback: int | None) -> int | None:
     if value < 0:
         raise ValueError("generation_seed must be non-negative")
     return value
+
+
+def _decoded_stop_reason(decoded: Any) -> str:
+    if isinstance(decoded, dict):
+        value = decoded.get("stop_reason", UNKNOWN)
+    else:
+        value = getattr(decoded, "stop_reason", UNKNOWN)
+    return value if isinstance(value, str) and value else UNKNOWN
 
 
 def _inference_mode(torch_module: Any):
@@ -894,12 +1163,24 @@ def _validate_generation_identity(
         raise ValueError("generation_identity grammar_active does not match condition")
     if generation_identity.get("grammar_variant") != routing.grammar_variant:
         raise ValueError("generation_identity grammar_variant does not match condition")
-    if generation_identity.get("grammar_path") != routing.grammar_path:
+    grammar_path = generation_identity.get("grammar_path")
+    if grammar_path != routing.grammar_path and (
+        not isinstance(grammar_path, str)
+        or routing.grammar_path is None
+        or not grammar_path.endswith(routing.grammar_path)
+    ):
         raise ValueError("generation_identity grammar_path does not match condition")
     if generation_identity.get("grammar_claim_scope") != routing.grammar_claim_scope:
         raise ValueError(
             "generation_identity grammar_claim_scope does not match condition"
         )
+    if routing.grammar_active:
+        if not generation_identity.get("grammar_sha"):
+            raise ValueError("grammar-active generation_identity must include grammar_sha")
+        _validate_optional_sha256(generation_identity.get("grammar_sha"), "grammar_sha")
+    else:
+        _validate_grammar_inactive_generation_identity(generation_identity)
+    _validate_generation_validation_fields(generation_identity)
     generation_seed = generation_identity.get("generation_seed")
     if generation_seed is not None and (
         not isinstance(generation_seed, int) or isinstance(generation_seed, bool)
@@ -924,10 +1205,117 @@ def _validate_model_identity(
             raise ValueError(f"model_identity must include non-empty {field_name}")
     if model_identity["model_id"] != result.model_id:
         raise ValueError("model_identity model_id does not match generation_result")
-    if model_identity["model_revision"] != result.model_revision:
+    if model_identity.get("observed_model_revision") != result.model_revision:
         raise ValueError(
-            "model_identity model_revision does not match generation_result"
+            "model_identity observed_model_revision does not match generation_result"
         )
+    if model_identity.get("observed_tokenizer_revision") != result.tokenizer_revision:
+        raise ValueError(
+            "model_identity observed_tokenizer_revision does not match generation_result"
+        )
+
+
+def _validate_runtime_identity(runtime_identity: Any) -> None:
+    if not isinstance(runtime_identity, dict):
+        raise TypeError("runtime_identity must be a dict")
+    for field_name in (
+        "xgrammar_version",
+        "transformers_version",
+        "tokenizers_version",
+        "modal_image_sha",
+    ):
+        value = runtime_identity.get(field_name)
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"runtime_identity must include non-empty {field_name}")
+    modal_image_sha = runtime_identity["modal_image_sha"]
+    fallback = runtime_identity.get("modal_image_provenance_sha256")
+    components = runtime_identity.get("modal_image_provenance_components")
+    if modal_image_sha == UNKNOWN:
+        _validate_sha256(fallback, "modal_image_provenance_sha256")
+        if not isinstance(components, dict) or not components:
+            raise ValueError(
+                "runtime_identity must include modal_image_provenance_components "
+                "when modal_image_sha is unknown"
+            )
+        if modal_image_provenance_digest(components) != fallback:
+            raise ValueError(
+                "modal_image_provenance_sha256 must match "
+                "modal_image_provenance_components"
+            )
+    else:
+        _validate_stable_image_sha(modal_image_sha, "modal_image_sha")
+        _validate_optional_sha256(fallback, "modal_image_provenance_sha256")
+        if components is not None and not isinstance(components, dict):
+            raise TypeError(
+                "runtime_identity modal_image_provenance_components must be a "
+                "mapping or None"
+            )
+
+
+def _validate_grammar_inactive_generation_identity(
+    generation_identity: dict[str, Any],
+) -> None:
+    present = [
+        field_name
+        for field_name in (
+            "grammar_sha",
+            "gbnf_parse_valid",
+            "semantic_valid",
+            "grammar_valid",
+            "rejection_layer",
+        )
+        if generation_identity.get(field_name) is not None
+    ]
+    if present:
+        raise ValueError(
+            "grammar-inactive generation_identity must not record grammar metadata: "
+            + ", ".join(present)
+        )
+
+
+def _validate_generation_validation_fields(generation_identity: dict[str, Any]) -> None:
+    stop_reason = generation_identity.get("stop_reason")
+    if stop_reason is not None and stop_reason not in VALID_STOP_REASONS:
+        raise ValueError("unsupported generation_identity stop_reason")
+    rejection_layer = generation_identity.get("rejection_layer")
+    if rejection_layer is not None and rejection_layer not in VALID_REJECTION_LAYERS:
+        raise ValueError("unsupported generation_identity rejection_layer")
+    values = (
+        generation_identity.get("gbnf_parse_valid"),
+        generation_identity.get("semantic_valid"),
+        generation_identity.get("grammar_valid"),
+    )
+    if all(value is not None for value in values):
+        expected = bool(values[0] and values[1])
+        if values[2] is not expected:
+            raise ValueError(
+                "grammar_valid must equal gbnf_parse_valid and semantic_valid"
+            )
+        if values[2] and rejection_layer is not None:
+            raise ValueError("rejection_layer must be None when grammar_valid=True")
+        if not values[2] and rejection_layer is None:
+            raise ValueError("rejection_layer is required when grammar_valid=False")
+
+
+def _validate_optional_sha256(value: Any, field_name: str) -> None:
+    if value is None:
+        return
+    _validate_sha256(value, field_name)
+
+
+def _validate_sha256(value: Any, field_name: str) -> None:
+    if not isinstance(value, str) or len(value) != 64:
+        raise ValueError(f"{field_name} must be a 64-character SHA256 hex digest")
+    try:
+        int(value, 16)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be a SHA256 hex digest") from exc
+
+
+def _validate_stable_image_sha(value: Any, field_name: str) -> None:
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a stable image SHA digest")
+    _validate_sha256(value.removeprefix("sha256:"), field_name)
 
 
 def _validate_modal_context(modal_context: Any) -> None:

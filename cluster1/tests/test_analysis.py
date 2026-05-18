@@ -18,6 +18,7 @@ from cluster1.experiments.analyze_cluster1 import (
     unique_solution_rate,
 )
 from cluster1.experiments.make_cluster1_figures import (
+    LEGACY_FROZEN_FIGURE_NOTICE,
     results_to_dataframe,
     validate_integrity,
 )
@@ -362,6 +363,48 @@ def test_summary_groups_by_condition_variant_kernel_and_dtype(tmp_path: Path) ->
         "template_upper_bound",
         "task_agnostic",
     }
+
+
+def test_summary_uses_grammar_valid_for_acceptance_metric(tmp_path: Path) -> None:
+    jsonl_path = tmp_path / "grammar_valid.jsonl"
+    rows = [
+        _make_record(
+            grammar_active=True,
+            masked_token_rate=0.25,
+            grammar_sha="a" * 64,
+            grammar_path="/runtime/cluster1/grammar/triton_kernel.gbnf",
+            gbnf_parse_valid=True,
+            semantic_valid=i < 10,
+            grammar_valid=i < 10,
+            rejection_layer=None if i < 10 else "semantic_validator",
+            stop_reason="eos_token",
+            xgrammar_version="0.1.33",
+            transformers_version="4.47.1",
+            tokenizers_version="0.21.4",
+            model_revision="model-rev",
+            tokenizer_revision="tokenizer-rev",
+            modal_image_sha="unknown",
+            modal_image_provenance_sha256="b" * 64,
+            generation_metadata_schema_version=1,
+            generation_seed=i,
+            run_id=f"g-{i}",
+        )
+        for i in range(20)
+    ]
+    _write_jsonl(jsonl_path, rows)
+
+    summary = summarize_results(jsonl_path)
+
+    assert summary.loc[0, "grammar_valid_count"] == 10
+    assert summary.loc[0, "grammar_valid_rate"] == 0.5
+    assert summary.loc[0, "gbnf_parse_valid_rate"] == 1.0
+    assert summary.loc[0, "semantic_valid_rate"] == 0.5
+
+
+def test_cluster1_figure_path_is_marked_legacy_compile_only() -> None:
+    assert "LEGACY FROZEN C1 FIGURE PATH" in LEGACY_FROZEN_FIGURE_NOTICE
+    assert "grammar_valid" in LEGACY_FROZEN_FIGURE_NOTICE
+    assert "grammar_active labels" in LEGACY_FROZEN_FIGURE_NOTICE
 
 
 def test_analyzer_cli_accepts_task_agnostic_grammar_variant(

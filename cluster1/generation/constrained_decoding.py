@@ -79,6 +79,34 @@ class TritonGrammarLogitsProcessor(LogitsProcessor):
             return 0.0
         return float(mean(self._masked_fractions))
 
+    def observe_generated_tokens(self, input_ids) -> None:
+        """Advance matcher state through the final generated token sequence."""
+
+        if self._uses_fake_mask_api:
+            return
+        self._accept_generated_tokens(input_ids)
+
+    def grammar_final_state_observed(self) -> bool | None:
+        """Return final-state status if the backend exposes it."""
+
+        for target in (self._matcher, self._backend):
+            if target is None:
+                continue
+            for name in (
+                "is_terminated",
+                "is_accepting",
+                "is_final_state",
+                "is_finished",
+                "is_completed",
+            ):
+                method = getattr(target, name, None)
+                if callable(method):
+                    try:
+                        return bool(method())
+                    except TypeError:
+                        continue
+        return None
+
     def _init_xgrammar_matcher(self) -> None:
         try:
             import xgrammar as xgr

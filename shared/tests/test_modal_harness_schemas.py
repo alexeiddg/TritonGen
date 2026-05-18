@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from shared.generation_metadata import modal_image_provenance_digest
 from shared.modal_harness.errors import truncate_output
 from shared.modal_harness.schemas import (
     RemoteCompileRequest,
@@ -126,6 +127,26 @@ def test_generation_request_task_agnostic_variant_accepted() -> None:
     assert req.grammar_path == "cluster1/grammar/triton_kernel_agnostic.gbnf"
 
 
+def test_generation_request_preserves_explicit_revisions() -> None:
+    req = _make_generation_request(
+        model_revision="a" * 40,
+        tokenizer_revision="b" * 40,
+    )
+
+    assert req.model_revision == "a" * 40
+    assert req.tokenizer_revision == "b" * 40
+    assert RemoteGenerationRequest(**req.model_dump()) == req
+
+
+def test_generation_request_rejects_mutable_revisions() -> None:
+    with pytest.raises(ValueError, match="immutable revision"):
+        _make_generation_request(model_revision="main")
+    with pytest.raises(ValueError, match="immutable revision"):
+        _make_generation_request(tokenizer_revision="latest")
+    with pytest.raises(ValueError, match="40-character Hub commit SHA"):
+        _make_generation_request(model_revision="refs/heads/main")
+
+
 @pytest.mark.parametrize(
     ("grammar_variant", "grammar_path"),
     [
@@ -214,6 +235,64 @@ def test_generation_result_masked_rate_invariant() -> None:
     assert constrained.grammar_variant == "template_upper_bound"
 
 
+def test_generation_result_validates_joint_grammar_metadata() -> None:
+    result = RemoteGenerationResult(**_current_grammar_result_payload())
+
+    assert result.grammar_valid is False
+    assert result.rejection_layer == "semantic_validator"
+
+    with pytest.raises(ValueError, match="grammar_valid must equal"):
+        RemoteGenerationResult(
+            **{
+                **result.model_dump(),
+                "grammar_valid": True,
+                "rejection_layer": None,
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "grammar_variant",
+        "grammar_sha",
+        "grammar_path",
+        "gbnf_parse_valid",
+        "semantic_valid",
+        "grammar_valid",
+    ],
+)
+def test_generation_result_rejects_incomplete_current_grammar_metadata(
+    field_name: str,
+) -> None:
+    payload = _current_grammar_result_payload()
+    if field_name == "grammar_variant":
+        payload.pop(field_name)
+    else:
+        payload[field_name] = None
+
+    with pytest.raises(ValueError, match=field_name):
+        RemoteGenerationResult(**payload)
+
+
+def test_generation_result_rejects_unknown_image_without_fallback_components() -> None:
+    payload = _current_grammar_result_payload(
+        modal_image_provenance_components=None,
+    )
+
+    with pytest.raises(ValueError, match="modal_image_provenance_components"):
+        RemoteGenerationResult(**payload)
+
+
+def test_generation_result_rejects_unknown_image_with_bad_fallback_digest() -> None:
+    payload = _current_grammar_result_payload(
+        modal_image_provenance_sha256="b" * 64,
+    )
+
+    with pytest.raises(ValueError, match="modal_image_provenance_sha256"):
+        RemoteGenerationResult(**payload)
+
+
 def test_generation_result_legacy_missing_variant_defaults_to_template() -> None:
     result = RemoteGenerationResult(
         source="@triton.jit",
@@ -226,6 +305,49 @@ def test_generation_result_legacy_missing_variant_defaults_to_template() -> None
     )
 
     assert result.grammar_variant == "template_upper_bound"
+
+
+def _fallback_modal_image_components() -> dict[str, object]:
+    return {
+        "image": "cluster1-modal-generation",
+        "python_version": "3.11",
+        "packages": ["xgrammar", "transformers", "tokenizers"],
+        "extra": {"modal_generation_gpu": "L4"},
+    }
+
+
+def _current_grammar_result_payload(**overrides):
+    image_components = _fallback_modal_image_components()
+    payload = dict(
+        source="@triton.jit",
+        model_id="model",
+        grammar_active=True,
+        grammar_variant="task_agnostic",
+        grammar_sha="a" * 64,
+        grammar_path="/runtime/cluster1/grammar/triton_kernel_agnostic.gbnf",
+        gbnf_parse_valid=True,
+        semantic_valid=False,
+        grammar_valid=False,
+        rejection_layer="semantic_validator",
+        stop_reason="max_new_tokens",
+        xgrammar_version="0.1.33",
+        transformers_version="4.47.1",
+        tokenizers_version="0.21.4",
+        model_revision="a" * 40,
+        tokenizer_revision="b" * 40,
+        modal_image_sha="unknown",
+        modal_image_provenance_sha256=modal_image_provenance_digest(
+            image_components
+        ),
+        modal_image_provenance_components=image_components,
+        generation_metadata_schema_version=1,
+        masked_token_rate=0.25,
+        generation_seed=0,
+        temperature=0.2,
+        run_id="rid",
+    )
+    payload.update(overrides)
+    return payload
 
 
 def test_generation_result_rejects_wrong_masked_rate_shape() -> None:

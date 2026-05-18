@@ -306,6 +306,8 @@ def test_deterministic_constrained_generation_reaches_full_module_boundary(
     assert accepts_source(decoded.source)
     _assert_full_canonical_module(decoded.source, case)
     assert model.selected_tokens[-1] == model.tokenizer.eos_token_id
+    assert decoded.stop_reason == "eos_token"
+    assert decoded.generated_token_count == len(model.selected_tokens)
     assert all(score == -float("inf") for score in model.eos_scores_after_mask[:-1])
     assert model.eos_scores_after_mask[-1] == 10.0
     assert all(
@@ -326,6 +328,7 @@ def test_deterministic_completion_regression_fails_when_budget_ends_before_launc
     )
 
     assert decoded.source == "".join(helper_only_chunks)
+    assert decoded.stop_reason == "max_new_tokens"
     assert "def relu(x: torch.Tensor) -> torch.Tensor:" not in decoded.source
     assert model.tokenizer.eos_token_id not in model.selected_tokens
     assert not accepts_source(decoded.source)

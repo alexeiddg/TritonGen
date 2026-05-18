@@ -16,10 +16,15 @@ import pytest
 from cluster1.data.kernels import get_kernel_spec
 from cluster1.experiments import run_cluster1_modal as runner
 from cluster1.experiments.validate_cluster1_results import validate_cluster1_results
+from cluster1.generation.grammar_variants import grammar_path_for_variant
+from cluster1.generation.provenance import sha256_file
+from cluster1.grammar.triton_kernel_validator import validate_source_layers
 from cluster1.results.dataclass import (
+    GENERATION_METADATA_SCHEMA_VERSION,
     GenerationResult,
     validate_result_invariants,
 )
+from shared.generation_metadata import modal_image_provenance_digest
 from shared.modal_harness.schemas import (
     RemoteCompileResult,
     RemoteGenerationResult,
@@ -298,6 +303,7 @@ def _g_remote_pair(
         model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
         grammar_active=True,
         grammar_variant=grammar_variant,
+        **_g_generation_metadata_fields(grammar_variant),
         masked_token_rate=0.42,
         generation_seed=0,
         temperature=0.2,
@@ -313,6 +319,52 @@ def _g_remote_pair(
         factor_cell="G",
     )
     return generation, compile_
+
+
+def _g_generation_metadata_fields(grammar_variant: str) -> dict[str, object]:
+    grammar_path = grammar_path_for_variant(grammar_variant)
+    validation_fields = validate_source_layers(
+        _FAKE_SOURCE,
+        grammar_path=Path(grammar_path),
+    ).to_row_fields()
+    image_components = _fallback_modal_image_components()
+    return {
+        "generation_metadata_schema_version": GENERATION_METADATA_SCHEMA_VERSION,
+        "grammar_sha": sha256_file(grammar_path),
+        "grammar_path": grammar_path,
+        "gbnf_parse_valid": validation_fields["gbnf_parse_valid"],
+        "semantic_valid": validation_fields["semantic_valid"],
+        "grammar_valid": validation_fields["grammar_valid"],
+        "rejection_layer": validation_fields["rejection_layer"],
+        "stop_reason": "eos_token",
+        "xgrammar_version": "0.1.33",
+        "transformers_version": "4.47.1",
+        "tokenizers_version": "0.21.4",
+        "model_revision": "a" * 40,
+        "tokenizer_revision": "b" * 40,
+        "modal_image_sha": "unknown",
+        "modal_image_provenance_sha256": modal_image_provenance_digest(
+            image_components
+        ),
+        "modal_image_provenance_components": image_components,
+    }
+
+
+def _fallback_modal_image_components() -> dict[str, object]:
+    return {
+        "schema": "modal_image_fallback_provenance.v1",
+        "image_source": {
+            "path": "shared/modal_harness/images.py",
+            "sha256": "a" * 64,
+            "generation_package_pins": ["torch==2.8.0"],
+        },
+        "runtime_versions": {
+            "xgrammar_version": "0.1.33",
+            "transformers_version": "4.47.1",
+            "tokenizers_version": "0.21.4",
+        },
+        "extra": {"modal_generation_gpu": "L4"},
+    }
 
 
 def _compile_failure_pair() -> tuple[RemoteGenerationResult, RemoteCompileResult]:
@@ -403,6 +455,138 @@ def test_conversion_g_failure_produces_valid_failed_row() -> None:
     assert result.n_shapes_tested == 0
 
 
+def test_paper_scale_write_gate_rejects_legacy_row() -> None:
+    result = _existing_result(factor_cell="G")
+
+    with pytest.raises(ValueError, match="paper-scale rows require"):
+        runner._validate_result_for_scale_tier(result, scale_tier="paper")
+
+
+def test_paper_scale_write_gate_accepts_complete_modal_row() -> None:
+    spec = get_kernel_spec("elementwise")
+    generation, compile_ = _g_remote_pair()
+    result = runner.remote_results_to_generation_result(
+        generation=generation,
+        compile_=compile_,
+        spec=spec,
+        dtype="fp32",
+        grammar_active=True,
+        seed=0,
+        temperature=0.2,
+        model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+        run_id="rid-g",
+    )
+
+    runner._validate_result_for_scale_tier(result, scale_tier="paper")
+
+
+def test_conversion_preserves_modal_generation_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = get_kernel_spec("elementwise")
+    generation, compile_ = _g_remote_pair(grammar_variant="task_agnostic")
+    image_components = _fallback_modal_image_components()
+    generation = generation.model_copy(
+        update={
+            "generation_metadata_schema_version": GENERATION_METADATA_SCHEMA_VERSION,
+            "grammar_sha": "a" * 64,
+            "grammar_path": "/runtime/cluster1/grammar/triton_kernel_agnostic.gbnf",
+            "gbnf_parse_valid": True,
+            "semantic_valid": False,
+            "grammar_valid": False,
+            "rejection_layer": "semantic_validator",
+            "stop_reason": "max_new_tokens",
+            "xgrammar_version": "0.1.33",
+            "transformers_version": "4.47.1",
+            "tokenizers_version": "0.21.4",
+            "model_revision": "a" * 40,
+            "tokenizer_revision": "b" * 40,
+            "modal_image_sha": "unknown",
+            "modal_image_provenance_sha256": modal_image_provenance_digest(
+                image_components
+            ),
+            "modal_image_provenance_components": image_components,
+        }
+    )
+    monkeypatch.setattr(
+        runner,
+        "_validate_remote_generation_metadata_against_local",
+        lambda _generation, _grammar_active: None,
+    )
+
+    result = runner.remote_results_to_generation_result(
+        generation=generation,
+        compile_=compile_,
+        spec=spec,
+        dtype="fp32",
+        grammar_active=True,
+        seed=0,
+        temperature=0.2,
+        model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+        run_id="rid-g",
+    )
+
+    assert result.grammar_sha == "a" * 64
+    assert result.gbnf_parse_valid is True
+    assert result.semantic_valid is False
+    assert result.grammar_valid is False
+    assert result.rejection_layer == "semantic_validator"
+    assert result.stop_reason == "max_new_tokens"
+    assert result.xgrammar_version == "0.1.33"
+
+
+def test_conversion_rejects_uninstrumented_g_modal_payload() -> None:
+    spec = get_kernel_spec("elementwise")
+    generation, compile_ = _g_remote_pair()
+    generation = generation.model_copy(
+        update={
+            "generation_metadata_schema_version": 0,
+            "grammar_sha": None,
+            "grammar_path": None,
+            "gbnf_parse_valid": None,
+            "semantic_valid": None,
+            "grammar_valid": None,
+            "rejection_layer": None,
+        }
+    )
+
+    with pytest.raises(ValueError, match="current generation metadata schema"):
+        runner.remote_results_to_generation_result(
+            generation=generation,
+            compile_=compile_,
+            spec=spec,
+            dtype="fp32",
+            grammar_active=True,
+            seed=0,
+            temperature=0.2,
+            model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+            run_id="rid-g",
+        )
+
+
+def test_conversion_rejects_modal_grammar_path_variant_mismatch() -> None:
+    spec = get_kernel_spec("elementwise")
+    generation, compile_ = _g_remote_pair(grammar_variant="task_agnostic")
+    generation = generation.model_copy(
+        update={
+            "grammar_path": "/runtime/cluster1/grammar/triton_kernel.gbnf",
+        }
+    )
+
+    with pytest.raises(ValueError, match="grammar_path does not match"):
+        runner.remote_results_to_generation_result(
+            generation=generation,
+            compile_=compile_,
+            spec=spec,
+            dtype="fp32",
+            grammar_active=True,
+            seed=0,
+            temperature=0.2,
+            model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+            run_id="rid-g",
+        )
+
+
 def test_conversion_maps_unknown_error_to_runtime_error() -> None:
     spec = get_kernel_spec("elementwise")
     generation, _ = _baseline_remote_pair()
@@ -475,6 +659,8 @@ def _make_args(tmp_path: Path, **overrides) -> SimpleNamespace:
         n=1,
         output=str(tmp_path / "out.jsonl"),
         model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+        model_revision=None,
+        tokenizer_revision=None,
         dataset_id="ScalingIntelligence/KernelBench",
         grammar_variant="template_upper_bound",
         grammar_path=None,
@@ -607,6 +793,8 @@ def _write_resume_metadata(
                     "n": n,
                     "output": str(output),
                     "model_id": model_id,
+                    "model_revision": None,
+                    "tokenizer_revision": None,
                     "dataset_id": dataset_id,
                     "grammar_variant": grammar_variant,
                     "grammar_path": grammar_path,
@@ -718,11 +906,17 @@ def test_run_grammar_variant_both_expands_g_variants_without_dup_baseline(
 
     def fake_generate(**kwargs):
         calls["generate"].append(kwargs)
+        metadata_fields = (
+            _g_generation_metadata_fields(kwargs["grammar_variant"])
+            if kwargs["grammar_active"]
+            else {}
+        )
         return RemoteGenerationResult(
             source=_FAKE_SOURCE,
             model_id=kwargs["model_id"],
             grammar_active=kwargs["grammar_active"],
             grammar_variant=kwargs["grammar_variant"],
+            **metadata_fields,
             masked_token_rate=0.42 if kwargs["grammar_active"] else None,
             generation_seed=kwargs["generation_seed"],
             temperature=kwargs["temperature"],
@@ -777,6 +971,67 @@ def test_run_passes_modal_generation_gpu_to_generation_adapter(
     assert metadata["grammar_variant"] is None
     assert metadata["run_config"]["grammar_variant"] == "template_upper_bound"
     assert metadata["run_config"]["modal_generation_gpu"] == "L4"
+
+
+def test_run_passes_explicit_revisions_to_generation_adapter(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    args = _make_args(
+        tmp_path,
+        model_revision="a" * 40,
+        tokenizer_revision="b" * 40,
+    )
+
+    runner._run(args=args)
+
+    assert len(calls["generate"]) == 3
+    assert {call["model_revision"] for call in calls["generate"]} == {"a" * 40}
+    assert {call["tokenizer_revision"] for call in calls["generate"]} == {
+        "b" * 40
+    }
+    metadata = _read_metadata(Path(args.output))
+    assert metadata["model_revision"] == "a" * 40
+    assert metadata["tokenizer_revision"] == "b" * 40
+    assert metadata["tokenizer_revision_policy"] == "explicit_tokenizer_revision"
+    assert metadata["run_config"]["model_revision"] == "a" * 40
+    assert metadata["run_config"]["tokenizer_revision"] == "b" * 40
+
+
+def test_run_uses_same_repo_tokenizer_revision_fallback(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    args = _make_args(tmp_path, model_revision="a" * 40)
+
+    runner._run(args=args)
+
+    assert {call["model_revision"] for call in calls["generate"]} == {"a" * 40}
+    assert {call["tokenizer_revision"] for call in calls["generate"]} == {
+        "a" * 40
+    }
+    metadata = _read_metadata(Path(args.output))
+    assert metadata["tokenizer_revision"] == "a" * 40
+    assert metadata["tokenizer_revision_policy"] == "same_repo_model_revision"
+
+
+def test_run_rejects_mutable_revision_before_remote_adapters(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    args = _make_args(tmp_path, model_revision="main")
+
+    with pytest.raises(ValueError, match="immutable revision"):
+        runner._run(args=args)
+
+    assert calls["generate"] == []
+    assert calls["compile"] == []
 
 
 def test_existing_output_without_mode_fails_before_remote_adapters(

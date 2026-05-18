@@ -58,11 +58,18 @@ layers:
 
 | Failure layer | Meaning |
 | --- | --- |
-| `GBNF_PARSE_REJECT` | Offline GBNF parse rejected the generated source or the generation terminated as an incomplete grammar prefix. |
-| `VALIDATOR_ONLY_STRUCTURAL_REJECT` | GBNF parse passed, but offline structural Cluster 1 surface checks failed. |
-| `VALIDATOR_ONLY_SEMANTIC_REJECT` | GBNF parse passed, but offline semantic checks failed. |
-| `DECODER_ENVIRONMENT_MISMATCH` | Modal/decoder grammar provenance differs from the local validator grammar or parser environment. |
-| `UNKNOWN` | The failure layer was not recoverable from the artifact. |
+| `gbnf_parse` | Offline GBNF parse rejected the generated source or the generation terminated as an incomplete grammar prefix. |
+| `python_ast` | GBNF parse passed, but Python AST parsing failed. |
+| `semantic_validator` | GBNF parse and AST parse passed, but offline semantic/surface checks failed. |
+| `runtime_error` | Runtime grammar provenance, validator setup, or validation execution failed. |
+| `unknown` | The failure layer was not recoverable from the artifact. |
+
+`grammar_active` means the constrained decoding path was attempted. It is not
+evidence of G acceptance. `masked_token_rate` is a masking diagnostic over
+observed decoding steps, not proof of strict enforcement. Current-generation
+paper-scale rows must carry per-row grammar provenance, runtime/model/tokenizer
+provenance, stop reason, split validation fields, joint `grammar_valid`, and
+`rejection_layer`.
 
 `compile_success` remains the Level 1 compile gate. `functional_success` remains
 the Level 2 numerical correctness gate. Neither field should be used as a proxy

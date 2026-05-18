@@ -19,11 +19,21 @@ from cluster1.data.prompts.prompt_contract import build_prompt
 from cluster1.constraints.hardware_checker import HardwareChecker
 from cluster1.generation.constrained_gen import DEFAULT_MAX_NEW_TOKENS, generate_source
 from cluster1.generation.grammar_loader import load_compiled_grammar
+from cluster1.generation.grammar_variants import grammar_path_for_variant
+from cluster1.generation.provenance import (
+    grammar_provenance,
+    modal_image_provenance,
+    model_tokenizer_revisions,
+    runtime_versions,
+)
+from cluster1.grammar.triton_kernel_validator import validate_source_layers
 from cluster1.results.dataclass import (
     DEFAULT_GRAMMAR_VARIANT,
+    GENERATION_METADATA_SCHEMA_VERSION,
     GenerationResult,
     compute_unique_solution_hash,
     grammar_variant_for_cell,
+    validate_paper_scale_metadata,
     validate_result_invariants,
 )
 from cluster1.results.logger import append_result_jsonl
@@ -64,6 +74,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--max-new-tokens", type=int, default=DEFAULT_MAX_NEW_TOKENS)
+    parser.add_argument(
+        "--scale-tier",
+        choices=("smoke", "development", "paper"),
+        default="smoke",
+        help="Use 'paper' to enforce current generation metadata before writing.",
+    )
     return parser.parse_args(argv)
 
 
@@ -126,6 +142,10 @@ def run_one_generation(
         grammar_active=grammar_active,
         grammar_variant=args.grammar_variant if grammar_active else None,
     )
+    grammar_path = getattr(args, "grammar_path", DEFAULT_GRAMMAR_PATH)
+    if grammar_active:
+        assert grammar_variant is not None
+        _ensure_grammar_path_matches_variant(grammar_path, grammar_variant)
     decoded = generate_source(
         prompt=prompt,
         model=model,
@@ -137,6 +157,26 @@ def run_one_generation(
         temperature=args.temperature,
         seed=seed,
     )
+    runtime_metadata = runtime_versions()
+    revision_metadata = model_tokenizer_revisions(model, tokenizer)
+    image_metadata = modal_image_provenance(extra={"runtime": "local"})
+    grammar_metadata = {
+        "grammar_sha": None,
+        "grammar_path": None,
+    }
+    validation_fields = {
+        "gbnf_parse_valid": None,
+        "semantic_valid": None,
+        "grammar_valid": None,
+        "rejection_layer": None,
+    }
+    if grammar_active:
+        grammar_metadata = grammar_provenance(
+            grammar_path,
+            grammar_variant=grammar_variant,
+        )
+        validation = validate_source_layers(decoded.source, grammar_path=grammar_path)
+        validation_fields = validation.to_row_fields()
 
     compile_results = check_compiles_all_dtypes(
         decoded.source,
@@ -150,6 +190,26 @@ def run_one_generation(
         model_id=args.model_id,
         grammar_active=grammar_active,
         grammar_variant=grammar_variant,
+        generation_metadata_schema_version=GENERATION_METADATA_SCHEMA_VERSION,
+        grammar_sha=grammar_metadata["grammar_sha"],
+        grammar_path=grammar_metadata["grammar_path"],
+        gbnf_parse_valid=validation_fields["gbnf_parse_valid"],
+        semantic_valid=validation_fields["semantic_valid"],
+        grammar_valid=validation_fields["grammar_valid"],
+        rejection_layer=validation_fields["rejection_layer"],
+        stop_reason=getattr(decoded, "stop_reason", "unknown"),
+        xgrammar_version=runtime_metadata["xgrammar_version"],
+        transformers_version=runtime_metadata["transformers_version"],
+        tokenizers_version=runtime_metadata["tokenizers_version"],
+        model_revision=revision_metadata["model_revision"],
+        tokenizer_revision=revision_metadata["tokenizer_revision"],
+        modal_image_sha=image_metadata["modal_image_sha"],
+        modal_image_provenance_sha256=image_metadata[
+            "modal_image_provenance_sha256"
+        ],
+        modal_image_provenance_components=image_metadata[
+            "modal_image_provenance_components"
+        ],
         kernel_class=spec.kernel_class,
         kernel_name=spec.name,
         dtype=dtype,
@@ -211,6 +271,8 @@ def main(argv: list[str] | None = None) -> int:
             compiled_grammar=compiled_grammar,
             args=args,
         )
+        if args.scale_tier == "paper":
+            validate_paper_scale_metadata(result)
         append_result_jsonl(args.output, result)
     return 0
 
@@ -236,15 +298,35 @@ def _needs_grammar(condition: str) -> bool:
 
 
 def _validate_grammar_variant_run_path(args: argparse.Namespace) -> None:
-    if (
-        args.condition in {"G", "both"}
-        and args.grammar_variant == "task_agnostic"
-        and Path(args.grammar_path) == DEFAULT_GRAMMAR_PATH
+    if not _needs_grammar(args.condition):
+        return
+    _ensure_grammar_path_matches_variant(args.grammar_path, args.grammar_variant)
+
+
+def _ensure_grammar_path_matches_variant(
+    grammar_path: str | Path,
+    grammar_variant: str,
+) -> None:
+    expected_path = Path(grammar_path_for_variant(grammar_variant))
+    observed_path = Path(grammar_path)
+    if _normalized_grammar_path(observed_path) != _normalized_grammar_path(
+        expected_path,
     ):
         raise ValueError(
-            "grammar_variant='task_agnostic' requires an explicit task-agnostic "
-            "grammar path; the task-agnostic grammar is not implemented yet."
+            "grammar_path must match grammar_variant mapping: "
+            f"{grammar_variant!r} -> {expected_path.as_posix()!r}; "
+            f"got {observed_path.as_posix()!r}"
         )
+
+
+def _normalized_grammar_path(path: Path) -> Path:
+    if not path.is_absolute():
+        return Path(path.as_posix())
+    repo_root = Path(__file__).resolve().parents[2]
+    try:
+        return path.resolve().relative_to(repo_root.resolve())
+    except ValueError:
+        return path.resolve()
 
 
 if __name__ == "__main__":

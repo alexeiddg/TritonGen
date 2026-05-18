@@ -10,6 +10,28 @@ from cluster1.experiments.validate_cluster1_results import (
     main,
     validate_cluster1_results,
 )
+from shared.generation_metadata import modal_image_provenance_digest
+
+
+def _fallback_modal_image_components() -> dict[str, object]:
+    return {
+        "schema": "modal_image_fallback_provenance.v1",
+        "image_source": {
+            "path": "shared/modal_harness/images.py",
+            "sha256": "a" * 64,
+            "generation_package_pins": ["torch==2.8.0"],
+        },
+        "runtime_versions": {
+            "xgrammar_version": "0.1.33",
+            "transformers_version": "4.47.1",
+            "tokenizers_version": "0.21.4",
+        },
+        "extra": {"modal_generation_gpu": "L4"},
+    }
+
+
+def _fallback_modal_image_sha256() -> str:
+    return modal_image_provenance_digest(_fallback_modal_image_components())
 
 
 def test_valid_baseline_n1(tmp_path: Path) -> None:
@@ -42,6 +64,7 @@ def test_valid_g_n1(tmp_path: Path) -> None:
 
     assert report.passed
     assert report.row_count == 3
+    assert report.expected_row_count == len(DTYPES)
     assert report.observed_conditions == ("G",)
     assert report.observed_grammar_variants == ("template_upper_bound",)
 
@@ -243,6 +266,156 @@ def test_missing_masked_token_rate_for_g(tmp_path: Path) -> None:
     assert not report.passed
     assert report.invariant_failures
     assert report.masked_token_rate_failures
+
+
+def test_generation_metadata_gate_rejects_legacy_g_rows(tmp_path: Path) -> None:
+    path = tmp_path / "legacy_g_metadata.jsonl"
+    _write_jsonl(path, _rows(["G"], n=1))
+
+    report = validate_cluster1_results(
+        path,
+        condition="G",
+        kernel_class="elementwise",
+        n=1,
+        require_generation_metadata=True,
+    )
+
+    assert not report.passed
+    assert report.generation_metadata_failures
+
+
+def test_generation_metadata_gate_rejects_legacy_baseline_rows(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "legacy_baseline_metadata.jsonl"
+    _write_jsonl(path, _rows(["baseline"], n=1))
+
+    report = validate_cluster1_results(
+        path,
+        condition="baseline",
+        kernel_class="elementwise",
+        n=1,
+        require_generation_metadata=True,
+    )
+
+    assert not report.passed
+    assert report.generation_metadata_failures
+
+
+def test_generation_metadata_gate_accepts_complete_g_rows(tmp_path: Path) -> None:
+    path = tmp_path / "complete_g_metadata.jsonl"
+    rows = _rows(["G"], n=1)
+    for row in rows:
+        row.update(
+            {
+                "generation_metadata_schema_version": 1,
+                "grammar_sha": "a" * 64,
+                "grammar_path": "/runtime/cluster1/grammar/triton_kernel.gbnf",
+                "gbnf_parse_valid": True,
+                "semantic_valid": True,
+                "grammar_valid": True,
+                "rejection_layer": None,
+                "stop_reason": "eos_token",
+                "xgrammar_version": "0.1.33",
+                "transformers_version": "4.47.1",
+                "tokenizers_version": "0.21.4",
+                "model_revision": "a" * 40,
+                "tokenizer_revision": "b" * 40,
+                "modal_image_sha": "unknown",
+                "modal_image_provenance_sha256": _fallback_modal_image_sha256(),
+                "modal_image_provenance_components": (
+                    _fallback_modal_image_components()
+                ),
+            }
+        )
+    _write_jsonl(path, rows)
+
+    report = validate_cluster1_results(
+        path,
+        condition="G",
+        kernel_class="elementwise",
+        n=1,
+        require_generation_metadata=True,
+    )
+
+    assert report.passed
+
+
+def test_generation_metadata_gate_rejects_unknown_tokenizer_revision(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "unknown_tokenizer_revision.jsonl"
+    rows = _rows(["G"], n=1)
+    for row in rows:
+        row.update(
+            {
+                "generation_metadata_schema_version": 1,
+                "grammar_sha": "a" * 64,
+                "grammar_path": "/runtime/cluster1/grammar/triton_kernel.gbnf",
+                "gbnf_parse_valid": True,
+                "semantic_valid": True,
+                "grammar_valid": True,
+                "rejection_layer": None,
+                "stop_reason": "eos_token",
+                "xgrammar_version": "0.1.33",
+                "transformers_version": "4.47.1",
+                "tokenizers_version": "0.21.4",
+                "model_revision": "a" * 40,
+                "tokenizer_revision": "unknown",
+                "modal_image_sha": "unknown",
+                "modal_image_provenance_sha256": _fallback_modal_image_sha256(),
+                "modal_image_provenance_components": (
+                    _fallback_modal_image_components()
+                ),
+            }
+        )
+    _write_jsonl(path, rows)
+
+    report = validate_cluster1_results(
+        path,
+        condition="G",
+        kernel_class="elementwise",
+        n=1,
+        require_generation_metadata=True,
+    )
+
+    assert not report.passed
+    assert all("tokenizer_revision" in failure for failure in report.generation_metadata_failures)
+
+
+def test_generation_metadata_gate_accepts_complete_baseline_rows(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "complete_baseline_metadata.jsonl"
+    rows = _rows(["baseline"], n=1)
+    for row in rows:
+        row.update(
+            {
+                "generation_metadata_schema_version": 1,
+                "stop_reason": "eos_token",
+                "xgrammar_version": "0.1.33",
+                "transformers_version": "4.47.1",
+                "tokenizers_version": "0.21.4",
+                "model_revision": "a" * 40,
+                "tokenizer_revision": "b" * 40,
+                "modal_image_sha": "unknown",
+                "modal_image_provenance_sha256": _fallback_modal_image_sha256(),
+                "modal_image_provenance_components": (
+                    _fallback_modal_image_components()
+                ),
+            }
+        )
+    _write_jsonl(path, rows)
+
+    report = validate_cluster1_results(
+        path,
+        condition="baseline",
+        kernel_class="elementwise",
+        n=1,
+        require_generation_metadata=True,
+    )
+
+    assert report.passed
 
 
 def test_missing_dtype_in_compile_results_by_dtype(tmp_path: Path) -> None:

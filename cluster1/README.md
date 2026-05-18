@@ -30,8 +30,8 @@ generated candidate is counted as G-accepting only if it passes both layers.
 
 Rows that pass token-level decoding but fail the offline validator are
 grammar-rejected. They should be attributed to the failing layer where possible,
-for example `GBNF_PARSE_REJECT`,
-`VALIDATOR_ONLY_STRUCTURAL_REJECT`, or `VALIDATOR_ONLY_SEMANTIC_REJECT`.
+for example `gbnf_parse`, `python_ast`, `semantic_validator`,
+`runtime_error`, or `unknown`.
 
 ## Current Frozen Result
 
@@ -110,6 +110,9 @@ These thresholds are fixed before any task-agnostic Modal run:
 - Tiny n=1 task-agnostic smoke: GO if 3/3 rows are written, there are no
   infrastructure failures, all rows have `grammar_active=True`,
   `grammar_variant=task_agnostic`, and `masked_token_rate` is non-null.
+  `grammar_active` means constrained decoding was attempted; G acceptance is
+  measured by `grammar_valid=True`, which requires both `gbnf_parse_valid=True`
+  and `semantic_valid=True`.
   `compile_success` is informative but not required at n=1.
 - n=5 task-agnostic smoke: STRONG_SIGNAL if compile success is >=9/15,
   PARTIAL_SIGNAL if compile success is 1-8/15, WEAK_OR_ZERO_SIGNAL if compile

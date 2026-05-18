@@ -22,15 +22,42 @@ from cluster2.experiments.run_cluster2_modal import (
     run_cluster2,
 )
 from cluster2.modal.correctness_runner import build_success_payload
-from cluster2.modal.schemas import RemoteCorrectnessRequest, RemoteCorrectnessResult
+from cluster2.modal.schemas import (
+    EvalIdentity,
+    RemoteCorrectnessRequest,
+    RemoteCorrectnessResult,
+)
+from cluster2.results.dataclass import CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
 from cluster2.results.logger import default_content_hash_sidecar_path
 from cluster2.tests.test_replay_controls import _write_replay_fixture
 from shared.eval.content_hashes import collect_c2_generation_hashes
+from shared.generation_metadata import modal_image_provenance_digest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEST_MODEL_REVISION = "a" * 40
 TEST_TOKENIZER_REVISION = "b" * 40
+
+
+def _fallback_modal_image_components() -> dict[str, object]:
+    return {
+        "schema": "modal_image_fallback_provenance.v1",
+        "image_source": {
+            "path": "shared/modal_harness/images.py",
+            "sha256": "a" * 64,
+            "generation_package_pins": ["torch==2.8.0"],
+        },
+        "runtime_versions": {
+            "xgrammar_version": "0.1.33",
+            "transformers_version": "4.47.1",
+            "tokenizers_version": "0.21.4",
+        },
+        "extra": {"modal_generation_gpu": "L4"},
+    }
+
+
+def _fallback_modal_image_sha256() -> str:
+    return modal_image_provenance_digest(_fallback_modal_image_components())
 
 
 def test_runner_routes_none_to_replay_adapter(tmp_path: Path) -> None:
@@ -132,8 +159,77 @@ def test_runner_routes_c_to_c2_generation(tmp_path: Path) -> None:
     assert result.rows[0].generated_metadata is not None
     assert result.rows[0].generated_metadata.replay_control_condition == "none"
     assert result.rows[0].generated_metadata.replay_generation_seed == 0
+    assert result.rows[0].generated_metadata.model_revision == TEST_MODEL_REVISION
+    assert (
+        result.rows[0].generated_metadata.tokenizer_revision
+        == TEST_TOKENIZER_REVISION
+    )
     assert result.rows[0].replay_metadata is None
     assert result.route_audit[0].route == "c2_repair_loop"
+
+
+def test_generation_metadata_from_payload_uses_modal_observed_revisions() -> None:
+    metadata = runner_mod._generation_grammar_metadata_from_payload(
+        {
+            "generation_identity": {
+                "grammar_active": False,
+                "grammar_variant": None,
+                "grammar_path": None,
+                "grammar_sha": None,
+                "grammar_claim_scope": None,
+            },
+            "model_identity": {
+                "model_revision": "requested-model",
+                "tokenizer_revision": "requested-tokenizer",
+                "observed_model_revision": "observed-model",
+                "observed_tokenizer_revision": "observed-tokenizer",
+            },
+            "runtime_identity": {
+                "xgrammar_version": "0.1.33",
+                "transformers_version": "4.47.1",
+                "tokenizers_version": "0.21.4",
+                "modal_image_sha": "unknown",
+                "modal_image_provenance_sha256": _fallback_modal_image_sha256(),
+                "modal_image_provenance_components": (
+                    _fallback_modal_image_components()
+                ),
+            },
+            "generation_result": {
+                "model_revision": "result-model",
+                "tokenizer_revision": "result-tokenizer",
+                "stop_reason": "eos_token",
+                "generation_metadata_schema_version": (
+                    CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
+                ),
+            },
+        },
+        condition="C",
+    )
+
+    assert metadata["model_revision"] == "result-model"
+    assert metadata["tokenizer_revision"] == "result-tokenizer"
+
+
+def test_c_generation_metadata_from_payload_rejects_validation_evidence() -> None:
+    payload = {
+        "generation_identity": {
+            "grammar_active": False,
+            "grammar_variant": None,
+            "grammar_path": None,
+            "grammar_sha": None,
+            "grammar_claim_scope": None,
+            "gbnf_parse_valid": True,
+            "semantic_valid": True,
+            "grammar_valid": True,
+            "rejection_layer": None,
+        },
+    }
+
+    with pytest.raises(ValueError, match="must not record grammar validation"):
+        runner_mod._generation_grammar_metadata_from_payload(
+            payload,
+            condition="C",
+        )
 
 
 def test_task_agnostic_gc_generation_uses_canonical_token_budget(
@@ -293,8 +389,44 @@ def test_runner_routes_gc_to_c2_generation_with_g_adapter(tmp_path: Path) -> Non
         result.rows[0].generated_metadata.grammar_path
         == "cluster1/grammar/triton_kernel_agnostic.gbnf"
     )
+    assert len(result.rows[0].generated_metadata.grammar_sha) == 64
+    assert result.rows[0].generated_metadata.gbnf_parse_valid is False
+    assert result.rows[0].generated_metadata.semantic_valid is False
+    assert result.rows[0].generated_metadata.grammar_valid is False
+    assert result.rows[0].generated_metadata.rejection_layer == "gbnf_parse"
+    assert result.rows[0].generated_metadata.stop_reason == "eos_token"
+    assert result.rows[0].generated_metadata.xgrammar_version == "0.1.33"
     assert result.rows[0].generated_metadata.grammar_claim_scope == "primary"
     assert result.route_audit[0].route == "c2_repair_loop_with_g_adapter"
+
+
+def test_gc_conversion_rejects_modal_grammar_sha_mismatch() -> None:
+    payload = _gc_fake_payload()
+    payload["generation_identity"]["grammar_sha"] = "0" * 64
+
+    with pytest.raises(ValueError, match="grammar_sha does not match"):
+        runner_mod._generation_grammar_metadata_from_payload(
+            payload,
+            condition="G+C",
+        )
+
+
+def test_gc_conversion_rejects_modal_local_validation_mismatch() -> None:
+    payload = _gc_fake_payload()
+    payload["generation_identity"].update(
+        {
+            "gbnf_parse_valid": True,
+            "semantic_valid": True,
+            "grammar_valid": True,
+            "rejection_layer": None,
+        }
+    )
+
+    with pytest.raises(ValueError, match="validation fields disagree"):
+        runner_mod._generation_grammar_metadata_from_payload(
+            payload,
+            condition="G+C",
+        )
 
 
 def test_runner_generated_conditions_consume_replay_seed_schedule(
@@ -542,6 +674,35 @@ def test_runner_allows_paper_generated_run_with_valid_f2_smoke_artifacts(
     assert len(result.rows) == 1
 
 
+def test_runner_paper_gate_rejects_missing_generation_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _copy_f2_smoke_artifacts(tmp_path / "repo_with_smoke")
+    monkeypatch.setattr(runner_mod, "REPO_ROOT", tmp_path / "repo_with_smoke")
+
+    def incomplete_generation(**kwargs: Any) -> dict[str, Any]:
+        payload = _fake_generation([])(**kwargs)
+        payload.pop("runtime_identity", None)
+        payload.pop("generation_result", None)
+        return payload
+
+    with pytest.raises(ValueError, match="paper-scale Cluster 2"):
+        run_cluster2(
+            _config(
+                tmp_path,
+                condition="C",
+                scale_tier="paper",
+                repair_budget=0,
+                n=1,
+            ),
+            dependencies=RunnerDependencies(
+                generation=incomplete_generation,
+                correctness=_success_correctness([]),
+            ),
+        )
+
+
 def test_runner_blocks_paper_generated_run_with_mock_f2_smoke_artifacts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -737,9 +898,9 @@ def test_append_flag_is_rejected_by_cli(tmp_path: Path) -> None:
                 "--n",
                 "1",
                 "--model-revision",
-                "model-rev",
+                TEST_MODEL_REVISION,
                 "--tokenizer-revision",
-                "tok-rev",
+                TEST_TOKENIZER_REVISION,
                 "--output",
                 str(tmp_path / "out.jsonl"),
                 "--append",
@@ -781,9 +942,9 @@ def test_cli_defaults_gc_grammar_variant_to_task_agnostic(tmp_path: Path) -> Non
             "--n",
             "1",
             "--model-revision",
-            "model-rev",
+            TEST_MODEL_REVISION,
             "--tokenizer-revision",
-            "tok-rev",
+            TEST_TOKENIZER_REVISION,
             "--output",
             str(tmp_path / "out.jsonl"),
             "--overwrite",
@@ -809,9 +970,9 @@ def test_cli_accepts_explicit_template_upper_bound_diagnostic(
             "--n",
             "1",
             "--model-revision",
-            "model-rev",
+            TEST_MODEL_REVISION,
             "--tokenizer-revision",
-            "tok-rev",
+            TEST_TOKENIZER_REVISION,
             "--grammar-variant",
             "template_upper_bound",
             "--output",
@@ -835,6 +996,29 @@ def test_generated_cli_requires_revision_flags(tmp_path: Path) -> None:
                 "smoke",
                 "--n",
                 "1",
+                "--output",
+                str(tmp_path / "out.jsonl"),
+                "--overwrite",
+            ]
+        )
+
+
+def test_generated_cli_rejects_floating_revisions(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="40-character Hub commit SHA"):
+        parse_args(
+            [
+                "--condition",
+                "C",
+                "--kernel-class",
+                "elementwise",
+                "--scale-tier",
+                "smoke",
+                "--n",
+                "1",
+                "--model-revision",
+                "refs/heads/main",
+                "--tokenizer-revision",
+                TEST_TOKENIZER_REVISION,
                 "--output",
                 str(tmp_path / "out.jsonl"),
                 "--overwrite",
@@ -971,18 +1155,95 @@ def _fake_generation(calls: list[dict[str, Any]]):
             "import triton.language as tl\n"
             f"# generated {identity.condition} {identity.attempt_index}\n"
         )
+        grammar_sha = None
+        validation_fields = {
+            "gbnf_parse_valid": None,
+            "semantic_valid": None,
+            "grammar_valid": None,
+            "rejection_layer": None,
+        }
+        if identity.condition == "G+C":
+            from cluster1.generation.provenance import sha256_file
+            from cluster1.grammar.triton_kernel_validator import validate_source_layers
+
+            assert grammar_path is not None
+            local_grammar_path = REPO_ROOT / grammar_path
+            grammar_sha = sha256_file(local_grammar_path)
+            validation_fields = validate_source_layers(
+                source,
+                grammar_path=local_grammar_path,
+            ).to_row_fields()
+        model_revision = kwargs.get("model_revision", TEST_MODEL_REVISION)
+        tokenizer_revision = kwargs.get("tokenizer_revision", TEST_TOKENIZER_REVISION)
+        image_components = _fallback_modal_image_components()
+        image_sha = modal_image_provenance_digest(image_components)
         return {
             "source": source,
             "generation_hashes": collect_c2_generation_hashes(identity.condition),
             "generation_identity": {
                 "grammar_active": identity.condition == "G+C",
-                "grammar_variant": grammar_variant if identity.condition == "G+C" else None,
+                "grammar_variant": (
+                    grammar_variant if identity.condition == "G+C" else None
+                ),
                 "grammar_path": grammar_path,
+                "grammar_sha": grammar_sha,
                 "grammar_claim_scope": grammar_claim_scope,
+                **validation_fields,
+                "stop_reason": "eos_token",
+                "generation_metadata_schema_version": (
+                    CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
+                ),
+            },
+            "runtime_identity": {
+                "xgrammar_version": "0.1.33",
+                "transformers_version": "4.47.1",
+                "tokenizers_version": "0.21.4",
+                "modal_image_sha": "unknown",
+                "modal_image_provenance_sha256": image_sha,
+                "modal_image_provenance_components": image_components,
+            },
+            "model_identity": {
+                "model_revision": model_revision,
+                "tokenizer_revision": tokenizer_revision,
+                "observed_model_revision": model_revision,
+                "observed_tokenizer_revision": tokenizer_revision,
+            },
+            "generation_result": {
+                "model_revision": model_revision,
+                "tokenizer_revision": tokenizer_revision,
+                "stop_reason": "eos_token",
+                "xgrammar_version": "0.1.33",
+                "transformers_version": "4.47.1",
+                "tokenizers_version": "0.21.4",
+                "modal_image_sha": "unknown",
+                "modal_image_provenance_sha256": image_sha,
+                "modal_image_provenance_components": image_components,
+                "generation_metadata_schema_version": (
+                    CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
+                ),
             },
         }
 
     return generation
+
+
+def _gc_fake_payload() -> dict[str, Any]:
+    identity = EvalIdentity(
+        run_id="test-run",
+        condition="G+C",
+        source_class="generated_row",
+        generation_mode="new_c2_generation_with_G_adapter",
+        kernel_class="elementwise",
+        kernel_name="relu",
+        dtype="fp32",
+        sample_index=0,
+        base_seed=0,
+        attempt_index=0,
+    )
+    return _fake_generation([])(
+        identity=identity,
+        grammar_variant="task_agnostic",
+    )
 
 
 def _copy_f2_smoke_artifacts(repo_root: Path, *, modalized: bool = True) -> None:

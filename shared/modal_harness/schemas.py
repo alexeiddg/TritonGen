@@ -15,10 +15,18 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from cluster1.generation.grammar_variants import grammar_path_for_variant
+from cluster1.generation.provenance import normalize_explicit_revision
 from cluster1.results.dataclass import (
     DEFAULT_GRAMMAR_VARIANT,
+    GENERATION_METADATA_SCHEMA_VERSION,
     GrammarVariant,
     validate_grammar_variant_invariants,
+)
+from shared.generation_metadata import (
+    UNKNOWN,
+    VALID_REJECTION_LAYERS,
+    VALID_STOP_REASONS,
+    modal_image_provenance_digest,
 )
 from shared.factors.cells import FactorCell
 from shared.factors.registry import (
@@ -43,6 +51,8 @@ class RemoteGenerationRequest(BaseModel):
     dtype: DTypeName
     prompt: str
     model_id: str
+    model_revision: str | None = None
+    tokenizer_revision: str | None = None
     grammar_active: bool
     grammar_variant: GrammarVariant | None = None
     grammar_path: str | None = None
@@ -55,6 +65,11 @@ class RemoteGenerationRequest(BaseModel):
     @classmethod
     def _reject_reserved_modes(cls, v: str) -> str:
         return _validate_supported_factor_cell(v)
+
+    @field_validator("model_revision", "tokenizer_revision")
+    @classmethod
+    def _validate_explicit_revision(cls, v: str | None, info) -> str | None:
+        return normalize_explicit_revision(v, field_name=info.field_name)
 
     @model_validator(mode="after")
     def _validate_factor_matches_grammar(self):
@@ -88,6 +103,22 @@ class RemoteGenerationResult(BaseModel):
     model_id: str
     grammar_active: bool
     grammar_variant: GrammarVariant | None = None
+    grammar_sha: str | None = None
+    grammar_path: str | None = None
+    gbnf_parse_valid: bool | None = None
+    semantic_valid: bool | None = None
+    grammar_valid: bool | None = None
+    rejection_layer: str | None = None
+    stop_reason: str = UNKNOWN
+    xgrammar_version: str = UNKNOWN
+    transformers_version: str = UNKNOWN
+    tokenizers_version: str = UNKNOWN
+    model_revision: str = UNKNOWN
+    tokenizer_revision: str = UNKNOWN
+    modal_image_sha: str = UNKNOWN
+    modal_image_provenance_sha256: str | None = None
+    modal_image_provenance_components: dict | None = None
+    generation_metadata_schema_version: int = 0
     masked_token_rate: float | None
     generation_seed: int | None
     temperature: float
@@ -99,6 +130,7 @@ class RemoteGenerationResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_masked_rate(self):
+        grammar_variant_was_missing = self.grammar_active and self.grammar_variant is None
         if self.grammar_active and self.grammar_variant is None:
             self.grammar_variant = DEFAULT_GRAMMAR_VARIANT
         validate_grammar_variant_invariants(
@@ -109,7 +141,111 @@ class RemoteGenerationResult(BaseModel):
             raise ValueError("masked_token_rate must be None when grammar_active=False")
         if self.grammar_active and self.masked_token_rate is None:
             raise ValueError("masked_token_rate is required when grammar_active=True")
+        self._validate_generation_metadata(
+            grammar_variant_was_missing=grammar_variant_was_missing
+        )
         return self
+
+    def _validate_generation_metadata(
+        self,
+        *,
+        grammar_variant_was_missing: bool,
+    ) -> None:
+        if self.stop_reason not in VALID_STOP_REASONS:
+            allowed = ", ".join(sorted(VALID_STOP_REASONS))
+            raise ValueError(
+                f"stop_reason must be one of {allowed}; got {self.stop_reason!r}"
+            )
+        if (
+            self.rejection_layer is not None
+            and self.rejection_layer not in VALID_REJECTION_LAYERS
+        ):
+            allowed = ", ".join(sorted(VALID_REJECTION_LAYERS))
+            raise ValueError(
+                "rejection_layer must be one of "
+                f"{allowed} or None; got {self.rejection_layer!r}"
+            )
+        if self.generation_metadata_schema_version >= GENERATION_METADATA_SCHEMA_VERSION:
+            self._validate_current_schema_image_provenance()
+        if (
+            self.grammar_active
+            and self.generation_metadata_schema_version >= GENERATION_METADATA_SCHEMA_VERSION
+        ):
+            missing_current_schema_fields = []
+            if grammar_variant_was_missing:
+                missing_current_schema_fields.append("grammar_variant")
+            for field_name in (
+                "grammar_sha",
+                "grammar_path",
+                "gbnf_parse_valid",
+                "semantic_valid",
+                "grammar_valid",
+            ):
+                value = getattr(self, field_name)
+                if value is None or value == "":
+                    missing_current_schema_fields.append(field_name)
+            if missing_current_schema_fields:
+                missing = ", ".join(sorted(missing_current_schema_fields))
+                raise ValueError(
+                    "current-schema grammar-active RemoteGenerationResult "
+                    f"requires generation metadata: {missing}"
+                )
+        validation_values = (
+            self.gbnf_parse_valid,
+            self.semantic_valid,
+            self.grammar_valid,
+        )
+        if all(value is not None for value in validation_values):
+            expected = bool(self.gbnf_parse_valid and self.semantic_valid)
+            if self.grammar_valid is not expected:
+                raise ValueError(
+                    "grammar_valid must equal gbnf_parse_valid and semantic_valid"
+                )
+            if self.grammar_valid and self.rejection_layer is not None:
+                raise ValueError("rejection_layer must be None when grammar_valid=True")
+            if not self.grammar_valid and self.rejection_layer is None:
+                raise ValueError("rejection_layer is required when grammar_valid=False")
+        if not self.grammar_active:
+            if any(value is not None for value in validation_values):
+                raise ValueError(
+                    "grammar validation fields must be None when grammar_active=False"
+                )
+            if self.grammar_sha is not None or self.grammar_path is not None:
+                raise ValueError(
+                    "grammar provenance fields must be None when grammar_active=False"
+                )
+
+    def _validate_current_schema_image_provenance(self) -> None:
+        if self.modal_image_sha == UNKNOWN:
+            if not self.modal_image_provenance_components:
+                raise ValueError(
+                    "modal_image_provenance_components is required when "
+                    "modal_image_sha is unknown"
+                )
+            if self.modal_image_provenance_sha256 is None:
+                raise ValueError(
+                    "modal_image_provenance_sha256 is required when "
+                    "modal_image_sha is unknown"
+                )
+        if self.modal_image_provenance_components is None:
+            return
+        if self.modal_image_provenance_sha256 is None:
+            raise ValueError(
+                "modal_image_provenance_sha256 is required when "
+                "modal_image_provenance_components is present"
+            )
+        if (
+            self.modal_image_provenance_sha256
+            != modal_image_provenance_digest(self.modal_image_provenance_components)
+        ):
+            raise ValueError(
+                "modal_image_provenance_sha256 must equal the digest of "
+                "modal_image_provenance_components"
+            )
+
+    @classmethod
+    def metadata_schema_version(cls) -> int:
+        return GENERATION_METADATA_SCHEMA_VERSION
 
 
 class RemoteCompileRequest(BaseModel):

@@ -36,6 +36,17 @@ def test_parse_args_defaults(tmp_path: Path) -> None:
     assert args.max_new_tokens >= 1024
 
 
+def test_grammar_variant_run_path_rejects_explicit_mismatch() -> None:
+    args = SimpleNamespace(
+        condition="G",
+        grammar_variant="template_upper_bound",
+        grammar_path=Path("cluster1/grammar/triton_kernel_agnostic.gbnf"),
+    )
+
+    with pytest.raises(ValueError, match="grammar_path must match grammar_variant"):
+        runner._validate_grammar_variant_run_path(args)
+
+
 def test_iter_experiment_cells_n20() -> None:
     cells = list(
         runner.iter_experiment_cells(

@@ -331,6 +331,25 @@ class GrammarValidationReport:
     errors: list[str]
 
 
+@dataclass(frozen=True)
+class GrammarSourceValidation:
+    grammar_path: Path
+    gbnf_parse_valid: bool
+    semantic_valid: bool
+    grammar_valid: bool
+    rejection_layer: str | None
+    error_type: str | None = None
+    error_msg: str | None = None
+
+    def to_row_fields(self) -> dict[str, bool | str | None]:
+        return {
+            "gbnf_parse_valid": self.gbnf_parse_valid,
+            "semantic_valid": self.semantic_valid,
+            "grammar_valid": self.grammar_valid,
+            "rejection_layer": self.rejection_layer,
+        }
+
+
 def validate_grammar_file(
     grammar_path: Path = DEFAULT_GBNF_PATH,
 ) -> GrammarValidationReport:
@@ -379,17 +398,92 @@ def accepts_source(
     source: str,
     grammar_path: Path = DEFAULT_GBNF_PATH,
 ) -> bool:
+    return validate_source_layers(source, grammar_path=grammar_path).grammar_valid
+
+
+def validate_source_layers(
+    source: str,
+    grammar_path: Path = DEFAULT_GBNF_PATH,
+) -> GrammarSourceValidation:
+    """Validate source against GBNF parse, Python AST, and semantic layers."""
+
+    grammar_path = Path(grammar_path)
     try:
-        grammar_path = Path(grammar_path)
         gbnf_text = grammar_path.read_text(encoding="utf-8")
         parser = _compile_lark_parser(gbnf_text)
+    except Exception as exc:  # noqa: BLE001 - row evidence must classify setup failures.
+        return _source_validation_failure(
+            grammar_path,
+            rejection_layer="runtime_error",
+            error=exc,
+        )
+
+    try:
         parser.parse(source)
+    except Exception as exc:  # noqa: BLE001 - parser exceptions vary by lark version.
+        return _source_validation_failure(
+            grammar_path,
+            rejection_layer="gbnf_parse",
+            gbnf_parse_valid=False,
+            error=exc,
+        )
+
+    try:
         tree = ast.parse(source)
+    except SyntaxError as exc:
+        return _source_validation_failure(
+            grammar_path,
+            rejection_layer="python_ast",
+            gbnf_parse_valid=True,
+            error=exc,
+        )
+
+    try:
         if _uses_task_agnostic_semantics(grammar_path, gbnf_text):
-            return _semantic_accepts_task_agnostic(tree)
-        return _semantic_accepts(tree)
-    except Exception:
-        return False
+            semantic_valid = _semantic_accepts_task_agnostic(tree)
+        else:
+            semantic_valid = _semantic_accepts(tree)
+    except Exception as exc:  # noqa: BLE001 - semantic helper failures are runtime evidence.
+        return _source_validation_failure(
+            grammar_path,
+            rejection_layer="runtime_error",
+            gbnf_parse_valid=True,
+            error=exc,
+        )
+
+    if not semantic_valid:
+        return GrammarSourceValidation(
+            grammar_path=grammar_path,
+            gbnf_parse_valid=True,
+            semantic_valid=False,
+            grammar_valid=False,
+            rejection_layer="semantic_validator",
+        )
+    return GrammarSourceValidation(
+        grammar_path=grammar_path,
+        gbnf_parse_valid=True,
+        semantic_valid=True,
+        grammar_valid=True,
+        rejection_layer=None,
+    )
+
+
+def _source_validation_failure(
+    grammar_path: Path,
+    *,
+    rejection_layer: str,
+    gbnf_parse_valid: bool = False,
+    error: BaseException,
+) -> GrammarSourceValidation:
+    return GrammarSourceValidation(
+        grammar_path=grammar_path,
+        gbnf_parse_valid=gbnf_parse_valid,
+        semantic_valid=False,
+        grammar_valid=False,
+        rejection_layer=rejection_layer,
+        error_type=type(error).__name__,
+        error_msg=str(error),
+    )
 
 
 def _uses_task_agnostic_semantics(grammar_path: Path, gbnf_text: str) -> bool:

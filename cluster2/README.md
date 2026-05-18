@@ -41,6 +41,12 @@ G-accepting only if both layers pass; rows that decode but fail semantic
 validation remain grammar-rejected with failure-layer attribution when
 available.
 
+For fresh generated `G+C` rows, `grammar_active` records attempted constrained
+decoding only. Paper-scale current-grammar rows must include the runtime
+grammar SHA/path, split validation fields, joint `grammar_valid`,
+`rejection_layer`, `stop_reason`, package versions, model/tokenizer revisions,
+and Modal image SHA or fallback provenance digest.
+
 C remains correctness-feedback control. Do not treat C repair feedback as a
 replacement for G validation, and do not blur G rejection with numerical
 correctness failure.

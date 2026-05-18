@@ -1,7 +1,10 @@
-"""Reproducible Cluster 1 compile-acceptance tables and figures.
+"""Legacy frozen Cluster 1 compile-acceptance tables and figures.
 
 This module consumes only the frozen Cluster 1 JSONL artifact. It does not run
-generation, compilation, correctness, or performance workflows.
+generation, compilation, correctness, or performance workflows. It uses
+``grammar_active`` only to label the historical template-G condition; current
+grammar-acceptance reporting must use ``grammar_valid`` from
+``cluster1.experiments.analyze_cluster1``.
 """
 
 from __future__ import annotations
@@ -47,6 +50,11 @@ CONDITION_DISPLAY_LABELS: Final = {
 KERNEL_CLASSES: Final = ("elementwise", "reduction", "matmul")
 DTYPES: Final = ("fp32", "fp16", "bf16")
 PASS_K_VALUES: Final = (1, 5, 10)
+LEGACY_FROZEN_FIGURE_NOTICE: Final = (
+    "LEGACY FROZEN C1 FIGURE PATH: grammar_active labels the historical "
+    "template-G condition only; grammar acceptance evidence is grammar_valid "
+    "in current reporting."
+)
 
 CONDITION_COLORS: Final = {
     "baseline": "#6b7280",
@@ -510,6 +518,7 @@ def build_cluster1_visualizations(
 
 def main() -> int:
     df, tables, figure_paths = build_cluster1_visualizations()
+    print(LEGACY_FROZEN_FIGURE_NOTICE)
     print(f"validated rows: {len(df)}")
     print(tables["headline"].to_string(index=False))
     print("figures:")
