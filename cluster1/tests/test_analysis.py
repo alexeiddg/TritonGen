@@ -231,7 +231,7 @@ def test_masked_token_summary_excludes_baseline_rows(tmp_path: Path) -> None:
         validate=True,
     )
     masked_section = markdown.split("## Masked Token Rate", maxsplit=1)[1].split(
-        "## Compile Error Types",
+        "## Failure Codes",
         maxsplit=1,
     )[0]
 
@@ -258,6 +258,9 @@ def test_compile_error_distribution_reported(tmp_path: Path) -> None:
         validate=True,
     )
 
+    assert "## Failure Codes" in markdown
+    assert "| baseline | none | elementwise | fp32 | F1_COMPILE | 1 |" in markdown
+    assert "| baseline | none | elementwise | fp32 | None | 19 |" in markdown
     assert "## Compile Error Types" in markdown
     assert "| baseline | none | elementwise | fp32 | CompilationError | 1 |" in markdown
     assert "| baseline | none | elementwise | fp32 | None | 19 |" in markdown

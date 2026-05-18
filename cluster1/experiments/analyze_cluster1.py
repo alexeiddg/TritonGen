@@ -24,6 +24,8 @@ from cluster1.experiments.validate_cluster1_results import (
 )
 from cluster1.results.dataclass import GenerationResult
 from cluster1.results.dataclass import generation_result_record_for_deserialization
+from shared.eval.adapter_cluster1 import eval_result_from_generation_result
+from shared.eval.failure_taxonomy import classify_failure
 from shared.eval.metrics.pass_at_k import compile_at_1, pass_at_k
 from shared.eval.reporting.grammar_language import (
     assert_paper_facing_grammar_language,
@@ -205,6 +207,10 @@ def build_compile_summary_markdown(
             "## Masked Token Rate",
             "",
             _masked_token_rate_markdown(rows),
+            "",
+            "## Failure Codes",
+            "",
+            _failure_code_distribution_markdown(rows),
             "",
             "## Compile Error Types",
             "",
@@ -653,6 +659,54 @@ def _compile_error_distribution_markdown(rows: list[GenerationResult]) -> str:
         lines.append(
             f"| {condition} | {grammar_variant_label} | {kernel_class} | {dtype} | "
             f"{error_type} | {count} |"
+        )
+    return "\n".join(lines)
+
+
+def _failure_code_distribution_markdown(rows: list[GenerationResult]) -> str:
+    if not rows:
+        return "No result rows found."
+
+    counts: dict[tuple[str, str | None, str, str, str], int] = {}
+    for sample_index, row in enumerate(rows):
+        eval_result = eval_result_from_generation_result(
+            row,
+            sample_index=sample_index,
+        )
+        failure_code = classify_failure(eval_result) or "None"
+        key = (
+            _condition_for_row(row),
+            row.grammar_variant,
+            row.kernel_class,
+            row.dtype,
+            failure_code,
+        )
+        counts[key] = counts.get(key, 0) + 1
+
+    lines = [
+        "| condition | grammar_variant | kernel_class | dtype | failure_code | count |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for (
+        condition,
+        grammar_variant,
+        kernel_class,
+        dtype,
+        failure_code,
+    ), count in sorted(
+        counts.items(),
+        key=lambda item: (
+            item[0][0],
+            "" if item[0][1] is None else item[0][1],
+            item[0][2],
+            item[0][3],
+            item[0][4],
+        ),
+    ):
+        grammar_variant_label = _grammar_variant_display_value(grammar_variant)
+        lines.append(
+            f"| {condition} | {grammar_variant_label} | {kernel_class} | {dtype} | "
+            f"{failure_code} | {count} |"
         )
     return "\n".join(lines)
 
