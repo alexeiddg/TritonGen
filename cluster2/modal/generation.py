@@ -110,7 +110,7 @@ PHASE_MINUS1_G_GENERATION_SOURCE_HASHES: dict[str, str] = {
         "0f875b88ea80d7bc9573793f2cfb81bd75523af5ef5c0416466bc07d3eaf9b82"
     ),
     "cluster1/grammar/triton_kernel_agnostic.gbnf": (
-        "756f46a76e8fc6e208a263a69678873ecbbe7327d1c3c7ee9fe6a902fb96600f"
+        "7896a1befca10f68ab6aa4521681fa2577eba6fb669e87daf622c15691a22e32"
     ),
     "cluster1/generation/grammar_loader.py": (
         "1a21c61801ae1180408c39be6116cf4fe7aec0920ed2d047ba94839cf7c010eb"
