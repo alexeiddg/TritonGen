@@ -31,7 +31,6 @@ from cluster1.results.dataclass import (
     DEFAULT_GRAMMAR_VARIANT,
     GENERATION_METADATA_SCHEMA_VERSION,
     GenerationResult,
-    canonical_failure_code_for_compile_error_type,
     compute_unique_solution_hash,
     grammar_variant_for_cell,
     validate_paper_scale_metadata,
@@ -39,6 +38,7 @@ from cluster1.results.dataclass import (
 )
 from cluster1.results.logger import append_result_jsonl
 from cluster1.validation.compile_check import CompileResult, check_compiles_all_dtypes
+from shared.eval.failure_taxonomy import canonical_failure_code_from_compile_error
 
 
 DEFAULT_MODEL_ID = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
@@ -189,8 +189,9 @@ def run_one_generation(
     failure_code = (
         first_error.failure_code
         if first_error is not None and first_error.failure_code is not None
-        else canonical_failure_code_for_compile_error_type(
-            first_error.error_type if first_error is not None else None
+        else canonical_failure_code_from_compile_error(
+            first_error.error_type if first_error is not None else None,
+            first_error.error_msg if first_error is not None else None,
         )
     )
     result = GenerationResult(

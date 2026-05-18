@@ -67,6 +67,49 @@ def test_analyzer_reports_canonical_failure_codes_as_primary(
     assert "| baseline | none | elementwise | fp32 | None | 1 |" in failure_section
 
 
+def test_analyzer_maps_legacy_signature_syntax_wrapper_to_parse(
+    tmp_path: Path,
+) -> None:
+    jsonl_path = tmp_path / "results.jsonl"
+    rows = [
+        _make_record(
+            run_id="legacy-syntax-wrapper",
+            compile_success=False,
+            compile_results_by_dtype={"fp32": False, "fp16": False, "bf16": False},
+            compile_error_type="SignatureError",
+            compile_error_msg=(
+                "SignatureError: syntax error in generated source: "
+                "invalid syntax (tmp.py, line 19)"
+            ),
+            generation_seed=0,
+        ),
+        _make_record(
+            run_id="legacy-signature",
+            compile_success=False,
+            compile_results_by_dtype={"fp32": False, "fp16": False, "bf16": False},
+            compile_error_type="SignatureError",
+            compile_error_msg="missing launcher",
+            generation_seed=1,
+        ),
+    ]
+    _write_jsonl(jsonl_path, rows)
+
+    markdown = build_compile_summary_markdown(
+        jsonl_path,
+        allow_small_matrix=True,
+    )
+
+    failure_section = markdown.split("## Failure Codes", maxsplit=1)[1].split(
+        "## Compile Error Types",
+        maxsplit=1,
+    )[0]
+    assert "| baseline | none | elementwise | fp32 | F0_PARSE | 1 |" in failure_section
+    assert (
+        "| baseline | none | elementwise | fp32 | F0_BAD_SIGNATURE | 1 |"
+        in failure_section
+    )
+
+
 def test_analyzer_keeps_legacy_compile_error_distribution_secondary(
     tmp_path: Path,
 ) -> None:

@@ -477,6 +477,25 @@ def test_remote_compile_result_to_cluster1_fields() -> None:
     }
 
 
+def test_remote_compile_result_to_cluster1_fields_maps_syntax_wrapper_to_parse() -> None:
+    result = RemoteCompileResult(
+        compile_success=False,
+        compile_results_by_dtype={"fp32": False, "fp16": False, "bf16": False},
+        compile_error_type="SignatureError",
+        compile_error_msg=(
+            "SignatureError: syntax error in generated source: "
+            "invalid syntax (tmp.py, line 19)"
+        ),
+        n_shapes_tested=0,
+        run_id="rid",
+    )
+
+    fields = remote_compile_result_to_cluster1_fields(result)
+
+    assert fields["compile_error_type"] == "SignatureError"
+    assert fields["failure_code"] == "F0_PARSE"
+
+
 def test_result_has_no_timing_fields() -> None:
     """Cluster 1 boundary: no timing / profiling fields anywhere."""
     forbidden = {

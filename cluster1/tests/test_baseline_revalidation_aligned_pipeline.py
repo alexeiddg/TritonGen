@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import cluster1.diagnostics.revalidate_baseline_aligned_pipeline as revalidation_module
 from cluster1.diagnostics.revalidate_baseline_aligned_pipeline import (
     BaselineEntrypointEvaluation,
     _publish_temp_file_no_clobber,
@@ -96,6 +97,165 @@ def test_revalidation_writes_diagnostics_without_mutating_input(
     assert rows[0]["drift_reason"] == "expected_legacy_to_canonical_mapping"
     assert rows[1]["new_canonical_failure_code"] is None
     assert rows[1]["drift_reason"] is None
+
+
+def test_revalidation_pair_evaluator_records_modal_context(
+    tmp_path: Path,
+) -> None:
+    input_path = tmp_path / "baseline.jsonl"
+    output_path = tmp_path / "diagnostic.jsonl"
+    _write_jsonl(input_path, [_legacy_row()])
+    modal_context = {
+        "function_call_id": "fc-test",
+        "input_id": "in-test",
+        "modal_app_name": "tritongen-gpu-harness",
+        "modal_eval_gpu": "L4",
+        "modal_image_sha": "unknown",
+        "modal_image_provenance_sha256": "a" * 64,
+        "modal_image_provenance_components": {"schema": "test"},
+    }
+
+    def pair_evaluator(row_index, raw_row, row):  # type: ignore[no-untyped-def]
+        assert row_index == 0
+        assert raw_row["generation_seed"] == 0
+        assert row.generation_seed == 0
+        result = _entrypoint_result(
+            compile_success=False,
+            compile_error_type="SignatureError",
+            canonical_failure_code="F0_BAD_SIGNATURE",
+            modal_context=modal_context,
+        )
+        return result, result
+
+    summary = revalidate_baseline_aligned_pipeline(
+        input_path,
+        output_path,
+        pair_evaluator=pair_evaluator,
+    )
+
+    row = _read_jsonl(output_path)[0]
+    assert summary["total_rows"] == 1
+    assert row["entrypoint_agreement"] is True
+    assert row["c1_entrypoint_modal_context"] == modal_context
+    assert row["c2_entrypoint_modal_context"] == modal_context
+
+
+def test_modal_revalidation_context_records_image_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("MODAL_IMAGE_SHA", raising=False)
+    monkeypatch.delenv("MODAL_IMAGE_DIGEST", raising=False)
+
+    context = revalidation_module._modal_revalidation_context(
+        call_id="fc-test",
+        input_id="in-test",
+    )
+
+    assert context["function_call_id"] == "fc-test"
+    assert context["input_id"] == "in-test"
+    assert context["modal_app_name"] == "tritongen-gpu-harness"
+    assert context["modal_eval_gpu"] == "L4"
+    assert context["modal_image_sha"] == "unknown"
+    assert isinstance(context["modal_image_provenance_sha256"], str)
+    assert len(context["modal_image_provenance_sha256"]) == 64
+    assert context["modal_image_provenance_components"]["schema"] == (
+        "modal_image_fallback_provenance.v1"
+    )
+    assert context["modal_image_provenance_components"]["extra"] == {
+        "runtime": "phase4_baseline_revalidation",
+        "modal_eval_gpu": "L4",
+    }
+
+
+def test_modal_parent_timeout_exceeds_two_child_timeouts() -> None:
+    assert revalidation_module._MODAL_ROW_TIMEOUT_S > (
+        2 * revalidation_module._ENTRYPOINT_CHILD_TIMEOUT_S
+    )
+
+
+def test_modal_entrypoint_fails_after_writing_summary_on_entrypoint_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    summary = {
+        "diagnostic_name": "baseline_revalidation_aligned_pipeline",
+        "diagnostic_only": True,
+        "output_path": "outputs/cluster1/diagnostics/diagnostic.jsonl",
+        "entrypoint_disagreement_count": 1,
+    }
+    monkeypatch.setattr(
+        revalidation_module,
+        "revalidate_baseline_aligned_pipeline_modal",
+        lambda _input, _output: summary,
+    )
+
+    with pytest.raises(RuntimeError, match="failed C1/C2 entrypoint identity"):
+        revalidation_module.modal_revalidate_baseline(
+            input="baseline.jsonl",
+            output="diagnostic.jsonl",
+        )
+
+    printed = capsys.readouterr().out
+    assert '"entrypoint_disagreement_count": 1' in printed
+    assert summary["output_path"] in printed
+
+
+def test_revalidation_rejects_mixed_pair_and_single_evaluators(
+    tmp_path: Path,
+) -> None:
+    input_path = tmp_path / "baseline.jsonl"
+    output_path = tmp_path / "diagnostic.jsonl"
+    _write_jsonl(input_path, [_legacy_row()])
+
+    with pytest.raises(ValueError, match="pair_evaluator cannot be combined"):
+        revalidate_baseline_aligned_pipeline(
+            input_path,
+            output_path,
+            c1_evaluator=_mock_evaluator({0: _entrypoint_result(compile_success=True)}),
+            pair_evaluator=lambda _index, _raw, _row: (  # noqa: E731
+                _entrypoint_result(compile_success=True),
+                _entrypoint_result(compile_success=True),
+            ),
+        )
+
+
+def test_entrypoint_child_main_writes_result_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request_path = tmp_path / "request.json"
+    result_path = tmp_path / "result.json"
+    request_path.write_text(
+        json.dumps({"row_index": 0, "raw_row": _legacy_row()}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        revalidation_module,
+        "evaluate_row_via_c1_entrypoint",
+        lambda _row: _entrypoint_result(
+            compile_success=False,
+            compile_error_type="SignatureError",
+            canonical_failure_code="F0_BAD_SIGNATURE",
+        ),
+    )
+
+    status = revalidation_module._entrypoint_eval_child_main(
+        [
+            "--entrypoint",
+            "c1",
+            "--request",
+            str(request_path),
+            "--result",
+            str(result_path),
+        ]
+    )
+
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert status == 0
+    assert payload["compile_success"] is False
+    assert payload["compile_error_type"] == "SignatureError"
+    assert payload["canonical_failure_code"] == "F0_BAD_SIGNATURE"
 
 
 def test_revalidation_flags_compile_success_and_entrypoint_drift(
@@ -298,6 +458,60 @@ def test_revalidation_flags_signature_to_parse_label_drift(
     assert row["drift_reason"] == "cross_category_label_drift"
 
 
+def test_revalidation_treats_legacy_syntax_wrapper_as_expected_parse_mapping(
+    tmp_path: Path,
+) -> None:
+    input_path = tmp_path / "baseline.jsonl"
+    output_path = tmp_path / "diagnostic.jsonl"
+    _write_jsonl(
+        input_path,
+        [
+            _legacy_row(
+                compile_success=False,
+                compile_error_type="SignatureError",
+                compile_error_msg=(
+                    "SignatureError: syntax error in generated source: "
+                    "invalid syntax (tmp.py, line 19)"
+                ),
+            )
+        ],
+    )
+
+    summary = revalidate_baseline_aligned_pipeline(
+        input_path,
+        output_path,
+        c1_evaluator=_mock_evaluator(
+            {
+                0: _entrypoint_result(
+                    compile_success=False,
+                    compile_error_type="SignatureError",
+                    canonical_failure_code="F0_PARSE",
+                )
+            }
+        ),
+        c2_evaluator=_mock_evaluator(
+            {
+                0: _entrypoint_result(
+                    compile_success=False,
+                    compile_error_type="SignatureError",
+                    canonical_failure_code="F0_PARSE",
+                )
+            }
+        ),
+    )
+
+    row = _read_jsonl(output_path)[0]
+    assert summary["cross_category_label_drift_count"] == 0
+    assert summary["expected_legacy_to_canonical_mapping_count"] == 1
+    assert row["agreement"] is True
+    assert row["canonical_label_agreement"] is True
+    assert row["original_canonical_failure_code"] == "F0_PARSE"
+    assert row["new_canonical_failure_code"] == "F0_PARSE"
+    assert row["label_drift_category"] == "none"
+    assert row["cross_category_label_drift"] is False
+    assert row["drift_reason"] == "expected_legacy_to_canonical_mapping"
+
+
 def test_revalidation_refuses_to_mutate_input_or_overwrite_output(
     tmp_path: Path,
 ) -> None:
@@ -435,6 +649,7 @@ def _entrypoint_result(
     canonical_failure_code: str | None = None,
     compile_results_by_dtype: dict[str, bool] | None = None,
     n_shapes_tested: int | None = None,
+    modal_context: dict[str, object] | None = None,
 ) -> BaselineEntrypointEvaluation:
     return BaselineEntrypointEvaluation(
         compile_success=compile_success,
@@ -455,6 +670,7 @@ def _entrypoint_result(
             if n_shapes_tested is not None
             else 4 if compile_success else 0
         ),
+        modal_context=modal_context,
     )
 
 

@@ -26,7 +26,7 @@ triton_compile_image = (
         "numpy==2.1.0",
         "pydantic==2.10.6",
     )
-    .add_local_python_source("cluster1", "shared")
+    .add_local_python_source("cluster1", "cluster2", "shared")
 )
 
 llm_generation_image = (
@@ -54,6 +54,6 @@ llm_generation_image = (
             "HF_HUB_ENABLE_HF_TRANSFER": "1",
         }
     )
-    .add_local_python_source("cluster1", "shared")
+    .add_local_python_source("cluster1", "cluster2", "shared")
     .add_local_dir("cluster1/grammar", "/root/cluster1/grammar")
 )

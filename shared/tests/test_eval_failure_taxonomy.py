@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from shared.eval.failure_taxonomy import FAILURE_CODES, classify_failure
+from shared.eval.failure_taxonomy import (
+    FAILURE_CODES,
+    canonical_failure_code_from_compile_error,
+    classify_failure,
+)
 from shared.eval.schema import EvalResult
 
 
@@ -32,6 +36,34 @@ def test_maps_cluster1_legacy_compile_error_types() -> None:
     assert classify_failure(_make_eval_result(failure_code="CompilationError")) == "F1_COMPILE"
     assert classify_failure(_make_eval_result(failure_code="RuntimeError")) == "F1_RUNTIME"
     assert classify_failure(_make_eval_result(failure_code="SignatureError")) == "F0_BAD_SIGNATURE"
+
+
+def test_maps_legacy_signature_syntax_wrapper_to_parse() -> None:
+    result = _make_eval_result(
+        failure_code="SignatureError",
+        compile_error=(
+            "SignatureError: syntax error in generated source: "
+            "invalid syntax (tmp.py, line 19)"
+        ),
+    )
+
+    assert classify_failure(result) == "F0_PARSE"
+    assert (
+        canonical_failure_code_from_compile_error(
+            "SignatureError",
+            "SyntaxError: invalid syntax (<unknown>, line 19)",
+        )
+        == "F0_PARSE"
+    )
+
+
+def test_explicit_canonical_failure_code_precedes_parse_message() -> None:
+    result = _make_eval_result(
+        failure_code="F0_BAD_SIGNATURE",
+        compile_error="SyntaxError: invalid syntax (<unknown>, line 19)",
+    )
+
+    assert classify_failure(result) == "F0_BAD_SIGNATURE"
 
 
 def test_classifies_grammar_parse_rejection_before_legacy_compile_label() -> None:

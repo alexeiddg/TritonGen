@@ -130,6 +130,35 @@ def test_replay_adapter_canonicalizes_legacy_cluster1_failure_code(
     assert artifact_path.read_bytes() == artifact_before
 
 
+def test_replay_adapter_canonicalizes_legacy_signature_syntax_as_parse(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_replay_fixture(
+        tmp_path,
+        condition="none",
+        row_count=1,
+        compile_success=False,
+        compile_error_type="SignatureError",
+        compile_error_msg=(
+            "SignatureError: syntax error in generated source: "
+            "invalid syntax (tmp.py, line 19)"
+        ),
+    )
+
+    mapping = map_replay_candidates(
+        condition="none",
+        kernel_class="elementwise",
+        dtype="fp32",
+        candidate_count=1,
+        manifest_path=manifest,
+    )
+
+    assert mapping.ok
+    candidate = mapping.candidates[0]
+    assert candidate.failure_code == "F0_PARSE"
+    assert candidate.legacy_compile_error_type == "SignatureError"
+
+
 def test_replay_adapter_honors_row_level_canonical_failure_code(
     tmp_path: Path,
 ) -> None:

@@ -651,6 +651,38 @@ def test_conversion_preserves_remote_canonical_failure_code() -> None:
     assert result.failure_code == "F0_PARSE"
 
 
+def test_conversion_maps_remote_signature_syntax_without_failure_code_to_parse() -> None:
+    spec = get_kernel_spec("elementwise")
+    generation, _ = _baseline_remote_pair()
+    compile_ = RemoteCompileResult(
+        compile_success=False,
+        compile_results_by_dtype={"fp32": False, "fp16": False, "bf16": False},
+        compile_error_type="SignatureError",
+        compile_error_msg=(
+            "SignatureError: syntax error in generated source: "
+            "invalid syntax (tmp.py, line 19)"
+        ),
+        n_shapes_tested=0,
+        run_id="rid-baseline",
+        factor_cell="none",
+    )
+
+    result = runner.remote_results_to_generation_result(
+        generation=generation,
+        compile_=compile_,
+        spec=spec,
+        dtype="fp32",
+        grammar_active=False,
+        seed=0,
+        temperature=0.2,
+        model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+        run_id="rid-baseline",
+    )
+
+    assert result.compile_error_type == "SignatureError"
+    assert result.failure_code == "F0_PARSE"
+
+
 def test_conversion_truncates_long_compile_error_msg() -> None:
     spec = get_kernel_spec("elementwise")
     generation, _ = _baseline_remote_pair()

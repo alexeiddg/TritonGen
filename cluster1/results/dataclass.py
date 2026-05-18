@@ -22,7 +22,11 @@ from shared.generation_metadata import (
     is_immutable_hub_revision,
     modal_image_provenance_digest,
 )
-from shared.eval.failure_taxonomy import FAILURE_CODES, LEGACY_FAILURE_CODE_MAP
+from shared.eval.failure_taxonomy import (
+    FAILURE_CODES,
+    LEGACY_FAILURE_CODE_MAP,
+    canonical_failure_code_from_compile_error,
+)
 
 
 # Task 5.1
@@ -461,8 +465,9 @@ def generation_result_record_for_deserialization(
     updated.setdefault("modal_image_provenance_sha256", None)
     updated.setdefault("modal_image_provenance_components", None)
     if "failure_code" not in updated:
-        updated["failure_code"] = canonical_failure_code_for_compile_error_type(
-            updated.get("compile_error_type")
+        updated["failure_code"] = canonical_failure_code_from_compile_error(
+            updated.get("compile_error_type"),
+            updated.get("compile_error_msg"),
         )
     return updated
 

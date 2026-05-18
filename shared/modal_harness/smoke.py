@@ -9,7 +9,8 @@ Run with::
     modal run -m shared.modal_harness.smoke --case generate-g-one
 
 The ``import-only`` case verifies the compile image can be built and that the
-local ``cluster1`` and ``shared`` packages were copied into the container.
+local ``cluster1``, ``cluster2``, and ``shared`` packages were copied into the
+container.
 The compile cases additionally exercise ``remote_compile_only`` end-to-end
 on an L4 GPU. The generation cases exercise one baseline and one grammar-active
 model call.
@@ -92,11 +93,12 @@ def relu(x: torch.Tensor) -> torch.Tensor:
 
 @app.function(image=triton_compile_image)
 def import_smoke() -> dict:
-    """Confirm cluster1/shared packages are importable inside the container."""
+    """Confirm project packages are importable inside the container."""
     import cluster1  # noqa: F401
+    import cluster2  # noqa: F401
     import shared  # noqa: F401
 
-    return {"cluster1": True, "shared": True}
+    return {"cluster1": True, "cluster2": True, "shared": True}
 
 
 def _classify_remote_exception(exc: BaseException) -> str:

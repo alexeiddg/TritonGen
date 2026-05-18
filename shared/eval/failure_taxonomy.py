@@ -31,6 +31,29 @@ LEGACY_FAILURE_CODE_MAP = {
     "RuntimeError": "F1_RUNTIME",
 }
 
+_PARSE_ERROR_MARKERS = (
+    "syntax error in generated source",
+    "syntaxerror",
+    "invalid syntax",
+)
+
+
+def canonical_failure_code_from_compile_error(
+    compile_error_type: str | None,
+    compile_error_msg: str | None = None,
+) -> str | None:
+    """Map a legacy C1 compile label and message to a canonical failure code."""
+
+    if compile_error_type is None:
+        return None
+    if compile_error_type == "SyntaxError":
+        return "F0_PARSE"
+    if compile_error_type == "SignatureError" and _is_parse_error_text(
+        compile_error_msg
+    ):
+        return "F0_PARSE"
+    return LEGACY_FAILURE_CODE_MAP.get(compile_error_type)
+
 
 def classify_failure(result: EvalResult) -> str | None:
     """Return one contract failure code, or ``None`` for a successful record.
@@ -47,7 +70,10 @@ def classify_failure(result: EvalResult) -> str | None:
         return grammar_failure
 
     if result.failure_code in LEGACY_FAILURE_CODE_MAP:
-        return LEGACY_FAILURE_CODE_MAP[result.failure_code]
+        return canonical_failure_code_from_compile_error(
+            result.failure_code,
+            result.compile_error,
+        )
 
     sanitizer_failure = _classify_sanitizer_failure(result)
     if sanitizer_failure is not None:
@@ -104,3 +130,8 @@ def _classify_sanitizer_failure(result: EvalResult) -> str | None:
     if "f0_surface_violation" in error_text or "surface violation" in error_text:
         return "F0_SURFACE_VIOLATION"
     return None
+
+
+def _is_parse_error_text(error_msg: str | None) -> bool:
+    error_text = (error_msg or "").lower()
+    return any(marker in error_text for marker in _PARSE_ERROR_MARKERS)

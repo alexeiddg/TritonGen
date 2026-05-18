@@ -58,13 +58,15 @@ from cluster1.results.dataclass import (  # noqa: E402
     DEFAULT_GRAMMAR_VARIANT,
     GENERATION_METADATA_SCHEMA_VERSION,
     VALID_GRAMMAR_VARIANTS,
-    canonical_failure_code_for_compile_error_type,
     generation_result_record_for_deserialization,
     grammar_variant_for_cell,
     validate_grammar_path_variant_invariants,
     validate_paper_scale_metadata,
 )
 from cluster1.validation.modal_compile_check import check_compiles_modal  # noqa: E402
+from shared.eval.failure_taxonomy import (  # noqa: E402
+    canonical_failure_code_from_compile_error,
+)
 from shared.modal_harness.generation import DEFAULT_GENERATION_GPU  # noqa: E402
 
 DEFAULT_MODEL_ID = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
@@ -842,7 +844,10 @@ def remote_results_to_generation_result(
     failure_code = (
         compile_.failure_code
         if compile_.failure_code is not None
-        else canonical_failure_code_for_compile_error_type(mapped_error)
+        else canonical_failure_code_from_compile_error(
+            mapped_error,
+            compile_.compile_error_msg,
+        )
     )
 
     return GenerationResult(

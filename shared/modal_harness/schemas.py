@@ -20,9 +20,9 @@ from cluster1.results.dataclass import (
     DEFAULT_GRAMMAR_VARIANT,
     GENERATION_METADATA_SCHEMA_VERSION,
     GrammarVariant,
-    canonical_failure_code_for_compile_error_type,
     validate_grammar_variant_invariants,
 )
+from shared.eval.failure_taxonomy import canonical_failure_code_from_compile_error
 from shared.generation_metadata import (
     UNKNOWN,
     VALID_REJECTION_LAYERS,
@@ -319,8 +319,9 @@ def remote_compile_result_to_cluster1_fields(
         "failure_code": (
             result.failure_code
             if result.failure_code is not None
-            else canonical_failure_code_for_compile_error_type(
-                result.compile_error_type
+            else canonical_failure_code_from_compile_error(
+                result.compile_error_type,
+                result.compile_error_msg,
             )
         ),
         "n_shapes_tested": result.n_shapes_tested,

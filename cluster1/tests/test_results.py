@@ -282,6 +282,24 @@ def test_legacy_failed_row_deserialization_adds_canonical_failure_code() -> None
     assert updated["failure_code"] == "F0_BAD_SIGNATURE"
 
 
+def test_legacy_signature_syntax_row_deserialization_adds_parse_failure_code() -> None:
+    record = _make_result(
+        compile_success=False,
+        compile_results_by_dtype={"fp32": False, "fp16": False, "bf16": False},
+        compile_error_type="SignatureError",
+        compile_error_msg=(
+            "SignatureError: syntax error in generated source: "
+            "invalid syntax (tmp.py, line 19)"
+        ),
+    ).__dict__.copy()
+    record.pop("failure_code", None)
+
+    updated = generation_result_record_for_deserialization(record)
+
+    assert updated["compile_error_type"] == "SignatureError"
+    assert updated["failure_code"] == "F0_PARSE"
+
+
 def test_failure_code_is_required_for_new_failed_rows() -> None:
     result = _make_result(
         compile_success=False,

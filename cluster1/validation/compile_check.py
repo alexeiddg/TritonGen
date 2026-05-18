@@ -16,10 +16,8 @@ import types
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
-from cluster1.results.dataclass import (
-    CompileErrorType,
-    canonical_failure_code_for_compile_error_type,
-)
+from cluster1.results.dataclass import CompileErrorType
+from shared.eval.failure_taxonomy import canonical_failure_code_from_compile_error
 from shared.eval.levels.level0_parse import check_parse, check_signature
 
 try:
@@ -258,8 +256,9 @@ def check_compiles(
                     error_msg=str(exc)[:500],
                     dtype=dtype_str,
                     n_shapes_tested=n_tested,
-                    failure_code=canonical_failure_code_for_compile_error_type(
-                        error_type
+                    failure_code=canonical_failure_code_from_compile_error(
+                        error_type,
+                        str(exc),
                     ),
                 )
 

@@ -6,6 +6,8 @@ import argparse
 import hashlib
 import json
 import os
+import subprocess
+import sys
 import tempfile
 from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass
@@ -14,14 +16,21 @@ from typing import Any
 
 from cluster1.results.dataclass import (
     GenerationResult,
-    canonical_failure_code_for_compile_error_type,
     generation_result_record_for_deserialization,
 )
 from shared.eval.adapter_cluster1 import eval_result_from_generation_result
-from shared.eval.failure_taxonomy import FAILURE_CODES, classify_failure
+from shared.eval.failure_taxonomy import (
+    FAILURE_CODES,
+    canonical_failure_code_from_compile_error,
+    classify_failure,
+)
 
 
 DIAGNOSTIC_NAME = "baseline_revalidation_aligned_pipeline"
+MODAL_BASELINE_EVAL_GPU = "L4"
+_ENTRYPOINT_CHILD_COMMAND = "_entrypoint_eval_child"
+_ENTRYPOINT_CHILD_TIMEOUT_S = 240
+_MODAL_ROW_TIMEOUT_S = _ENTRYPOINT_CHILD_TIMEOUT_S * 2 + 120
 _MAX_ERROR_CHARS = 500
 _GENERATION_RESULT_FIELD_NAMES = frozenset(
     field_name for field_name in GenerationResult.__dataclass_fields__
@@ -55,6 +64,7 @@ class BaselineEntrypointEvaluation:
     canonical_failure_code: str | None
     compile_results_by_dtype: dict[str, bool]
     n_shapes_tested: int
+    modal_context: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if self.compile_success and self.canonical_failure_code is not None:
@@ -73,6 +83,10 @@ class BaselineEntrypointEvaluation:
 
 
 BaselineEvaluator = Callable[[GenerationResult], BaselineEntrypointEvaluation]
+BaselinePairEvaluator = Callable[
+    [int, dict[str, Any], GenerationResult],
+    tuple[BaselineEntrypointEvaluation, BaselineEntrypointEvaluation],
+]
 
 
 def revalidate_baseline_aligned_pipeline(
@@ -81,8 +95,14 @@ def revalidate_baseline_aligned_pipeline(
     *,
     c1_evaluator: BaselineEvaluator | None = None,
     c2_evaluator: BaselineEvaluator | None = None,
+    pair_evaluator: BaselinePairEvaluator | None = None,
 ) -> dict[str, Any]:
     """Write a row-level non-mutating diagnostic for a frozen C1 baseline."""
+
+    if pair_evaluator is not None and (
+        c1_evaluator is not None or c2_evaluator is not None
+    ):
+        raise ValueError("pair_evaluator cannot be combined with c1/c2 evaluators")
 
     input_path = Path(input_jsonl)
     output_path = Path(output_jsonl)
@@ -112,12 +132,17 @@ def revalidate_baseline_aligned_pipeline(
         ) as output:
             temp_path = Path(output.name)
             for row_index, raw_row, row in _iter_generation_rows(input_path):
+                if pair_evaluator is not None:
+                    c1_result, c2_result = pair_evaluator(row_index, raw_row, row)
+                else:
+                    c1_result = c1(row)
+                    c2_result = c2(row)
                 diagnostic_row = _diagnostic_row(
                     row_index=row_index,
                     raw_row=raw_row,
                     row=row,
-                    c1_result=c1(row),
-                    c2_result=c2(row),
+                    c1_result=c1_result,
+                    c2_result=c2_result,
                 )
                 rows_written += 1
                 compile_success_agreements += int(bool(diagnostic_row["agreement"]))
@@ -226,11 +251,74 @@ def evaluate_row_via_c2_entrypoint(
     )
 
 
+def revalidate_baseline_aligned_pipeline_modal(
+    input_jsonl: str | Path,
+    output_jsonl: str | Path,
+) -> dict[str, Any]:
+    """Run the evidence-bearing Modal L4 revalidation over the frozen baseline."""
+
+    remote_pair = globals().get("remote_baseline_entrypoint_pair")
+    if remote_pair is None:
+        raise RuntimeError(
+            "Modal baseline revalidation requires `modal run -m "
+            "cluster1.diagnostics.revalidate_baseline_aligned_pipeline`"
+        )
+
+    def pair_evaluator(
+        row_index: int,
+        raw_row: dict[str, Any],
+        row: GenerationResult,
+    ) -> tuple[BaselineEntrypointEvaluation, BaselineEntrypointEvaluation]:
+        del row
+        payload = remote_pair.remote(row_index, raw_row)
+        if payload.get("row_index") != row_index:
+            raise RuntimeError(
+                "Modal revalidation row index mismatch: "
+                f"expected {row_index}, got {payload.get('row_index')!r}"
+            )
+        c1_result = _entrypoint_evaluation_from_payload(payload["c1"])
+        c2_result = _entrypoint_evaluation_from_payload(payload["c2"])
+        print(
+            "revalidated baseline row "
+            f"{row_index + 1}: "
+            f"c1_compile={str(c1_result.compile_success).lower()} "
+            f"c2_compile={str(c2_result.compile_success).lower()} "
+            f"c1_code={c1_result.canonical_failure_code} "
+            f"c2_code={c2_result.canonical_failure_code}",
+            flush=True,
+        )
+        return c1_result, c2_result
+
+    return revalidate_baseline_aligned_pipeline(
+        input_jsonl,
+        output_jsonl,
+        pair_evaluator=pair_evaluator,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == _ENTRYPOINT_CHILD_COMMAND:
+        return _entrypoint_eval_child_main(argv[1:])
+
     args = _parse_args(argv)
     summary = revalidate_baseline_aligned_pipeline(args.input, args.output)
     print(json.dumps(summary, sort_keys=True, indent=2))
     return 0
+
+
+def modal_revalidate_baseline(
+    input: str = "outputs/cluster1/baseline_repaired_l4_n20.jsonl",
+    output: str = (
+        "outputs/cluster1/diagnostics/"
+        "baseline_revalidation_aligned_pipeline.jsonl"
+    ),
+) -> None:
+    """Modal local entrypoint for the Phase 4 evidence-bearing L4 run."""
+
+    summary = revalidate_baseline_aligned_pipeline_modal(input, output)
+    print(json.dumps(summary, sort_keys=True, indent=2), flush=True)
+    _assert_modal_revalidation_passed(summary)
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -252,13 +340,17 @@ def _iter_generation_rows(
         if not line.strip():
             raise ValueError(f"blank JSONL row at line {row_index + 1}")
         raw_row = json.loads(line)
-        record = generation_result_record_for_deserialization(raw_row)
-        payload = {
-            field_name: record[field_name]
-            for field_name in _GENERATION_RESULT_FIELD_NAMES
-            if field_name in record
-        }
-        yield row_index, raw_row, GenerationResult(**payload)
+        yield row_index, raw_row, _generation_result_from_raw_row(raw_row)
+
+
+def _generation_result_from_raw_row(raw_row: dict[str, Any]) -> GenerationResult:
+    record = generation_result_record_for_deserialization(raw_row)
+    payload = {
+        field_name: record[field_name]
+        for field_name in _GENERATION_RESULT_FIELD_NAMES
+        if field_name in record
+    }
+    return GenerationResult(**payload)
 
 
 def _diagnostic_row(
@@ -314,11 +406,13 @@ def _diagnostic_row(
         "c1_entrypoint_failure_code": c1_result.canonical_failure_code,
         "c1_entrypoint_compile_results_by_dtype": c1_result.compile_results_by_dtype,
         "c1_entrypoint_n_shapes_tested": c1_result.n_shapes_tested,
+        "c1_entrypoint_modal_context": c1_result.modal_context,
         "c2_entrypoint_compile_success": c2_result.compile_success,
         "c2_entrypoint_compile_error_type": c2_result.compile_error_type,
         "c2_entrypoint_failure_code": c2_result.canonical_failure_code,
         "c2_entrypoint_compile_results_by_dtype": c2_result.compile_results_by_dtype,
         "c2_entrypoint_n_shapes_tested": c2_result.n_shapes_tested,
+        "c2_entrypoint_modal_context": c2_result.modal_context,
         "agreement": compile_success_agreement,
         "entrypoint_agreement": entrypoint_agreement,
         "entrypoint_mismatch_fields": entrypoint_mismatch_fields,
@@ -421,9 +515,7 @@ def _canonical_failure_code_from_error(
     error_type: str | None,
     error_msg: str | None,
 ) -> str | None:
-    if error_type == "SignatureError" and "syntax" in (error_msg or "").lower():
-        return "F0_PARSE"
-    mapped = canonical_failure_code_for_compile_error_type(error_type)
+    mapped = canonical_failure_code_from_compile_error(error_type, error_msg)
     if mapped is not None:
         return mapped
     if error_type is None:
@@ -433,10 +525,198 @@ def _canonical_failure_code_from_error(
     return "F1_COMPILE"
 
 
+def _remote_baseline_entrypoint_pair(
+    row_index: int,
+    raw_row: dict[str, Any],
+) -> dict[str, Any]:
+    """Run both aligned entrypoints for one baseline row inside Modal L4."""
+
+    from shared.modal_harness.runtime import current_modal_ids
+
+    call_id, input_id = current_modal_ids()
+    modal_context = _modal_revalidation_context(call_id=call_id, input_id=input_id)
+    c1_result = _with_modal_context(
+        _entrypoint_evaluation_from_payload(
+            _run_entrypoint_subprocess(row_index, raw_row, "c1")
+        ),
+        modal_context,
+    )
+    c2_result = _with_modal_context(
+        _entrypoint_evaluation_from_payload(
+            _run_entrypoint_subprocess(row_index, raw_row, "c2")
+        ),
+        modal_context,
+    )
+    return {
+        "row_index": row_index,
+        "c1": c1_result.to_dict(),
+        "c2": c2_result.to_dict(),
+    }
+
+
+def _with_modal_context(
+    result: BaselineEntrypointEvaluation,
+    modal_context: dict[str, Any],
+) -> BaselineEntrypointEvaluation:
+    payload = result.to_dict()
+    payload["modal_context"] = dict(modal_context)
+    return BaselineEntrypointEvaluation(**payload)
+
+
+def _entrypoint_evaluation_from_payload(
+    payload: dict[str, Any],
+) -> BaselineEntrypointEvaluation:
+    return BaselineEntrypointEvaluation(
+        compile_success=bool(payload["compile_success"]),
+        compile_error_type=payload.get("compile_error_type"),
+        compile_error_msg=payload.get("compile_error_msg"),
+        canonical_failure_code=payload.get("canonical_failure_code"),
+        compile_results_by_dtype=dict(payload.get("compile_results_by_dtype", {})),
+        n_shapes_tested=int(payload.get("n_shapes_tested", 0)),
+        modal_context=payload.get("modal_context"),
+    )
+
+
+def _run_entrypoint_subprocess(
+    row_index: int,
+    raw_row: dict[str, Any],
+    entrypoint: str,
+) -> dict[str, Any]:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        request_path = tmp_path / "request.json"
+        result_path = tmp_path / "result.json"
+        request_path.write_text(
+            json.dumps({"row_index": row_index, "raw_row": raw_row}),
+            encoding="utf-8",
+        )
+        try:
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "cluster1.diagnostics.revalidate_baseline_aligned_pipeline",
+                    _ENTRYPOINT_CHILD_COMMAND,
+                    "--entrypoint",
+                    entrypoint,
+                    "--request",
+                    str(request_path),
+                    "--result",
+                    str(result_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=_ENTRYPOINT_CHILD_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"{entrypoint} entrypoint child timed out for row {row_index} "
+                f"after {_ENTRYPOINT_CHILD_TIMEOUT_S}s: "
+                f"stdout={_truncate(exc.stdout)!r} stderr={_truncate(exc.stderr)!r}"
+            ) from exc
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"{entrypoint} entrypoint child failed for row {row_index} "
+                f"(exit={proc.returncode}): "
+                f"stdout={_truncate(proc.stdout)!r} stderr={_truncate(proc.stderr)!r}"
+            )
+        try:
+            return json.loads(result_path.read_text(encoding="utf-8"))
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                f"{entrypoint} entrypoint child did not write a result for row "
+                f"{row_index}"
+            ) from exc
+
+
+def _entrypoint_eval_child_main(argv: list[str]) -> int:
+    args = _parse_entrypoint_child_args(argv)
+    request = json.loads(args.request.read_text(encoding="utf-8"))
+    row = _generation_result_from_raw_row(request["raw_row"])
+    if args.entrypoint == "c1":
+        result = evaluate_row_via_c1_entrypoint(row)
+    elif args.entrypoint == "c2":
+        result = evaluate_row_via_c2_entrypoint(row)
+    else:  # pragma: no cover - argparse choices enforce this.
+        raise ValueError(f"unknown entrypoint: {args.entrypoint!r}")
+    args.result.write_text(
+        json.dumps(result.to_dict(), sort_keys=True),
+        encoding="utf-8",
+    )
+    return 0
+
+
+def _parse_entrypoint_child_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=argparse.SUPPRESS)
+    parser.add_argument("--entrypoint", required=True, choices=("c1", "c2"))
+    parser.add_argument("--request", required=True, type=Path)
+    parser.add_argument("--result", required=True, type=Path)
+    return parser.parse_args(argv)
+
+
+def _assert_modal_revalidation_passed(summary: dict[str, Any]) -> None:
+    entrypoint_disagreements = int(summary.get("entrypoint_disagreement_count", 0))
+    if entrypoint_disagreements:
+        raise RuntimeError(
+            "Phase 4 Modal baseline revalidation failed C1/C2 entrypoint "
+            f"identity: {entrypoint_disagreements} disagreement(s). "
+            f"Diagnostic artifact: {summary.get('output_path')}"
+        )
+
+
+def _modal_revalidation_context(
+    *,
+    call_id: str | None,
+    input_id: str | None,
+) -> dict[str, Any]:
+    from cluster1.generation.provenance import modal_image_provenance
+
+    image_metadata = modal_image_provenance(
+        extra={
+            "runtime": "phase4_baseline_revalidation",
+            "modal_eval_gpu": MODAL_BASELINE_EVAL_GPU,
+        }
+    )
+    return {
+        "function_call_id": call_id,
+        "input_id": input_id,
+        "modal_app_name": "tritongen-gpu-harness",
+        "modal_eval_gpu": MODAL_BASELINE_EVAL_GPU,
+        **image_metadata,
+    }
+
+
 def _truncate(value: str | None) -> str | None:
     if value is None:
         return None
     return value[:_MAX_ERROR_CHARS]
+
+
+def _register_modal_entrypoints_if_needed() -> None:
+    """Expose Modal-only entrypoints without making normal imports depend on Modal."""
+
+    if "modal" not in sys.modules:
+        return
+
+    from shared.modal_harness.app import app as _modal_app
+    from shared.modal_harness.images import triton_compile_image
+
+    globals()["remote_baseline_entrypoint_pair"] = _modal_app.function(
+        image=triton_compile_image,
+        gpu=MODAL_BASELINE_EVAL_GPU,
+        memory=24576,
+        cpu=4.0,
+        timeout=_MODAL_ROW_TIMEOUT_S,
+        max_containers=20,
+        min_containers=0,
+        scaledown_window=120,
+    )(_remote_baseline_entrypoint_pair)
+    globals()["modal_revalidate_baseline"] = _modal_app.local_entrypoint()(
+        modal_revalidate_baseline
+    )
+
+
+_register_modal_entrypoints_if_needed()
 
 
 if __name__ == "__main__":

@@ -60,8 +60,8 @@ def main() -> None:
     # crash the runner before it can return a structured error.
     try:
         from cluster1.data.kernels import get_kernel_spec
-        from cluster1.results.dataclass import (
-            canonical_failure_code_for_compile_error_type,
+        from shared.eval.failure_taxonomy import (
+            canonical_failure_code_from_compile_error,
         )
         from cluster1.validation.compile_check import check_compiles_all_dtypes
     except Exception as exc:
@@ -153,8 +153,9 @@ def main() -> None:
             "failure_code": (
                 first_error.failure_code
                 if first_error and first_error.failure_code is not None
-                else canonical_failure_code_for_compile_error_type(
-                    first_error.error_type if first_error else None
+                else canonical_failure_code_from_compile_error(
+                    first_error.error_type if first_error else None,
+                    first_error.error_msg if first_error else None,
                 )
             ),
             "n_shapes_tested": n_shapes_tested,
