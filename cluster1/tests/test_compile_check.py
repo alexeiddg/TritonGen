@@ -45,6 +45,18 @@ def _sig(*param_names: str) -> inspect.Signature:
     return inspect.Signature(params)
 
 
+def _annotated_sig(*param_names: str) -> inspect.Signature:
+    params = [
+        inspect.Parameter(
+            name,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            annotation=object,
+        )
+        for name in param_names
+    ]
+    return inspect.Signature(params, return_annotation=object)
+
+
 def _generated_module_names() -> set[str]:
     return {name for name in sys.modules if name.startswith("_generated_kernel_")}
 
@@ -170,6 +182,48 @@ def test_validate_signature_matches() -> None:
     spec = _make_spec("relu", _sig("x"))
     try:
         assert validate_signature(module, spec) is None
+    finally:
+        cleanup_generated_module(module)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def relu(x: object) -> object:\n    return x\n",
+        "def relu(x):\n    return x\n",
+        "def relu(x: int) -> int:\n    return x\n",
+    ],
+)
+def test_validate_signature_accepts_matching_parameter_names_regardless_of_annotations(
+    source: str,
+) -> None:
+    module = load_generated_module(source)
+    spec = _make_spec("relu", _annotated_sig("x"))
+    try:
+        assert validate_signature(module, spec) is None
+    finally:
+        cleanup_generated_module(module)
+
+
+@pytest.mark.parametrize(
+    "source,reference_params",
+    [
+        ("def relu(y):\n    return y\n", ("x",)),
+        ("def relu(y, x):\n    return x\n", ("x", "y")),
+        ("def relu(x):\n    return x\n", ("x", "y")),
+        ("def relu(x, y):\n    return x\n", ("x",)),
+    ],
+)
+def test_validate_signature_rejects_parameter_name_count_and_order_mismatches(
+    source: str,
+    reference_params: tuple[str, ...],
+) -> None:
+    module = load_generated_module(source)
+    spec = _make_spec("relu", _sig(*reference_params))
+    try:
+        error = validate_signature(module, spec)
+        assert error is not None
+        assert "signature mismatch" in error
     finally:
         cleanup_generated_module(module)
 

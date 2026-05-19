@@ -36,8 +36,9 @@
 > **EVALUATION ALIGNMENT ADDENDUM:** Cluster 1 evaluation delegates shared
 > semantics to `shared/eval/`. Compile validation owns the explicit ordering:
 > shared Level 0 AST parse and launcher-signature validation first, then Level 1
-> runtime import, secondary `inspect.signature` validation, and dummy Triton
-> launches. `KernelSpec.shapes_by_dtype` is derived from
+> runtime import, secondary `inspect.signature` validation that compares ordered
+> launcher parameter names only and ignores type/return annotations, and dummy
+> Triton launches. `KernelSpec.shapes_by_dtype` is derived from
 > `shared.eval.correctness_shapes.get_compile_shapes()`. New Cluster 1 rows
 > carry canonical `failure_code` in addition to legacy `compile_error_type`;
 > legacy labels remain secondary diagnostics only. Grammar instrumentation fields

@@ -246,7 +246,7 @@ def test_model_class_only_rejected_for_current_cluster1_surface() -> None:
     assert error is not None
 
 
-def test_compile_checker_signature_equality_requires_annotations(fake_gpu_modules) -> None:
+def test_compile_checker_signature_guard_ignores_annotations(fake_gpu_modules) -> None:
     spec = get_kernel_spec("elementwise")
     module = types.ModuleType("generated")
 
@@ -262,19 +262,21 @@ def test_compile_checker_signature_equality_requires_annotations(fake_gpu_module
     )
     assert validate_signature(module, spec.compile_spec) is None
 
-    exec(
-        compile(
-            "def relu(x):\n    return x\n",
-            "<generated>",
-            "exec",
-            dont_inherit=True,
-        ),
-        {},
-        module.__dict__,
-    )
-    error = validate_signature(module, spec.compile_spec)
-    assert error is not None
-    assert "signature mismatch" in error
+    for source in (
+        "def relu(x):\n    return x\n",
+        "def relu(x: int) -> int:\n    return x\n",
+    ):
+        exec(
+            compile(
+                source,
+                "<generated>",
+                "exec",
+                dont_inherit=True,
+            ),
+            {},
+            module.__dict__,
+        )
+        assert validate_signature(module, spec.compile_spec) is None
 
 
 def _has_triton_jit(function: ast.FunctionDef) -> bool:

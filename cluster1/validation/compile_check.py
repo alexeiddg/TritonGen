@@ -168,10 +168,12 @@ def validate_signature(module: types.ModuleType, spec: CompileSpec) -> str | Non
     except (TypeError, ValueError) as exc:
         return f"could not inspect signature of '{spec.launcher_name}': {exc}"
 
-    if actual_sig != spec.reference_signature:
+    actual_params = tuple(actual_sig.parameters)
+    expected_params = tuple(spec.reference_signature.parameters)
+    if actual_params != expected_params:
         return (
             f"signature mismatch for '{spec.launcher_name}': "
-            f"expected {spec.reference_signature}, got {actual_sig}"
+            f"expected params {expected_params}, got {actual_params}"
         )
     return None
 

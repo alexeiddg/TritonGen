@@ -7,8 +7,10 @@ import types
 
 import pytest
 
+from cluster1.data.kernels import get_kernel_spec
 from cluster1.validation import compile_check
 from cluster1.validation.compile_check import CompileSpec, check_compiles
+from shared.eval.levels.level0_parse import check_signature
 
 
 def _make_spec(
@@ -41,6 +43,77 @@ def relu_kernel(x):
 def relu(x):
     return x
 """
+
+
+def _entrypoint_source(
+    launcher_name: str,
+    params: tuple[str, ...],
+    *,
+    annotations: str,
+) -> str:
+    def render_param(name: str) -> str:
+        if annotations == "torch":
+            return f"{name}: torch.Tensor"
+        if annotations == "int":
+            return f"{name}: int"
+        return name
+
+    rendered_params = ", ".join(render_param(name) for name in params)
+    return f"""\
+@triton.jit
+def _{launcher_name}_kernel(x):
+    return x
+
+def {launcher_name}({rendered_params}):
+    return {params[0] if params else 'None'}
+"""
+
+
+def _runtime_signature_ok(source: str, compile_spec: CompileSpec) -> bool:
+    module = types.ModuleType("generated")
+    module.triton = types.SimpleNamespace(jit=lambda fn: fn)  # type: ignore[attr-defined]
+    module.torch = types.SimpleNamespace(Tensor=object)  # type: ignore[attr-defined]
+    exec(compile(source, "<generated>", "exec", dont_inherit=True), module.__dict__)
+    return compile_check.validate_signature(module, compile_spec) is None
+
+
+@pytest.mark.parametrize(
+    "kernel_class,expected_params",
+    [
+        ("elementwise", ("x",)),
+        ("reduction", ("x",)),
+        ("matmul", ("a", "b")),
+    ],
+)
+@pytest.mark.parametrize(
+    "annotations,params,expected_ok",
+    [
+        ("torch", None, True),
+        ("none", None, True),
+        ("int", None, True),
+        ("none", ("wrong_a", "wrong_b"), False),
+    ],
+)
+def test_runtime_signature_guard_matches_level0_parameter_name_semantics(
+    kernel_class: str,
+    expected_params: tuple[str, ...],
+    annotations: str,
+    params: tuple[str, ...] | None,
+    expected_ok: bool,
+) -> None:
+    kernel_spec = get_kernel_spec(kernel_class)
+    generated_params = params if params is not None else expected_params
+    source = _entrypoint_source(
+        kernel_spec.launcher_name,
+        generated_params[: len(expected_params)],
+        annotations=annotations,
+    )
+
+    level0_ok, _ = check_signature(source, kernel_spec)
+    runtime_ok = _runtime_signature_ok(source, kernel_spec.compile_spec)
+
+    assert level0_ok is expected_ok
+    assert runtime_ok is expected_ok
 
 
 def test_level0_parse_runs_before_runtime_import(
