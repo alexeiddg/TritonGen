@@ -34,6 +34,7 @@ from cluster2.validation.modal_correctness_check import (
     configured_modal_eval_gpu,
     extract_correctness_result,
 )
+from shared.eval.levels.level1_compile import Level1CompileResult
 from shared.tests.level2_fake_torch import install_fake_level2_runtime
 
 
@@ -59,6 +60,17 @@ HEAVY_MODULES = ("torch", "triton", "transformers", "xgrammar", "autoawq")
 @pytest.fixture(autouse=True)
 def fake_level2_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     install_fake_level2_runtime(monkeypatch)
+    monkeypatch.setattr(
+        correctness_runner,
+        "check_compile_level1",
+        lambda source, kernel_spec: Level1CompileResult(
+            compile_success=True,
+            compile_error=None,
+            compile_error_type=None,
+            compile_results_by_dtype={"fp32": True},
+            n_shapes_tested=1,
+        ),
+    )
 
 
 def test_remote_correctness_request_validation() -> None:
@@ -316,6 +328,16 @@ def _identity(condition: str) -> EvalIdentity:
 def _relu_source() -> str:
     return (
         "import torch\n\n"
+        "class triton:\n"
+        "    @staticmethod\n"
+        "    def jit(fn=None, **kwargs):\n"
+        "        del kwargs\n"
+        "        if fn is None:\n"
+        "            return lambda wrapped: wrapped\n"
+        "        return fn\n\n"
+        "@triton.jit\n"
+        "def _relu_kernel(x):\n"
+        "    return x\n\n"
         "def relu(x: torch.Tensor) -> torch.Tensor:\n"
         "    return torch.relu(x)\n"
     )

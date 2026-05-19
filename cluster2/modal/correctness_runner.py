@@ -42,6 +42,9 @@ from shared.eval.content_hashes import (
     collect_eval_pipeline_hashes,
     collect_external_pins,
 )
+from shared.eval.failure_taxonomy import canonical_failure_code_from_compile_error
+from shared.eval.levels.level0_parse import check_parse, check_signature
+from shared.eval.levels.level1_compile import Level1CompileResult, check_compile_level1
 from shared.eval.pipeline import PipelineLevel2Request, run_eval_pipeline
 from shared.eval.run_config import RunConfig
 
@@ -68,9 +71,34 @@ def run_correctness_payload(request_payload: dict[str, Any]) -> dict[str, Any]:
     """Validate and execute one remote correctness request payload."""
 
     request = RemoteCorrectnessRequest(**request_payload)
+    generated_condition = generation_allowed_for_condition(request.identity.condition)
+
+    if generated_condition:
+        level0_result = _evaluate_generated_parse_gate(request)
+        if level0_result is not None:
+            return build_success_payload(request, level0_result)
+
+    kernel_spec = _kernel_spec_for_request(request)
+
+    if generated_condition:
+        level0_result = _evaluate_generated_signature_gate(
+            request,
+            kernel_spec=kernel_spec,
+        )
+        if level0_result is not None:
+            return build_success_payload(request, level0_result)
+
     _configure_correctness_runtime()
 
-    launcher_name = _launcher_name_for_request(request)
+    if generated_condition:
+        level1_result = _evaluate_generated_level1_gate(
+            request,
+            kernel_spec=kernel_spec,
+        )
+        if level1_result is not None:
+            return build_success_payload(request, level1_result)
+
+    launcher_name = _launcher_name_for_request(request, kernel_spec=kernel_spec)
     candidate_runner = _GeneratedSourceCandidateRunner(
         request.source,
         launcher_name=launcher_name,
@@ -110,8 +138,148 @@ def run_correctness_payload(request_payload: dict[str, Any]) -> dict[str, Any]:
         eval_shapes_passed=level2_result.eval_shapes_passed,
         max_abs_diff=level2_result.max_abs_diff,
         max_rel_diff=level2_result.max_rel_diff,
+        level_reached=2,
+        parse_success=True if generated_condition else None,
+        parse_error=None,
+        signature_valid=True if generated_condition else None,
+        signature_error=None,
+        compile_success=True if generated_condition else None,
+        compile_error=None,
+        compile_error_type=None,
     )
     return build_success_payload(request, result)
+
+
+def _evaluate_generated_parse_gate(
+    request: RemoteCorrectnessRequest,
+) -> RemoteCorrectnessResult | None:
+    """Run generated-source Level 0 parse before spec/runtime setup."""
+
+    parse_ok, parse_error = check_parse(request.source)
+    if not parse_ok:
+        return _pre_level2_failure_result(
+            request,
+            level_reached=0,
+            failure_code="F0_PARSE",
+            correctness_error=parse_error or "Level 0 parse failed",
+            parse_success=False,
+            parse_error=parse_error,
+            signature_valid=None,
+            signature_error=None,
+            compile_success=None,
+            compile_error=None,
+            compile_error_type=None,
+        )
+
+    return None
+
+
+def _evaluate_generated_signature_gate(
+    request: RemoteCorrectnessRequest,
+    *,
+    kernel_spec: Any,
+) -> RemoteCorrectnessResult | None:
+    """Run generated-source Level 0 signature after parse passes."""
+
+    signature_ok, signature_error = check_signature(request.source, kernel_spec)
+    if not signature_ok:
+        failure_code = (
+            "F0_NO_DECORATOR"
+            if signature_error and "F0_NO_DECORATOR" in signature_error
+            else "F0_BAD_SIGNATURE"
+        )
+        return _pre_level2_failure_result(
+            request,
+            level_reached=0,
+            failure_code=failure_code,
+            correctness_error=signature_error or "Level 0 signature check failed",
+            parse_success=True,
+            parse_error=None,
+            signature_valid=False,
+            signature_error=signature_error,
+            compile_success=None,
+            compile_error=None,
+            compile_error_type=None,
+        )
+
+    return None
+
+
+def _evaluate_generated_level1_gate(
+    request: RemoteCorrectnessRequest,
+    *,
+    kernel_spec: Any,
+) -> RemoteCorrectnessResult | None:
+    """Run generated-source Level 1 before Level 2 correctness."""
+
+    compile_result = check_compile_level1(request.source, kernel_spec)
+    if not compile_result.compile_success:
+        failure_code = _canonical_level1_failure_code(compile_result)
+        return _pre_level2_failure_result(
+            request,
+            level_reached=1,
+            failure_code=failure_code,
+            correctness_error=compile_result.compile_error
+            or "Level 1 compile/runtime import failed",
+            parse_success=True,
+            parse_error=None,
+            signature_valid=True,
+            signature_error=None,
+            compile_success=False,
+            compile_error=compile_result.compile_error,
+            compile_error_type=compile_result.compile_error_type,
+        )
+
+    return None
+
+
+def _pre_level2_failure_result(
+    request: RemoteCorrectnessRequest,
+    *,
+    level_reached: int,
+    failure_code: str,
+    correctness_error: str,
+    parse_success: bool | None,
+    parse_error: str | None,
+    signature_valid: bool | None,
+    signature_error: str | None,
+    compile_success: bool | None,
+    compile_error: str | None,
+    compile_error_type: str | None,
+) -> RemoteCorrectnessResult:
+    return RemoteCorrectnessResult(
+        identity=request.identity,
+        functional_success=False,
+        repair_set_success=False,
+        eval_set_success=False,
+        level_reached=level_reached,
+        parse_success=parse_success,
+        parse_error=parse_error,
+        signature_valid=signature_valid,
+        signature_error=signature_error,
+        compile_success=compile_success,
+        compile_error=compile_error,
+        compile_error_type=compile_error_type,
+        failure_code=failure_code,
+        correctness_error=correctness_error,
+        feedback=None,
+        num_repair_shapes=0,
+        num_eval_shapes=0,
+        num_test_shapes=0,
+        shapes_passed=0,
+        repair_shapes_passed=0,
+        eval_shapes_passed=0,
+        max_abs_diff=None,
+        max_rel_diff=None,
+    )
+
+
+def _canonical_level1_failure_code(result: Level1CompileResult) -> str:
+    failure_code = canonical_failure_code_from_compile_error(
+        result.compile_error_type,
+        result.compile_error,
+    )
+    return failure_code or "F1_COMPILE"
 
 
 def build_success_payload(
@@ -145,7 +313,7 @@ def build_success_payload(
             "attempt_index": request.identity.attempt_index,
         },
         "eval_identity": {
-            "level": "level2_correctness",
+            "level": _eval_level_name(result.level_reached),
             "pipeline": "shared.eval.pipeline.run_eval_pipeline",
             "device": C2_CORRECTNESS_DEVICE,
             "modal_eval_gpu": REMOTE_CORRECTNESS_EVAL_GPU,
@@ -217,6 +385,14 @@ def build_infrastructure_failure_payload(
             "attempt_index": request.identity.attempt_index,
         }
     return payload
+
+
+def _eval_level_name(level_reached: int) -> str:
+    if level_reached <= 0:
+        return "level0_parse"
+    if level_reached == 1:
+        return "level1_compile"
+    return "level2_correctness"
 
 
 def validate_remote_correctness_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -414,7 +590,7 @@ def _run_generated_module_cleanup(cleanup: _GeneratedModuleCleanup) -> None:
     cleanup()
 
 
-def _launcher_name_for_request(request: RemoteCorrectnessRequest) -> str:
+def _kernel_spec_for_request(request: RemoteCorrectnessRequest) -> Any:
     from cluster1.data.kernels import get_kernel_spec
 
     spec = get_kernel_spec(request.identity.kernel_class)
@@ -423,6 +599,15 @@ def _launcher_name_for_request(request: RemoteCorrectnessRequest) -> str:
             f"kernel_name mismatch: spec for {request.identity.kernel_class!r} "
             f"expects {spec.name!r}, got {request.identity.kernel_name!r}"
         )
+    return spec
+
+
+def _launcher_name_for_request(
+    request: RemoteCorrectnessRequest,
+    *,
+    kernel_spec: Any | None = None,
+) -> str:
+    spec = kernel_spec or _kernel_spec_for_request(request)
     return spec.launcher_name
 
 
@@ -548,8 +733,12 @@ def _validate_identity_sidecars(
         ),
     )
 
-    if eval_identity.get("level") != "level2_correctness":
-        raise ValueError("eval_identity must record level2_correctness")
+    if eval_identity.get("level") not in {
+        "level0_parse",
+        "level1_compile",
+        "level2_correctness",
+    }:
+        raise ValueError("eval_identity must record a shared eval level")
     if eval_identity.get("pipeline") != "shared.eval.pipeline.run_eval_pipeline":
         raise ValueError("eval_identity must record shared eval pipeline")
     if eval_identity.get("device") != C2_CORRECTNESS_DEVICE:

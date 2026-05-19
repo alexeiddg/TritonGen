@@ -414,6 +414,14 @@ class RemoteCorrectnessResult(_StrictC2Schema):
     functional_success: bool
     repair_set_success: bool
     eval_set_success: bool
+    level_reached: int = 2
+    parse_success: bool | None = None
+    parse_error: str | None = None
+    signature_valid: bool | None = None
+    signature_error: str | None = None
+    compile_success: bool | None = None
+    compile_error: str | None = None
+    compile_error_type: str | None = None
     failure_code: str | None = None
     correctness_error: str | None = None
     feedback: str | None = None
@@ -426,12 +434,25 @@ class RemoteCorrectnessResult(_StrictC2Schema):
     max_abs_diff: float | None = None
     max_rel_diff: float | None = None
 
-    @field_validator("failure_code", "correctness_error", "feedback")
+    @field_validator(
+        "parse_error",
+        "signature_error",
+        "compile_error",
+        "compile_error_type",
+        "failure_code",
+        "correctness_error",
+        "feedback",
+    )
     @classmethod
     def _optional_non_empty_strings(cls, value: str | None) -> str | None:
         if value is None:
             return None
         return _require_non_empty_string(value)
+
+    @field_validator("level_reached")
+    @classmethod
+    def _validate_level_reached(cls, value: int) -> int:
+        return _require_non_negative_int(value)
 
     @field_validator(
         "num_repair_shapes",
@@ -458,6 +479,36 @@ class RemoteCorrectnessResult(_StrictC2Schema):
 
     @model_validator(mode="after")
     def _validate_shape_counts(self) -> "RemoteCorrectnessResult":
+        from shared.eval.failure_taxonomy import FAILURE_CODES
+
+        if self.failure_code is not None and self.failure_code not in FAILURE_CODES:
+            raise ValueError(f"unsupported failure_code {self.failure_code!r}")
+
+        if self.level_reached < 2:
+            if self.functional_success:
+                raise ValueError("pre-Level 2 failures cannot be functional successes")
+            if self.repair_set_success or self.eval_set_success:
+                raise ValueError("pre-Level 2 failures cannot pass Level 2 shape sets")
+            if self.feedback is not None:
+                raise ValueError("pre-Level 2 failures must not include feedback")
+            if self.failure_code is None:
+                raise ValueError("pre-Level 2 failures require a failure_code")
+            zero_fields = {
+                "num_repair_shapes": self.num_repair_shapes,
+                "num_eval_shapes": self.num_eval_shapes,
+                "num_test_shapes": self.num_test_shapes,
+                "shapes_passed": self.shapes_passed,
+                "repair_shapes_passed": self.repair_shapes_passed,
+                "eval_shapes_passed": self.eval_shapes_passed,
+            }
+            nonzero = [name for name, value in zero_fields.items() if value != 0]
+            if nonzero:
+                raise ValueError(
+                    "pre-Level 2 failures must not record Level 2 shape counts: "
+                    + ", ".join(nonzero)
+                )
+            return self
+
         expected_total = self.num_repair_shapes + self.num_eval_shapes
         if self.num_test_shapes != expected_total:
             raise ValueError("num_test_shapes must equal repair plus eval shapes")

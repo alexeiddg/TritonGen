@@ -248,7 +248,8 @@ def test_cluster1_generation_result_fields_match_phase_minus1() -> None:
     expected = manifest["cluster1_invariants"]["GenerationResult"]
     observed_fields = [field.name for field in fields(GenerationResult)]
     expected_fields = expected["field_list"]
-    metadata_fields = [
+    post_phase_minus1_fields = [
+        "failure_code",
         "generation_metadata_schema_version",
         "grammar_sha",
         "grammar_path",
@@ -269,7 +270,7 @@ def test_cluster1_generation_result_fields_match_phase_minus1() -> None:
 
     assert observed_fields[: len(expected_fields)] == expected_fields
     assert _canonical_json_sha256(expected_fields) == expected["field_list_sha256"]
-    assert observed_fields[len(expected_fields) :] == metadata_fields
+    assert observed_fields[len(expected_fields) :] == post_phase_minus1_fields
 
 
 def test_cluster1_prompt_hashes_match_phase_minus1_if_recorded() -> None:
