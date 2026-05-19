@@ -199,7 +199,7 @@ def generate(
     grammar_active: bool,           # THE experimental flag
     compiled_grammar=None,          # Required if grammar_active=True
     hardware_checker=None,          # Required if grammar_active=True
-    max_new_tokens: int = 1536,
+    max_new_tokens: int = 2048,
     temperature: float = 0.2,
     seed: int | None = None,        # Must pass through to torch.manual_seed
 ) -> GenerationResult
@@ -425,7 +425,7 @@ def check_compiles(source: str, kernel_spec, dtype=torch.float32):
 | Primary model | `Qwen/Qwen3-Coder` (latest) or `Qwen/Qwen2.5-Coder-32B-Instruct` | Strongest open-weight code model as of May 2026; thesis requires open-weight for reproducibility |
 | Secondary model (cross-check) | `DeepSeek-Coder-V2-Instruct` | Verify findings generalize beyond one model's training distribution |
 | Temperature | `0.2` | Low enough for reproducibility; high enough to avoid mode collapse in pass@k stats |
-| `max_new_tokens` | `1536` | Current code default; avoids budget-exhaustion confounds for complete launcher plus kernel generations |
+| `max_new_tokens` | `2048` | Current uniform development/n20 planning budget; raised pre-n20 after n=5 truncation diagnostics to reduce budget-exhaustion risk without per-kernel or adaptive retries. `2560` remains a future option only if 2048 still shows material truncation. |
 | Seed | Enumerated: `0..19` for n=20 runs | Reproducible; each run gets a different seed so diversity is real, not seeded collapse |
 | Quantization | 4-bit or 8-bit if VRAM constrained | Document quantization level in every result — it affects generation quality |
 

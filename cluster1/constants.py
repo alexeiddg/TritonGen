@@ -3,5 +3,5 @@
 from __future__ import annotations
 
 
-# Raised to avoid budget-exhaustion confound for full launcher + kernel generations.
-DEFAULT_MAX_NEW_TOKENS = 1536
+# Uniform current development/n20 planning budget for full launcher + kernel generations.
+DEFAULT_MAX_NEW_TOKENS = 2048

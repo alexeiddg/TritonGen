@@ -166,8 +166,8 @@ def test_grammar_hash_gate_passes_after_phase4_interlock() -> None:
     ] == current_task_agnostic_hash
 
 
-def test_generation_token_defaults_are_aligned_for_contract_consolidation() -> None:
-    assert cluster1_constants.DEFAULT_MAX_NEW_TOKENS == 1536
+def test_generation_token_defaults_document_current_cluster_policies() -> None:
+    assert cluster1_constants.DEFAULT_MAX_NEW_TOKENS == 2048
     assert cluster2_constants.DEFAULT_MAX_NEW_TOKENS == 1536
 
 

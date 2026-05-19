@@ -730,7 +730,7 @@ def _make_args(tmp_path: Path, **overrides) -> SimpleNamespace:
         grammar_variant="template_upper_bound",
         grammar_path=None,
         temperature=0.2,
-        max_new_tokens=64,
+        max_new_tokens=runner.DEFAULT_MAX_NEW_TOKENS,
         modal_generation_gpu=runner.DEFAULT_GENERATION_GPU,
         compile_backend="modal",
         generation_backend="modal",
@@ -834,7 +834,7 @@ def _write_resume_metadata(
     status: str = "failed_partial",
     dataset_id: str = "ScalingIntelligence/KernelBench",
     temperature: float = 0.2,
-    max_new_tokens: int = 64,
+    max_new_tokens: int = runner.DEFAULT_MAX_NEW_TOKENS,
 ) -> None:
     normalized_model_revision = (
         runner.DEFAULT_MODEL_REVISION if model_id == runner.DEFAULT_MODEL_ID else None
@@ -1041,6 +1041,40 @@ def test_run_passes_modal_generation_gpu_to_generation_adapter(
     assert metadata["grammar_variant"] is None
     assert metadata["run_config"]["grammar_variant"] == "template_upper_bound"
     assert metadata["run_config"]["modal_generation_gpu"] == "L4"
+
+
+def test_default_max_new_tokens_is_2048() -> None:
+    assert runner.DEFAULT_MAX_NEW_TOKENS == 2048
+
+
+def test_run_passes_default_max_new_tokens_to_generation_adapter(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    args = _make_args(tmp_path)
+
+    runner._run(args=args)
+
+    assert {call["max_new_tokens"] for call in calls["generate"]} == {2048}
+    metadata = _read_metadata(Path(args.output))
+    assert metadata["run_config"]["max_new_tokens"] == 2048
+
+
+def test_run_passes_explicit_max_new_tokens_override_to_generation_adapter(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    args = _make_args(tmp_path, max_new_tokens=64)
+
+    runner._run(args=args)
+
+    assert {call["max_new_tokens"] for call in calls["generate"]} == {64}
+    metadata = _read_metadata(Path(args.output))
+    assert metadata["run_config"]["max_new_tokens"] == 64
 
 
 def test_run_pins_default_model_revision_and_tokenizer_revision(

@@ -10,8 +10,8 @@ model:
 # --- Generation ---
 generation:
   temperature: 0.2
-  # Raised to avoid budget-exhaustion confound for full launcher + kernel generations.
-  max_new_tokens: 1536
+  # Current uniform development/n20 planning budget after n=5 truncation diagnostics.
+  max_new_tokens: 2048
   n_runs: 20            # paper scale per (kernel_class x condition x dtype) cell
 
 # --- Scale tiers ---
