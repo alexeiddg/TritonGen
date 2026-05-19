@@ -48,24 +48,33 @@ def test_modal_image_provenance_accepts_stable_digest(monkeypatch) -> None:
     result = provenance.modal_image_provenance()
 
     assert result["modal_image_sha"] == "c" * 64
-    assert result["modal_image_provenance_sha256"] is None
-    assert result["modal_image_provenance_components"] is None
-
-
-def test_modal_image_provenance_keeps_tags_in_fallback(monkeypatch) -> None:
-    for name in provenance.MODAL_IMAGE_ENV_VARS:
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("MODAL_IMAGE_TAG", "mutable-tag")
-    monkeypatch.setenv("MODAL_IMAGE_ID", "im-not-a-digest")
-
-    result = provenance.modal_image_provenance()
-
-    assert result["modal_image_sha"] == "unknown"
     assert isinstance(result["modal_image_provenance_sha256"], str)
     assert len(result["modal_image_provenance_sha256"]) == 64
     assert isinstance(result["modal_image_provenance_components"], dict)
     assert result["modal_image_provenance_components"]["modal_image_env"] == {
-        "MODAL_IMAGE_ID": "im-not-a-digest",
+        "MODAL_IMAGE_SHA": "c" * 64,
+        "MODAL_IMAGE_TAG": "mutable-tag",
+    }
+
+
+def test_modal_image_provenance_prefers_modal_image_id(monkeypatch) -> None:
+    for name in provenance.MODAL_IMAGE_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("MODAL_IMAGE_TAG", "mutable-tag")
+    monkeypatch.setenv("MODAL_IMAGE_ID", "im-123")
+    monkeypatch.setenv("MODAL_IMAGE_SHA", "c" * 64)
+    monkeypatch.setenv("MODAL_IMAGE_DIGEST", "sha256:" + "d" * 64)
+
+    result = provenance.modal_image_provenance()
+
+    assert result["modal_image_sha"] == "im-123"
+    assert isinstance(result["modal_image_provenance_sha256"], str)
+    assert len(result["modal_image_provenance_sha256"]) == 64
+    assert isinstance(result["modal_image_provenance_components"], dict)
+    assert result["modal_image_provenance_components"]["modal_image_env"] == {
+        "MODAL_IMAGE_DIGEST": "sha256:" + "d" * 64,
+        "MODAL_IMAGE_ID": "im-123",
+        "MODAL_IMAGE_SHA": "c" * 64,
         "MODAL_IMAGE_TAG": "mutable-tag",
     }
     assert (
@@ -74,6 +83,22 @@ def test_modal_image_provenance_keeps_tags_in_fallback(monkeypatch) -> None:
         )
         == result["modal_image_provenance_sha256"]
     )
+
+
+def test_modal_image_provenance_uses_fallback_sha_without_runtime_id(
+    monkeypatch,
+) -> None:
+    for name in provenance.MODAL_IMAGE_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("MODAL_IMAGE_TAG", "mutable-tag")
+
+    result = provenance.modal_image_provenance()
+
+    assert result["modal_image_sha"] == result["modal_image_provenance_sha256"]
+    assert result["modal_image_sha"] != "unknown"
+    assert result["modal_image_provenance_components"]["modal_image_env"] == {
+        "MODAL_IMAGE_TAG": "mutable-tag",
+    }
 
 
 def test_modal_image_provenance_fallback_changes_with_components(
@@ -94,8 +119,8 @@ def test_modal_image_provenance_fallback_changes_with_components(
         extra={"modal_generation_gpu": "L40S"},
     )
 
-    assert first["modal_image_sha"] == "unknown"
-    assert second["modal_image_sha"] == "unknown"
+    assert first["modal_image_sha"] == first["modal_image_provenance_sha256"]
+    assert second["modal_image_sha"] == second["modal_image_provenance_sha256"]
     assert first["modal_image_provenance_components"] != second[
         "modal_image_provenance_components"
     ]

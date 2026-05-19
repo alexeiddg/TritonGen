@@ -126,6 +126,44 @@ def test_gc_generation_result_rejects_unknown_image_with_bad_digest() -> None:
         RemoteC2GenerationResult(**payload)
 
 
+def test_gc_generation_result_accepts_fallback_sha_as_modal_image_sha() -> None:
+    payload = _remote_c2_gc_result_payload()
+    payload["modal_image_sha"] = payload["modal_image_provenance_sha256"]
+
+    result = RemoteC2GenerationResult(**payload)
+
+    assert result.modal_image_sha == payload["modal_image_provenance_sha256"]
+
+
+def test_gc_generation_result_accepts_modal_image_object_id() -> None:
+    result = RemoteC2GenerationResult(
+        **_remote_c2_gc_result_payload(modal_image_sha="im-123")
+    )
+
+    assert result.modal_image_sha == "im-123"
+
+
+def test_gc_generation_result_rejects_bad_fallback_digest_with_object_id() -> None:
+    payload = _remote_c2_gc_result_payload(
+        modal_image_sha="im-123",
+        modal_image_provenance_sha256="not-a-sha",
+        modal_image_provenance_components=None,
+    )
+
+    with pytest.raises(ValueError, match="modal_image_provenance_sha256"):
+        RemoteC2GenerationResult(**payload)
+
+
+@pytest.mark.parametrize("modal_image_sha", ("mutable-tag", " im-123 "))
+def test_gc_generation_result_rejects_unstable_modal_image_identifier(
+    modal_image_sha: str,
+) -> None:
+    with pytest.raises(ValueError, match="modal_image_sha"):
+        RemoteC2GenerationResult(
+            **_remote_c2_gc_result_payload(modal_image_sha=modal_image_sha)
+        )
+
+
 def test_c_generation_result_rejects_grammar_metadata() -> None:
     with pytest.raises(ValueError, match="must not record grammar metadata"):
         RemoteC2GenerationResult(
@@ -480,7 +518,10 @@ def test_c_generation_payload_rejects_grammar_validation_fields() -> None:
         validate_remote_c2_generation_payload(payload)
 
 
-def test_generation_payload_rejects_unstable_modal_image_sha() -> None:
+@pytest.mark.parametrize("modal_image_sha", ("not-a-sha", " im-123 "))
+def test_generation_payload_rejects_unstable_modal_image_sha(
+    modal_image_sha: str,
+) -> None:
     payload = run_c2_generation_with_loaded_model(
         _request_payload("C"),
         model=object(),
@@ -492,7 +533,7 @@ def test_generation_payload_rejects_unstable_modal_image_sha() -> None:
         ),
         verify_g_hashes_fn=_raise_if_called,
     )
-    payload["runtime_identity"]["modal_image_sha"] = "not-a-sha"
+    payload["runtime_identity"]["modal_image_sha"] = modal_image_sha
     payload["runtime_identity"]["modal_image_provenance_sha256"] = None
 
     with pytest.raises(ValueError, match="modal_image_sha"):
@@ -513,7 +554,7 @@ def test_generation_payload_records_reconstructable_image_fallback() -> None:
     )
 
     runtime = payload["runtime_identity"]
-    assert runtime["modal_image_sha"] == "unknown"
+    assert runtime["modal_image_sha"] == runtime["modal_image_provenance_sha256"]
     assert isinstance(runtime["modal_image_provenance_components"], dict)
     assert (
         c2_generation.modal_image_provenance_digest(
@@ -525,6 +566,24 @@ def test_generation_payload_records_reconstructable_image_fallback() -> None:
         payload["generation_result"]["modal_image_provenance_components"]
         == runtime["modal_image_provenance_components"]
     )
+
+
+def test_generation_payload_accepts_modal_image_object_id() -> None:
+    payload = run_c2_generation_with_loaded_model(
+        _request_payload("C"),
+        model=object(),
+        tokenizer=object(),
+        tokenizer_grammar_id="snapshot://tokenizer-rev",
+        generate_source_fn=lambda **kwargs: FakeDecoded(
+            source=_relu_source(),
+            generation_seed=kwargs["seed"],
+        ),
+        verify_g_hashes_fn=_raise_if_called,
+    )
+    payload["runtime_identity"]["modal_image_sha"] = "im-123"
+    payload["generation_result"]["modal_image_sha"] = "im-123"
+
+    assert validate_remote_c2_generation_payload(payload) == payload
 
 
 def test_image_fallback_digest_excludes_call_and_model_identity() -> None:
@@ -578,7 +637,10 @@ def test_generation_payload_rejects_unknown_image_without_components() -> None:
         ),
         verify_g_hashes_fn=_raise_if_called,
     )
+    payload["runtime_identity"]["modal_image_sha"] = "unknown"
+    payload["generation_result"]["modal_image_sha"] = "unknown"
     payload["runtime_identity"]["modal_image_provenance_components"] = None
+    payload["generation_result"]["modal_image_provenance_components"] = None
 
     with pytest.raises(ValueError, match="modal_image_provenance_components"):
         validate_remote_c2_generation_payload(payload)

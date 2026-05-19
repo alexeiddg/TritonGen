@@ -27,6 +27,7 @@ from shared.generation_metadata import (
     UNKNOWN,
     VALID_REJECTION_LAYERS,
     VALID_STOP_REASONS,
+    is_stable_modal_image_identifier,
     modal_image_provenance_digest,
 )
 from shared.factors.cells import FactorCell
@@ -228,6 +229,15 @@ class RemoteGenerationResult(BaseModel):
                     "modal_image_provenance_sha256 is required when "
                     "modal_image_sha is unknown"
                 )
+        elif not is_stable_modal_image_identifier(self.modal_image_sha):
+            raise ValueError(
+                "modal_image_sha must be a stable Modal image identifier"
+            )
+        if self.modal_image_provenance_sha256 is not None:
+            _validate_sha256(
+                self.modal_image_provenance_sha256,
+                "modal_image_provenance_sha256",
+            )
         if self.modal_image_provenance_components is None:
             return
         if self.modal_image_provenance_sha256 is None:
@@ -247,6 +257,15 @@ class RemoteGenerationResult(BaseModel):
     @classmethod
     def metadata_schema_version(cls) -> int:
         return GENERATION_METADATA_SCHEMA_VERSION
+
+
+def _validate_sha256(value: object, field_name: str) -> None:
+    if not isinstance(value, str) or len(value) != 64:
+        raise ValueError(f"{field_name} must be a 64-character SHA256 hex digest")
+    try:
+        int(value, 16)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be a SHA256 hex digest") from exc
 
 
 class RemoteCompileRequest(BaseModel):

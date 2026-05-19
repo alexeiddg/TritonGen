@@ -20,6 +20,7 @@ from shared.generation_metadata import (
     VALID_REJECTION_LAYERS,
     VALID_STOP_REASONS,
     is_immutable_hub_revision,
+    is_stable_modal_image_identifier,
     modal_image_provenance_digest,
 )
 from shared.eval.failure_taxonomy import (
@@ -224,6 +225,13 @@ def validate_generation_metadata_invariants(result: GenerationResult) -> None:
                 "current-schema GenerationResult with unknown modal_image_sha "
                 "requires modal_image_provenance_components"
             )
+    if result.modal_image_sha not in (None, UNKNOWN) and not (
+        is_stable_modal_image_identifier(result.modal_image_sha)
+    ):
+        raise ValueError(
+            "modal_image_sha_malformed: "
+            "modal_image_sha must be a stable Modal image identifier"
+        )
     validate_modal_image_provenance_invariants(
         modal_image_provenance_sha256=result.modal_image_provenance_sha256,
         modal_image_provenance_components=result.modal_image_provenance_components,
@@ -316,8 +324,8 @@ def _append_if_not_stable_image_sha(
     field_name: str,
     value: str,
 ) -> None:
-    candidate = value.removeprefix("sha256:")
-    _append_if_not_sha256_hex(failures, field_name, candidate)
+    if not is_stable_modal_image_identifier(value):
+        failures.append(f"{field_name}_malformed")
 
 
 def _append_if_not_immutable_hub_revision(
@@ -334,6 +342,19 @@ def validate_modal_image_provenance_invariants(
     modal_image_provenance_sha256: str | None,
     modal_image_provenance_components: dict[str, Any] | None,
 ) -> None:
+    if modal_image_provenance_sha256 is not None:
+        if len(modal_image_provenance_sha256) != 64:
+            raise ValueError(
+                "modal_image_provenance_sha256_malformed: "
+                "modal_image_provenance_sha256 must be a 64-character SHA256 hex digest"
+            )
+        try:
+            int(modal_image_provenance_sha256, 16)
+        except ValueError as exc:
+            raise ValueError(
+                "modal_image_provenance_sha256_malformed: "
+                "modal_image_provenance_sha256 must be a SHA256 hex digest"
+            ) from exc
     if modal_image_provenance_components is None:
         return
     if modal_image_provenance_sha256 is None:
@@ -341,18 +362,6 @@ def validate_modal_image_provenance_invariants(
             "modal_image_provenance_sha256 is required when "
             "modal_image_provenance_components is present"
         )
-    if len(modal_image_provenance_sha256) != 64:
-        raise ValueError(
-            "modal_image_provenance_sha256_malformed: "
-            "modal_image_provenance_sha256 must be a 64-character SHA256 hex digest"
-        )
-    try:
-        int(modal_image_provenance_sha256, 16)
-    except ValueError as exc:
-        raise ValueError(
-            "modal_image_provenance_sha256_malformed: "
-            "modal_image_provenance_sha256 must be a SHA256 hex digest"
-        ) from exc
     expected = modal_image_provenance_digest(modal_image_provenance_components)
     if modal_image_provenance_sha256 != expected:
         raise ValueError(

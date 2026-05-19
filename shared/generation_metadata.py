@@ -16,6 +16,9 @@ from typing import Any, Literal, TypeAlias
 UNKNOWN = "unknown"
 HUB_COMMIT_SHA_LENGTH = 40
 _HUB_COMMIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+_SHA256_HEX_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+_SHA256_DIGEST_RE = re.compile(r"^sha256:[0-9a-fA-F]{64}$")
+_MODAL_IMAGE_OBJECT_ID_RE = re.compile(r"^im-[A-Za-z0-9]+$")
 
 GrammarVariant: TypeAlias = Literal["template_upper_bound", "task_agnostic"]
 DEFAULT_GRAMMAR_VARIANT: GrammarVariant = "template_upper_bound"
@@ -130,6 +133,18 @@ def is_immutable_hub_revision(value: object) -> bool:
     """Return True only for immutable Hugging Face Git commit revisions."""
 
     return isinstance(value, str) and _HUB_COMMIT_SHA_RE.fullmatch(value) is not None
+
+
+def is_stable_modal_image_identifier(value: object) -> bool:
+    """Return True for stable Modal image provenance identifiers."""
+
+    if not isinstance(value, str):
+        return False
+    return (
+        _SHA256_HEX_RE.fullmatch(value) is not None
+        or _SHA256_DIGEST_RE.fullmatch(value) is not None
+        or _MODAL_IMAGE_OBJECT_ID_RE.fullmatch(value) is not None
+    )
 
 
 def normalize_immutable_hub_revision(

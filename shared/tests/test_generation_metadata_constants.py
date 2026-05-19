@@ -48,3 +48,22 @@ def test_immutable_hub_revision_helper_requires_commit_sha() -> None:
     )
     for value in ("main", "refs/heads/main", "dev", "v1.0.0", "a" * 39):
         assert not shared_metadata.is_immutable_hub_revision(value)
+
+
+def test_stable_modal_image_identifier_accepts_sha_and_modal_object_id() -> None:
+    assert shared_metadata.is_stable_modal_image_identifier("a" * 64)
+    assert shared_metadata.is_stable_modal_image_identifier("sha256:" + "b" * 64)
+    assert shared_metadata.is_stable_modal_image_identifier("im-123")
+    assert shared_metadata.is_stable_modal_image_identifier("im-tU3VQyAbFvrusOxtlwspCN")
+
+    for value in (
+        "unknown",
+        "mutable-tag",
+        "not-a-sha",
+        "sha256:nothex",
+        "",
+        " im-123 ",
+        " " + ("a" * 64),
+        "sha256:" + ("b" * 64) + " ",
+    ):
+        assert not shared_metadata.is_stable_modal_image_identifier(value)

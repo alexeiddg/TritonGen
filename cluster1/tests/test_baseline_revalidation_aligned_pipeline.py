@@ -143,8 +143,14 @@ def test_revalidation_pair_evaluator_records_modal_context(
 def test_modal_revalidation_context_records_image_provenance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("MODAL_IMAGE_SHA", raising=False)
-    monkeypatch.delenv("MODAL_IMAGE_DIGEST", raising=False)
+    for name in (
+        "MODAL_IMAGE_SHA",
+        "MODAL_IMAGE_DIGEST",
+        "MODAL_IMAGE_ID",
+        "MODAL_CONTAINER_IMAGE_ID",
+        "MODAL_IMAGE_TAG",
+    ):
+        monkeypatch.delenv(name, raising=False)
 
     context = revalidation_module._modal_revalidation_context(
         call_id="fc-test",
@@ -155,9 +161,9 @@ def test_modal_revalidation_context_records_image_provenance(
     assert context["input_id"] == "in-test"
     assert context["modal_app_name"] == "tritongen-gpu-harness"
     assert context["modal_eval_gpu"] == "L4"
-    assert context["modal_image_sha"] == "unknown"
     assert isinstance(context["modal_image_provenance_sha256"], str)
     assert len(context["modal_image_provenance_sha256"]) == 64
+    assert context["modal_image_sha"] == context["modal_image_provenance_sha256"]
     assert context["modal_image_provenance_components"]["schema"] == (
         "modal_image_fallback_provenance.v1"
     )

@@ -39,6 +39,7 @@ from shared.generation_metadata import (
     UNKNOWN,
     VALID_REJECTION_LAYERS,
     VALID_STOP_REASONS,
+    is_stable_modal_image_identifier,
     modal_image_provenance_digest,
 )
 from shared.eval.content_hashes import (
@@ -1248,11 +1249,22 @@ def _validate_runtime_identity(runtime_identity: Any) -> None:
     else:
         _validate_stable_image_sha(modal_image_sha, "modal_image_sha")
         _validate_optional_sha256(fallback, "modal_image_provenance_sha256")
-        if components is not None and not isinstance(components, dict):
-            raise TypeError(
-                "runtime_identity modal_image_provenance_components must be a "
-                "mapping or None"
-            )
+        if components is not None:
+            if not isinstance(components, dict):
+                raise TypeError(
+                    "runtime_identity modal_image_provenance_components must be a "
+                    "mapping or None"
+                )
+            if fallback is None:
+                raise ValueError(
+                    "modal_image_provenance_sha256 is required when "
+                    "modal_image_provenance_components is present"
+                )
+            if modal_image_provenance_digest(components) != fallback:
+                raise ValueError(
+                    "modal_image_provenance_sha256 must match "
+                    "modal_image_provenance_components"
+                )
 
 
 def _validate_grammar_inactive_generation_identity(
@@ -1316,9 +1328,8 @@ def _validate_sha256(value: Any, field_name: str) -> None:
 
 
 def _validate_stable_image_sha(value: Any, field_name: str) -> None:
-    if not isinstance(value, str):
-        raise ValueError(f"{field_name} must be a stable image SHA digest")
-    _validate_sha256(value.removeprefix("sha256:"), field_name)
+    if not is_stable_modal_image_identifier(value):
+        raise ValueError(f"{field_name} must be a stable Modal image identifier")
 
 
 def _validate_modal_context(modal_context: Any) -> None:

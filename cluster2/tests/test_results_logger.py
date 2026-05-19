@@ -369,9 +369,12 @@ def test_replay_and_generated_rows_serialize_distinct_source_classes() -> None:
     assert generated_payload["trace_summary"] is not None
 
 
-def test_generated_row_rejects_malformed_modal_image_sha() -> None:
+@pytest.mark.parametrize("modal_image_sha", ("not-a-sha", " im-123 "))
+def test_generated_row_rejects_malformed_modal_image_sha(
+    modal_image_sha: str,
+) -> None:
     with pytest.raises(ValueError, match="modal_image_sha"):
-        _generated_row(condition="C", modal_image_sha="not-a-sha")
+        _generated_row(condition="C", modal_image_sha=modal_image_sha)
 
 
 @pytest.mark.parametrize(
@@ -463,6 +466,47 @@ def test_generated_current_schema_accepts_valid_modal_image_fallback() -> None:
     assert row.generated_metadata.modal_image_sha == "unknown"
 
 
+def test_generated_current_schema_accepts_fallback_sha_as_modal_image_sha() -> None:
+    image_components = _fallback_modal_image_components()
+    image_sha = modal_image_provenance_digest(image_components)
+    row = _generated_row(
+        condition="C",
+        generation_metadata_schema_version=(
+            CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
+        ),
+        modal_image_sha=image_sha,
+        modal_image_provenance_sha256=image_sha,
+        modal_image_provenance_components=image_components,
+    )
+
+    payload = json.loads(row.to_json())
+    round_trip = Cluster2EvalRow.from_dict(payload)
+
+    assert row.generated_metadata is not None
+    assert row.generated_metadata.modal_image_sha == image_sha
+    assert payload["generated_metadata"]["modal_image_sha"] == image_sha
+    assert (
+        payload["generated_metadata"]["modal_image_provenance_sha256"]
+        == image_sha
+    )
+    assert round_trip == row
+
+
+def test_generated_current_schema_accepts_modal_image_object_id() -> None:
+    row = _generated_row(
+        condition="C",
+        generation_metadata_schema_version=(
+            CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
+        ),
+        modal_image_sha="im-123",
+        modal_image_provenance_sha256=_fallback_modal_image_sha256(),
+        modal_image_provenance_components=_fallback_modal_image_components(),
+    )
+
+    assert row.generated_metadata is not None
+    assert row.generated_metadata.modal_image_sha == "im-123"
+
+
 def test_generated_paper_scale_metadata_accepts_stable_modal_image_sha() -> None:
     row = _generated_row(
         condition="C",
@@ -473,6 +517,25 @@ def test_generated_paper_scale_metadata_accepts_stable_modal_image_sha() -> None
         model_revision="a" * 40,
         tokenizer_revision="b" * 40,
         modal_image_sha="sha256:" + "a" * 64,
+        generation_metadata_schema_version=1,
+    )
+
+    assert row.generated_metadata is not None
+    validate_generated_paper_scale_metadata(row.generated_metadata)
+
+
+def test_generated_paper_scale_metadata_accepts_modal_image_object_id() -> None:
+    row = _generated_row(
+        condition="C",
+        stop_reason="eos_token",
+        xgrammar_version="0.1.33",
+        transformers_version="4.51.0",
+        tokenizers_version="0.21.0",
+        model_revision="a" * 40,
+        tokenizer_revision="b" * 40,
+        modal_image_sha="im-123",
+        modal_image_provenance_sha256=_fallback_modal_image_sha256(),
+        modal_image_provenance_components=_fallback_modal_image_components(),
         generation_metadata_schema_version=1,
     )
 

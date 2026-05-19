@@ -293,6 +293,44 @@ def test_generation_result_rejects_unknown_image_with_bad_fallback_digest() -> N
         RemoteGenerationResult(**payload)
 
 
+def test_generation_result_accepts_fallback_sha_as_modal_image_sha() -> None:
+    payload = _current_grammar_result_payload()
+    payload["modal_image_sha"] = payload["modal_image_provenance_sha256"]
+
+    result = RemoteGenerationResult(**payload)
+
+    assert result.modal_image_sha == payload["modal_image_provenance_sha256"]
+
+
+def test_generation_result_accepts_modal_image_object_id() -> None:
+    result = RemoteGenerationResult(
+        **_current_grammar_result_payload(modal_image_sha="im-123")
+    )
+
+    assert result.modal_image_sha == "im-123"
+
+
+def test_generation_result_rejects_bad_fallback_digest_with_object_id() -> None:
+    payload = _current_grammar_result_payload(
+        modal_image_sha="im-123",
+        modal_image_provenance_sha256="not-a-sha",
+        modal_image_provenance_components=None,
+    )
+
+    with pytest.raises(ValueError, match="modal_image_provenance_sha256"):
+        RemoteGenerationResult(**payload)
+
+
+@pytest.mark.parametrize("modal_image_sha", ("mutable-tag", " im-123 "))
+def test_generation_result_rejects_unstable_modal_image_identifier(
+    modal_image_sha: str,
+) -> None:
+    with pytest.raises(ValueError, match="modal_image_sha"):
+        RemoteGenerationResult(
+            **_current_grammar_result_payload(modal_image_sha=modal_image_sha)
+        )
+
+
 def test_generation_result_legacy_missing_variant_defaults_to_template() -> None:
     result = RemoteGenerationResult(
         source="@triton.jit",

@@ -236,6 +236,79 @@ def test_current_schema_rejects_malformed_modal_image_fallback_digest() -> None:
         validate_result_invariants(result)
 
 
+def test_current_schema_accepts_fallback_sha_as_modal_image_sha() -> None:
+    image_sha = _fallback_modal_image_sha256()
+    result = _make_result(
+        generation_metadata_schema_version=GENERATION_METADATA_SCHEMA_VERSION,
+        grammar_sha="a" * 64,
+        grammar_path="/runtime/cluster1/grammar/triton_kernel.gbnf",
+        gbnf_parse_valid=True,
+        semantic_valid=True,
+        grammar_valid=True,
+        rejection_layer=None,
+        stop_reason="eos_token",
+        xgrammar_version="0.1.33",
+        transformers_version="4.47.1",
+        tokenizers_version="0.21.4",
+        model_revision="a" * 40,
+        tokenizer_revision="b" * 40,
+        modal_image_sha=image_sha,
+        modal_image_provenance_sha256=image_sha,
+        modal_image_provenance_components=_fallback_modal_image_components(),
+    )
+
+    validate_result_invariants(result)
+    validate_paper_scale_metadata(result)
+
+
+def test_current_schema_accepts_modal_image_object_id() -> None:
+    result = _make_result(
+        generation_metadata_schema_version=GENERATION_METADATA_SCHEMA_VERSION,
+        grammar_sha="a" * 64,
+        grammar_path="/runtime/cluster1/grammar/triton_kernel.gbnf",
+        gbnf_parse_valid=True,
+        semantic_valid=True,
+        grammar_valid=True,
+        rejection_layer=None,
+        stop_reason="eos_token",
+        xgrammar_version="0.1.33",
+        transformers_version="4.47.1",
+        tokenizers_version="0.21.4",
+        model_revision="a" * 40,
+        tokenizer_revision="b" * 40,
+        modal_image_sha="im-123",
+        modal_image_provenance_sha256=_fallback_modal_image_sha256(),
+        modal_image_provenance_components=_fallback_modal_image_components(),
+    )
+
+    validate_result_invariants(result)
+    validate_paper_scale_metadata(result)
+
+
+def test_current_schema_rejects_bad_fallback_digest_with_modal_image_object_id() -> None:
+    result = _make_result(
+        generation_metadata_schema_version=GENERATION_METADATA_SCHEMA_VERSION,
+        grammar_sha="a" * 64,
+        grammar_path="/runtime/cluster1/grammar/triton_kernel.gbnf",
+        gbnf_parse_valid=True,
+        semantic_valid=True,
+        grammar_valid=True,
+        rejection_layer=None,
+        stop_reason="eos_token",
+        xgrammar_version="0.1.33",
+        transformers_version="4.47.1",
+        tokenizers_version="0.21.4",
+        model_revision="a" * 40,
+        tokenizer_revision="b" * 40,
+        modal_image_sha="im-123",
+        modal_image_provenance_sha256="not-a-sha",
+        modal_image_provenance_components=None,
+    )
+
+    with pytest.raises(ValueError, match="modal_image_provenance_sha256"):
+        validate_result_invariants(result)
+
+
 def test_legacy_row_deserialization_adds_metadata_defaults() -> None:
     record = _make_result().__dict__.copy()
     for field_name in (
@@ -520,6 +593,7 @@ def test_paper_scale_metadata_gate_rejects_fallback_component_mismatch() -> None
             "modal_image_provenance_sha256_malformed",
         ),
         ("modal_image_sha", "mutable-tag", "modal_image_sha_malformed"),
+        ("modal_image_sha", " im-123 ", "modal_image_sha_malformed"),
     ),
 )
 def test_paper_scale_metadata_gate_rejects_malformed_sha_fields(

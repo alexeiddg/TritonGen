@@ -33,6 +33,7 @@ from shared.generation_metadata import (
     VALID_REJECTION_LAYERS,
     VALID_STOP_REASONS,
     is_immutable_hub_revision,
+    is_stable_modal_image_identifier,
     modal_image_provenance_digest,
 )
 from shared.eval.correctness_shapes import LOCKED_KERNEL_CLASSES, get_shape_metadata
@@ -964,7 +965,8 @@ def _validate_optional_sha256(value: str | None, field_name: str) -> None:
 def _validate_optional_stable_image_sha(value: str | None, field_name: str) -> None:
     if value is None or value == UNKNOWN:
         return
-    _validate_sha256(value.removeprefix("sha256:"), field_name)
+    if not is_stable_modal_image_identifier(value):
+        raise ValueError(f"{field_name} must be a stable Modal image identifier")
 
 
 def _validate_modal_image_provenance_components(
@@ -1273,8 +1275,8 @@ def _append_if_not_stable_image_sha(
     field_name: str,
     value: str,
 ) -> None:
-    candidate = value.removeprefix("sha256:")
-    _append_if_not_sha256_hex(failures, field_name, candidate)
+    if not is_stable_modal_image_identifier(value):
+        failures.append(f"{field_name}_malformed")
 
 
 def _append_if_not_immutable_hub_revision(

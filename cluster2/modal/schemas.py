@@ -32,6 +32,7 @@ from shared.generation_metadata import (
     UNKNOWN,
     VALID_REJECTION_LAYERS,
     VALID_STOP_REASONS,
+    is_stable_modal_image_identifier,
     modal_image_provenance_digest,
     normalize_immutable_hub_revision,
 )
@@ -320,6 +321,17 @@ class RemoteC2GenerationResult(_StrictC2Schema):
                     "modal_image_provenance_sha256 is required when "
                     "modal_image_sha is unknown"
                 )
+        elif self.modal_image_sha != UNKNOWN and not is_stable_modal_image_identifier(
+            self.modal_image_sha
+        ):
+            raise ValueError(
+                "modal_image_sha must be a stable Modal image identifier"
+            )
+        if self.modal_image_provenance_sha256 is not None:
+            _validate_sha256(
+                self.modal_image_provenance_sha256,
+                "modal_image_provenance_sha256",
+            )
         if self.modal_image_provenance_components is not None:
             if self.modal_image_provenance_sha256 is None:
                 raise ValueError(

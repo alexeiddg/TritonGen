@@ -12,7 +12,6 @@ import ast
 import importlib.metadata as importlib_metadata
 import os
 import platform
-import re
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +19,7 @@ from shared.generation_metadata import (
     UNKNOWN,
     VALID_REJECTION_LAYERS,
     VALID_STOP_REASONS,
+    is_stable_modal_image_identifier,
     modal_image_provenance_digest,
     normalize_immutable_hub_revision,
 )
@@ -29,14 +29,15 @@ MODAL_IMAGE_SHA_ENV_VARS = (
     "MODAL_IMAGE_SHA",
     "MODAL_IMAGE_DIGEST",
 )
-MODAL_IMAGE_FALLBACK_ENV_VARS = (
+MODAL_IMAGE_ID_ENV_VARS = (
     "MODAL_IMAGE_ID",
     "MODAL_CONTAINER_IMAGE_ID",
+)
+MODAL_IMAGE_FALLBACK_ENV_VARS = (
+    *MODAL_IMAGE_ID_ENV_VARS,
     "MODAL_IMAGE_TAG",
 )
 MODAL_IMAGE_ENV_VARS = MODAL_IMAGE_SHA_ENV_VARS + MODAL_IMAGE_FALLBACK_ENV_VARS
-_SHA256_HEX_RE = re.compile(r"^[0-9a-fA-F]{64}$")
-_SHA256_DIGEST_RE = re.compile(r"^sha256:[0-9a-fA-F]{64}$")
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _MODAL_IMAGE_SOURCE_PATH = _REPO_ROOT / "shared" / "modal_harness" / "images.py"
 
@@ -187,21 +188,19 @@ def modal_image_provenance(
     *,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return Modal image SHA if exposed, plus a deterministic fallback digest."""
+    """Return a stable Modal image identifier plus deterministic provenance."""
 
-    modal_image_sha = _first_stable_image_digest(
-        *(os.environ.get(name) for name in MODAL_IMAGE_SHA_ENV_VARS)
-    )
     fallback_payload = modal_image_provenance_components(extra=extra)
     fallback = modal_image_provenance_digest(fallback_payload)
+    modal_image_sha = _first_stable_image_identifier(
+        *(os.environ.get(name) for name in MODAL_IMAGE_ID_ENV_VARS),
+        *(os.environ.get(name) for name in MODAL_IMAGE_SHA_ENV_VARS),
+        fallback,
+    )
     return {
         "modal_image_sha": modal_image_sha,
-        "modal_image_provenance_sha256": None
-        if modal_image_sha != UNKNOWN
-        else fallback,
-        "modal_image_provenance_components": None
-        if modal_image_sha != UNKNOWN
-        else fallback_payload,
+        "modal_image_provenance_sha256": fallback,
+        "modal_image_provenance_components": fallback_payload,
     }
 
 
@@ -280,14 +279,12 @@ def _first_known(*values: object) -> str:
     return UNKNOWN
 
 
-def _first_stable_image_digest(*values: object) -> str:
+def _first_stable_image_identifier(*values: object) -> str:
     for value in values:
         if not isinstance(value, str):
             continue
         candidate = value.strip()
-        if _SHA256_HEX_RE.fullmatch(candidate) or _SHA256_DIGEST_RE.fullmatch(
-            candidate
-        ):
+        if is_stable_modal_image_identifier(candidate):
             return candidate
     return UNKNOWN
 
