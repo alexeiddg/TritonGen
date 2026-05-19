@@ -93,6 +93,22 @@ def test_pass_at_1_initial_uses_only_attempt_zero() -> None:
     assert result.rate == 0.5
 
 
+def test_pass_at_1_initial_uses_repair_trace_for_terminal_rows() -> None:
+    row = _generated_terminal_repair_row(
+        condition="C",
+        base_seed=0,
+        terminal_attempt_index=1,
+        initial_success=False,
+        terminal_success=True,
+    )
+
+    result = compute_pass_at_1_initial([row])
+
+    assert result.successes == 0
+    assert result.total_cells == 1
+    assert result.cell_outcomes[0].attempts_observed == 2
+
+
 def test_lift_computation_uses_matched_cells() -> None:
     treatment = [
         _generated_row(condition="C", base_seed=0, attempt_index=0, success=True),
@@ -119,6 +135,29 @@ def test_lift_computation_uses_matched_cells() -> None:
     assert lift.discordant_control_only == 0
     assert lift.mcnemar_p_value == 1.0
     assert lift.ci_lower <= lift.lift <= lift.ci_upper
+
+
+def test_lift_accepts_terminal_repair_row_with_attempt_zero_trace() -> None:
+    treatment = [
+        _generated_terminal_repair_row(
+            condition="C",
+            base_seed=0,
+            terminal_attempt_index=1,
+            initial_success=False,
+            terminal_success=True,
+        ),
+    ]
+    control = [_replay_row(condition="none", base_seed=0, success=False)]
+
+    lift = compute_lift_with_bootstrap_ci(
+        treatment,
+        control,
+        n=2,
+        bootstrap_resamples=50,
+    )
+
+    assert lift.treatment_rate == 1.0
+    assert lift.control_rate == 0.0
 
 
 def test_bootstrap_ci_is_deterministic() -> None:
@@ -774,6 +813,7 @@ def _generated_row(
     attempt_index: int = 0,
     success: bool = True,
     c2_generation_hashes: dict[str, str] | None = None,
+    repair_trace: tuple[TraceSummary, ...] | None = None,
 ) -> Cluster2EvalRow:
     source_text = f"import triton\n# {condition} {base_seed} {attempt_index}\n"
     source_hash = _source_hash(source_text)
@@ -806,6 +846,7 @@ def _generated_row(
             if c2_generation_hashes is None
             else c2_generation_hashes
         ),
+        repair_trace=repair_trace,
         generation_seed=(
             base_seed if attempt_index == 0 else base_seed * 10 + attempt_index
         ),
@@ -826,6 +867,53 @@ def _generated_row(
         tokenizer_revision="tok-rev",
         temperature=0.2,
         max_new_tokens=512,
+    )
+
+
+def _generated_terminal_repair_row(
+    *,
+    condition: str,
+    base_seed: int,
+    terminal_attempt_index: int,
+    initial_success: bool,
+    terminal_success: bool,
+) -> Cluster2EvalRow:
+    source_text = f"import triton\n# {condition} {base_seed} {terminal_attempt_index}\n"
+    source_hash = _source_hash(source_text)
+    terminal_failure_code = None if terminal_success else "F2_NUMERIC_LARGE"
+    return _generated_row(
+        condition=condition,
+        base_seed=base_seed,
+        attempt_index=terminal_attempt_index,
+        success=terminal_success,
+        repair_trace=(
+            TraceSummary(
+                attempt_index=0,
+                failure_code=None if initial_success else "F2_NUMERIC_LARGE",
+                public_failure_summary=(
+                    "Candidate passed Level 2."
+                    if initial_success
+                    else "Validation failed."
+                ),
+                functional_success=initial_success,
+                repair_set_success=initial_success,
+                eval_set_success=initial_success,
+                source_hash="0" * 64,
+            ),
+            TraceSummary(
+                attempt_index=terminal_attempt_index,
+                failure_code=terminal_failure_code,
+                public_failure_summary=(
+                    "Candidate passed Level 2."
+                    if terminal_success
+                    else "Validation failed."
+                ),
+                functional_success=terminal_success,
+                repair_set_success=terminal_success,
+                eval_set_success=terminal_success,
+                source_hash=source_hash,
+            ),
+        ),
     )
 
 

@@ -30,11 +30,13 @@ from cluster2.results.dataclass import (
     validate_generated_paper_scale_metadata,
 )
 from cluster2.results.logger import (
+    Cluster2JsonlAppendLogger,
     Cluster2ResultsLogger,
     build_content_hash_sidecar,
     default_content_hash_sidecar_path,
     load_cluster2_results_jsonl,
     load_content_hash_sidecar,
+    validate_cluster2_results_jsonl,
     validate_content_hash_sidecar_for_rows,
     write_cluster2_results_jsonl,
 )
@@ -121,6 +123,163 @@ def test_append_mode_is_rejected(tmp_path: Path) -> None:
             mode="append",
         )
     assert not hasattr(Cluster2ResultsLogger(output), "append")
+
+
+def test_durable_append_logger_writes_one_valid_jsonl_row(tmp_path: Path) -> None:
+    output = tmp_path / "results.jsonl"
+    row = _generated_row(condition="C")
+
+    with Cluster2JsonlAppendLogger(
+        output,
+        content_hash_sidecar=_sidecar([row]),
+        mode="overwrite",
+        fsync=False,
+    ) as logger:
+        assert logger.append(row) is True
+
+    lines = output.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    payload = json.loads(lines[0])
+    assert payload["condition"] == "C"
+    assert payload["kernel_class"] == "elementwise"
+    assert payload["dtype"] == "fp32"
+    assert payload["base_seed"] == 11
+    assert payload["generated_metadata"]["generation_seed"] == 110
+    assert payload["failure_code"] is None
+
+
+def test_durable_append_logger_persists_multiple_rows_incrementally(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "results.jsonl"
+    first = _generated_row(condition="C", attempt_index=0)
+    second = _generated_row(condition="C", attempt_index=1, source_text="second")
+
+    with Cluster2JsonlAppendLogger(
+        output,
+        content_hash_sidecar=_sidecar([first, second]),
+        mode="overwrite",
+        fsync=False,
+    ) as logger:
+        logger.append(first)
+        _assert_jsonl_rows(output, expected_count=1)
+        logger.append(second)
+        _assert_jsonl_rows(output, expected_count=2)
+
+    text = output.read_text(encoding="utf-8")
+    assert text.endswith("\n")
+    assert "\n\n" not in text
+
+
+def test_durable_append_logger_resume_does_not_duplicate_existing_rows(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "results.jsonl"
+    first = _generated_row(condition="C", attempt_index=0)
+    second = _generated_row(condition="C", attempt_index=1, source_text="second")
+    sidecar = _sidecar([first, second])
+
+    with Cluster2JsonlAppendLogger(
+        output,
+        content_hash_sidecar=sidecar,
+        mode="overwrite",
+        fsync=False,
+    ) as logger:
+        logger.append(first)
+
+    with Cluster2JsonlAppendLogger(
+        output,
+        content_hash_sidecar=sidecar,
+        mode="resume",
+        fsync=False,
+    ) as logger:
+        assert logger.append(first) is False
+        assert logger.append(second) is True
+
+    assert load_cluster2_results_jsonl(output) == (first, second)
+
+
+def test_durable_append_logger_resume_rejects_stale_extra_rows(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "results.jsonl"
+    first = _generated_row(condition="C", attempt_index=0)
+    second = _generated_row(condition="C", attempt_index=1, source_text="second")
+    sidecar = _sidecar([first, second])
+
+    write_cluster2_results_jsonl(
+        output,
+        [first, second],
+        content_hash_sidecar=sidecar,
+        mode="overwrite",
+    )
+
+    with pytest.raises(ValueError, match="more rows than completed resume"):
+        with Cluster2JsonlAppendLogger(
+            output,
+            content_hash_sidecar=sidecar,
+            mode="resume",
+            fsync=False,
+        ) as logger:
+            assert logger.append(first) is False
+
+
+def test_durable_append_logger_overwrite_truncates_target_at_start(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "results.jsonl"
+    row = _generated_row(condition="C")
+    output.write_text('{"old":true}\n', encoding="utf-8")
+
+    with Cluster2JsonlAppendLogger(
+        output,
+        content_hash_sidecar=_sidecar([row]),
+        mode="overwrite",
+        fsync=False,
+    ):
+        assert output.read_text(encoding="utf-8") == ""
+
+
+def test_strict_row_count_validation_rejects_partial_jsonl(tmp_path: Path) -> None:
+    output = tmp_path / "results.jsonl"
+    row = _generated_row(condition="C")
+    write_cluster2_results_jsonl(
+        output,
+        [row],
+        content_hash_sidecar=_sidecar([row]),
+        mode="overwrite",
+    )
+
+    with pytest.raises(ValueError, match="expected 2 rows, found 1"):
+        validate_cluster2_results_jsonl(output, expected_rows=2)
+    assert validate_cluster2_results_jsonl(
+        output,
+        expected_rows=2,
+        allow_partial=True,
+    ) == (row,)
+
+
+def test_durable_append_logger_fsyncs_once_per_appended_row(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "results.jsonl"
+    first = _generated_row(condition="C", attempt_index=0)
+    second = _generated_row(condition="C", attempt_index=1, source_text="second")
+    fsync_calls: list[int] = []
+
+    monkeypatch.setattr(results_logger.os, "fsync", lambda fd: fsync_calls.append(fd))
+    with Cluster2JsonlAppendLogger(
+        output,
+        content_hash_sidecar=_sidecar([first, second]),
+        mode="overwrite",
+        fsync=True,
+    ) as logger:
+        fsync_calls.clear()
+        logger.append(first)
+        logger.append(second)
+
+    assert len(fsync_calls) == 2
 
 
 def test_resume_requires_matching_content_hash_sidecar(tmp_path: Path) -> None:
@@ -663,6 +822,14 @@ def _external_pins() -> dict[str, str]:
 
 def _source_hash(source_text: str) -> str:
     return hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+
+
+def _assert_jsonl_rows(path: Path, *, expected_count: int) -> None:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == expected_count
+    for line in lines:
+        assert line
+        assert isinstance(json.loads(line), dict)
 
 
 def _fallback_modal_image_components() -> dict[str, object]:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, fields
 from typing import Any
 
@@ -373,6 +374,7 @@ class Cluster2EvalRow:
     trace_summary: TraceSummary | None
     replay_metadata: Cluster2ReplayRowMetadata | None
     generated_metadata: Cluster2GeneratedRowMetadata | None
+    repair_trace: tuple[TraceSummary, ...] | None = None
 
     def __post_init__(self) -> None:
         _assert_allowed_result_field_names(self)
@@ -439,12 +441,24 @@ class Cluster2EvalRow:
             if self.trace_summary.failure_code != self.failure_code:
                 raise ValueError("trace_summary failure_code must match row failure_code")
 
+        if self.repair_trace is not None:
+            if not isinstance(self.repair_trace, tuple):
+                object.__setattr__(self, "repair_trace", tuple(self.repair_trace))
+            for trace in self.repair_trace:
+                if not isinstance(trace, TraceSummary):
+                    raise TypeError("repair_trace entries must be TraceSummary")
+            if self.repair_trace and self.trace_summary is not None:
+                if self.repair_trace[-1] != self.trace_summary:
+                    raise ValueError("repair_trace terminal entry must match trace_summary")
+
         self._validate_source_class_metadata()
 
     def _validate_source_class_metadata(self) -> None:
         if self.condition in REPLAY_CONTROL_CONDITIONS:
             if self.trace_summary is not None:
                 raise ValueError("replay controls must not carry trace_summary")
+            if self.repair_trace is not None:
+                raise ValueError("replay controls must not carry repair_trace")
             if not isinstance(self.replay_metadata, Cluster2ReplayRowMetadata):
                 raise TypeError(
                     "replay controls require Cluster2ReplayRowMetadata"
@@ -478,6 +492,8 @@ class Cluster2EvalRow:
                 raise ValueError("generated rows must not carry replay_metadata")
             if not isinstance(self.trace_summary, TraceSummary):
                 raise TypeError("generated rows require a compact trace_summary")
+            if self.repair_trace is not None and len(self.repair_trace) == 0:
+                raise ValueError("generated repair_trace must not be empty when present")
             return
 
         raise ValueError(f"unsupported condition {self.condition!r}")
@@ -510,6 +526,14 @@ class Cluster2EvalRow:
         trace_summary = converted.get("trace_summary")
         if trace_summary is not None and not isinstance(trace_summary, TraceSummary):
             converted["trace_summary"] = TraceSummary.from_dict(trace_summary)
+        repair_trace = converted.get("repair_trace")
+        if repair_trace is not None:
+            if not isinstance(repair_trace, list | tuple):
+                raise ValueError("repair_trace must be a list when present")
+            converted["repair_trace"] = tuple(
+                item if isinstance(item, TraceSummary) else TraceSummary.from_dict(item)
+                for item in repair_trace
+            )
         replay_metadata = converted.get("replay_metadata")
         if replay_metadata is not None and not isinstance(
             replay_metadata,
@@ -725,6 +749,7 @@ def replay_control_row(
             max_new_tokens=max_new_tokens,
         ),
         generated_metadata=None,
+        repair_trace=None,
     )
 
 
@@ -743,6 +768,7 @@ def generated_row(
     failure_code: str | None,
     trace_summary: TraceSummary,
     c2_generation_hashes: dict[str, str],
+    repair_trace: Sequence[TraceSummary] | None = None,
     generation_seed: int | None = None,
     grammar_variant: str | None = None,
     grammar_path: str | None = None,
@@ -776,6 +802,9 @@ def generated_row(
     normalized = normalize_cluster2_condition(condition)
     if source_class_for_condition(normalized) != GENERATED_SOURCE_CLASS:
         raise ValueError(f"condition {normalized!r} is not a generated condition")
+    resolved_repair_trace = (
+        (trace_summary,) if repair_trace is None else tuple(repair_trace)
+    )
     return Cluster2EvalRow(
         condition=normalized,
         source_class=GENERATED_SOURCE_CLASS,
@@ -822,6 +851,7 @@ def generated_row(
             temperature=temperature,
             max_new_tokens=max_new_tokens,
         ),
+        repair_trace=resolved_repair_trace,
     )
 
 

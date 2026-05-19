@@ -119,9 +119,12 @@ def test_generated_c_f2_failure_is_only_case_that_fires_repair(
         "level1_compile",
         "level2_correctness",
     ]
-    assert [row.attempt_index for row in result.rows] == [0, 1]
-    assert result.rows[0].failure_code == "F2_NUMERIC_LARGE"
-    assert result.rows[1].failure_code is None
+    assert len(result.rows) == 1
+    assert result.rows[0].attempt_index == 1
+    assert result.rows[0].failure_code is None
+    assert result.rows[0].repair_trace is not None
+    assert [trace.attempt_index for trace in result.rows[0].repair_trace] == [0, 1]
+    assert result.rows[0].repair_trace[0].failure_code == "F2_NUMERIC_LARGE"
     assert len(generation_calls) == 2
     feedback_prompt = generation_calls[1]["prompt"]
     assert "Failure code:\nF2_NUMERIC_LARGE" in feedback_prompt

@@ -35,6 +35,7 @@ from cluster2.constants import (
 from cluster2.feedback.repair_loop import (
     RepairEvaluationInput,
     RepairGenerationInput,
+    RepairLoopResult,
     run_repair_loop,
     seed_for_attempt,
 )
@@ -57,10 +58,10 @@ from cluster2.results.dataclass import (
     validate_generated_paper_scale_metadata,
 )
 from cluster2.results.logger import (
+    Cluster2JsonlAppendLogger,
     collect_content_hash_sidecar_for_conditions,
     default_content_hash_sidecar_path,
     load_content_hash_sidecar,
-    write_cluster2_results_jsonl,
 )
 from shared.eval.content_hashes import collect_c2_generation_hashes
 from shared.eval.correctness_shapes import LOCKED_KERNEL_CLASSES, get_shape_metadata
@@ -85,6 +86,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 GenerationAdapter = Callable[..., dict[str, Any]]
 CorrectnessAdapter = Callable[[RemoteCorrectnessRequest], dict[str, Any]]
+RowRecorder = Callable[[Cluster2EvalRow], None]
 
 
 @dataclass(frozen=True)
@@ -434,57 +436,67 @@ def run_cluster2(
     _preflight_f2_repair_smoke_artifacts(config)
     paired_generation_schedules = _preflight_all_paired_generation_schedules(config)
 
-    for condition in config.conditions:
-        stats = _ConditionRunStats()
-        before_rows = len(rows)
-        before_failures = len(coverage_failures)
-        if condition in REPLAY_CONTROL_CONDITIONS:
-            _run_replay_condition(
-                condition=condition,
-                config=config,
-                run_id=run_id,
-                correctness=deps.correctness or _default_correctness_call,
-                rows=rows,
-                coverage_failures=coverage_failures,
-                stats=stats,
-            )
-            route = "replay_adapter"
-        else:
-            _run_generated_condition(
-                condition=condition,
-                config=config,
-                run_id=run_id,
-                generation=deps.generation or _default_generation_call,
-                correctness=deps.correctness or _default_correctness_call,
-                rows=rows,
-                stats=stats,
-                paired_generation_schedule=paired_generation_schedules[condition],
-            )
-            route = (
-                "c2_repair_loop_with_g_adapter"
-                if condition == "G+C"
-                else "c2_repair_loop"
-            )
-        audits.append(
-            ConditionRouteAudit(
-                condition=condition,
-                route=route,
-                generation_allowed=condition in NEW_GENERATION_CONDITIONS,
-                generation_calls=stats.generation_calls,
-                correctness_calls=stats.correctness_calls,
-            )
-        )
-        _assert_replay_route_did_not_generate(condition, stats)
-        _assert_route_made_progress(
-            condition=condition,
-            before_rows=before_rows,
-            after_rows=len(rows),
-            before_failures=before_failures,
-            after_failures=len(coverage_failures),
-        )
+    with Cluster2JsonlAppendLogger(
+        config.output,
+        content_hash_sidecar=content_hash_sidecar,
+        mode=config.write_mode,
+        fsync=True,
+    ) as result_logger:
 
-    _validate_paper_scale_generation_metadata(config, rows)
-    _write_rows(config, rows, content_hash_sidecar)
+        def record_row(row: Cluster2EvalRow) -> None:
+            _validate_paper_scale_generation_metadata(config, (row,))
+            result_logger.append(row)
+            rows.append(row)
+
+        for condition in config.conditions:
+            stats = _ConditionRunStats()
+            before_rows = len(rows)
+            before_failures = len(coverage_failures)
+            if condition in REPLAY_CONTROL_CONDITIONS:
+                _run_replay_condition(
+                    condition=condition,
+                    config=config,
+                    run_id=run_id,
+                    correctness=deps.correctness or _default_correctness_call,
+                    record_row=record_row,
+                    coverage_failures=coverage_failures,
+                    stats=stats,
+                )
+                route = "replay_adapter"
+            else:
+                _run_generated_condition(
+                    condition=condition,
+                    config=config,
+                    run_id=run_id,
+                    generation=deps.generation or _default_generation_call,
+                    correctness=deps.correctness or _default_correctness_call,
+                    record_row=record_row,
+                    stats=stats,
+                    paired_generation_schedule=paired_generation_schedules[condition],
+                )
+                route = (
+                    "c2_repair_loop_with_g_adapter"
+                    if condition == "G+C"
+                    else "c2_repair_loop"
+                )
+            audits.append(
+                ConditionRouteAudit(
+                    condition=condition,
+                    route=route,
+                    generation_allowed=condition in NEW_GENERATION_CONDITIONS,
+                    generation_calls=stats.generation_calls,
+                    correctness_calls=stats.correctness_calls,
+                )
+            )
+            _assert_replay_route_did_not_generate(condition, stats)
+            _assert_route_made_progress(
+                condition=condition,
+                before_rows=before_rows,
+                after_rows=len(rows),
+                before_failures=before_failures,
+                after_failures=len(coverage_failures),
+            )
+
     return Cluster2RunResult(
         rows=tuple(rows),
         coverage_failures=tuple(coverage_failures),
@@ -523,7 +535,7 @@ def _run_replay_condition(
     config: Cluster2RunnerConfig,
     run_id: str,
     correctness: CorrectnessAdapter,
-    rows: list[Cluster2EvalRow],
+    record_row: RowRecorder,
     coverage_failures: list[ReplayCoverageFailure],
     stats: _ConditionRunStats,
 ) -> None:
@@ -543,14 +555,13 @@ def _run_replay_condition(
                 assert mapping.coverage_failure is not None
                 coverage_failures.append(mapping.coverage_failure)
                 continue
-            rows.extend(
-                _evaluate_replay_mapping(
-                    mapping,
-                    run_id=run_id,
-                    hashes=hashes,
-                    correctness=correctness,
-                    stats=stats,
-                )
+            _evaluate_replay_mapping(
+                mapping,
+                run_id=run_id,
+                hashes=hashes,
+                correctness=correctness,
+                record_row=record_row,
+                stats=stats,
             )
 
 
@@ -560,9 +571,9 @@ def _evaluate_replay_mapping(
     run_id: str,
     hashes: dict[str, str],
     correctness: CorrectnessAdapter,
+    record_row: RowRecorder,
     stats: _ConditionRunStats,
-) -> tuple[Cluster2EvalRow, ...]:
-    rows: list[Cluster2EvalRow] = []
+) -> None:
     for candidate in mapping.candidates:
         identity = _eval_identity(
             run_id=run_id,
@@ -578,7 +589,7 @@ def _evaluate_replay_mapping(
         stats.correctness_calls += 1
         correctness_result = _extract_correctness_result_dict(payload)
         _validate_correctness_identity(correctness_result, identity)
-        rows.append(
+        record_row(
             replay_control_row(
                 condition=candidate.condition,
                 attempt_index=candidate.attempt_index,
@@ -607,7 +618,6 @@ def _evaluate_replay_mapping(
                 max_new_tokens=candidate.max_new_tokens,
             )
         )
-    return tuple(rows)
 
 
 def _run_generated_condition(
@@ -617,7 +627,7 @@ def _run_generated_condition(
     run_id: str,
     generation: GenerationAdapter,
     correctness: CorrectnessAdapter,
-    rows: list[Cluster2EvalRow],
+    record_row: RowRecorder,
     stats: _ConditionRunStats,
     paired_generation_schedule: tuple[
         str,
@@ -630,7 +640,7 @@ def _run_generated_condition(
         kernel_name = get_shape_metadata(kernel_class).kernel_name
         for dtype in config.dtypes:
             for pairing_entry in schedule_by_cell[(kernel_class, dtype)]:
-                rows.extend(
+                record_row(
                     _run_generated_cell(
                         condition=condition,
                         kernel_class=kernel_class,
@@ -664,7 +674,7 @@ def _run_generated_cell(
     correctness: CorrectnessAdapter,
     c2_hashes: dict[str, str],
     stats: _ConditionRunStats,
-) -> tuple[Cluster2EvalRow, ...]:
+) -> Cluster2EvalRow:
     attempt_records: dict[int, _GeneratedAttemptRecord] = {}
     base_prompt = _build_base_prompt(kernel_class, dtype)
     prompt_sha256 = _source_sha256(base_prompt)
@@ -743,75 +753,68 @@ def _run_generated_cell(
     trace_by_attempt = {
         trace.attempt_index: trace for trace in repair_result.trace_summaries
     }
-    rows: list[Cluster2EvalRow] = []
-    for attempt_index in sorted(attempt_records):
-        record = attempt_records[attempt_index]
-        if record.correctness_result is None:
-            raise RuntimeError("generated attempt missing correctness result")
-        generation_hashes = _generation_hashes_from_payload(
-            record.generation_payload,
-            fallback=c2_hashes,
-        )
-        grammar_metadata = _generation_grammar_metadata_from_payload(
-            record.generation_payload,
-            condition=condition,
-        )
-        source_hash = _source_sha256(record.source)
-        rows.append(
-            generated_row(
-                condition=condition,
-                attempt_index=record.attempt_index,
-                kernel_class=kernel_class,
-                kernel_name=kernel_name,
-                dtype=dtype,
-                base_seed=base_seed,
-                source_hash=source_hash,
-                functional_success=bool(
-                    record.correctness_result["functional_success"]
-                ),
-                repair_set_success=bool(
-                    record.correctness_result["repair_set_success"]
-                ),
-                eval_set_success=bool(record.correctness_result["eval_set_success"]),
-                failure_code=record.correctness_result.get("failure_code"),
-                trace_summary=trace_by_attempt[attempt_index],
-                c2_generation_hashes=generation_hashes,
-                generation_seed=record.generation_seed,
-                grammar_variant=grammar_metadata["grammar_variant"],
-                grammar_path=grammar_metadata["grammar_path"],
-                grammar_sha=grammar_metadata["grammar_sha"],
-                grammar_claim_scope=grammar_metadata["grammar_claim_scope"],
-                gbnf_parse_valid=grammar_metadata["gbnf_parse_valid"],
-                semantic_valid=grammar_metadata["semantic_valid"],
-                grammar_valid=grammar_metadata["grammar_valid"],
-                rejection_layer=grammar_metadata["rejection_layer"],
-                stop_reason=grammar_metadata["stop_reason"],
-                xgrammar_version=grammar_metadata["xgrammar_version"],
-                transformers_version=grammar_metadata["transformers_version"],
-                tokenizers_version=grammar_metadata["tokenizers_version"],
-                modal_image_sha=grammar_metadata["modal_image_sha"],
-                modal_image_provenance_sha256=grammar_metadata[
-                    "modal_image_provenance_sha256"
-                ],
-                modal_image_provenance_components=grammar_metadata[
-                    "modal_image_provenance_components"
-                ],
-                generation_metadata_schema_version=grammar_metadata[
-                    "generation_metadata_schema_version"
-                ],
-                replay_pair_id=pairing_entry.replay_pair_id,
-                replay_control_condition=replay_control_condition,
-                replay_base_seed=pairing_entry.base_seed,
-                replay_generation_seed=pairing_entry.generation_seed,
-                prompt_sha256=pairing_entry.prompt_sha256,
-                model_id=config.model_id,
-                model_revision=grammar_metadata["model_revision"],
-                tokenizer_revision=grammar_metadata["tokenizer_revision"],
-                temperature=config.temperature,
-                max_new_tokens=config.max_new_tokens,
-            )
-        )
-    return tuple(rows)
+    terminal_attempt_index = _terminal_attempt_index(repair_result)
+    record = attempt_records[terminal_attempt_index]
+    if record.correctness_result is None:
+        raise RuntimeError("generated terminal attempt missing correctness result")
+    generation_hashes = _generation_hashes_from_payload(
+        record.generation_payload,
+        fallback=c2_hashes,
+    )
+    grammar_metadata = _generation_grammar_metadata_from_payload(
+        record.generation_payload,
+        condition=condition,
+    )
+    source_hash = _source_sha256(record.source)
+    return generated_row(
+        condition=condition,
+        attempt_index=record.attempt_index,
+        kernel_class=kernel_class,
+        kernel_name=kernel_name,
+        dtype=dtype,
+        base_seed=base_seed,
+        source_hash=source_hash,
+        functional_success=bool(record.correctness_result["functional_success"]),
+        repair_set_success=bool(record.correctness_result["repair_set_success"]),
+        eval_set_success=bool(record.correctness_result["eval_set_success"]),
+        failure_code=record.correctness_result.get("failure_code"),
+        trace_summary=trace_by_attempt[terminal_attempt_index],
+        repair_trace=repair_result.trace_summaries,
+        c2_generation_hashes=generation_hashes,
+        generation_seed=record.generation_seed,
+        grammar_variant=grammar_metadata["grammar_variant"],
+        grammar_path=grammar_metadata["grammar_path"],
+        grammar_sha=grammar_metadata["grammar_sha"],
+        grammar_claim_scope=grammar_metadata["grammar_claim_scope"],
+        gbnf_parse_valid=grammar_metadata["gbnf_parse_valid"],
+        semantic_valid=grammar_metadata["semantic_valid"],
+        grammar_valid=grammar_metadata["grammar_valid"],
+        rejection_layer=grammar_metadata["rejection_layer"],
+        stop_reason=grammar_metadata["stop_reason"],
+        xgrammar_version=grammar_metadata["xgrammar_version"],
+        transformers_version=grammar_metadata["transformers_version"],
+        tokenizers_version=grammar_metadata["tokenizers_version"],
+        modal_image_sha=grammar_metadata["modal_image_sha"],
+        modal_image_provenance_sha256=grammar_metadata[
+            "modal_image_provenance_sha256"
+        ],
+        modal_image_provenance_components=grammar_metadata[
+            "modal_image_provenance_components"
+        ],
+        generation_metadata_schema_version=grammar_metadata[
+            "generation_metadata_schema_version"
+        ],
+        replay_pair_id=pairing_entry.replay_pair_id,
+        replay_control_condition=replay_control_condition,
+        replay_base_seed=pairing_entry.base_seed,
+        replay_generation_seed=pairing_entry.generation_seed,
+        prompt_sha256=pairing_entry.prompt_sha256,
+        model_id=config.model_id,
+        model_revision=grammar_metadata["model_revision"],
+        tokenizer_revision=grammar_metadata["tokenizer_revision"],
+        temperature=config.temperature,
+        max_new_tokens=config.max_new_tokens,
+    )
 
 
 def _build_runner_content_hash_sidecar(
@@ -980,6 +983,14 @@ def _paired_generation_seed(
     return seed_for_attempt(pairing_entry.base_seed, attempt_index)
 
 
+def _terminal_attempt_index(repair_result: RepairLoopResult) -> int:
+    if repair_result.successful_attempt_index is not None:
+        return repair_result.successful_attempt_index
+    if not repair_result.attempts:
+        raise RuntimeError("repair loop produced no attempts")
+    return repair_result.attempts[-1].attempt_index
+
+
 def _validate_generation_pairing_context(
     *,
     condition: str,
@@ -1031,19 +1042,6 @@ def _validate_generation_pairing_context(
 
 def _known_frozen_revision(value: str | None) -> bool:
     return value is not None and value != UNAVAILABLE_FROZEN_REVISION
-
-
-def _write_rows(
-    config: Cluster2RunnerConfig,
-    rows: Sequence[Cluster2EvalRow],
-    content_hash_sidecar: Cluster2ContentHashSidecar,
-) -> None:
-    write_cluster2_results_jsonl(
-        config.output,
-        rows,
-        content_hash_sidecar=content_hash_sidecar,
-        mode=config.write_mode,
-    )
 
 
 def _validate_paper_scale_generation_metadata(

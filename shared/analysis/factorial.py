@@ -217,6 +217,7 @@ def normalize_result_rows(
                 "unique_ratio_ast": _float_or_none(payload.get("unique_ratio_ast")),
                 "repair_traces": _first_present(
                     payload,
+                    "repair_trace",
                     "repair_traces",
                     "RepairTrace",
                     "trace_summary",
@@ -1493,13 +1494,44 @@ def _require_replay_attempt_zero(control: pd.DataFrame) -> None:
 def _require_generated_attempt_zero(treatment: pd.DataFrame) -> None:
     missing = []
     for key, group in treatment.groupby(list(PAIR_KEY_COLUMNS), sort=True):
-        if 0 not in set(group["attempt_index"]):
+        if 0 not in set(group["attempt_index"]) and not _group_has_repair_attempt(
+            group,
+            attempt_index=0,
+        ):
             missing.append(key)
     if missing:
         raise ValueError(
             "paired replay treatment rows must include attempt_index 0: "
             f"{missing}"
         )
+
+
+def _group_has_repair_attempt(group: pd.DataFrame, *, attempt_index: int) -> bool:
+    for _, row in group.iterrows():
+        for column in ("repair_trace", "repair_traces", "trace_summary"):
+            if column in row and attempt_index in _trace_attempt_indexes(row[column]):
+                return True
+    return False
+
+
+def _trace_attempt_indexes(value: object) -> set[int]:
+    if _is_missing_value(value):
+        return set()
+    if isinstance(value, Mapping):
+        raw_index = value.get("attempt_index")
+        if _is_missing_value(raw_index):
+            return set()
+        return {int(raw_index)}
+    if isinstance(value, (list, tuple, set)):
+        indexes: set[int] = set()
+        for item in value:
+            indexes.update(_trace_attempt_indexes(item))
+        return indexes
+    if hasattr(value, "to_dict"):
+        return _trace_attempt_indexes(value.to_dict())
+    if is_dataclass(value):
+        return _trace_attempt_indexes(asdict(value))
+    return set()
 
 
 def _validate_pair_metadata_columns(

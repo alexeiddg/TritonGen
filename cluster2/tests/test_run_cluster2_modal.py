@@ -28,7 +28,10 @@ from cluster2.modal.schemas import (
     RemoteCorrectnessResult,
 )
 from cluster2.results.dataclass import CLUSTER2_GENERATION_METADATA_SCHEMA_VERSION
-from cluster2.results.logger import default_content_hash_sidecar_path
+from cluster2.results.logger import (
+    default_content_hash_sidecar_path,
+    load_cluster2_results_jsonl,
+)
 from cluster2.tests.test_replay_controls import _write_replay_fixture
 from shared.eval.content_hashes import collect_c2_generation_hashes
 from shared.generation_metadata import modal_image_provenance_digest
@@ -396,11 +399,15 @@ def test_runner_repair_attempts_preserve_repair_loop_seed_schedule(
     )
 
     assert [call["generation_seed"] for call in generation_calls] == [0, 1]
+    assert len(result.rows) == 1
+    assert result.rows[0].attempt_index == 1
+    assert result.rows[0].repair_trace is not None
+    assert [trace.attempt_index for trace in result.rows[0].repair_trace] == [0, 1]
     assert [
         row.generated_metadata.generation_seed
         for row in result.rows
         if row.generated_metadata is not None
-    ] == [0, 1]
+    ] == [1]
 
 
 def test_runner_routes_gc_to_c2_generation_with_g_adapter(tmp_path: Path) -> None:
@@ -489,6 +496,43 @@ def test_runner_generated_conditions_consume_replay_seed_schedule(
         for row in result.rows
         if row.generated_metadata is not None
     ] == [0, 1, 2]
+
+
+def test_runner_durable_rows_survive_mid_run_exception(tmp_path: Path) -> None:
+    generation_calls: list[dict[str, Any]] = []
+    correctness_calls: list[Any] = []
+    config = _config(tmp_path, condition="C", repair_budget=0, n=3)
+
+    def crash_after_two_completed_rows(request: Any) -> dict[str, Any]:
+        correctness_calls.append(request)
+        if len(correctness_calls) > 2:
+            raise RuntimeError("simulated modal interruption")
+        return {
+            "correctness_result": {
+                "identity": request.identity.model_dump(),
+                "functional_success": True,
+                "repair_set_success": True,
+                "eval_set_success": True,
+                "failure_code": None,
+                "correctness_error": None,
+            }
+        }
+
+    with pytest.raises(RuntimeError, match="simulated modal interruption"):
+        run_cluster2(
+            config,
+            dependencies=RunnerDependencies(
+                generation=_fake_generation(generation_calls),
+                correctness=crash_after_two_completed_rows,
+            ),
+        )
+
+    persisted_rows = load_cluster2_results_jsonl(config.output)
+    assert len(persisted_rows) == 2
+    assert [row.base_seed for row in persisted_rows] == [0, 1]
+    assert [row.condition for row in persisted_rows] == ["C", "C"]
+    assert all(row.functional_success for row in persisted_rows)
+    assert len(generation_calls) == 3
 
 
 def test_runner_preflights_all_requested_cells_before_generation(

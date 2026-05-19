@@ -14,6 +14,7 @@ from cluster2.results.dataclass import (
     replay_control_row,
 )
 from cluster2.results.logger import (
+    Cluster2JsonlAppendLogger,
     Cluster2ResultsLogger,
     build_content_hash_sidecar,
     collect_content_hash_sidecar_for_conditions,
@@ -22,6 +23,7 @@ from cluster2.results.logger import (
     load_content_hash_sidecar,
     serialize_cluster2_row,
     serialize_cluster2_rows,
+    validate_cluster2_results_jsonl,
     validate_content_hash_sidecar_for_rows,
     write_cluster2_jsonl,
     write_cluster2_results_jsonl,
@@ -34,6 +36,7 @@ __all__ = [
     "Cluster2ContentHashSidecar",
     "Cluster2EvalRow",
     "Cluster2GeneratedRowMetadata",
+    "Cluster2JsonlAppendLogger",
     "Cluster2OptionalDiagnostics",
     "Cluster2ReplayRowMetadata",
     "Cluster2ResultsLogger",
@@ -47,6 +50,7 @@ __all__ = [
     "replay_control_row",
     "serialize_cluster2_row",
     "serialize_cluster2_rows",
+    "validate_cluster2_results_jsonl",
     "validate_content_hash_sidecar_for_rows",
     "write_cluster2_jsonl",
     "write_cluster2_results_jsonl",

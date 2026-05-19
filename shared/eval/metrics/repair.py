@@ -65,16 +65,14 @@ def compute_pass_at_1_initial(
     source_classes: set[str] = set()
     for key, cell_rows in groups.items():
         source_classes.update(row.source_class for row in cell_rows)
-        attempt_zero = [row for row in cell_rows if row.attempt_index == 0]
-        if len(attempt_zero) > 1:
-            raise ValueError(f"duplicate attempt_index 0 rows for cell {key}")
-        if not attempt_zero:
+        initial_success = _initial_attempt_success(key, cell_rows)
+        if initial_success is None:
             continue
         outcomes.append(
             CellOutcome(
                 cell=key,
-                success=attempt_zero[0].functional_success,
-                attempts_observed=len(cell_rows),
+                success=initial_success,
+                attempts_observed=_attempts_observed(cell_rows),
                 attempts_considered=1,
             )
         )
@@ -108,13 +106,16 @@ def compute_convergence_rate(
     outcomes: list[CellOutcome] = []
     for key, cell_rows in groups.items():
         require_unique_attempt_indexes(key, cell_rows)
-        considered = tuple(row for row in cell_rows if row.attempt_index < max_attempts)
+        considered_successes = _successes_within_attempts(
+            cell_rows,
+            max_attempts=max_attempts,
+        )
         outcomes.append(
             CellOutcome(
                 cell=key,
-                success=any(row.functional_success for row in considered),
-                attempts_observed=len(cell_rows),
-                attempts_considered=len(considered),
+                success=any(considered_successes),
+                attempts_observed=_attempts_observed(cell_rows),
+                attempts_considered=len(considered_successes),
             )
         )
 
@@ -150,3 +151,47 @@ def _single_source_class(values: Iterable[str]) -> str:
     if len(classes) == 1:
         return classes[0]
     return "mixed"
+
+
+def _initial_attempt_success(
+    key: CellKey,
+    cell_rows: tuple[Cluster2EvalRow, ...],
+) -> bool | None:
+    attempt_zero = [row for row in cell_rows if row.attempt_index == 0]
+    if len(attempt_zero) > 1:
+        raise ValueError(f"duplicate attempt_index 0 rows for cell {key}")
+    if attempt_zero:
+        return attempt_zero[0].functional_success
+    for row in cell_rows:
+        for trace in row.repair_trace or ():
+            if trace.attempt_index == 0:
+                return bool(trace.functional_success)
+    return None
+
+
+def _successes_within_attempts(
+    cell_rows: tuple[Cluster2EvalRow, ...],
+    *,
+    max_attempts: int,
+) -> tuple[bool, ...]:
+    trace_successes: list[bool] = []
+    for row in cell_rows:
+        for trace in row.repair_trace or ():
+            if trace.attempt_index < max_attempts:
+                trace_successes.append(bool(trace.functional_success))
+    if trace_successes:
+        return tuple(trace_successes)
+    return tuple(
+        row.functional_success
+        for row in cell_rows
+        if row.attempt_index < max_attempts
+    )
+
+
+def _attempts_observed(cell_rows: tuple[Cluster2EvalRow, ...]) -> int:
+    trace_attempts = {
+        trace.attempt_index
+        for row in cell_rows
+        for trace in (row.repair_trace or ())
+    }
+    return len(trace_attempts) if trace_attempts else len(cell_rows)

@@ -531,6 +531,27 @@ def test_validate_paired_replay_dataframe_rejects_nonzero_replay_attempt() -> No
         validate_paired_replay_dataframe(df, treatment_condition="C")
 
 
+def test_validate_paired_replay_dataframe_accepts_repair_trace_attempt_zero() -> None:
+    generated = _generated_row(base_seed=0, attempt_index=1)
+    generated["generated_metadata"]["generation_seed"] = 1
+    generated["repair_trace"] = [
+        {
+            "attempt_index": 0,
+            "failure_code": "F2_NUMERIC_LARGE",
+            "functional_success": False,
+        },
+        {
+            "attempt_index": 1,
+            "failure_code": None,
+            "functional_success": True,
+        },
+    ]
+    replay = _replay_row(base_seed=0)
+    df = pd.DataFrame([generated, replay])
+
+    validate_paired_replay_dataframe(df, treatment_condition="C")
+
+
 def test_validate_paired_replay_dataframe_rejects_missing_generated_attempt_zero() -> None:
     generated = _generated_row(base_seed=0, attempt_index=1)
     generated["generated_metadata"]["generation_seed"] = 1

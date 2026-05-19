@@ -563,10 +563,18 @@ def _generated_rows_by_matched_cell(
         if duplicates:
             duplicate_text = ", ".join(str(index) for index in sorted(duplicates))
             raise ValueError(f"duplicate pair attempt_index values for {key}: {duplicate_text}")
-        if 0 not in attempt_indexes:
+        if 0 not in attempt_indexes and not any(
+            _repair_trace_contains_attempt(row, 0) for row in cell_rows
+        ):
             raise ValueError(f"missing generated attempt 0 for replay pair {key}")
         result[key] = tuple(sorted(cell_rows, key=lambda row: row.attempt_index))
     return result
+
+
+def _repair_trace_contains_attempt(row: Cluster2EvalRow, attempt_index: int) -> bool:
+    return any(
+        trace.attempt_index == attempt_index for trace in (row.repair_trace or ())
+    )
 
 
 def _single_replay_rows_by_matched_cell(
