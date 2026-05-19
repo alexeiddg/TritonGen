@@ -168,6 +168,41 @@ def test_model_tokenizer_revisions_prefer_observed_commit_hashes() -> None:
     }
 
 
+def test_extract_tokenizer_revision_uses_init_kwargs_commit_hash() -> None:
+    class FakeTokenizer:
+        init_kwargs = {"_commit_hash": "tok-sha"}
+
+    assert provenance.extract_tokenizer_revision(FakeTokenizer()) == "tok-sha"
+
+
+def test_extract_tokenizer_revision_uses_tokenizer_commit_hash_attribute() -> None:
+    class FakeTokenizer:
+        _commit_hash = "tok-sha"
+
+    assert provenance.extract_tokenizer_revision(FakeTokenizer()) == "tok-sha"
+
+
+def test_extract_tokenizer_revision_uses_explicit_revision_fallback() -> None:
+    class FakeTokenizer:
+        pass
+
+    assert (
+        provenance.extract_tokenizer_revision(
+            FakeTokenizer(),
+            explicit_revision="explicit-sha",
+        )
+        == "explicit-sha"
+    )
+
+
+def test_extract_tokenizer_revision_returns_unknown_without_usable_source() -> None:
+    class FakeTokenizer:
+        init_kwargs = {"_commit_hash": "unknown"}
+        _commit_hash = ""
+
+    assert provenance.extract_tokenizer_revision(FakeTokenizer()) == "unknown"
+
+
 def test_resolve_tokenizer_revision_uses_explicit_tokenizer_revision() -> None:
     assert (
         provenance.resolve_tokenizer_revision(

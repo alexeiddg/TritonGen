@@ -109,3 +109,26 @@ def test_compiled_grammar_tokenizer_id_prefers_loaded_snapshot():
     assert remote_generation._compiled_grammar_tokenizer_id(object(), "repo/model") == (
         "repo/model"
     )
+
+
+def test_observed_revisions_preserve_explicit_tokenizer_revision_fallback():
+    class FakeConfig:
+        _commit_hash = "observed-model-revision"
+
+    class FakeModel:
+        config = FakeConfig()
+
+    class FakeTokenizer:
+        pass
+
+    generator = SimpleNamespace(
+        model=FakeModel(),
+        tokenizer=FakeTokenizer(),
+        requested_model_revision=MODEL_REVISION,
+        requested_tokenizer_revision=TOKENIZER_REVISION,
+    )
+
+    assert remote_generation._observed_model_tokenizer_revisions(generator) == (
+        "observed-model-revision",
+        TOKENIZER_REVISION,
+    )

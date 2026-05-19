@@ -836,6 +836,10 @@ def _write_resume_metadata(
     temperature: float = 0.2,
     max_new_tokens: int = 64,
 ) -> None:
+    normalized_model_revision = (
+        runner.DEFAULT_MODEL_REVISION if model_id == runner.DEFAULT_MODEL_ID else None
+    )
+    normalized_tokenizer_revision = normalized_model_revision
     runner._metadata_path(output).write_text(
         json.dumps(
             {
@@ -858,8 +862,8 @@ def _write_resume_metadata(
                     "n": n,
                     "output": str(output),
                     "model_id": model_id,
-                    "model_revision": None,
-                    "tokenizer_revision": None,
+                    "model_revision": normalized_model_revision,
+                    "tokenizer_revision": normalized_tokenizer_revision,
                     "dataset_id": dataset_id,
                     "grammar_variant": grammar_variant,
                     "grammar_path": grammar_path,
@@ -1037,6 +1041,46 @@ def test_run_passes_modal_generation_gpu_to_generation_adapter(
     assert metadata["grammar_variant"] is None
     assert metadata["run_config"]["grammar_variant"] == "template_upper_bound"
     assert metadata["run_config"]["modal_generation_gpu"] == "L4"
+
+
+def test_run_pins_default_model_revision_and_tokenizer_revision(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    args = _make_args(tmp_path)
+
+    runner._run(args=args)
+
+    assert {call["model_revision"] for call in calls["generate"]} == {
+        runner.DEFAULT_MODEL_REVISION
+    }
+    assert {call["tokenizer_revision"] for call in calls["generate"]} == {
+        runner.DEFAULT_MODEL_REVISION
+    }
+    metadata = _read_metadata(Path(args.output))
+    assert metadata["model_revision"] == runner.DEFAULT_MODEL_REVISION
+    assert metadata["tokenizer_revision"] == runner.DEFAULT_MODEL_REVISION
+    assert metadata["tokenizer_revision_policy"] == "same_repo_model_revision"
+
+
+def test_run_leaves_custom_model_unpinned_without_explicit_revision(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    generation, compile_ = _baseline_remote_pair()
+    calls = _patch_adapters(monkeypatch, generation=generation, compile_=compile_)
+    args = _make_args(tmp_path, model_id="other/repo")
+
+    runner._run(args=args)
+
+    assert {call["model_revision"] for call in calls["generate"]} == {None}
+    assert {call["tokenizer_revision"] for call in calls["generate"]} == {None}
+    metadata = _read_metadata(Path(args.output))
+    assert metadata["model_revision"] is None
+    assert metadata["tokenizer_revision"] is None
+    assert metadata["tokenizer_revision_policy"] == "best_effort_extraction"
 
 
 def test_run_passes_explicit_revisions_to_generation_adapter(

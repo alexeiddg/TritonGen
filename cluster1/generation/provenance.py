@@ -158,12 +158,29 @@ def model_tokenizer_revisions(
             getattr(model, "_commit_hash", None),
             model_revision,
         ),
-        "tokenizer_revision": _first_known(
-            _mapping_value(getattr(tokenizer, "init_kwargs", None), "_commit_hash"),
-            getattr(tokenizer, "_commit_hash", None),
-            tokenizer_revision,
+        "tokenizer_revision": extract_tokenizer_revision(
+            tokenizer,
+            explicit_revision=tokenizer_revision,
         ),
     }
+
+
+def extract_tokenizer_revision(
+    tokenizer: Any,
+    explicit_revision: str | None = None,
+) -> str:
+    """Return tokenizer Hub revision using object metadata before fallback.
+
+    Tokenizer commit metadata is not exposed consistently across pinned
+    Transformers versions, so keep the object checks narrow and use the
+    explicit loader revision only as a provenance fallback.
+    """
+
+    return _first_known(
+        _mapping_value(getattr(tokenizer, "init_kwargs", None), "_commit_hash"),
+        getattr(tokenizer, "_commit_hash", None),
+        explicit_revision,
+    )
 
 
 def modal_image_provenance(

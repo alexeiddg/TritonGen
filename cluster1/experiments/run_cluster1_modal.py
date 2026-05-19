@@ -70,6 +70,7 @@ from shared.eval.failure_taxonomy import (  # noqa: E402
 from shared.modal_harness.generation import DEFAULT_GENERATION_GPU  # noqa: E402
 
 DEFAULT_MODEL_ID = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
+DEFAULT_MODEL_REVISION = "8e8ed243bbe6f9a5aff549a0924562fc719b2b8a"
 DEFAULT_DATASET_ID = "ScalingIntelligence/KernelBench"
 SUPPORTED_BACKENDS: frozenset[str] = frozenset({"modal"})
 SUPPORTED_CONDITIONS: tuple[str, ...] = ("baseline", "G", "both")
@@ -191,8 +192,12 @@ def _normalize_revision_args(args) -> None:
         tokenizer_revision_policy,
     )
 
+    requested_model_revision = getattr(args, "model_revision", None)
+    if requested_model_revision is None and args.model_id == DEFAULT_MODEL_ID:
+        requested_model_revision = DEFAULT_MODEL_REVISION
+
     model_revision = normalize_explicit_revision(
-        getattr(args, "model_revision", None),
+        requested_model_revision,
         field_name="model_revision",
     )
     tokenizer_revision = resolve_tokenizer_revision(
