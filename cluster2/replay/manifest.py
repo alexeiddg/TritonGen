@@ -24,6 +24,7 @@ from shared.eval.correctness_shapes import LOCKED_KERNEL_CLASSES
 
 REPLAY_GRAMMAR_VARIANT_TASK_AGNOSTIC = "task_agnostic"
 REPLAY_GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND = "template_upper_bound"
+REPLAY_COVERAGE_POLICY_WARNING_SKIP_MISSING = "COVERAGE_WARNING_SKIP_MISSING"
 _TEMPLATE_SELECTED_CONTROLS = "cluster2_v5_template_upper_bound_controls"
 _TASK_AGNOSTIC_G_STATUS = "task_agnostic_g_status"
 
@@ -54,6 +55,68 @@ class ReplayCellCoverage:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+@dataclass(frozen=True)
+class ReplayGridIdentity:
+    """Logical identity for one replay row in the C1/C2 paired grid."""
+
+    kernel_class: str
+    dtype: str
+    sample_index: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ReplayInvalidRow:
+    """Replay row whose logical grid identity cannot be reconstructed."""
+
+    row_index: int
+    line_number: int | None
+    reason: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ReplayCoverageReport:
+    """Observed-vs-intended replay-grid coverage for one artifact."""
+
+    artifact_id: str
+    condition: str
+    replay_coverage_policy: str
+    replay_expected_rows: int
+    replay_observed_rows: int
+    replay_missing_rows: tuple[ReplayGridIdentity, ...]
+    replay_duplicate_rows: tuple[ReplayGridIdentity, ...]
+    replay_unexpected_rows: tuple[ReplayGridIdentity, ...]
+    replay_invalid_rows: tuple[ReplayInvalidRow, ...]
+    replay_coverage_complete: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "artifact_id": self.artifact_id,
+            "condition": self.condition,
+            "replay_coverage_policy": self.replay_coverage_policy,
+            "replay_expected_rows": self.replay_expected_rows,
+            "replay_observed_rows": self.replay_observed_rows,
+            "replay_missing_rows": [
+                row.to_dict() for row in self.replay_missing_rows
+            ],
+            "replay_duplicate_rows": [
+                row.to_dict() for row in self.replay_duplicate_rows
+            ],
+            "replay_unexpected_rows": [
+                row.to_dict() for row in self.replay_unexpected_rows
+            ],
+            "replay_invalid_rows": [
+                row.to_dict() for row in self.replay_invalid_rows
+            ],
+            "replay_coverage_complete": self.replay_coverage_complete,
+        }
 
 
 @dataclass(frozen=True)
@@ -185,6 +248,121 @@ def artifact_for_replay_condition(
     raise KeyError(f"no selected replay artifact for condition {normalized!r}")
 
 
+def replay_coverage_report_for_condition(
+    condition: str,
+    manifest: dict[str, Any] | None = None,
+    *,
+    manifest_path: str | Path = DEFAULT_FROZEN_CLUSTER1_MANIFEST,
+    grammar_variant: str = REPLAY_GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND,
+    expected_n: int = 20,
+) -> ReplayCoverageReport:
+    """Return logical replay-grid coverage for the selected artifact."""
+
+    normalized = require_replay_control_condition(condition)
+    loaded_manifest = (
+        load_frozen_cluster1_manifest(manifest_path) if manifest is None else manifest
+    )
+    selected_ids = set(
+        selected_replay_artifact_ids_for_condition(
+            normalized,
+            loaded_manifest,
+            grammar_variant=grammar_variant,
+        )
+    )
+    selected_artifacts = [
+        artifact
+        for artifact in loaded_manifest.get("artifacts", [])
+        if artifact.get("artifact_id") in selected_ids
+        and artifact.get("condition") == normalized
+    ]
+    if len(selected_artifacts) != 1:
+        raise ValueError(
+            f"expected exactly one selected replay artifact for {normalized!r}, "
+            f"got {len(selected_artifacts)}"
+        )
+    artifact = selected_artifacts[0]
+    return analyze_replay_grid_coverage(
+        artifact.get("row_records", []),
+        artifact_id=_require_non_empty_str(artifact.get("artifact_id"), "artifact_id"),
+        condition=normalized,
+        expected_n=expected_n,
+        coverage_policy=str(artifact.get("coverage_policy") or "STRICT_COMPLETE"),
+    )
+
+
+def analyze_replay_grid_coverage(
+    rows: list[Any] | tuple[Any, ...],
+    *,
+    artifact_id: str,
+    condition: str,
+    expected_n: int,
+    coverage_policy: str,
+) -> ReplayCoverageReport:
+    """Compare replay rows against the locked 3 x 3 x n logical grid."""
+
+    normalized = require_replay_control_condition(condition)
+    _require_positive_int(expected_n, "expected_n")
+    expected = tuple(_expected_replay_grid(expected_n))
+    expected_set = set(expected)
+    observed: list[ReplayGridIdentity] = []
+    invalid: list[ReplayInvalidRow] = []
+    for row_index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            invalid.append(
+                ReplayInvalidRow(
+                    row_index=row_index,
+                    line_number=None,
+                    reason="row_not_object",
+                )
+            )
+            continue
+        identity, invalid_reason = _logical_identity_from_row_or_reason(row)
+        if identity is None:
+            invalid.append(
+                ReplayInvalidRow(
+                    row_index=row_index,
+                    line_number=_optional_positive_int(row.get("line_number")),
+                    reason=invalid_reason or "invalid_logical_identity",
+                )
+            )
+            continue
+        observed.append(identity)
+
+    counts: dict[ReplayGridIdentity, int] = {}
+    for identity in observed:
+        counts[identity] = counts.get(identity, 0) + 1
+    observed_set = set(observed)
+    missing = tuple(sorted(expected_set - observed_set, key=_grid_identity_sort_key))
+    duplicates = tuple(
+        sorted(
+            (identity for identity, count in counts.items() if count > 1),
+            key=_grid_identity_sort_key,
+        )
+    )
+    unexpected = tuple(
+        sorted(observed_set - expected_set, key=_grid_identity_sort_key)
+    )
+    coverage_complete = (
+        not missing
+        and not duplicates
+        and not unexpected
+        and not invalid
+        and len(observed) == len(expected)
+    )
+    return ReplayCoverageReport(
+        artifact_id=artifact_id,
+        condition=normalized,
+        replay_coverage_policy=coverage_policy,
+        replay_expected_rows=len(expected),
+        replay_observed_rows=len(observed),
+        replay_missing_rows=missing,
+        replay_duplicate_rows=duplicates,
+        replay_unexpected_rows=unexpected,
+        replay_invalid_rows=tuple(invalid),
+        replay_coverage_complete=coverage_complete,
+    )
+
+
 def validate_replay_manifest_integrity(
     path: str | Path = DEFAULT_FROZEN_CLUSTER1_MANIFEST,
     *,
@@ -258,6 +436,7 @@ def replay_seed_schedule_for_condition(
     candidate_count: int,
     manifest_path: str | Path = DEFAULT_FROZEN_CLUSTER1_MANIFEST,
     grammar_variant: str = REPLAY_GRAMMAR_VARIANT_TEMPLATE_UPPER_BOUND,
+    allow_incomplete: bool = False,
 ) -> tuple[ReplaySeedScheduleEntry, ...]:
     """Return the manifest-authoritative paired seed schedule for one cell."""
 
@@ -291,21 +470,128 @@ def replay_seed_schedule_for_condition(
         for entry in _seed_schedule_entries_for_artifact(selected_artifacts[0])
         if entry.kernel_class == kernel_class and entry.dtype == dtype
     )
-    if len(entries) < candidate_count:
+    coverage_policy = str(selected_artifacts[0].get("coverage_policy") or "")
+    skip_missing_allowed = (
+        allow_incomplete
+        and coverage_policy == REPLAY_COVERAGE_POLICY_WARNING_SKIP_MISSING
+    )
+    if len(entries) < candidate_count and not skip_missing_allowed:
         raise ValueError(
             "seed_schedule coverage failure for "
             f"{normalized}/{kernel_class}/{dtype}: required {candidate_count}, "
             f"observed {len(entries)}"
         )
-    selected = entries[:candidate_count]
+    selected = tuple(entry for entry in entries if entry.base_seed < candidate_count)
     expected_base_seeds = tuple(range(candidate_count))
     observed_base_seeds = tuple(entry.base_seed for entry in selected)
-    if observed_base_seeds != expected_base_seeds:
+    if observed_base_seeds != expected_base_seeds and not skip_missing_allowed:
         raise ValueError(
             "seed_schedule must be dense and zero-based for requested window: "
             f"expected {expected_base_seeds}, got {observed_base_seeds}"
         )
+    if skip_missing_allowed:
+        if len(set(observed_base_seeds)) != len(observed_base_seeds):
+            raise ValueError(
+                "seed_schedule contains duplicate base_seed values for requested "
+                f"window: {observed_base_seeds}"
+            )
+        coverage_report = analyze_replay_grid_coverage(
+            selected_artifacts[0].get("row_records", []),
+            artifact_id=_require_non_empty_str(
+                selected_artifacts[0].get("artifact_id"),
+                "artifact_id",
+            ),
+            condition=normalized,
+            expected_n=_coverage_expected_n_from_artifact(
+                selected_artifacts[0],
+                fallback=candidate_count,
+            ),
+            coverage_policy=coverage_policy,
+        )
+        validate_replay_seed_schedule_matches_coverage(
+            selected,
+            coverage_report=coverage_report,
+            kernel_class=kernel_class,
+            dtype=dtype,
+            candidate_count=candidate_count,
+        )
     return selected
+
+
+def validate_replay_seed_schedule_matches_coverage(
+    schedule: tuple[ReplaySeedScheduleEntry, ...],
+    *,
+    coverage_report: ReplayCoverageReport,
+    kernel_class: str,
+    dtype: str,
+    candidate_count: int,
+) -> None:
+    """Reject skip-policy schedules that omit rows not reported missing."""
+
+    _require_kernel_class(kernel_class)
+    _require_dtype(dtype)
+    _require_positive_int(candidate_count, "candidate_count")
+    if (
+        coverage_report.replay_duplicate_rows
+        or coverage_report.replay_unexpected_rows
+        or coverage_report.replay_invalid_rows
+    ):
+        raise ValueError(
+            "COVERAGE_WARNING_SKIP_MISSING allows missing rows only: "
+            f"duplicate_rows="
+            f"{_grid_identities_for_error(coverage_report.replay_duplicate_rows)}, "
+            f"unexpected_rows="
+            f"{_grid_identities_for_error(coverage_report.replay_unexpected_rows)}, "
+            f"invalid_rows="
+            f"{_invalid_rows_for_error(coverage_report.replay_invalid_rows)}"
+        )
+
+    expected = {
+        ReplayGridIdentity(kernel_class=kernel_class, dtype=dtype, sample_index=sample)
+        for sample in range(candidate_count)
+    }
+    reported_missing = {
+        row
+        for row in coverage_report.replay_missing_rows
+        if row.kernel_class == kernel_class
+        and row.dtype == dtype
+        and row.sample_index < candidate_count
+    }
+    scheduled = tuple(
+        ReplayGridIdentity(
+            kernel_class=entry.kernel_class,
+            dtype=entry.dtype,
+            sample_index=entry.base_seed,
+        )
+        for entry in schedule
+    )
+    if len(set(scheduled)) != len(scheduled):
+        raise ValueError(
+            "seed_schedule contains duplicate logical identities for requested "
+            f"window: {_grid_identities_for_error(scheduled)}"
+        )
+
+    scheduled_set = set(scheduled)
+    allowed = expected - reported_missing
+    missing_from_schedule = tuple(
+        sorted(allowed - scheduled_set, key=_grid_identity_sort_key)
+    )
+    unexpected_schedule_rows = tuple(
+        sorted(scheduled_set - allowed, key=_grid_identity_sort_key)
+    )
+    if missing_from_schedule or unexpected_schedule_rows:
+        raise ValueError(
+            "seed_schedule does not match replay coverage report for "
+            f"{coverage_report.condition}/{kernel_class}/{dtype}; "
+            "COVERAGE_WARNING_SKIP_MISSING permits only replay_missing_rows "
+            "to be skipped: "
+            f"missing_from_schedule="
+            f"{_grid_identities_for_error(missing_from_schedule)}, "
+            f"unexpected_schedule_rows="
+            f"{_grid_identities_for_error(unexpected_schedule_rows)}, "
+            f"reported_missing_rows="
+            f"{_grid_identities_for_error(tuple(sorted(reported_missing, key=_grid_identity_sort_key)))}"
+        )
 
 
 def _require_replay_grammar_variant(grammar_variant: str) -> str:
@@ -339,7 +625,9 @@ def _selected_template_artifact_ids_for_condition(
 def _task_agnostic_g_artifact_id(manifest: dict[str, Any]) -> str:
     selected_controls = manifest.get("selected_controls", {})
     status = selected_controls.get(_TASK_AGNOSTIC_G_STATUS, {})
-    artifact_id = status.get("available_development_artifact_id")
+    artifact_id = status.get("available_task_agnostic_g_n20_replay_artifact_id")
+    if artifact_id is None:
+        artifact_id = status.get("available_development_artifact_id")
     if not isinstance(artifact_id, str) or not artifact_id:
         raise ValueError("task-agnostic G replay artifact id is not recorded")
 
@@ -618,6 +906,100 @@ def _validate_schedule_entry_matches_row(
         raise ValueError("base_seed must equal generation_seed for paired replay")
     if entry.attempt_index != entry.generation_index:
         raise ValueError("attempt_index must equal generation_index for paired replay")
+
+
+def _expected_replay_grid(expected_n: int) -> tuple[ReplayGridIdentity, ...]:
+    return tuple(
+        ReplayGridIdentity(
+            kernel_class=kernel_class,
+            dtype=dtype,
+            sample_index=sample_index,
+        )
+        for kernel_class in LOCKED_KERNEL_CLASSES
+        for dtype in DTYPE_NAMES
+        for sample_index in range(expected_n)
+    )
+
+
+def _logical_identity_from_row(row: dict[str, Any]) -> ReplayGridIdentity | None:
+    identity, _invalid_reason = _logical_identity_from_row_or_reason(row)
+    return identity
+
+
+def _logical_identity_from_row_or_reason(
+    row: dict[str, Any],
+) -> tuple[ReplayGridIdentity | None, str | None]:
+    kernel_class = row.get("kernel_class")
+    if not isinstance(kernel_class, str) or kernel_class not in LOCKED_KERNEL_CLASSES:
+        return None, "invalid_kernel_class"
+    dtype = row.get("dtype")
+    if not isinstance(dtype, str) or dtype not in DTYPE_NAMES:
+        return None, "invalid_dtype"
+    sample_index = _sample_identity_from_row(row)
+    if sample_index is None:
+        return None, "invalid_sample_identity"
+    return (
+        ReplayGridIdentity(
+            kernel_class=kernel_class,
+            dtype=dtype,
+            sample_index=sample_index,
+        ),
+        None,
+    )
+
+
+def _sample_identity_from_row(row: dict[str, Any]) -> int | None:
+    for field_name in ("sample_index", "generation_seed", "base_seed"):
+        value = row.get(field_name)
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, int):
+            return None
+        if value < 0:
+            return None
+        return value
+    return None
+
+
+def _optional_positive_int(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    if value <= 0:
+        return None
+    return value
+
+
+def _grid_identity_sort_key(identity: ReplayGridIdentity) -> tuple[int, int, int]:
+    return (
+        LOCKED_KERNEL_CLASSES.index(identity.kernel_class),
+        DTYPE_NAMES.index(identity.dtype),
+        identity.sample_index,
+    )
+
+
+def _coverage_expected_n_from_artifact(
+    artifact: dict[str, Any],
+    *,
+    fallback: int,
+) -> int:
+    expected_n = artifact.get("expected_n")
+    if expected_n is None:
+        return fallback
+    return _require_positive_int(expected_n, "expected_n")
+
+
+def _grid_identities_for_error(
+    identities: tuple[ReplayGridIdentity, ...],
+) -> list[dict[str, Any]]:
+    return [identity.to_dict() for identity in identities]
+
+
+def _invalid_rows_for_error(
+    rows: tuple[ReplayInvalidRow, ...],
+) -> list[dict[str, Any]]:
+    return [row.to_dict() for row in rows]
 
 
 def _seed_schedule_entry_order_key(

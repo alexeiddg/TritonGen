@@ -47,7 +47,10 @@ from cluster2.replay.cluster1_controls import (
     replay_generation_hashes,
 )
 from cluster2.replay.manifest import (
+    REPLAY_COVERAGE_POLICY_WARNING_SKIP_MISSING,
+    ReplayCoverageReport,
     ReplaySeedScheduleEntry,
+    replay_coverage_report_for_condition,
     replay_seed_schedule_for_condition,
 )
 from cluster2.results.dataclass import (
@@ -205,6 +208,7 @@ class ConditionRouteAudit:
 class Cluster2RunResult:
     rows: tuple[Cluster2EvalRow, ...]
     coverage_failures: tuple[ReplayCoverageFailure, ...]
+    coverage_warnings: tuple[ReplayCoverageReport, ...]
     route_audit: tuple[ConditionRouteAudit, ...]
     output: str
     write_mode: str
@@ -214,6 +218,9 @@ class Cluster2RunResult:
             "rows": [row.to_dict() for row in self.rows],
             "coverage_failures": [
                 failure.to_dict() for failure in self.coverage_failures
+            ],
+            "coverage_warnings": [
+                warning.to_dict() for warning in self.coverage_warnings
             ],
             "route_audit": [route.to_dict() for route in self.route_audit],
             "output": self.output,
@@ -285,6 +292,9 @@ def main(argv: Sequence[str] | None = None) -> Cluster2RunResult:
                 "rows": len(result.rows),
                 "coverage_failures": [
                     failure.to_dict() for failure in result.coverage_failures
+                ],
+                "coverage_warnings": [
+                    warning.to_dict() for warning in result.coverage_warnings
                 ],
                 "route_audit": [route.to_dict() for route in result.route_audit],
                 "output": result.output,
@@ -428,13 +438,17 @@ def run_cluster2(
     deps = dependencies or RunnerDependencies()
     rows: list[Cluster2EvalRow] = []
     coverage_failures: list[ReplayCoverageFailure] = []
+    coverage_warnings: list[ReplayCoverageReport] = []
     audits: list[ConditionRouteAudit] = []
     run_id = _stable_run_id(config)
     content_hash_sidecar = _build_runner_content_hash_sidecar(config)
     _preflight_resume_hashes(config, content_hash_sidecar)
     _preflight_primary_gc_replay_alignment(config)
     _preflight_f2_repair_smoke_artifacts(config)
-    paired_generation_schedules = _preflight_all_paired_generation_schedules(config)
+    paired_generation_schedules = _preflight_all_paired_generation_schedules(
+        config,
+        coverage_warnings=coverage_warnings,
+    )
 
     with Cluster2JsonlAppendLogger(
         config.output,
@@ -452,6 +466,7 @@ def run_cluster2(
             stats = _ConditionRunStats()
             before_rows = len(rows)
             before_failures = len(coverage_failures)
+            before_warnings = len(coverage_warnings)
             if condition in REPLAY_CONTROL_CONDITIONS:
                 _run_replay_condition(
                     condition=condition,
@@ -460,6 +475,7 @@ def run_cluster2(
                     correctness=deps.correctness or _default_correctness_call,
                     record_row=record_row,
                     coverage_failures=coverage_failures,
+                    coverage_warnings=coverage_warnings,
                     stats=stats,
                 )
                 route = "replay_adapter"
@@ -495,11 +511,14 @@ def run_cluster2(
                 after_rows=len(rows),
                 before_failures=before_failures,
                 after_failures=len(coverage_failures),
+                before_warnings=before_warnings,
+                after_warnings=len(coverage_warnings),
             )
 
     return Cluster2RunResult(
         rows=tuple(rows),
         coverage_failures=tuple(coverage_failures),
+        coverage_warnings=tuple(coverage_warnings),
         route_audit=tuple(audits),
         output=config.output,
         write_mode=config.write_mode,
@@ -537,6 +556,7 @@ def _run_replay_condition(
     correctness: CorrectnessAdapter,
     record_row: RowRecorder,
     coverage_failures: list[ReplayCoverageFailure],
+    coverage_warnings: list[ReplayCoverageReport],
     stats: _ConditionRunStats,
 ) -> None:
     hashes = replay_generation_hashes(condition, config.frozen_cluster1_manifest)
@@ -555,6 +575,11 @@ def _run_replay_condition(
                 assert mapping.coverage_failure is not None
                 coverage_failures.append(mapping.coverage_failure)
                 continue
+            if mapping.coverage_warning is not None:
+                _append_unique_coverage_warning(
+                    coverage_warnings,
+                    mapping.coverage_warning,
+                )
             _evaluate_replay_mapping(
                 mapping,
                 run_id=run_id,
@@ -606,6 +631,7 @@ def _evaluate_replay_mapping(
                 frozen_cluster1_generation_hashes=hashes,
                 frozen_cluster1_row_hash=candidate.row_sha256,
                 frozen_cluster1_failure_code=candidate.failure_code,
+                frozen_cluster1_compile_success=candidate.compile_success,
                 legacy_compile_error_type=candidate.legacy_compile_error_type,
                 replay_pair_id=candidate.replay_pair_id,
                 replay_base_seed=candidate.base_seed,
@@ -616,6 +642,25 @@ def _evaluate_replay_mapping(
                 tokenizer_revision=candidate.tokenizer_revision,
                 temperature=candidate.temperature,
                 max_new_tokens=candidate.max_new_tokens,
+                grammar_active=candidate.grammar_active,
+                grammar_variant=candidate.grammar_variant,
+                grammar_path=candidate.grammar_path,
+                grammar_sha=candidate.grammar_sha,
+                gbnf_parse_valid=candidate.gbnf_parse_valid,
+                semantic_valid=candidate.semantic_valid,
+                grammar_valid=candidate.grammar_valid,
+                rejection_layer=candidate.rejection_layer,
+                stop_reason=candidate.stop_reason,
+                xgrammar_version=candidate.xgrammar_version,
+                transformers_version=candidate.transformers_version,
+                tokenizers_version=candidate.tokenizers_version,
+                modal_image_sha=candidate.modal_image_sha,
+                modal_image_provenance_sha256=(
+                    candidate.modal_image_provenance_sha256
+                ),
+                modal_image_provenance_components=(
+                    candidate.modal_image_provenance_components
+                ),
             )
         )
 
@@ -859,6 +904,8 @@ def _preflight_primary_gc_replay_alignment(config: Cluster2RunnerConfig) -> None
     status = selected_controls.get("task_agnostic_g_status", {})
     if status.get("paper_rows_per_cell_sufficient") is True:
         return
+    if status.get("coverage_policy") == REPLAY_COVERAGE_POLICY_WARNING_SKIP_MISSING:
+        return
     artifact_id = status.get("available_development_artifact_id", "<missing>")
     raise ValueError(
         "paper-scale primary G+C requires a frozen task-agnostic G replay "
@@ -922,8 +969,38 @@ def _preflight_paired_generation_schedules(
     *,
     condition: str,
     config: Cluster2RunnerConfig,
+    coverage_warnings: list[ReplayCoverageReport],
 ) -> tuple[str, dict[tuple[str, str], tuple[ReplaySeedScheduleEntry, ...]]]:
     replay_control_condition = _paired_replay_control_condition(condition)
+    allow_incomplete = False
+    if condition == "G+C" and config.grammar_variant == GRAMMAR_VARIANT_TASK_AGNOSTIC:
+        report = replay_coverage_report_for_condition(
+            replay_control_condition,
+            manifest_path=config.frozen_cluster1_manifest,
+            grammar_variant=config.grammar_variant,
+            expected_n=MAX_CLI_N,
+        )
+        allow_incomplete = (
+            report.replay_coverage_policy
+            == REPLAY_COVERAGE_POLICY_WARNING_SKIP_MISSING
+        )
+        if (
+            report.replay_duplicate_rows
+            or report.replay_unexpected_rows
+            or report.replay_invalid_rows
+        ):
+            raise ValueError(
+                "G+C replay coverage is malformed; "
+                "COVERAGE_WARNING_SKIP_MISSING allows missing rows only: "
+                f"duplicate_rows="
+                f"{_replay_grid_identities_for_error(report.replay_duplicate_rows)}, "
+                f"unexpected_rows="
+                f"{_replay_grid_identities_for_error(report.replay_unexpected_rows)}, "
+                f"invalid_rows="
+                f"{_replay_invalid_rows_for_error(report.replay_invalid_rows)}"
+            )
+        if allow_incomplete and not report.replay_coverage_complete:
+            _append_unique_coverage_warning(coverage_warnings, report)
     schedules: dict[tuple[str, str], tuple[ReplaySeedScheduleEntry, ...]] = {}
     for kernel_class in config.kernel_classes:
         for dtype in config.dtypes:
@@ -934,6 +1011,7 @@ def _preflight_paired_generation_schedules(
                 candidate_count=config.n,
                 manifest_path=config.frozen_cluster1_manifest,
                 grammar_variant=config.grammar_variant,
+                allow_incomplete=allow_incomplete,
             )
             prompt_sha256 = _source_sha256(_build_base_prompt(kernel_class, dtype))
             for pairing_entry in schedule:
@@ -952,6 +1030,8 @@ def _preflight_paired_generation_schedules(
 
 def _preflight_all_paired_generation_schedules(
     config: Cluster2RunnerConfig,
+    *,
+    coverage_warnings: list[ReplayCoverageReport],
 ) -> dict[
     str,
     tuple[str, dict[tuple[str, str], tuple[ReplaySeedScheduleEntry, ...]]],
@@ -960,6 +1040,7 @@ def _preflight_all_paired_generation_schedules(
         condition: _preflight_paired_generation_schedules(
             condition=condition,
             config=config,
+            coverage_warnings=coverage_warnings,
         )
         for condition in config.conditions
         if condition in NEW_GENERATION_CONDITIONS
@@ -972,6 +1053,43 @@ def _paired_replay_control_condition(condition: str) -> str:
     if condition == "G+C":
         return "G"
     raise ValueError(f"condition {condition!r} is not a generated condition")
+
+
+def _append_unique_coverage_warning(
+    coverage_warnings: list[ReplayCoverageReport],
+    warning: ReplayCoverageReport,
+) -> None:
+    key = (
+        warning.artifact_id,
+        warning.condition,
+        warning.replay_coverage_policy,
+        warning.replay_expected_rows,
+        warning.replay_observed_rows,
+    )
+    existing = {
+        (
+            item.artifact_id,
+            item.condition,
+            item.replay_coverage_policy,
+            item.replay_expected_rows,
+            item.replay_observed_rows,
+        )
+        for item in coverage_warnings
+    }
+    if key not in existing:
+        coverage_warnings.append(warning)
+
+
+def _replay_grid_identities_for_error(
+    identities: tuple[Any, ...],
+) -> list[dict[str, Any]]:
+    return [identity.to_dict() for identity in identities]
+
+
+def _replay_invalid_rows_for_error(
+    rows: tuple[Any, ...],
+) -> list[dict[str, Any]]:
+    return [row.to_dict() for row in rows]
 
 
 def _paired_generation_seed(
@@ -1391,8 +1509,14 @@ def _assert_route_made_progress(
     after_rows: int,
     before_failures: int,
     after_failures: int,
+    before_warnings: int,
+    after_warnings: int,
 ) -> None:
-    if after_rows > before_rows or after_failures > before_failures:
+    if (
+        after_rows > before_rows
+        or after_failures > before_failures
+        or after_warnings > before_warnings
+    ):
         return
     raise RuntimeError(f"condition {condition!r} produced no rows or coverage status")
 

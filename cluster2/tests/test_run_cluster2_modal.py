@@ -32,7 +32,10 @@ from cluster2.results.logger import (
     default_content_hash_sidecar_path,
     load_cluster2_results_jsonl,
 )
-from cluster2.tests.test_replay_controls import _write_replay_fixture
+from cluster2.tests.test_replay_controls import (
+    _drop_seed_schedule_entry,
+    _write_replay_fixture,
+)
 from shared.eval.content_hashes import collect_c2_generation_hashes
 from shared.generation_metadata import modal_image_provenance_digest
 
@@ -122,6 +125,7 @@ def test_runner_preserves_canonical_frozen_replay_failure_metadata(
     assert row.failure_code == "F0_BAD_SIGNATURE"
     assert row.replay_metadata is not None
     assert row.replay_metadata.frozen_cluster1_failure_code == "F0_BAD_SIGNATURE"
+    assert row.replay_metadata.frozen_cluster1_compile_success is False
     assert row.replay_metadata.legacy_compile_error_type == "SignatureError"
 
 
@@ -151,6 +155,11 @@ def test_runner_routes_g_to_replay_adapter(tmp_path: Path) -> None:
         for row in result.rows
         if row.replay_metadata is not None
     } == {"g_task_agnostic_n5_l4_rerun"}
+    assert {
+        row.replay_metadata.grammar_variant
+        for row in result.rows
+        if row.replay_metadata is not None
+    } == {"task_agnostic"}
     assert result.route_audit[0].generation_allowed is False
 
 
@@ -496,6 +505,164 @@ def test_runner_generated_conditions_consume_replay_seed_schedule(
         for row in result.rows
         if row.generated_metadata is not None
     ] == [0, 1, 2]
+
+
+def test_gc_preflight_uses_matched_rows_under_task_agnostic_skip_policy(
+    tmp_path: Path,
+) -> None:
+    coverage_warnings: list[Any] = []
+    actual_revision = "8e8ed243bbe6f9a5aff549a0924562fc719b2b8a"
+    config = Cluster2RunnerConfig(
+        condition="G+C",
+        kernel_class="all",
+        scale_tier="smoke",
+        n=20,
+        frozen_cluster1_manifest=DEFAULT_FROZEN_CLUSTER1_MANIFEST,
+        model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+        model_revision=actual_revision,
+        tokenizer_revision=actual_revision,
+        grammar_variant="task_agnostic",
+        dtypes=("fp32", "fp16", "bf16"),
+        temperature=0.2,
+        max_new_tokens=DEFAULT_MAX_NEW_TOKENS,
+        repair_budget=0,
+        modal_generation_gpu="L4",
+        modal_eval_gpu="L4",
+        output=str(tmp_path / "cluster2.jsonl"),
+        write_mode="overwrite",
+    )
+
+    replay_condition, schedules = runner_mod._preflight_paired_generation_schedules(
+        condition="G+C",
+        config=config,
+        coverage_warnings=coverage_warnings,
+    )
+
+    assert replay_condition == "G"
+    assert sum(len(entries) for entries in schedules.values()) == 177
+    assert [entry.base_seed for entry in schedules[("matmul", "fp32")]].count(5) == 0
+    assert [entry.base_seed for entry in schedules[("matmul", "bf16")]].count(0) == 0
+    assert [entry.base_seed for entry in schedules[("matmul", "bf16")]].count(18) == 0
+    assert len(coverage_warnings) == 1
+    assert coverage_warnings[0].replay_expected_rows == 180
+    assert coverage_warnings[0].replay_observed_rows == 177
+    assert len(coverage_warnings[0].replay_missing_rows) == 3
+
+
+@pytest.mark.parametrize(
+    ("coverage_mutation", "expected_message"),
+    [
+        ("duplicate", "duplicate_rows"),
+        ("unexpected", "unexpected_rows"),
+        ("invalid", "invalid_rows"),
+    ],
+)
+def test_gc_preflight_rejects_malformed_task_agnostic_skip_policy_coverage(
+    tmp_path: Path,
+    coverage_mutation: str,
+    expected_message: str,
+) -> None:
+    manifest = json.loads(
+        Path(DEFAULT_FROZEN_CLUSTER1_MANIFEST).read_text(encoding="utf-8")
+    )
+    artifact = next(
+        artifact
+        for artifact in manifest["artifacts"]
+        if artifact["artifact_id"] == "g_task_agnostic_aligned_pipeline_n20_l4"
+    )
+    if coverage_mutation == "duplicate":
+        artifact["row_records"][1]["generation_seed"] = artifact["row_records"][0][
+            "generation_seed"
+        ]
+    elif coverage_mutation == "unexpected":
+        artifact["row_records"][0]["generation_seed"] = 20
+    elif coverage_mutation == "invalid":
+        artifact["row_records"][0]["kernel_class"] = "not-a-kernel"
+    else:  # pragma: no cover - parametrization guard
+        raise AssertionError(f"unexpected coverage mutation {coverage_mutation!r}")
+
+    manifest_path = tmp_path / f"{coverage_mutation}_manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    config = Cluster2RunnerConfig(
+        condition="G+C",
+        kernel_class="all",
+        scale_tier="smoke",
+        n=20,
+        frozen_cluster1_manifest=str(manifest_path),
+        model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+        model_revision="8e8ed243bbe6f9a5aff549a0924562fc719b2b8a",
+        tokenizer_revision="8e8ed243bbe6f9a5aff549a0924562fc719b2b8a",
+        grammar_variant="task_agnostic",
+        dtypes=("fp32", "fp16", "bf16"),
+        temperature=0.2,
+        max_new_tokens=DEFAULT_MAX_NEW_TOKENS,
+        repair_budget=0,
+        modal_generation_gpu="L4",
+        modal_eval_gpu="L4",
+        output=str(tmp_path / "cluster2.jsonl"),
+        write_mode="overwrite",
+    )
+
+    with pytest.raises(ValueError, match=expected_message):
+        runner_mod._preflight_paired_generation_schedules(
+            condition="G+C",
+            config=config,
+            coverage_warnings=[],
+        )
+
+
+def test_gc_preflight_rejects_schedule_holes_not_reported_missing(
+    tmp_path: Path,
+) -> None:
+    manifest = json.loads(
+        Path(DEFAULT_FROZEN_CLUSTER1_MANIFEST).read_text(encoding="utf-8")
+    )
+    artifact = next(
+        artifact
+        for artifact in manifest["artifacts"]
+        if artifact["artifact_id"] == "g_task_agnostic_aligned_pipeline_n20_l4"
+    )
+    _drop_seed_schedule_entry(
+        artifact,
+        kernel_class="elementwise",
+        dtype="fp32",
+        base_seed=2,
+    )
+    manifest_path = tmp_path / "schedule_hole_manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    actual_revision = "8e8ed243bbe6f9a5aff549a0924562fc719b2b8a"
+    config = Cluster2RunnerConfig(
+        condition="G+C",
+        kernel_class="all",
+        scale_tier="smoke",
+        n=20,
+        frozen_cluster1_manifest=str(manifest_path),
+        model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+        model_revision=actual_revision,
+        tokenizer_revision=actual_revision,
+        grammar_variant="task_agnostic",
+        dtypes=("fp32", "fp16", "bf16"),
+        temperature=0.2,
+        max_new_tokens=DEFAULT_MAX_NEW_TOKENS,
+        repair_budget=0,
+        modal_generation_gpu="L4",
+        modal_eval_gpu="L4",
+        output=str(tmp_path / "cluster2.jsonl"),
+        write_mode="overwrite",
+    )
+
+    with pytest.raises(ValueError, match="missing_from_schedule"):
+        runner_mod._preflight_paired_generation_schedules(
+            condition="G+C",
+            config=config,
+            coverage_warnings=[],
+        )
 
 
 def test_runner_durable_rows_survive_mid_run_exception(tmp_path: Path) -> None:

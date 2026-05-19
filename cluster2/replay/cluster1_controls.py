@@ -17,6 +17,7 @@ from typing import Any
 from cluster1.results.dataclass import (
     GenerationResult,
     generation_result_record_for_deserialization,
+    validate_result_invariants,
 )
 from cluster2.constants import (
     DEFAULT_FROZEN_CLUSTER1_MANIFEST,
@@ -24,10 +25,15 @@ from cluster2.constants import (
     require_replay_control_condition,
 )
 from cluster2.replay.manifest import (
+    REPLAY_COVERAGE_POLICY_WARNING_SKIP_MISSING,
+    ReplayCoverageReport,
+    ReplayGridIdentity,
     ReplaySeedScheduleEntry,
+    analyze_replay_grid_coverage,
     artifact_for_replay_condition,
     load_frozen_cluster1_manifest,
     selected_replay_artifact_ids_for_condition,
+    validate_replay_seed_schedule_matches_coverage,
 )
 from shared.eval.content_hashes import (
     collect_cluster1_frozen_generation_hashes,
@@ -41,6 +47,7 @@ from shared.eval.failure_taxonomy import classify_failure
 COVERAGE_FAILURE_MISSING_FROZEN_CONTROL = (
     "coverage_failure_missing_frozen_control"
 )
+REPLAY_MAPPING_OK_WITH_COVERAGE_WARNING = "ok_with_coverage_warning"
 REPLAY_MAPPING_OK = "ok"
 _GENERATION_RESULT_FIELD_NAMES = frozenset(field.name for field in fields(GenerationResult))
 
@@ -74,6 +81,20 @@ class FrozenReplayCandidate:
     artifact_sha256: str
     grammar_active: bool
     grammar_variant: str | None
+    grammar_path: str | None
+    grammar_sha: str | None
+    gbnf_parse_valid: bool | None
+    semantic_valid: bool | None
+    grammar_valid: bool | None
+    rejection_layer: str | None
+    stop_reason: str | None
+    xgrammar_version: str | None
+    transformers_version: str | None
+    tokenizers_version: str | None
+    modal_image_sha: str | None
+    modal_image_provenance_sha256: str | None
+    modal_image_provenance_components: dict[str, Any] | None
+    compile_success: bool
     failure_code: str | None
     legacy_compile_error_type: str | None
 
@@ -100,6 +121,74 @@ class ReplayCoverageFailure:
 
 
 @dataclass(frozen=True)
+class ReplayRowSchemaRejection:
+    """Schema/load rejection for a frozen C1 replay row."""
+
+    line_number: int
+    reason: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class FrozenCluster1ReplayRow:
+    """Deserialized frozen C1 row with replay-critical metadata preserved."""
+
+    condition: str
+    kernel_class: str
+    kernel_name: str
+    dtype: str
+    sample_index: int
+    base_seed: int
+    generation_seed: int | None
+    source: str
+    source_sha256: str
+    row_sha256: str
+    compile_success: bool
+    failure_code: str | None
+    legacy_compile_error_type: str | None
+    grammar_active: bool
+    grammar_variant: str | None
+    grammar_path: str | None
+    grammar_sha: str | None
+    gbnf_parse_valid: bool | None
+    semantic_valid: bool | None
+    grammar_valid: bool | None
+    rejection_layer: str | None
+    stop_reason: str | None
+    xgrammar_version: str | None
+    transformers_version: str | None
+    tokenizers_version: str | None
+    model_revision: str | None
+    tokenizer_revision: str | None
+    modal_image_sha: str | None
+    modal_image_provenance_sha256: str | None
+    modal_image_provenance_components: dict[str, Any] | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ReplayArtifactDeserialization:
+    """Deserialized frozen artifact rows plus explicit schema rejections."""
+
+    rows: tuple[FrozenCluster1ReplayRow, ...]
+    rejected_rows: tuple[ReplayRowSchemaRejection, ...]
+    coverage_report: ReplayCoverageReport
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "rows": [row.to_dict() for row in self.rows],
+            "rejected_rows": [
+                rejection.to_dict() for rejection in self.rejected_rows
+            ],
+            "coverage_report": self.coverage_report.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
 class ReplayCandidateMapping:
     """Result of mapping one replay-control cell."""
 
@@ -112,10 +201,14 @@ class ReplayCandidateMapping:
     status: str
     candidates: tuple[FrozenReplayCandidate, ...]
     coverage_failure: ReplayCoverageFailure | None = None
+    coverage_warning: ReplayCoverageReport | None = None
 
     @property
     def ok(self) -> bool:
-        return self.status == REPLAY_MAPPING_OK
+        return self.status in {
+            REPLAY_MAPPING_OK,
+            REPLAY_MAPPING_OK_WITH_COVERAGE_WARNING,
+        }
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -131,6 +224,11 @@ class ReplayCandidateMapping:
                 None
                 if self.coverage_failure is None
                 else self.coverage_failure.to_dict()
+            ),
+            "coverage_warning": (
+                None
+                if self.coverage_warning is None
+                else self.coverage_warning.to_dict()
             ),
         }
 
@@ -171,6 +269,10 @@ def map_replay_candidates(
         manifest,
         grammar_variant=grammar_variant,
     )
+    coverage_policy = str(artifact.get("coverage_policy") or "")
+    skip_missing_allowed = (
+        coverage_policy == REPLAY_COVERAGE_POLICY_WARNING_SKIP_MISSING
+    )
     artifact_path = _resolve_artifact_path(artifact_summary.path, manifest_file)
     _verify_artifact_sha256(
         artifact_path,
@@ -183,8 +285,29 @@ def map_replay_candidates(
         kernel_class=kernel_class,
         dtype=dtype,
         candidate_count=candidate_count,
+        allow_incomplete=skip_missing_allowed,
     )
     raw_rows = _load_raw_artifact_rows(artifact_path)
+    coverage_report = None
+    if skip_missing_allowed:
+        coverage_report = analyze_replay_grid_coverage(
+            list(artifact.get("row_records", [])),
+            artifact_id=artifact_summary.artifact_id,
+            condition=normalized,
+            expected_n=_coverage_expected_n_for_artifact(
+                artifact,
+                fallback=candidate_count,
+            ),
+            coverage_policy=REPLAY_COVERAGE_POLICY_WARNING_SKIP_MISSING,
+        )
+        _reject_malformed_skip_coverage(coverage_report)
+        validate_replay_seed_schedule_matches_coverage(
+            selected_schedule,
+            coverage_report=coverage_report,
+            kernel_class=kernel_class,
+            dtype=dtype,
+            candidate_count=candidate_count,
+        )
     row_records = _matching_manifest_rows(
         artifact,
         condition=normalized,
@@ -196,10 +319,13 @@ def map_replay_candidates(
         artifact.get("row_records", []),
         selected_schedule,
     )
-    selected_records = _select_attempt_records(row_records, candidate_count)
     metadata = get_shape_metadata(kernel_class)
 
-    if len(selected_records) < candidate_count:
+    selected_attempt_records = _select_attempt_records(row_records, candidate_count)
+    if (
+        not skip_missing_allowed
+        and len(selected_attempt_records) < candidate_count
+    ):
         failure = ReplayCoverageFailure(
             condition=normalized,
             kernel_class=kernel_class,
@@ -207,8 +333,8 @@ def map_replay_candidates(
             dtype=dtype,
             base_seed=base_seed,
             required_rows=candidate_count,
-            observed_rows=len(selected_records),
-            missing_rows=candidate_count - len(selected_records),
+            observed_rows=len(selected_attempt_records),
+            missing_rows=candidate_count - len(selected_attempt_records),
         )
         return ReplayCandidateMapping(
             condition=normalized,
@@ -220,9 +346,23 @@ def map_replay_candidates(
             status=COVERAGE_FAILURE_MISSING_FROZEN_CONTROL,
             candidates=(),
             coverage_failure=failure,
+            coverage_warning=None,
         )
 
     selected_records = _records_for_seed_schedule(row_records, selected_schedule)
+    coverage_warning = None
+    status = REPLAY_MAPPING_OK
+    if len(selected_records) < candidate_count:
+        if coverage_report is None:
+            coverage_report = analyze_replay_grid_coverage(
+                list(artifact.get("row_records", [])),
+                artifact_id=artifact_summary.artifact_id,
+                condition=normalized,
+                expected_n=candidate_count,
+                coverage_policy=REPLAY_COVERAGE_POLICY_WARNING_SKIP_MISSING,
+            )
+        coverage_warning = coverage_report
+        status = REPLAY_MAPPING_OK_WITH_COVERAGE_WARNING
     candidates = tuple(
         _candidate_from_record(
             record,
@@ -248,9 +388,10 @@ def map_replay_candidates(
         dtype=dtype,
         base_seed=base_seed,
         required_rows=candidate_count,
-        status=REPLAY_MAPPING_OK,
+        status=status,
         candidates=candidates,
         coverage_failure=None,
+        coverage_warning=coverage_warning,
     )
 
 
@@ -262,6 +403,150 @@ def replay_generation_hashes(
 
     normalized = require_replay_control_condition(condition)
     return collect_cluster1_frozen_generation_hashes(normalized, str(manifest_path))
+
+
+def deserialize_cluster1_replay_artifact(
+    path: str | Path,
+    *,
+    condition: str | None = None,
+    expected_n: int = 20,
+    artifact_id: str = "<unregistered>",
+    coverage_policy: str = REPLAY_COVERAGE_POLICY_WARNING_SKIP_MISSING,
+) -> ReplayArtifactDeserialization:
+    """Deserialize frozen C1 rows while preserving replay-critical metadata."""
+
+    artifact_path = Path(path)
+    rows: list[FrozenCluster1ReplayRow] = []
+    rejected: list[ReplayRowSchemaRejection] = []
+    coverage_rows: list[dict[str, Any]] = []
+    for line_number, raw_line in enumerate(
+        artifact_path.read_bytes().splitlines(keepends=True),
+        1,
+    ):
+        if not raw_line.strip():
+            rejected.append(
+                ReplayRowSchemaRejection(
+                    line_number=line_number,
+                    reason="blank_jsonl_line",
+                )
+            )
+            continue
+        try:
+            raw_row = json.loads(raw_line.decode("utf-8"))
+            row = _deserialize_replay_row(
+                raw_row,
+                row_sha256=hashlib.sha256(raw_line).hexdigest(),
+                line_number=line_number,
+                condition=condition,
+            )
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            rejected.append(
+                ReplayRowSchemaRejection(
+                    line_number=line_number,
+                    reason=str(exc),
+                )
+            )
+            continue
+        rows.append(row)
+        coverage_rows.append(raw_row)
+
+    resolved_condition = (
+        condition
+        if condition is not None
+        else ("G" if rows and rows[0].grammar_active else "none")
+    )
+    coverage_report = analyze_replay_grid_coverage(
+        coverage_rows,
+        artifact_id=artifact_id,
+        condition=resolved_condition,
+        expected_n=expected_n,
+        coverage_policy=coverage_policy,
+    )
+    return ReplayArtifactDeserialization(
+        rows=tuple(rows),
+        rejected_rows=tuple(rejected),
+        coverage_report=coverage_report,
+    )
+
+
+def _deserialize_replay_row(
+    raw_row: dict[str, Any],
+    *,
+    row_sha256: str,
+    line_number: int,
+    condition: str | None,
+) -> FrozenCluster1ReplayRow:
+    if not isinstance(raw_row, dict):
+        raise TypeError("row must be a JSON object")
+    record = generation_result_record_for_deserialization(raw_row)
+    generation_payload = {
+        field_name: record[field_name]
+        for field_name in _GENERATION_RESULT_FIELD_NAMES
+        if field_name in record
+    }
+    generation_result = GenerationResult(**generation_payload)
+    validate_result_invariants(generation_result)
+    source = generation_result.source
+    if not isinstance(source, str) or not source:
+        raise ValueError("source is missing or empty")
+    sample_index = _sample_identity_from_raw_row(raw_row)
+    if sample_index is None:
+        raise ValueError("sample identity is missing")
+    resolved_condition = (
+        require_replay_control_condition(condition)
+        if condition is not None
+        else ("G" if generation_result.grammar_active else "none")
+    )
+    source_sha256 = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    return FrozenCluster1ReplayRow(
+        condition=resolved_condition,
+        kernel_class=generation_result.kernel_class,
+        kernel_name=generation_result.kernel_name,
+        dtype=generation_result.dtype,
+        sample_index=sample_index,
+        base_seed=sample_index,
+        generation_seed=generation_result.generation_seed,
+        source=source,
+        source_sha256=source_sha256,
+        row_sha256=row_sha256,
+        compile_success=generation_result.compile_success,
+        failure_code=canonical_failure_code_for_replay_row(raw_row),
+        legacy_compile_error_type=_optional_str(raw_row.get("compile_error_type")),
+        grammar_active=generation_result.grammar_active,
+        grammar_variant=generation_result.grammar_variant,
+        grammar_path=generation_result.grammar_path,
+        grammar_sha=generation_result.grammar_sha,
+        gbnf_parse_valid=generation_result.gbnf_parse_valid,
+        semantic_valid=generation_result.semantic_valid,
+        grammar_valid=generation_result.grammar_valid,
+        rejection_layer=generation_result.rejection_layer,
+        stop_reason=generation_result.stop_reason,
+        xgrammar_version=generation_result.xgrammar_version,
+        transformers_version=generation_result.transformers_version,
+        tokenizers_version=generation_result.tokenizers_version,
+        model_revision=generation_result.model_revision,
+        tokenizer_revision=generation_result.tokenizer_revision,
+        modal_image_sha=generation_result.modal_image_sha,
+        modal_image_provenance_sha256=(
+            generation_result.modal_image_provenance_sha256
+        ),
+        modal_image_provenance_components=(
+            generation_result.modal_image_provenance_components
+        ),
+    )
+
+
+def _sample_identity_from_raw_row(raw_row: dict[str, Any]) -> int | None:
+    for field_name in ("sample_index", "generation_seed", "base_seed"):
+        value = raw_row.get(field_name)
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, int):
+            return None
+        if value < 0:
+            return None
+        return value
+    return None
 
 
 def _validate_seed_schedule_present(artifact: dict[str, Any]) -> None:
@@ -282,6 +567,7 @@ def _validate_seed_schedule_cell_structure(
     kernel_class: str,
     dtype: str,
     candidate_count: int,
+    allow_incomplete: bool = False,
 ) -> tuple[ReplaySeedScheduleEntry, ...]:
     _validate_seed_schedule_present(artifact)
     artifact_id = _require_non_empty_str(artifact.get("artifact_id"), "artifact_id")
@@ -338,31 +624,39 @@ def _validate_seed_schedule_cell_structure(
     }
     if len(lengths) != 1:
         raise ValueError("seed_schedule lists must have identical lengths")
-    if len(base_seeds) < candidate_count:
+    if len(base_seeds) < candidate_count and not allow_incomplete:
         raise ValueError(
             "seed_schedule coverage failure for "
             f"{condition}/{kernel_class}/{dtype}: required {candidate_count}, "
             f"observed {len(base_seeds)}"
         )
 
-    expected_base_seeds = tuple(range(len(base_seeds)))
-    if base_seeds != expected_base_seeds:
+    expected_base_seeds = tuple(range(candidate_count if allow_incomplete else len(base_seeds)))
+    if base_seeds != expected_base_seeds and not allow_incomplete:
         raise ValueError(
             "seed_schedule base_seeds must be dense and zero-based: "
             f"expected {expected_base_seeds}, got {base_seeds}"
         )
     requested_window = tuple(range(candidate_count))
-    if base_seeds[:candidate_count] != requested_window:
+    if base_seeds[:candidate_count] != requested_window and not allow_incomplete:
         raise ValueError(
             "seed_schedule must cover requested dense window: "
             f"expected {requested_window}, got {base_seeds[:candidate_count]}"
         )
+    if allow_incomplete:
+        if len(set(base_seeds)) != len(base_seeds):
+            raise ValueError("seed_schedule base_seeds must be unique")
     if generation_seeds != base_seeds:
         raise ValueError("seed_schedule generation_seeds must equal base_seeds")
     if generation_indexes != attempt_indexes:
         raise ValueError("seed_schedule generation_indexes must equal attempt_indexes")
     if len(set(replay_pair_ids)) != len(replay_pair_ids):
         raise ValueError("seed_schedule replay_pair_ids must be unique")
+    entry_indexes = (
+        tuple(index for index, seed in enumerate(base_seeds) if seed < candidate_count)
+        if allow_incomplete
+        else tuple(range(candidate_count))
+    )
     return tuple(
         ReplaySeedScheduleEntry(
             artifact_id=artifact_id,
@@ -383,8 +677,45 @@ def _validate_seed_schedule_cell_structure(
             line_number=line_numbers[index],
             replay_pair_id=replay_pair_ids[index],
         )
-        for index in range(candidate_count)
+        for index in entry_indexes
     )
+
+
+def _coverage_expected_n_for_artifact(
+    artifact: dict[str, Any],
+    *,
+    fallback: int,
+) -> int:
+    value = artifact.get("expected_n")
+    if value is None:
+        return fallback
+    return _require_positive_int(value, "expected_n")
+
+
+def _reject_malformed_skip_coverage(report: ReplayCoverageReport) -> None:
+    if (
+        not report.replay_duplicate_rows
+        and not report.replay_unexpected_rows
+        and not report.replay_invalid_rows
+    ):
+        return
+    raise ValueError(
+        "replay coverage is malformed; "
+        "COVERAGE_WARNING_SKIP_MISSING allows missing rows only: "
+        f"duplicate_rows={_replay_grid_identities_for_error(report.replay_duplicate_rows)}, "
+        f"unexpected_rows={_replay_grid_identities_for_error(report.replay_unexpected_rows)}, "
+        f"invalid_rows={_replay_invalid_rows_for_error(report.replay_invalid_rows)}"
+    )
+
+
+def _replay_grid_identities_for_error(
+    identities: tuple[ReplayGridIdentity, ...],
+) -> list[dict[str, Any]]:
+    return [identity.to_dict() for identity in identities]
+
+
+def _replay_invalid_rows_for_error(rows: tuple[Any, ...]) -> list[dict[str, Any]]:
+    return [row.to_dict() for row in rows]
 
 
 def _selected_artifact(
@@ -602,6 +933,7 @@ def _candidate_from_record(
         grammar_active=grammar_active,
     )
     canonical_failure_code = canonical_failure_code_for_replay_row(raw_row)
+    deserialized_record = generation_result_record_for_deserialization(raw_row)
 
     return FrozenReplayCandidate(
         condition=condition,
@@ -629,6 +961,26 @@ def _candidate_from_record(
         artifact_sha256=artifact_sha256,
         grammar_active=grammar_active,
         grammar_variant=_optional_str(record.get("grammar_variant")),
+        grammar_path=_optional_str(deserialized_record.get("grammar_path")),
+        grammar_sha=_optional_str(deserialized_record.get("grammar_sha")),
+        gbnf_parse_valid=_optional_bool(deserialized_record.get("gbnf_parse_valid")),
+        semantic_valid=_optional_bool(deserialized_record.get("semantic_valid")),
+        grammar_valid=_optional_bool(deserialized_record.get("grammar_valid")),
+        rejection_layer=_optional_str(deserialized_record.get("rejection_layer")),
+        stop_reason=_optional_str(deserialized_record.get("stop_reason")),
+        xgrammar_version=_optional_str(deserialized_record.get("xgrammar_version")),
+        transformers_version=_optional_str(
+            deserialized_record.get("transformers_version")
+        ),
+        tokenizers_version=_optional_str(deserialized_record.get("tokenizers_version")),
+        modal_image_sha=_optional_str(deserialized_record.get("modal_image_sha")),
+        modal_image_provenance_sha256=_optional_str(
+            deserialized_record.get("modal_image_provenance_sha256")
+        ),
+        modal_image_provenance_components=_optional_dict(
+            deserialized_record.get("modal_image_provenance_components")
+        ),
+        compile_success=_require_bool(raw_row.get("compile_success"), "compile_success"),
         failure_code=canonical_failure_code,
         legacy_compile_error_type=_optional_str(raw_row.get("compile_error_type")),
     )
@@ -743,6 +1095,12 @@ def _require_non_empty_str(value: object, field_name: str) -> str:
     return value
 
 
+def _require_bool(value: object, field_name: str) -> bool:
+    if not isinstance(value, bool):
+        raise TypeError(f"{field_name} must be a bool")
+    return value
+
+
 def _require_sha256(value: object, field_name: str) -> str:
     digest = _require_non_empty_str(value, field_name)
     if len(digest) != 64:
@@ -785,4 +1143,20 @@ def _optional_str(value: object) -> str | None:
         return None
     if not isinstance(value, str):
         raise TypeError("expected str or None")
+    return value
+
+
+def _optional_bool(value: object) -> bool | None:
+    if value is None:
+        return None
+    if not isinstance(value, bool):
+        raise TypeError("expected bool or None")
+    return value
+
+
+def _optional_dict(value: object) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise TypeError("expected dict or None")
     return value

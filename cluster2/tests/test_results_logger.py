@@ -527,7 +527,21 @@ def test_replay_metadata_preserves_frozen_failure_diagnostics() -> None:
         frozen_cluster1_generation_hashes=_frozen_hashes("none"),
         frozen_cluster1_row_hash="a" * 64,
         frozen_cluster1_failure_code="F0_BAD_SIGNATURE",
+        frozen_cluster1_compile_success=False,
         legacy_compile_error_type="SignatureError",
+        grammar_active=True,
+        grammar_variant="task_agnostic",
+        grammar_path="cluster1/grammar/triton_kernel_agnostic.gbnf",
+        grammar_sha="b" * 64,
+        gbnf_parse_valid=True,
+        semantic_valid=True,
+        grammar_valid=True,
+        rejection_layer=None,
+        stop_reason="eos_token",
+        xgrammar_version="0.1.33",
+        transformers_version="4.47.1",
+        tokenizers_version="0.21.1",
+        modal_image_sha="unknown",
     )
 
     rebuilt = Cluster2EvalRow.from_dict(json.loads(row.to_json()))
@@ -535,7 +549,16 @@ def test_replay_metadata_preserves_frozen_failure_diagnostics() -> None:
     assert rebuilt.replay_metadata is not None
     assert rebuilt.failure_code == "F0_BAD_SIGNATURE"
     assert rebuilt.replay_metadata.frozen_cluster1_failure_code == "F0_BAD_SIGNATURE"
+    assert rebuilt.replay_metadata.frozen_cluster1_compile_success is False
     assert rebuilt.replay_metadata.legacy_compile_error_type == "SignatureError"
+    assert rebuilt.replay_metadata.grammar_active is True
+    assert rebuilt.replay_metadata.grammar_variant == "task_agnostic"
+    assert rebuilt.replay_metadata.grammar_sha == "b" * 64
+    assert rebuilt.replay_metadata.gbnf_parse_valid is True
+    assert rebuilt.replay_metadata.semantic_valid is True
+    assert rebuilt.replay_metadata.grammar_valid is True
+    assert rebuilt.replay_metadata.stop_reason == "eos_token"
+    assert rebuilt.replay_metadata.xgrammar_version == "0.1.33"
 
 
 def test_generated_rows_preserve_c2_generation_hash_semantics() -> None:

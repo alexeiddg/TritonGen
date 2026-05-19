@@ -195,6 +195,7 @@ class Cluster2ReplayRowMetadata:
     frozen_cluster1_generation_hashes: dict[str, str]
     frozen_cluster1_row_hash: str | None = None
     frozen_cluster1_failure_code: str | None = None
+    frozen_cluster1_compile_success: bool | None = None
     legacy_compile_error_type: str | None = None
     replay_pair_id: str | None = None
     replay_base_seed: int | None = None
@@ -205,6 +206,21 @@ class Cluster2ReplayRowMetadata:
     tokenizer_revision: str | None = None
     temperature: float | None = None
     max_new_tokens: int | None = None
+    grammar_active: bool | None = None
+    grammar_variant: str | None = None
+    grammar_path: str | None = None
+    grammar_sha: str | None = None
+    gbnf_parse_valid: bool | None = None
+    semantic_valid: bool | None = None
+    grammar_valid: bool | None = None
+    rejection_layer: str | None = None
+    stop_reason: str | None = None
+    xgrammar_version: str | None = None
+    transformers_version: str | None = None
+    tokenizers_version: str | None = None
+    modal_image_sha: str | None = None
+    modal_image_provenance_sha256: str | None = None
+    modal_image_provenance_components: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         _require_non_empty_str(
@@ -229,6 +245,11 @@ class Cluster2ReplayRowMetadata:
                 "frozen_cluster1_failure_code must be canonical; got "
                 f"{self.frozen_cluster1_failure_code!r}"
             )
+        if self.frozen_cluster1_compile_success is not None:
+            _require_bool(
+                self.frozen_cluster1_compile_success,
+                "frozen_cluster1_compile_success",
+            )
         _require_optional_non_empty_str(
             self.legacy_compile_error_type,
             "legacy_compile_error_type",
@@ -243,6 +264,22 @@ class Cluster2ReplayRowMetadata:
             tokenizer_revision=self.tokenizer_revision,
             temperature=self.temperature,
             max_new_tokens=self.max_new_tokens,
+        )
+        _validate_replay_grammar_metadata(
+            grammar_active=self.grammar_active,
+            grammar_variant=self.grammar_variant,
+            grammar_path=self.grammar_path,
+            grammar_sha=self.grammar_sha,
+            gbnf_parse_valid=self.gbnf_parse_valid,
+            semantic_valid=self.semantic_valid,
+            grammar_valid=self.grammar_valid,
+            rejection_layer=self.rejection_layer,
+            stop_reason=self.stop_reason,
+            modal_image_sha=self.modal_image_sha,
+            modal_image_provenance_sha256=self.modal_image_provenance_sha256,
+            modal_image_provenance_components=(
+                self.modal_image_provenance_components
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -700,6 +737,7 @@ def replay_control_row(
     frozen_cluster1_generation_hashes: dict[str, str],
     frozen_cluster1_row_hash: str | None = None,
     frozen_cluster1_failure_code: str | None = None,
+    frozen_cluster1_compile_success: bool | None = None,
     legacy_compile_error_type: str | None = None,
     replay_pair_id: str | None = None,
     replay_base_seed: int | None = None,
@@ -710,6 +748,21 @@ def replay_control_row(
     tokenizer_revision: str | None = None,
     temperature: float | None = None,
     max_new_tokens: int | None = None,
+    grammar_active: bool | None = None,
+    grammar_variant: str | None = None,
+    grammar_path: str | None = None,
+    grammar_sha: str | None = None,
+    gbnf_parse_valid: bool | None = None,
+    semantic_valid: bool | None = None,
+    grammar_valid: bool | None = None,
+    rejection_layer: str | None = None,
+    stop_reason: str | None = None,
+    xgrammar_version: str | None = None,
+    transformers_version: str | None = None,
+    tokenizers_version: str | None = None,
+    modal_image_sha: str | None = None,
+    modal_image_provenance_sha256: str | None = None,
+    modal_image_provenance_components: dict[str, Any] | None = None,
 ) -> Cluster2EvalRow:
     """Build a replay-control row with frozen Cluster 1 provenance."""
 
@@ -737,6 +790,7 @@ def replay_control_row(
             frozen_cluster1_generation_hashes=frozen_cluster1_generation_hashes,
             frozen_cluster1_row_hash=frozen_cluster1_row_hash,
             frozen_cluster1_failure_code=frozen_cluster1_failure_code,
+            frozen_cluster1_compile_success=frozen_cluster1_compile_success,
             legacy_compile_error_type=legacy_compile_error_type,
             replay_pair_id=replay_pair_id,
             replay_base_seed=replay_base_seed,
@@ -747,6 +801,21 @@ def replay_control_row(
             tokenizer_revision=tokenizer_revision,
             temperature=temperature,
             max_new_tokens=max_new_tokens,
+            grammar_active=grammar_active,
+            grammar_variant=grammar_variant,
+            grammar_path=grammar_path,
+            grammar_sha=grammar_sha,
+            gbnf_parse_valid=gbnf_parse_valid,
+            semantic_valid=semantic_valid,
+            grammar_valid=grammar_valid,
+            rejection_layer=rejection_layer,
+            stop_reason=stop_reason,
+            xgrammar_version=xgrammar_version,
+            transformers_version=transformers_version,
+            tokenizers_version=tokenizers_version,
+            modal_image_sha=modal_image_sha,
+            modal_image_provenance_sha256=modal_image_provenance_sha256,
+            modal_image_provenance_components=modal_image_provenance_components,
         ),
         generated_metadata=None,
         repair_trace=None,
@@ -1035,6 +1104,79 @@ def _validate_generated_runtime_metadata(
             raise ValueError(
                 "current-schema generated grammar metadata requires: "
                 f"{missing}"
+            )
+    if all(value is not None for value in validation_values):
+        expected = bool(gbnf_parse_valid and semantic_valid)
+        if grammar_valid is not expected:
+            raise ValueError(
+                "grammar_valid must equal gbnf_parse_valid and semantic_valid"
+            )
+        if grammar_valid and rejection_layer is not None:
+            raise ValueError("rejection_layer must be None when grammar_valid=True")
+        if not grammar_valid and rejection_layer is None:
+            raise ValueError("rejection_layer is required when grammar_valid=False")
+
+
+def _validate_replay_grammar_metadata(
+    *,
+    grammar_active: bool | None,
+    grammar_variant: str | None,
+    grammar_path: str | None,
+    grammar_sha: str | None,
+    gbnf_parse_valid: bool | None,
+    semantic_valid: bool | None,
+    grammar_valid: bool | None,
+    rejection_layer: str | None,
+    stop_reason: str | None,
+    modal_image_sha: str | None,
+    modal_image_provenance_sha256: str | None,
+    modal_image_provenance_components: dict[str, Any] | None,
+) -> None:
+    if grammar_active is not None:
+        _require_bool(grammar_active, "grammar_active")
+    if grammar_variant is not None:
+        _validate_generated_grammar_metadata(
+            grammar_variant=grammar_variant,
+            grammar_path=grammar_path,
+            grammar_claim_scope=(
+                GRAMMAR_CLAIM_SCOPE_BY_VARIANT.get(grammar_variant)
+            ),
+        )
+    elif grammar_path is not None:
+        raise ValueError("grammar_path must be None without grammar_variant")
+    if stop_reason is not None and stop_reason not in VALID_STOP_REASONS:
+        allowed = ", ".join(sorted(VALID_STOP_REASONS))
+        raise ValueError(f"stop_reason must be one of {allowed}; got {stop_reason!r}")
+    if rejection_layer is not None and rejection_layer not in VALID_REJECTION_LAYERS:
+        allowed = ", ".join(sorted(VALID_REJECTION_LAYERS))
+        raise ValueError(
+            f"rejection_layer must be one of {allowed} or None; "
+            f"got {rejection_layer!r}"
+        )
+    _validate_optional_sha256(grammar_sha, "grammar_sha")
+    _validate_optional_sha256(
+        modal_image_provenance_sha256,
+        "modal_image_provenance_sha256",
+    )
+    _validate_optional_stable_image_sha(modal_image_sha, "modal_image_sha")
+    _validate_modal_image_provenance_components(
+        modal_image_provenance_sha256=modal_image_provenance_sha256,
+        modal_image_provenance_components=modal_image_provenance_components,
+    )
+    validation_values = (gbnf_parse_valid, semantic_valid, grammar_valid)
+    for field_name, value in (
+        ("gbnf_parse_valid", gbnf_parse_valid),
+        ("semantic_valid", semantic_valid),
+        ("grammar_valid", grammar_valid),
+    ):
+        if value is not None:
+            _require_bool(value, field_name)
+    if grammar_active is False:
+        if grammar_sha is not None:
+            raise ValueError("grammar_sha must be None when grammar_active is False")
+        if any(value is not None for value in validation_values):
+            raise ValueError(
+                "grammar validation fields must be None when grammar_active is False"
             )
     if all(value is not None for value in validation_values):
         expected = bool(gbnf_parse_valid and semantic_valid)

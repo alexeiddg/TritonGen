@@ -17,11 +17,20 @@ from cluster1.data.kernels import KERNEL_SPECS
 from cluster1.data.prompts.prompt_contract import build_prompt
 from cluster2.replay.cluster1_controls import (
     COVERAGE_FAILURE_MISSING_FROZEN_CONTROL,
+    REPLAY_MAPPING_OK_WITH_COVERAGE_WARNING,
+    deserialize_cluster1_replay_artifact,
     map_replay_candidates,
     replay_generation_hashes,
 )
+from cluster2.replay.manifest import REPLAY_COVERAGE_POLICY_WARNING_SKIP_MISSING
 from shared.eval.adapter_cluster1 import eval_result_from_generation_result
-from shared.eval.failure_taxonomy import classify_failure
+from shared.eval.failure_taxonomy import FAILURE_CODES, classify_failure
+
+
+TASK_AGNOSTIC_G_N20_ARTIFACT = Path(
+    "outputs/cluster1/task_agnostic_g_aligned_pipeline_n20_l4.jsonl"
+)
+TASK_AGNOSTIC_G_N20_ARTIFACT_ID = "g_task_agnostic_aligned_pipeline_n20_l4"
 
 
 def test_replay_adapter_maps_exactly_n_candidates(tmp_path: Path) -> None:
@@ -97,6 +106,234 @@ def test_replay_adapter_maps_task_agnostic_g_when_requested(tmp_path: Path) -> N
     assert first.grammar_active is True
     assert first.grammar_variant == "task_agnostic"
     assert first.artifact_id == "g_task_agnostic_n5_l4_rerun"
+
+
+def test_real_task_agnostic_g_artifact_deserializes_177_rows() -> None:
+    result = deserialize_cluster1_replay_artifact(
+        TASK_AGNOSTIC_G_N20_ARTIFACT,
+        condition="G",
+        artifact_id=TASK_AGNOSTIC_G_N20_ARTIFACT_ID,
+    )
+
+    assert len(result.rows) == 177
+    assert result.rejected_rows == ()
+    assert all(row.source for row in result.rows)
+    assert all(row.sample_index >= 0 for row in result.rows)
+    assert all(row.generation_seed is not None for row in result.rows)
+    assert all(
+        row.failure_code in FAILURE_CODES
+        for row in result.rows
+        if not row.compile_success
+    )
+
+
+def test_real_task_agnostic_g_artifact_preserves_grammar_metadata() -> None:
+    result = deserialize_cluster1_replay_artifact(
+        TASK_AGNOSTIC_G_N20_ARTIFACT,
+        condition="G",
+        artifact_id=TASK_AGNOSTIC_G_N20_ARTIFACT_ID,
+    )
+
+    for row in result.rows:
+        assert row.grammar_active is True
+        assert row.grammar_variant == "task_agnostic"
+        assert row.grammar_path == "cluster1/grammar/triton_kernel_agnostic.gbnf"
+        assert len(row.grammar_sha) == 64
+        assert row.gbnf_parse_valid is not None
+        assert row.semantic_valid is not None
+        assert row.grammar_valid is (
+            row.gbnf_parse_valid and row.semantic_valid
+        )
+        assert row.stop_reason in {"eos_token", "max_new_tokens"}
+        if row.grammar_valid:
+            assert row.rejection_layer is None
+        else:
+            assert row.rejection_layer in {"gbnf_parse", "semantic_validator"}
+        assert row.xgrammar_version == "0.1.33"
+        assert row.transformers_version == "4.47.1"
+        assert row.tokenizers_version == "0.21.1"
+        assert row.model_revision == "8e8ed243bbe6f9a5aff549a0924562fc719b2b8a"
+        assert row.tokenizer_revision == "8e8ed243bbe6f9a5aff549a0924562fc719b2b8a"
+        assert row.modal_image_sha == "unknown"
+
+
+def test_real_task_agnostic_g_artifact_detects_missing_matmul_rows() -> None:
+    result = deserialize_cluster1_replay_artifact(
+        TASK_AGNOSTIC_G_N20_ARTIFACT,
+        condition="G",
+        artifact_id=TASK_AGNOSTIC_G_N20_ARTIFACT_ID,
+    )
+    report = result.coverage_report
+
+    assert report.replay_coverage_policy == REPLAY_COVERAGE_POLICY_WARNING_SKIP_MISSING
+    assert report.replay_expected_rows == 180
+    assert report.replay_observed_rows == 177
+    assert [row.to_dict() for row in report.replay_missing_rows] == [
+        {"kernel_class": "matmul", "dtype": "fp32", "sample_index": 5},
+        {"kernel_class": "matmul", "dtype": "bf16", "sample_index": 0},
+        {"kernel_class": "matmul", "dtype": "bf16", "sample_index": 18},
+    ]
+    assert {row.kernel_class for row in report.replay_missing_rows} == {"matmul"}
+    assert report.replay_duplicate_rows == ()
+    assert report.replay_unexpected_rows == ()
+    assert report.replay_invalid_rows == ()
+
+
+def test_task_agnostic_skip_policy_maps_only_matched_rows() -> None:
+    mapping = map_replay_candidates(
+        condition="G",
+        kernel_class="matmul",
+        dtype="bf16",
+        candidate_count=20,
+        grammar_variant="task_agnostic",
+    )
+
+    assert mapping.status == REPLAY_MAPPING_OK_WITH_COVERAGE_WARNING
+    assert len(mapping.candidates) == 18
+    assert [candidate.base_seed for candidate in mapping.candidates] == [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        19,
+    ]
+    assert mapping.coverage_warning is not None
+    assert mapping.coverage_warning.replay_expected_rows == 180
+    assert mapping.coverage_warning.replay_observed_rows == 177
+    assert len(mapping.coverage_warning.replay_missing_rows) == 3
+
+
+@pytest.mark.parametrize(
+    ("coverage_mutation", "expected_message"),
+    [
+        ("duplicate", "duplicate_rows"),
+        ("unexpected", "unexpected_rows"),
+        ("invalid", "invalid_rows"),
+    ],
+)
+def test_task_agnostic_skip_policy_rejects_malformed_replay_grid_in_mapping(
+    tmp_path: Path,
+    coverage_mutation: str,
+    expected_message: str,
+) -> None:
+    manifest = json.loads(
+        Path("cluster2/contracts/frozen_cluster1_artifacts_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    artifact = next(
+        artifact
+        for artifact in manifest["artifacts"]
+        if artifact["artifact_id"] == TASK_AGNOSTIC_G_N20_ARTIFACT_ID
+    )
+    off_window_row = next(
+        record
+        for record in artifact["row_records"]
+        if record["kernel_class"] == "elementwise"
+        and record["dtype"] == "fp32"
+        and record["generation_seed"] == 2
+    )
+    if coverage_mutation == "duplicate":
+        off_window_row["generation_seed"] = 1
+    elif coverage_mutation == "unexpected":
+        off_window_row["generation_seed"] = 20
+    elif coverage_mutation == "invalid":
+        off_window_row["generation_seed"] = "not-a-seed"
+    else:  # pragma: no cover - parametrization guard
+        raise AssertionError(f"unexpected coverage mutation {coverage_mutation!r}")
+    manifest_path = tmp_path / f"{coverage_mutation}_manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=expected_message):
+        map_replay_candidates(
+            condition="G",
+            kernel_class="elementwise",
+            dtype="fp32",
+            candidate_count=2,
+            manifest_path=manifest_path,
+            grammar_variant="task_agnostic",
+        )
+
+
+def test_task_agnostic_skip_policy_rejects_schedule_holes_not_reported_missing(
+    tmp_path: Path,
+) -> None:
+    manifest = json.loads(
+        Path("cluster2/contracts/frozen_cluster1_artifacts_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    artifact = next(
+        artifact
+        for artifact in manifest["artifacts"]
+        if artifact["artifact_id"] == TASK_AGNOSTIC_G_N20_ARTIFACT_ID
+    )
+    _drop_seed_schedule_entry(
+        artifact,
+        kernel_class="elementwise",
+        dtype="fp32",
+        base_seed=2,
+    )
+    manifest_path = tmp_path / "schedule_hole_manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="missing_from_schedule"):
+        map_replay_candidates(
+            condition="G",
+            kernel_class="elementwise",
+            dtype="fp32",
+            candidate_count=20,
+            manifest_path=manifest_path,
+            grammar_variant="task_agnostic",
+        )
+
+
+def test_replay_adapter_preserves_real_task_agnostic_metadata_after_mapping() -> None:
+    mapping = map_replay_candidates(
+        condition="G",
+        kernel_class="elementwise",
+        dtype="fp32",
+        candidate_count=2,
+        grammar_variant="task_agnostic",
+    )
+
+    assert mapping.ok
+    for candidate in mapping.candidates:
+        assert candidate.source
+        assert candidate.grammar_active is True
+        assert candidate.grammar_variant == "task_agnostic"
+        assert candidate.grammar_path == "cluster1/grammar/triton_kernel_agnostic.gbnf"
+        assert len(candidate.grammar_sha) == 64
+        assert candidate.grammar_valid is (
+            candidate.gbnf_parse_valid and candidate.semantic_valid
+        )
+        assert candidate.stop_reason in {"eos_token", "max_new_tokens"}
+        assert candidate.failure_code in FAILURE_CODES or candidate.failure_code is None
+        assert candidate.legacy_compile_error_type in {
+            None,
+            "CompilationError",
+            "RuntimeError",
+            "SignatureError",
+        }
 
 
 def test_replay_adapter_canonicalizes_legacy_cluster1_failure_code(
@@ -598,6 +835,30 @@ def _write_replay_fixture(
             "run_id": f"run-{condition}-{index}",
             "timestamp_utc": "2026-05-12T00:00:00+00:00",
         }
+        if grammar_active:
+            raw_row.update(
+                {
+                    "grammar_variant": grammar_variant,
+                    "generation_metadata_schema_version": 1,
+                    "grammar_sha": "a" * 64,
+                    "grammar_path": (
+                        "cluster1/grammar/triton_kernel_agnostic.gbnf"
+                        if grammar_variant == "task_agnostic"
+                        else "cluster1/grammar/triton_kernel.gbnf"
+                    ),
+                    "gbnf_parse_valid": True,
+                    "semantic_valid": True,
+                    "grammar_valid": True,
+                    "rejection_layer": None,
+                    "stop_reason": "eos_token",
+                    "xgrammar_version": "0.1.test",
+                    "transformers_version": "4.test",
+                    "tokenizers_version": "0.test",
+                    "model_revision": "unavailable_in_frozen_cluster1_artifact",
+                    "tokenizer_revision": "unavailable_in_frozen_cluster1_artifact",
+                    "modal_image_sha": "unknown",
+                }
+            )
         if failure_code is not None:
             raw_row["failure_code"] = failure_code
         raw_line = (
@@ -733,3 +994,28 @@ def _artifact_rows(manifest: Path) -> list[dict[str, Any]]:
         for line in artifact_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
+
+
+def _drop_seed_schedule_entry(
+    artifact: dict[str, Any],
+    *,
+    kernel_class: str,
+    dtype: str,
+    base_seed: int,
+) -> None:
+    record = next(
+        record
+        for record in artifact["seed_schedule"]["records"]
+        if record["kernel_class"] == kernel_class and record["dtype"] == dtype
+    )
+    index = record["base_seeds"].index(base_seed)
+    for key in (
+        "base_seeds",
+        "generation_seeds",
+        "attempt_indexes",
+        "generation_indexes",
+        "line_numbers",
+        "replay_pair_ids",
+    ):
+        record[key].pop(index)
+    record["row_count"] -= 1

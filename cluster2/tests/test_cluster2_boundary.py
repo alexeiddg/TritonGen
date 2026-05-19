@@ -208,9 +208,202 @@ def test_shared_modal_files_match_phase_minus1_git_head(rel_path: str) -> None:
 def test_frozen_cluster1_manifest_hash_matches_phase_minus1() -> None:
     manifest = _load_json(PHASE_MINUS1_MANIFEST)
     record = manifest["frozen_cluster1_artifacts_manifest"]
+    current_manifest_path = REPO_ROOT / record["path"]
+    current_sha256 = _file_sha256(current_manifest_path)
 
     assert record["path"] == "cluster2/contracts/frozen_cluster1_artifacts_manifest.json"
-    assert _file_sha256(REPO_ROOT / record["path"]) == record["sha256"]
+    if current_sha256 == record["sha256"]:
+        return
+
+    current_manifest = _load_json(current_manifest_path)
+    artifacts = {
+        artifact["artifact_id"]: artifact
+        for artifact in current_manifest["artifacts"]
+    }
+    assert current_manifest["schema_version"] == record["schema_version"]
+    assert [artifact["artifact_id"] for artifact in current_manifest["artifacts"]] == [
+        "none_baseline_n20_l4",
+        "g_template_upper_bound_n20_l4",
+        "g_task_agnostic_n5_l4_rerun",
+        "g_task_agnostic_aligned_pipeline_n20_l4",
+    ]
+    assert {
+        artifact_id: _frozen_cluster1_artifact_boundary(artifacts[artifact_id])
+        for artifact_id in (
+            "none_baseline_n20_l4",
+            "g_template_upper_bound_n20_l4",
+            "g_task_agnostic_n5_l4_rerun",
+        )
+    } == {
+        "none_baseline_n20_l4": {
+            "condition": "none",
+            "path": "outputs/cluster1/baseline_repaired_l4_n20.jsonl",
+            "sha256": (
+                "1f3e004b25564f347b2fb293216d2a9589ac7aaa60728cabd1d20e40af4f4cc3"
+            ),
+            "row_count": 180,
+            "role": "frozen_none_replay_control",
+            "metadata_sidecar_path": (
+                "outputs/cluster1/baseline_repaired_l4_n20.jsonl.meta.json"
+            ),
+            "metadata_sidecar_sha256": (
+                "ce14490c915515305c7a9e9c310f8e79c3c5f192eea55a9f6a77f5623759d551"
+            ),
+        },
+        "g_template_upper_bound_n20_l4": {
+            "condition": "G",
+            "path": "outputs/cluster1/final_g_l4_n20.jsonl",
+            "sha256": (
+                "51af551433ae5180eac85cf877409a8d73b0e53fba07b40699d42024757a3d18"
+            ),
+            "row_count": 180,
+            "role": "frozen_g_template_upper_bound_replay_control",
+            "metadata_sidecar_path": "outputs/cluster1/final_g_l4_n20.jsonl.meta.json",
+            "metadata_sidecar_sha256": (
+                "9248134ebd45f3e6ba614a8897ce4e7431f5ce3b00e1b0829cb668a00b8ce83b"
+            ),
+        },
+        "g_task_agnostic_n5_l4_rerun": {
+            "condition": "G",
+            "path": "outputs/cluster1/task_agnostic_g_all_n5_l4_rerun.jsonl",
+            "sha256": (
+                "0efb88886ec0abca432835e66309e232155bce55f562de385d13d8f506e55d56"
+            ),
+            "row_count": 45,
+            "role": "frozen_g_task_agnostic_development_control",
+            "metadata_sidecar_path": (
+                "outputs/cluster1/task_agnostic_g_all_n5_l4_rerun.jsonl.meta.json"
+            ),
+            "metadata_sidecar_sha256": (
+                "7094670cfe51d22dcd64a9ce34738143678eebd0acd4d8a2ed459c743f8b9937"
+            ),
+        },
+    }
+    assert _frozen_cluster1_artifact_boundary(
+        artifacts["g_task_agnostic_aligned_pipeline_n20_l4"]
+    ) == {
+        "condition": "G",
+        "path": "outputs/cluster1/task_agnostic_g_aligned_pipeline_n20_l4.jsonl",
+        "sha256": (
+            "59e6026d18db58fae0472591f3b924f83c837e99b0a543b131efe94a9e37751a"
+        ),
+        "row_count": 177,
+        "role": "frozen_g_task_agnostic_n20_replay_control",
+        "metadata_sidecar_path": (
+            "outputs/cluster1/task_agnostic_g_aligned_pipeline_n20_l4.jsonl.meta.json"
+        ),
+        "metadata_sidecar_sha256": (
+            "a8af73753916f2c5cff2dd35942762890bfc9f8d7d6ab8ec8517c89e18e000b0"
+        ),
+        "coverage_policy": "COVERAGE_WARNING_SKIP_MISSING",
+        "expected_n": 20,
+        "intended_rows": 180,
+        "observed_rows": 177,
+    }
+    assert current_manifest["selected_controls"] == {
+        "cluster2_v5_template_upper_bound_controls": {
+            "artifact_ids": [
+                "none_baseline_n20_l4",
+                "g_template_upper_bound_n20_l4",
+            ],
+            "coverage_failures": [],
+            "paper_rows_per_cell_sufficient": True,
+        },
+        "task_agnostic_g_status": {
+            "artifact_path": (
+                "outputs/cluster1/task_agnostic_g_aligned_pipeline_n20_l4.jsonl"
+            ),
+            "available_development_artifact_id": (
+                "g_task_agnostic_aligned_pipeline_n20_l4"
+            ),
+            "available_task_agnostic_g_n20_replay_artifact_id": (
+                "g_task_agnostic_aligned_pipeline_n20_l4"
+            ),
+            "coverage_complete": False,
+            "coverage_policy": "COVERAGE_WARNING_SKIP_MISSING",
+            "development_rows_per_cell_sufficient": False,
+            "expected_n": 20,
+            "intended_rows": 180,
+            "missing_rows": [
+                {"dtype": "fp32", "kernel_class": "matmul", "sample_index": 5},
+                {"dtype": "bf16", "kernel_class": "matmul", "sample_index": 0},
+                {"dtype": "bf16", "kernel_class": "matmul", "sample_index": 18},
+            ],
+            "note": (
+                "Task-agnostic G n=20 is registered for G+C replay with explicit "
+                "177/180 coverage warning and matched-row skip policy; missing "
+                "rows are not imputed."
+            ),
+            "observed_rows": 177,
+            "paper_coverage_failures": [
+                {
+                    "artifact_id": "g_task_agnostic_aligned_pipeline_n20_l4",
+                    "condition": "G",
+                    "dtype": "fp32",
+                    "grammar_active": True,
+                    "kernel_class": "matmul",
+                    "missing_rows": 1,
+                    "observed_rows": 19,
+                    "required_rows": 20,
+                    "status": "coverage_warning_skip_missing",
+                },
+                {
+                    "artifact_id": "g_task_agnostic_aligned_pipeline_n20_l4",
+                    "condition": "G",
+                    "dtype": "bf16",
+                    "grammar_active": True,
+                    "kernel_class": "matmul",
+                    "missing_rows": 2,
+                    "observed_rows": 18,
+                    "required_rows": 20,
+                    "status": "coverage_warning_skip_missing",
+                },
+            ],
+            "paper_rows_available_with_skip_policy": True,
+            "paper_rows_per_cell_sufficient": False,
+        },
+    }
+    coverage_assessment = current_manifest["coverage_assessment"]
+    assert "g_task_agnostic_n5_l4_rerun" not in json.dumps(
+        coverage_assessment,
+        sort_keys=True,
+    )
+    assert coverage_assessment["paper"] == {
+        "coverage_failure_missing_frozen_control_count": 0,
+        "coverage_failures": [],
+        "coverage_warning_skip_missing_count": 2,
+        "coverage_warnings": [
+            {
+                "artifact_id": "g_task_agnostic_aligned_pipeline_n20_l4",
+                "condition": "G",
+                "coverage_policy": "COVERAGE_WARNING_SKIP_MISSING",
+                "dtype": "fp32",
+                "grammar_active": True,
+                "kernel_class": "matmul",
+                "missing_rows": 1,
+                "missing_samples": [5],
+                "observed_rows": 19,
+                "required_rows": 20,
+                "status": "coverage_warning_skip_missing",
+            },
+            {
+                "artifact_id": "g_task_agnostic_aligned_pipeline_n20_l4",
+                "condition": "G",
+                "coverage_policy": "COVERAGE_WARNING_SKIP_MISSING",
+                "dtype": "bf16",
+                "grammar_active": True,
+                "kernel_class": "matmul",
+                "missing_rows": 2,
+                "missing_samples": [0, 18],
+                "observed_rows": 18,
+                "required_rows": 20,
+                "status": "coverage_warning_skip_missing",
+            },
+        ],
+        "passed": False,
+        "passed_with_skip_policy": True,
+        "required_rows_per_kernel_dtype_condition": 20,
+    }
 
 
 def test_default_generation_gpu_remains_l40s() -> None:
@@ -357,10 +550,22 @@ def test_generated_conditions_route_to_generated_path(
     expected_generation_mode: str,
     expected_route: str,
 ) -> None:
+    replay_manifest = _write_replay_fixture(
+        tmp_path / f"replay-{condition}",
+        condition="G" if condition == "G+C" else "none",
+        row_count=1,
+        grammar_variant=(
+            "task_agnostic" if condition == "G+C" else "template_upper_bound"
+        ),
+    )
     generation_calls: list[dict[str, Any]] = []
 
     result = run_cluster2(
-        _runner_config(tmp_path / f"out-{condition}", condition=condition),
+        _runner_config(
+            tmp_path / f"out-{condition}",
+            condition=condition,
+            manifest=replay_manifest,
+        ),
         dependencies=RunnerDependencies(
             generation=_fake_generation(generation_calls),
             correctness=_success_correctness([]),
@@ -731,6 +936,28 @@ def _git_blob_sha256(revision: str, rel_path: str) -> str:
 def _canonical_json_sha256(value: Any) -> str:
     rendered = json.dumps(value, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(rendered.encode("utf-8")).hexdigest()
+
+
+def _frozen_cluster1_artifact_boundary(artifact: dict[str, Any]) -> dict[str, Any]:
+    metadata_sidecar = artifact.get("metadata_sidecar", {})
+    boundary = {
+        "condition": artifact.get("condition"),
+        "path": artifact.get("path"),
+        "sha256": artifact.get("sha256"),
+        "row_count": artifact.get("row_count"),
+        "role": artifact.get("role"),
+        "metadata_sidecar_path": metadata_sidecar.get("path"),
+        "metadata_sidecar_sha256": metadata_sidecar.get("sha256"),
+    }
+    for field_name in (
+        "coverage_policy",
+        "expected_n",
+        "intended_rows",
+        "observed_rows",
+    ):
+        if field_name in artifact:
+            boundary[field_name] = artifact[field_name]
+    return boundary
 
 
 def _literal_assignment(path: Path, name: str) -> Any:
