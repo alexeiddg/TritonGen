@@ -105,7 +105,7 @@ def test_replay_adapter_maps_task_agnostic_g_when_requested(tmp_path: Path) -> N
     assert mapping.ok
     assert first.grammar_active is True
     assert first.grammar_variant == "task_agnostic"
-    assert first.artifact_id == "g_task_agnostic_n5_l4_rerun"
+    assert first.artifact_id == TASK_AGNOSTIC_G_N20_ARTIFACT_ID
 
 
 def test_real_task_agnostic_g_artifact_deserializes_177_rows() -> None:
@@ -792,7 +792,7 @@ def _write_replay_fixture(
     grammar_active = condition == "G"
     artifact_id = (
         (
-            "g_task_agnostic_n5_l4_rerun"
+            TASK_AGNOSTIC_G_N20_ARTIFACT_ID
             if grammar_variant == "task_agnostic"
             else "g_template_upper_bound_n20_l4"
         )

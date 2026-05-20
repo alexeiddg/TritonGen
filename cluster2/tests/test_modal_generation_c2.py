@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import builtins
 import hashlib
+import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -105,6 +106,7 @@ def test_gc_generation_result_requires_validation_metadata() -> None:
             source=_relu_source(),
             model_id="model",
             model_revision=TEST_MODEL_REVISION,
+            grammar_active=True,
         )
 
 
@@ -171,6 +173,7 @@ def test_c_generation_result_rejects_grammar_metadata() -> None:
             source=_relu_source(),
             model_id="model",
             model_revision=TEST_MODEL_REVISION,
+            grammar_active=False,
             grammar_sha="a" * 64,
             gbnf_parse_valid=True,
             semantic_valid=True,
@@ -220,6 +223,7 @@ def test_c_generation_passes_grammar_inactive() -> None:
     assert calls[0]["compiled_grammar"] is None
     assert calls[0]["hardware_checker"] is None
     assert payload["generation_identity"]["grammar_active"] is False
+    assert payload["generation_result"]["grammar_active"] is False
     assert payload["generation_identity"]["grammar_variant"] is None
     assert payload["generation_identity"]["grammar_path"] is None
     assert payload["generation_identity"]["grammar_claim_scope"] is None
@@ -267,6 +271,7 @@ def test_g_plus_c_defaults_to_task_agnostic_grammar() -> None:
     assert calls["generate_kwargs"]["grammar_active"] is True
     assert calls["generate_kwargs"]["compiled_grammar"] == "compiled-grammar"
     assert payload["generation_identity"]["grammar_active"] is True
+    assert payload["generation_result"]["grammar_active"] is True
     assert (
         payload["generation_identity"]["grammar_variant"]
         == C2_G_PLUS_C_GRAMMAR_VARIANT
@@ -712,6 +717,38 @@ def test_g_hash_gate_passes_current_approved_surface() -> None:
     )
 
 
+def test_g_plus_c_hash_gate_uses_current_task_agnostic_n20_artifact() -> None:
+    assert c2_generation.C2_FROZEN_G_ARTIFACT_BY_GRAMMAR_VARIANT[
+        C2_G_PLUS_C_GRAMMAR_VARIANT
+    ] == "g_task_agnostic_aligned_pipeline_n20_l4"
+    assert "g_task_agnostic_n5_l4_rerun" not in {
+        c2_generation.C2_FROZEN_G_ARTIFACT_BY_GRAMMAR_VARIANT[
+            C2_G_PLUS_C_GRAMMAR_VARIANT
+        ]
+    }
+
+    observed = c2_generation.verify_phase_minus1_g_generation_hashes(
+        grammar_variant=C2_G_PLUS_C_GRAMMAR_VARIANT
+    )
+    phase_manifest = c2_generation._phase_minus1_manifest()
+    manifest_record = phase_manifest["frozen_cluster1_artifacts_manifest"]
+    manifest_path = REPO_ROOT / manifest_record["path"]
+    frozen_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    artifact = next(
+        item
+        for item in frozen_manifest["artifacts"]
+        if item["artifact_id"] == "g_task_agnostic_aligned_pipeline_n20_l4"
+    )
+
+    assert observed["frozen_cluster1_artifacts_manifest"] == manifest_record["sha256"]
+    assert artifact["path"] == (
+        "outputs/cluster1/task_agnostic_g_aligned_pipeline_n20_l4.jsonl"
+    )
+    assert artifact["observed_rows"] == 177
+    assert artifact["intended_rows"] == 180
+    assert artifact["coverage_policy"] == "COVERAGE_WARNING_SKIP_MISSING"
+
+
 def test_remote_generator_hash_gate_rejects_unapproved_drift(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -876,6 +913,7 @@ def _remote_c2_gc_result_payload(**overrides: Any) -> dict[str, Any]:
         "model_id": "model",
         "model_revision": TEST_MODEL_REVISION,
         "tokenizer_revision": TEST_TOKENIZER_REVISION,
+        "grammar_active": True,
         "grammar_variant": C2_G_PLUS_C_GRAMMAR_VARIANT,
         "grammar_path": C2_G_PLUS_C_GRAMMAR_PATH,
         "grammar_sha": "a" * 64,

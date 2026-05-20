@@ -78,7 +78,7 @@ C2_GRAMMAR_CLAIM_SCOPE_BY_VARIANT = {
     ),
 }
 C2_FROZEN_G_ARTIFACT_BY_GRAMMAR_VARIANT = {
-    C2_G_PLUS_C_GRAMMAR_VARIANT: "g_task_agnostic_n5_l4_rerun",
+    C2_G_PLUS_C_GRAMMAR_VARIANT: "g_task_agnostic_aligned_pipeline_n20_l4",
     C2_G_PLUS_C_TEMPLATE_UPPER_BOUND_GRAMMAR_VARIANT: "g_template_upper_bound_n20_l4",
 }
 REMOTE_C2_GENERATION_GPU = DEFAULT_C2_MODAL_GENERATION_GPU
@@ -441,6 +441,7 @@ def run_c2_generation_with_loaded_model(
         model_id=request.model_id,
         model_revision=revision_metadata["model_revision"],
         tokenizer_revision=revision_metadata["tokenizer_revision"],
+        grammar_active=routing.grammar_active,
         grammar_sha=grammar_metadata["grammar_sha"],
         grammar_path=grammar_metadata["grammar_path"],
         grammar_variant=routing.grammar_variant,
@@ -640,6 +641,7 @@ def _validate_generation_identity_matches_result(
     result: RemoteC2GenerationResult,
 ) -> None:
     for field_name in (
+        "grammar_active",
         "grammar_sha",
         "grammar_path",
         "grammar_variant",

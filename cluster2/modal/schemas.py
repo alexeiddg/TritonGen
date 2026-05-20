@@ -247,6 +247,7 @@ class RemoteC2GenerationResult(_StrictC2Schema):
     model_id: str
     model_revision: str
     tokenizer_revision: str | None = None
+    grammar_active: bool
     grammar_sha: str | None = None
     grammar_path: str | None = None
     grammar_variant: str | None = None
@@ -298,7 +299,12 @@ class RemoteC2GenerationResult(_StrictC2Schema):
         ):
             raise ValueError("unsupported rejection_layer")
         if condition == "C":
+            if self.grammar_active is not False:
+                raise ValueError("C generation results must record grammar_active=False")
             self._validate_c_generation_metadata_absent()
+        if condition == "G+C":
+            if self.grammar_active is not True:
+                raise ValueError("G+C generation results must record grammar_active=True")
         if condition == "G+C" and self.error_type is None:
             self._validate_gc_generation_metadata()
         validation_values = (

@@ -141,6 +141,8 @@ def test_durable_append_logger_writes_one_valid_jsonl_row(tmp_path: Path) -> Non
     assert len(lines) == 1
     payload = json.loads(lines[0])
     assert payload["condition"] == "C"
+    assert payload["grammar_active"] is False
+    assert payload["compile_success"] is True
     assert payload["kernel_class"] == "elementwise"
     assert payload["dtype"] == "fp32"
     assert payload["base_seed"] == 11
@@ -352,6 +354,8 @@ def test_replay_and_generated_rows_serialize_distinct_source_classes() -> None:
 
     assert generated_payload["source_class"] == "generated_row"
     assert generated_payload["generation_mode"] == "new_c2_generation_with_G_adapter"
+    assert generated_payload["grammar_active"] is True
+    assert generated_payload["compile_success"] is True
     assert generated_payload["generated_metadata"] is not None
     assert (
         generated_payload["generated_metadata"]["grammar_variant"]
@@ -367,6 +371,123 @@ def test_replay_and_generated_rows_serialize_distinct_source_classes() -> None:
     assert "xgrammar_version" in generated_payload["generated_metadata"]
     assert generated_payload["replay_metadata"] is None
     assert generated_payload["trace_summary"] is not None
+
+
+def test_generated_c_and_gc_rows_persist_required_top_level_metadata() -> None:
+    c_row = _generated_row(condition="C")
+    gc_row = _generated_row(condition="G+C")
+
+    c_payload = json.loads(c_row.to_json())
+    gc_payload = json.loads(gc_row.to_json())
+
+    assert c_payload["grammar_active"] is False
+    assert c_payload["compile_success"] is True
+    assert gc_payload["grammar_active"] is True
+    assert gc_payload["compile_success"] is True
+    assert Cluster2EvalRow.from_dict(c_payload) == c_row
+    assert Cluster2EvalRow.from_dict(gc_payload) == gc_row
+
+
+def test_generated_row_compile_success_tracks_terminal_level1_state() -> None:
+    compile_failure = _generated_row(
+        condition="C",
+        functional_success=False,
+        compile_success=False,
+        failure_code="F1_COMPILE",
+    )
+    numeric_failure = _generated_row(condition="C", functional_success=False)
+
+    assert compile_failure.compile_success is False
+    assert json.loads(compile_failure.to_json())["compile_success"] is False
+    assert numeric_failure.failure_code == "F2_NUMERIC_LARGE"
+    assert numeric_failure.compile_success is True
+
+
+def test_legacy_generated_row_missing_required_metadata_warns() -> None:
+    payload = json.loads(_generated_row(condition="G+C").to_json())
+    payload.pop("grammar_active")
+    payload.pop("compile_success")
+
+    with pytest.warns(RuntimeWarning) as warnings:
+        rebuilt = Cluster2EvalRow.from_dict(payload)
+
+    warning_text = " ".join(str(item.message) for item in warnings)
+    assert "missing grammar_active" in warning_text
+    assert "missing compile_success" in warning_text
+    assert rebuilt.grammar_active is True
+    assert rebuilt.compile_success is True
+
+
+def test_legacy_replay_compile_success_backfill_prefers_terminal_status() -> None:
+    f2_payload = json.loads(_replay_row(condition="G").to_json())
+    f2_payload.pop("compile_success")
+    f2_payload.update(
+        functional_success=False,
+        repair_set_success=False,
+        eval_set_success=False,
+        failure_code="F2_NUMERIC_LARGE",
+    )
+    assert f2_payload["replay_metadata"] is not None
+    f2_payload["replay_metadata"]["frozen_cluster1_compile_success"] = False
+
+    f1_payload = json.loads(_replay_row(condition="G").to_json())
+    f1_payload.pop("compile_success")
+    f1_payload.update(
+        functional_success=False,
+        repair_set_success=False,
+        eval_set_success=False,
+        failure_code="F1_COMPILE",
+    )
+    assert f1_payload["replay_metadata"] is not None
+    f1_payload["replay_metadata"]["frozen_cluster1_compile_success"] = True
+
+    fallback_payload = json.loads(_replay_row(condition="G").to_json())
+    fallback_payload.pop("compile_success")
+    fallback_payload.update(
+        functional_success=False,
+        repair_set_success=False,
+        eval_set_success=False,
+        failure_code=None,
+    )
+    assert fallback_payload["replay_metadata"] is not None
+    fallback_payload["replay_metadata"]["frozen_cluster1_compile_success"] = True
+
+    with pytest.warns(RuntimeWarning, match="missing compile_success"):
+        f2_rebuilt = Cluster2EvalRow.from_dict(f2_payload)
+    with pytest.warns(RuntimeWarning, match="missing compile_success"):
+        f1_rebuilt = Cluster2EvalRow.from_dict(f1_payload)
+    with pytest.warns(RuntimeWarning, match="missing compile_success"):
+        fallback_rebuilt = Cluster2EvalRow.from_dict(fallback_payload)
+
+    assert f2_rebuilt.compile_success is True
+    assert f1_rebuilt.compile_success is False
+    assert fallback_rebuilt.compile_success is True
+
+
+def test_replay_row_compile_success_prefers_terminal_status_over_frozen_metadata() -> None:
+    f2_row = _replay_row(
+        condition="G",
+        functional_success=False,
+        failure_code="F2_NUMERIC_LARGE",
+        frozen_cluster1_compile_success=False,
+    )
+    f1_row = _replay_row(
+        condition="G",
+        functional_success=False,
+        failure_code="F1_COMPILE",
+        frozen_cluster1_compile_success=True,
+    )
+    fallback_row = _replay_row(
+        condition="G",
+        functional_success=False,
+        failure_code=None,
+        default_failure_code=False,
+        frozen_cluster1_compile_success=True,
+    )
+
+    assert f2_row.compile_success is True
+    assert f1_row.compile_success is False
+    assert fallback_row.compile_success is True
 
 
 @pytest.mark.parametrize("modal_image_sha", ("not-a-sha", " im-123 "))
@@ -575,7 +696,7 @@ def test_replay_rows_preserve_frozen_cluster1_hash_semantics() -> None:
 def test_replay_metadata_preserves_frozen_failure_diagnostics() -> None:
     source_text = "import triton\n@triton.jit\ndef replay_bad_signature(): pass"
     row = replay_control_row(
-        condition="none",
+        condition="G",
         attempt_index=0,
         kernel_class="elementwise",
         kernel_name="relu",
@@ -586,8 +707,8 @@ def test_replay_metadata_preserves_frozen_failure_diagnostics() -> None:
         repair_set_success=False,
         eval_set_success=False,
         failure_code="F0_BAD_SIGNATURE",
-        frozen_cluster1_artifact_id="none_baseline_n20_l4",
-        frozen_cluster1_generation_hashes=_frozen_hashes("none"),
+        frozen_cluster1_artifact_id="g_task_agnostic_aligned_pipeline_n20_l4",
+        frozen_cluster1_generation_hashes=_frozen_hashes("G"),
         frozen_cluster1_row_hash="a" * 64,
         frozen_cluster1_failure_code="F0_BAD_SIGNATURE",
         frozen_cluster1_compile_success=False,
@@ -614,6 +735,8 @@ def test_replay_metadata_preserves_frozen_failure_diagnostics() -> None:
     assert rebuilt.replay_metadata.frozen_cluster1_failure_code == "F0_BAD_SIGNATURE"
     assert rebuilt.replay_metadata.frozen_cluster1_compile_success is False
     assert rebuilt.replay_metadata.legacy_compile_error_type == "SignatureError"
+    assert rebuilt.grammar_active is True
+    assert rebuilt.compile_success is False
     assert rebuilt.replay_metadata.grammar_active is True
     assert rebuilt.replay_metadata.grammar_variant == "task_agnostic"
     assert rebuilt.replay_metadata.grammar_sha == "b" * 64
@@ -795,9 +918,15 @@ def _generated_row(
     kernel_name: str = "relu",
     source_text: str = "import triton\n@triton.jit\ndef k(): pass",
     functional_success: bool = True,
+    failure_code: str | None = None,
     **metadata_overrides: Any,
 ) -> Cluster2EvalRow:
     source_hash = _source_hash(source_text)
+    resolved_failure_code = (
+        failure_code
+        if failure_code is not None
+        else None if functional_success else "F2_NUMERIC_LARGE"
+    )
     return generated_row(
         condition=condition,
         attempt_index=attempt_index,
@@ -809,10 +938,10 @@ def _generated_row(
         functional_success=functional_success,
         repair_set_success=functional_success,
         eval_set_success=functional_success,
-        failure_code=None if functional_success else "F2_NUMERIC_LARGE",
+        failure_code=resolved_failure_code,
         trace_summary=TraceSummary(
             attempt_index=attempt_index,
-            failure_code=None if functional_success else "F2_NUMERIC_LARGE",
+            failure_code=resolved_failure_code,
             public_failure_summary=(
                 "Candidate passed Level 2."
                 if functional_success
@@ -841,7 +970,20 @@ def _replay_row(
     condition: str = "none",
     attempt_index: int = 0,
     source_text: str = "import triton\n@triton.jit\ndef replay(): pass",
+    functional_success: bool = True,
+    failure_code: str | None = None,
+    default_failure_code: bool = True,
+    **metadata_overrides: Any,
 ) -> Cluster2EvalRow:
+    resolved_failure_code = (
+        failure_code
+        if failure_code is not None
+        else (
+            None
+            if functional_success or not default_failure_code
+            else "F2_NUMERIC_LARGE"
+        )
+    )
     return replay_control_row(
         condition=condition,
         attempt_index=attempt_index,
@@ -850,10 +992,10 @@ def _replay_row(
         dtype="fp32",
         base_seed=11,
         source_hash=_source_hash(source_text),
-        functional_success=True,
-        repair_set_success=True,
-        eval_set_success=True,
-        failure_code=None,
+        functional_success=functional_success,
+        repair_set_success=functional_success,
+        eval_set_success=functional_success,
+        failure_code=resolved_failure_code,
         frozen_cluster1_artifact_id=(
             "none_baseline_n20_l4"
             if condition == "none"
@@ -861,6 +1003,7 @@ def _replay_row(
         ),
         frozen_cluster1_generation_hashes=_frozen_hashes(condition),
         frozen_cluster1_row_hash="a" * 64,
+        **metadata_overrides,
     )
 
 

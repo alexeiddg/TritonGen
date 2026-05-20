@@ -215,7 +215,7 @@
     "pairing_contract": "paired_by_seed",
     "path": "cluster2/contracts/frozen_cluster1_artifacts_manifest.json",
     "schema_version": 2,
-    "sha256": "e68846cd957c90723974673729ab6907a0c144c695c6cd06e6c5cb06ab4f0657"
+    "sha256": "fdb46b817d9b2d9b6c1663b4b31585d2b815e78be7562f575cd801cf9f7c781a"
   },
   "git": {
     "current_head": "e197500a59669eb05e138f44218b2e9f5d9e91bc",
@@ -373,10 +373,15 @@
   },
   "sufficiency_summary": {
     "g_task_agnostic_control": {
-      "artifact_id": "g_task_agnostic_n5_l4_rerun",
-      "paper_coverage_failure_missing_frozen_control_count": 9,
-      "paper_n20_pending": true,
-      "sufficient_for_development_n5": true,
+      "artifact_id": "g_task_agnostic_aligned_pipeline_n20_l4",
+      "coverage_policy": "COVERAGE_WARNING_SKIP_MISSING",
+      "intended_rows": 180,
+      "observed_rows": 177,
+      "paper_coverage_failure_missing_frozen_control_count": 0,
+      "paper_coverage_warning_skip_missing_count": 2,
+      "paper_n20_pending": false,
+      "paper_rows_available_with_skip_policy": true,
+      "sufficient_for_development_n5": false,
       "sufficient_for_paper_n20": false
     },
     "g_template_upper_bound_control": {

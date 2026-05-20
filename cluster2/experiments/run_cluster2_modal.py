@@ -623,6 +623,10 @@ def _evaluate_replay_mapping(
                 dtype=candidate.dtype,
                 base_seed=candidate.base_seed,
                 source_hash=candidate.source_sha256,
+                compile_success=_compile_success_from_correctness_result(
+                    correctness_result,
+                    fallback=candidate.compile_success,
+                ),
                 functional_success=bool(correctness_result["functional_success"]),
                 repair_set_success=bool(correctness_result["repair_set_success"]),
                 eval_set_success=bool(correctness_result["eval_set_success"]),
@@ -819,6 +823,10 @@ def _run_generated_cell(
         dtype=dtype,
         base_seed=base_seed,
         source_hash=source_hash,
+        grammar_active=condition == "G+C",
+        compile_success=_compile_success_from_correctness_result(
+            record.correctness_result
+        ),
         functional_success=bool(record.correctness_result["functional_success"]),
         repair_set_success=bool(record.correctness_result["repair_set_success"]),
         eval_set_success=bool(record.correctness_result["eval_set_success"]),
@@ -1271,6 +1279,34 @@ def _generation_hashes_from_payload(
     ):
         raise ValueError("generation_hashes must be a string mapping")
     return dict(hashes)
+
+
+def _compile_success_from_correctness_result(
+    result: dict[str, Any],
+    *,
+    fallback: bool | None = None,
+) -> bool:
+    value = result.get("compile_success")
+    if value is not None:
+        if not isinstance(value, bool):
+            raise TypeError("correctness_result compile_success must be a bool or None")
+        return value
+    if result.get("functional_success") is True:
+        return True
+    failure_code = result.get("failure_code")
+    if isinstance(failure_code, str):
+        if failure_code.startswith(("F0_", "F1_")):
+            return False
+        if failure_code.startswith("F2_"):
+            return True
+    level_reached = result.get("level_reached")
+    if isinstance(level_reached, int) and not isinstance(level_reached, bool):
+        return level_reached >= 2
+    if fallback is not None:
+        if not isinstance(fallback, bool):
+            raise TypeError("compile_success fallback must be a bool")
+        return fallback
+    return False
 
 
 def _generation_grammar_metadata_from_payload(

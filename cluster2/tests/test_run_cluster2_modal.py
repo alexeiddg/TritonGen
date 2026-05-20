@@ -154,12 +154,14 @@ def test_runner_routes_g_to_replay_adapter(tmp_path: Path) -> None:
         row.replay_metadata.frozen_cluster1_artifact_id
         for row in result.rows
         if row.replay_metadata is not None
-    } == {"g_task_agnostic_n5_l4_rerun"}
+    } == {"g_task_agnostic_aligned_pipeline_n20_l4"}
     assert {
         row.replay_metadata.grammar_variant
         for row in result.rows
         if row.replay_metadata is not None
     } == {"task_agnostic"}
+    assert {row.grammar_active for row in result.rows} == {True}
+    assert {row.compile_success for row in result.rows} == {True}
     assert result.route_audit[0].generation_allowed is False
 
 
@@ -207,6 +209,8 @@ def test_runner_routes_c_to_c2_generation(tmp_path: Path) -> None:
     assert len(correctness_calls) == 1
     assert len(result.rows) == 1
     assert result.rows[0].source_class == "generated_row"
+    assert result.rows[0].grammar_active is False
+    assert result.rows[0].compile_success is True
     assert result.rows[0].generated_metadata is not None
     assert result.rows[0].generated_metadata.replay_control_condition == "none"
     assert result.rows[0].generated_metadata.replay_generation_seed == 0
@@ -375,6 +379,7 @@ def test_runner_c_non_f2_failure_does_not_request_repair_generation(
     assert len(result.rows) == 1
     assert result.rows[0].attempt_index == 0
     assert result.rows[0].failure_code == "F1_COMPILE"
+    assert result.rows[0].compile_success is False
     assert result.rows[0].trace_summary is not None
     assert result.rows[0].trace_summary.attempt_index == 0
     assert result.route_audit[0].generation_calls == 1
@@ -437,6 +442,8 @@ def test_runner_routes_gc_to_c2_generation_with_g_adapter(tmp_path: Path) -> Non
         == "new_c2_generation_with_G_adapter"
     )
     assert result.rows[0].generation_mode == "new_c2_generation_with_G_adapter"
+    assert result.rows[0].grammar_active is True
+    assert result.rows[0].compile_success is True
     assert result.rows[0].generated_metadata is not None
     assert result.rows[0].generated_metadata.grammar_variant == "task_agnostic"
     assert result.rows[0].generated_metadata.replay_control_condition == "G"
@@ -680,6 +687,7 @@ def test_runner_durable_rows_survive_mid_run_exception(tmp_path: Path) -> None:
                 "functional_success": True,
                 "repair_set_success": True,
                 "eval_set_success": True,
+                "compile_success": True,
                 "failure_code": None,
                 "correctness_error": None,
             }

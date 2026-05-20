@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import warnings
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, fields
 from typing import Any
@@ -405,6 +406,8 @@ class Cluster2EvalRow:
     dtype: str
     base_seed: int
     source_hash: str
+    grammar_active: bool
+    compile_success: bool
     functional_success: bool
     repair_set_success: bool
     eval_set_success: bool
@@ -440,6 +443,8 @@ class Cluster2EvalRow:
             )
         _require_non_negative_int(self.base_seed, "base_seed")
         _validate_sha256(self.source_hash, "source_hash")
+        _require_bool(self.grammar_active, "grammar_active")
+        _require_bool(self.compile_success, "compile_success")
         _require_bool(self.functional_success, "functional_success")
         _require_bool(self.repair_set_success, "repair_set_success")
         _require_bool(self.eval_set_success, "eval_set_success")
@@ -453,6 +458,11 @@ class Cluster2EvalRow:
             raise ValueError("failure_code must be None when functional_success is True")
         if self.failure_code is not None and self.failure_code not in FAILURE_CODES:
             raise ValueError(f"unsupported failure_code {self.failure_code!r}")
+        _validate_compile_success_consistency(
+            compile_success=self.compile_success,
+            functional_success=self.functional_success,
+            failure_code=self.failure_code,
+        )
 
         if self.trace_summary is not None:
             if not isinstance(self.trace_summary, TraceSummary):
@@ -493,6 +503,10 @@ class Cluster2EvalRow:
 
     def _validate_source_class_metadata(self) -> None:
         if self.condition in REPLAY_CONTROL_CONDITIONS:
+            if self.grammar_active is not (self.condition == "G"):
+                raise ValueError(
+                    "replay row grammar_active must match replay condition"
+                )
             if self.trace_summary is not None:
                 raise ValueError("replay controls must not carry trace_summary")
             if self.repair_trace is not None:
@@ -507,9 +521,20 @@ class Cluster2EvalRow:
                 raise ValueError(
                     "replay source_hash must match frozen_cluster1_source_hash"
                 )
+            if (
+                self.replay_metadata.grammar_active is not None
+                and self.replay_metadata.grammar_active is not self.grammar_active
+            ):
+                raise ValueError(
+                    "replay_metadata grammar_active must match row grammar_active"
+                )
             return
 
         if self.condition in NEW_GENERATION_CONDITIONS:
+            if self.grammar_active is not (self.condition == "G+C"):
+                raise ValueError(
+                    "generated row grammar_active must match generated condition"
+                )
             if not isinstance(self.generated_metadata, Cluster2GeneratedRowMetadata):
                 raise TypeError(
                     "generated rows require Cluster2GeneratedRowMetadata"
@@ -561,6 +586,7 @@ class Cluster2EvalRow:
         _reject_unknown_fields(cls, payload)
         _reject_forbidden_mapping_fields(payload)
         converted = dict(payload)
+        _backfill_legacy_eval_row_fields(converted)
         trace_summary = converted.get("trace_summary")
         if trace_summary is not None and not isinstance(trace_summary, TraceSummary):
             converted["trace_summary"] = TraceSummary.from_dict(trace_summary)
@@ -739,6 +765,7 @@ def replay_control_row(
     frozen_cluster1_row_hash: str | None = None,
     frozen_cluster1_failure_code: str | None = None,
     frozen_cluster1_compile_success: bool | None = None,
+    compile_success: bool | None = None,
     legacy_compile_error_type: str | None = None,
     replay_pair_id: str | None = None,
     replay_base_seed: int | None = None,
@@ -770,6 +797,26 @@ def replay_control_row(
     normalized = normalize_cluster2_condition(condition)
     if source_class_for_condition(normalized) != REPLAY_CONTROL_SOURCE_CLASS:
         raise ValueError(f"condition {normalized!r} is not a replay control")
+    resolved_grammar_active = _resolve_replay_grammar_active(
+        normalized,
+        grammar_active,
+    )
+    terminal_compile_success = _terminal_compile_success_from_status(
+        functional_success=functional_success,
+        failure_code=failure_code,
+    )
+    compile_success_candidate = compile_success
+    if compile_success_candidate is None:
+        compile_success_candidate = (
+            terminal_compile_success
+            if terminal_compile_success is not None
+            else frozen_cluster1_compile_success
+        )
+    resolved_compile_success = _resolve_compile_success(
+        compile_success_candidate,
+        functional_success=functional_success,
+        failure_code=failure_code,
+    )
     return Cluster2EvalRow(
         condition=normalized,
         source_class=REPLAY_CONTROL_SOURCE_CLASS,
@@ -780,6 +827,8 @@ def replay_control_row(
         dtype=dtype,
         base_seed=base_seed,
         source_hash=source_hash,
+        grammar_active=resolved_grammar_active,
+        compile_success=resolved_compile_success,
         functional_success=functional_success,
         repair_set_success=repair_set_success,
         eval_set_success=eval_set_success,
@@ -802,7 +851,7 @@ def replay_control_row(
             tokenizer_revision=tokenizer_revision,
             temperature=temperature,
             max_new_tokens=max_new_tokens,
-            grammar_active=grammar_active,
+            grammar_active=resolved_grammar_active,
             grammar_variant=grammar_variant,
             grammar_path=grammar_path,
             grammar_sha=grammar_sha,
@@ -832,6 +881,8 @@ def generated_row(
     dtype: str,
     base_seed: int,
     source_hash: str,
+    grammar_active: bool | None = None,
+    compile_success: bool | None = None,
     functional_success: bool,
     repair_set_success: bool,
     eval_set_success: bool,
@@ -872,6 +923,15 @@ def generated_row(
     normalized = normalize_cluster2_condition(condition)
     if source_class_for_condition(normalized) != GENERATED_SOURCE_CLASS:
         raise ValueError(f"condition {normalized!r} is not a generated condition")
+    resolved_grammar_active = _resolve_generated_grammar_active(
+        normalized,
+        grammar_active,
+    )
+    resolved_compile_success = _resolve_compile_success(
+        compile_success,
+        functional_success=functional_success,
+        failure_code=failure_code,
+    )
     resolved_repair_trace = (
         (trace_summary,) if repair_trace is None else tuple(repair_trace)
     )
@@ -885,6 +945,8 @@ def generated_row(
         dtype=dtype,
         base_seed=base_seed,
         source_hash=source_hash,
+        grammar_active=resolved_grammar_active,
+        compile_success=resolved_compile_success,
         functional_success=functional_success,
         repair_set_success=repair_set_success,
         eval_set_success=eval_set_success,
@@ -923,6 +985,132 @@ def generated_row(
         ),
         repair_trace=resolved_repair_trace,
     )
+
+
+def _resolve_replay_grammar_active(
+    condition: str,
+    grammar_active: bool | None,
+) -> bool:
+    expected = condition == "G"
+    if grammar_active is None:
+        return expected
+    _require_bool(grammar_active, "grammar_active")
+    if grammar_active is not expected:
+        raise ValueError("replay row grammar_active must match replay condition")
+    return grammar_active
+
+
+def _resolve_generated_grammar_active(
+    condition: str,
+    grammar_active: bool | None,
+) -> bool:
+    expected = condition == "G+C"
+    if grammar_active is None:
+        return expected
+    _require_bool(grammar_active, "grammar_active")
+    if grammar_active is not expected:
+        raise ValueError("generated row grammar_active must match generated condition")
+    return grammar_active
+
+
+def _resolve_compile_success(
+    compile_success: bool | None,
+    *,
+    functional_success: bool,
+    failure_code: str | None,
+) -> bool:
+    if compile_success is not None:
+        _require_bool(compile_success, "compile_success")
+        return compile_success
+    if functional_success:
+        return True
+    if isinstance(failure_code, str) and failure_code.startswith("F2_"):
+        return True
+    return False
+
+
+def _validate_compile_success_consistency(
+    *,
+    compile_success: bool,
+    functional_success: bool,
+    failure_code: str | None,
+) -> None:
+    if functional_success and not compile_success:
+        raise ValueError("functional_success=True requires compile_success=True")
+    if failure_code is None:
+        return
+    if failure_code.startswith(("F0_", "F1_")) and compile_success:
+        raise ValueError(f"{failure_code} requires compile_success=False")
+    if failure_code.startswith("F2_") and not compile_success:
+        raise ValueError(f"{failure_code} requires compile_success=True")
+
+
+def _backfill_legacy_eval_row_fields(payload: dict[str, Any]) -> None:
+    if "grammar_active" not in payload:
+        payload["grammar_active"] = _legacy_grammar_active_from_payload(payload)
+        warnings.warn(
+            "legacy Cluster2EvalRow is missing grammar_active; derived it from "
+            "condition/source metadata",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+    if "compile_success" not in payload:
+        payload["compile_success"] = _legacy_compile_success_from_payload(payload)
+        warnings.warn(
+            "legacy Cluster2EvalRow is missing compile_success; derived it from "
+            "terminal status metadata",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+
+
+def _legacy_grammar_active_from_payload(payload: dict[str, Any]) -> bool:
+    replay_metadata = payload.get("replay_metadata")
+    if isinstance(replay_metadata, dict) and isinstance(
+        replay_metadata.get("grammar_active"),
+        bool,
+    ):
+        return replay_metadata["grammar_active"]
+    condition = payload.get("condition")
+    return condition in {"G", "G+C"}
+
+
+def _legacy_compile_success_from_payload(payload: dict[str, Any]) -> bool:
+    terminal_compile_success = _legacy_terminal_compile_success_from_payload(payload)
+    if terminal_compile_success is not None:
+        return terminal_compile_success
+
+    replay_metadata = payload.get("replay_metadata")
+    if isinstance(replay_metadata, dict) and isinstance(
+        replay_metadata.get("frozen_cluster1_compile_success"),
+        bool,
+    ):
+        return replay_metadata["frozen_cluster1_compile_success"]
+    return False
+
+
+def _legacy_terminal_compile_success_from_payload(
+    payload: dict[str, Any],
+) -> bool | None:
+    return _terminal_compile_success_from_status(
+        functional_success=payload.get("functional_success"),
+        failure_code=payload.get("failure_code"),
+    )
+
+
+def _terminal_compile_success_from_status(
+    *,
+    functional_success: object,
+    failure_code: object,
+) -> bool | None:
+    if functional_success is True:
+        return True
+    if isinstance(failure_code, str):
+        if failure_code.startswith(("F0_", "F1_")):
+            return False
+        if failure_code.startswith("F2_"):
+            return True
+    return None
 
 
 def _json_dumps(payload: dict[str, Any]) -> str:

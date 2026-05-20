@@ -58,6 +58,23 @@ def test_generation_request_accepts_g_plus_c_condition() -> None:
     assert request.identity.generation_mode == "new_c2_generation_with_G_adapter"
 
 
+def test_generation_result_roundtrip_preserves_grammar_active() -> None:
+    result = RemoteC2GenerationResult(
+        identity=_identity("C"),
+        source="def relu(x):\n    return x\n",
+        model_id="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ",
+        model_revision=TEST_MODEL_REVISION,
+        tokenizer_revision=TEST_TOKENIZER_REVISION,
+        grammar_active=False,
+        modal_image_sha="sha256:" + "a" * 64,
+    )
+
+    rebuilt = RemoteC2GenerationResult(**json.loads(result.model_dump_json()))
+
+    assert rebuilt == result
+    assert rebuilt.grammar_active is False
+
+
 @pytest.mark.parametrize("condition", ["none", "G"])
 def test_generation_request_rejects_replay_controls(condition: str) -> None:
     with pytest.raises(ValueError, match="must not invoke C2 generation"):
@@ -134,6 +151,7 @@ def test_correctness_schemas_preserve_replay_control_identity() -> None:
         functional_success=True,
         repair_set_success=True,
         eval_set_success=True,
+        compile_success=True,
         num_repair_shapes=2,
         num_eval_shapes=3,
         num_test_shapes=5,
@@ -147,6 +165,7 @@ def test_correctness_schemas_preserve_replay_control_identity() -> None:
 
     assert rebuilt_request == request
     assert rebuilt_result == result
+    assert rebuilt_result.compile_success is True
     assert rebuilt_request.identity.generation_mode == "replay_control"
 
 
