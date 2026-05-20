@@ -77,8 +77,19 @@ TOP_LEVEL_RESULT_FIELDS: frozenset[str] = frozenset(
     }
 )
 
+EXPLICIT_LEVEL0_EVIDENCE_FIELDS: frozenset[str] = frozenset(
+    {
+        "level0_success",
+        "level0_result",
+        "parse_success",
+        "signature_success",
+        "level0_failure_code",
+    }
+)
+
 _MISSING = object()
 _UNKNOWN_VALUES = {None, "", UNKNOWN}
+_LATER_LEVEL_FAILURE_PREFIXES = ("F1_", "F2_", "F3_")
 
 
 @dataclass(frozen=True)
@@ -124,6 +135,60 @@ def get_field(
     if field_name in metadata:
         return metadata[field_name]
     return _MISSING
+
+
+def has_level0_evidence(row: Mapping[str, Any] | Cluster2EvalRow) -> bool:
+    """Return whether a row records explicit or current-schema Level 0 evidence."""
+
+    payload = _row_payload(row)
+    failure_code = payload.get("failure_code", _MISSING)
+    if _is_f0_failure(failure_code):
+        return True
+    if any(field_name in payload for field_name in EXPLICIT_LEVEL0_EVIDENCE_FIELDS):
+        return True
+    if isinstance(failure_code, str) and failure_code.startswith(
+        _LATER_LEVEL_FAILURE_PREFIXES
+    ):
+        return True
+    if "compile_success" in payload:
+        return True
+    if failure_code is None or failure_code == "":
+        return "functional_success" in payload or "compile_success" in payload
+    return False
+
+
+def level0_passed(row: Mapping[str, Any] | Cluster2EvalRow) -> bool:
+    """Return whether available evidence means Level 0 passed."""
+
+    payload = _row_payload(row)
+    failure_code = payload.get("failure_code", _MISSING)
+    if _is_f0_failure(failure_code):
+        return False
+
+    level0_failure_code = payload.get("level0_failure_code", _MISSING)
+    if _is_f0_failure(level0_failure_code):
+        return False
+
+    level0_success = payload.get("level0_success", _MISSING)
+    if isinstance(level0_success, bool):
+        return level0_success
+
+    parse_success = payload.get("parse_success", _MISSING)
+    signature_success = payload.get("signature_success", _MISSING)
+    if parse_success is False or signature_success is False:
+        return False
+    if parse_success is True and signature_success is True:
+        return True
+
+    if isinstance(failure_code, str) and failure_code.startswith(
+        _LATER_LEVEL_FAILURE_PREFIXES
+    ):
+        return True
+    if "compile_success" in payload:
+        return True
+    if failure_code is None or failure_code == "":
+        return "functional_success" in payload or "compile_success" in payload
+    return False
 
 
 def validate_g_plus_c_smoke_jsonl(
@@ -319,16 +384,37 @@ def _validate_g_plus_c_smoke_payload(
 
     failure_code = read("failure_code")
     functional_success = read("functional_success")
-    if functional_success is True and failure_code is not None:
+    if failure_code is _MISSING:
+        failures.append(_row_message(row_number, "missing top-level failure_code"))
+    elif functional_success is True and failure_code is not None:
         failures.append(
             _row_message(
                 row_number,
                 "failure_code must be null when functional_success is true",
             )
         )
-    if failure_code is not None and failure_code not in FAILURE_CODES:
+    elif functional_success is False and failure_code is None:
+        failures.append(
+            _row_message(
+                row_number,
+                "failure_code must be canonical when functional_success is false",
+            )
+        )
+    if (
+        failure_code is not _MISSING
+        and failure_code is not None
+        and failure_code not in FAILURE_CODES
+    ):
         failures.append(
             _row_message(row_number, f"failure_code is not canonical: {failure_code!r}")
+        )
+    if not has_level0_evidence(payload):
+        failures.append(
+            _row_message(
+                row_number,
+                "missing_level0_evidence: expected explicit level0 fields, "
+                "compile_success, null success, or canonical F0/F1/F2/F3 failure_code",
+            )
         )
 
     trace_summary = read("trace_summary")
@@ -368,6 +454,8 @@ def _current_schema_payload(
         current["generated_metadata"] = metadata
         for field_name in GENERATED_METADATA_FIELDS:
             current.pop(field_name, None)
+    for field_name in EXPLICIT_LEVEL0_EVIDENCE_FIELDS:
+        current.pop(field_name, None)
     return current
 
 
@@ -426,6 +514,10 @@ def _display_name(field_name: str) -> str:
     if field_name in GENERATED_METADATA_FIELDS:
         return f"generated_metadata.{field_name}"
     return f"top-level {field_name}"
+
+
+def _is_f0_failure(value: Any) -> bool:
+    return isinstance(value, str) and value.startswith("F0_")
 
 
 def _row_message(row_number: int, message: str) -> str:

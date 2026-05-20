@@ -14,6 +14,9 @@ from cluster2.results.dataclass import (
     validate_generated_paper_scale_metadata,
 )
 from cluster2.validation.generated_metadata import (
+    has_level0_evidence,
+    level0_passed,
+    validate_g_plus_c_smoke_jsonl,
     validate_g_plus_c_smoke_rows,
 )
 from shared.generation_metadata import (
@@ -90,6 +93,91 @@ def test_g_plus_c_nested_compile_success_does_not_replace_top_level_field() -> N
 
     with pytest.raises(ValueError, match="missing top-level compile_success"):
         validate_g_plus_c_smoke_rows([payload])
+
+
+def test_g_plus_c_explicit_level0_success_row_passes() -> None:
+    payload = _valid_g_plus_c_payload()
+    payload["level0_success"] = True
+
+    result = validate_g_plus_c_smoke_rows([payload])
+
+    assert len(result.rows) == 1
+    assert has_level0_evidence(payload)
+    assert level0_passed(payload)
+
+
+def test_g_plus_c_implicit_level0_success_via_compile_success_passes() -> None:
+    payload = _valid_g_plus_c_payload()
+    _set_terminal_status(
+        payload,
+        failure_code=None,
+        compile_success=True,
+        functional_success=True,
+        repair_set_success=True,
+        eval_set_success=True,
+    )
+
+    result = validate_g_plus_c_smoke_rows([payload])
+
+    assert len(result.rows) == 1
+    assert has_level0_evidence(payload)
+    assert level0_passed(payload)
+
+
+def test_g_plus_c_implicit_level0_success_via_f1_failure_passes() -> None:
+    payload = _valid_g_plus_c_payload()
+    _set_terminal_status(
+        payload,
+        failure_code="F1_COMPILE",
+        compile_success=False,
+        functional_success=False,
+        repair_set_success=False,
+        eval_set_success=False,
+    )
+
+    result = validate_g_plus_c_smoke_rows([payload])
+
+    assert len(result.rows) == 1
+    assert has_level0_evidence(payload)
+    assert level0_passed(payload)
+
+
+def test_g_plus_c_explicit_f0_failure_is_evidence_not_success() -> None:
+    payload = _valid_g_plus_c_payload()
+    _set_terminal_status(
+        payload,
+        failure_code="F0_BAD_SIGNATURE",
+        compile_success=False,
+        functional_success=False,
+        repair_set_success=False,
+        eval_set_success=False,
+    )
+
+    result = validate_g_plus_c_smoke_rows([payload])
+
+    assert len(result.rows) == 1
+    assert has_level0_evidence(payload)
+    assert not level0_passed(payload)
+
+
+def test_g_plus_c_missing_all_level0_evidence_fails() -> None:
+    payload = _valid_g_plus_c_payload()
+    payload.pop("compile_success")
+    payload.pop("functional_success")
+    payload.pop("failure_code")
+
+    with pytest.raises(ValueError, match="missing_level0_evidence"):
+        validate_g_plus_c_smoke_rows([payload])
+
+
+def test_existing_g_plus_c_smoke_artifact_validates() -> None:
+    path = Path("outputs/cluster2/g_plus_c_smoke_n1.jsonl")
+    if not path.exists():
+        pytest.skip(f"missing smoke artifact: {path}")
+
+    result = validate_g_plus_c_smoke_jsonl(path, expected_rows=3)
+
+    assert len(result.rows) == 3
 
 
 def test_g_plus_c_legacy_flat_metadata_can_be_validated_when_enabled() -> None:
@@ -206,6 +294,33 @@ def _trace(failure_code: str, *, source_hash: str) -> TraceSummary:
         eval_set_success=False,
         source_hash=source_hash,
     )
+
+
+def _set_terminal_status(
+    payload: dict,
+    *,
+    failure_code: str | None,
+    compile_success: bool,
+    functional_success: bool,
+    repair_set_success: bool,
+    eval_set_success: bool,
+) -> None:
+    trace = TraceSummary(
+        attempt_index=payload["attempt_index"],
+        failure_code=failure_code,
+        public_failure_summary=None if failure_code is None else "Validation failed.",
+        functional_success=functional_success,
+        repair_set_success=repair_set_success,
+        eval_set_success=eval_set_success,
+        source_hash=payload["source_hash"],
+    )
+    payload["compile_success"] = compile_success
+    payload["functional_success"] = functional_success
+    payload["repair_set_success"] = repair_set_success
+    payload["eval_set_success"] = eval_set_success
+    payload["failure_code"] = failure_code
+    payload["trace_summary"] = trace.to_dict()
+    payload["repair_trace"] = [trace.to_dict()]
 
 
 def _source_hash(source_text: str) -> str:
