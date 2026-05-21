@@ -1,7 +1,7 @@
 # Scale Policy
 
-**Status:** authoritative scale vocabulary for development and reporting  
-**Date:** 2026-05-11  
+**Status:** authoritative scale vocabulary for development and preliminary reporting  
+**Last aligned:** 2026-05-21  
 **Applies to:** all clusters, shared eval, Modal harness runs, analysis outputs
 
 ## Purpose
@@ -28,7 +28,7 @@ record `scale_tier` using one of those values.
 | --- | --- | --- | --- | --- | --- | --- |
 | `smoke` | Prove the code path runs end to end without crashing | 1 kernel | 1 condition | `n=1` | fast development model, currently `Qwen/Qwen2.5-Coder-7B-Instruct-AWQ` | Infrastructure pass/fail only |
 | `development` | Iterate on prompts, grammar variants, repair templates, feedback parsing, and harness behavior | 3 kernels, one per class | Active conditions under development | `n=3..5` | fast development model, currently `Qwen/Qwen2.5-Coder-7B-Instruct-AWQ` | Directional indicators only |
-| `paper` | Produce the reported results | Target 6-9 KernelBench problems balanced across elementwise, reduction, and matmul | Full factorial where applicable | `n=20` per sample cell | at least one larger model, currently planned as `Qwen/Qwen2.5-Coder-32B-Instruct` or `deepseek-ai/DeepSeek-Coder-V2-Instruct` | Reportable paper evidence |
+| `paper` | Produce reported or report-candidate results | Current preliminary artifacts use the locked three-class KernelBench subset; future final paper runs may expand after new contracts | Current preliminary 2^2 cells; future full factorial only after P is defined | `n=20` per sample cell target | recorded per artifact | Report-facing only when registered and not blocked by caveats |
 
 A sample cell is the unit that receives `n` samples. At minimum it is
 `(kernel_id, condition)`. If dtype, grammar variant, prompt version, or model is
@@ -58,28 +58,30 @@ Promotion requirements:
 - no prompt, grammar, harness, or eval change is made after a paper-scale run
   starts unless the run is invalidated and restarted under a new `run_id`.
 
-## Current N5/N20 Gates
+## Current Preliminary N20 Artifacts
 
-Task-agnostic `G` development-scale `n=5` is gated on evaluation alignment, not
-only on generation infrastructure. It may proceed only after:
+The current preliminary handoff has registered n=20 artifacts in
+`docs/05_artifacts_and_results_registry.md`:
 
-- Phase 1 shape schedules are shared-derived and verified;
-- Phase 2 signature gating records canonical `failure_code` values while
-  preserving legacy `compile_error_type`;
-- Phase 3 and Phase 3.4 make canonical taxonomy and grammar metadata primary in
-  analysis;
-- Phase 3.5 makes Cluster 2 replay consume canonical failure codes through the
-  shared adapter/taxonomy path;
-- Phase 4 has acceptable Modal L4 baseline revalidation evidence, or an
-  explicitly documented A10 fallback;
-- the post-Phase-4 Cluster 1 grammar hash gate has been reconciled;
-- Phase 5 cross-cluster re-audit tests pass; and
-- Phase 5.5 contracts reflect the implemented behavior.
+| Condition | Artifact | Rows | Intended rows | Current status |
+| --- | --- | ---: | ---: | --- |
+| `none` | `outputs/cluster1/baseline_repaired_l4_n20.jsonl` | 180 | 180 | authoritative control with legacy schema/provenance caveats |
+| `G` | `outputs/cluster1/task_agnostic_g_aligned_pipeline_n20_l4.jsonl` | 177 | 180 | authoritative task-agnostic G artifact with coverage caveat |
+| `C` | `outputs/cluster2/c_paper_n20_l4.jsonl` | 180 | 180 | authoritative C artifact; compile success normalized from failure code |
+| `G+C` | `outputs/cluster2/g_plus_c_paper_n20_l4.jsonl` | 177 | 180 | authoritative G+C artifact with coverage and F3 caveats |
 
-`n=20` task-agnostic G remains blocked until `n=5` passes these gates and its
-results justify promotion. Neither `n=5` nor `n=20` may be used to bypass a stale
-contract, unresolved grammar hash gate, unexplained baseline drift, or C1/C2
-entrypoint disagreement.
+Current G and G+C coverage is 177/180, not complete 180/180 coverage. Missing
+rows are `matmul/fp32` seed 5 and `matmul/bf16` seeds 0 and 18. Old n=5
+artifacts are development/legacy evidence unless explicitly promoted into the
+artifact registry.
+
+The analyzer output at `outputs/analysis/factorial_2x2_preliminary.json` is
+valid JSON and loads 714 rows, but `metadata.reportable=false`. It is
+inspectable evidence, not an official final statistical result.
+
+Current C/G+C artifacts record `max_new_tokens=2048` according to the artifact
+registry and Phase 0/7 evidence. Older `1536` token-budget references are
+historical unless a future code/config review re-promotes them for a new run.
 
 ## Phase 4 Evidence And Grammar Hash Sequencing
 
@@ -121,11 +123,14 @@ cluster3_development_P-GP-CP-GCP_k3_n5_qwen7b_20260511.jsonl
 factorial_paper_all8_k9_n20_qwen32b_20260601.jsonl
 ```
 
-Existing Cluster 1 artifacts such as
-`outputs/cluster1/baseline_repaired_l4_n20.jsonl` and
-`outputs/cluster1/final_g_l4_n20.jsonl` remain valid frozen artifacts. Future
-analysis should attach explicit `scale_tier`, `kernel_count`, `model_id`, and
-`grammar_variant` metadata to them before they are combined with other runs.
+Existing registered artifacts such as
+`outputs/cluster1/baseline_repaired_l4_n20.jsonl`,
+`outputs/cluster1/task_agnostic_g_aligned_pipeline_n20_l4.jsonl`,
+`outputs/cluster2/c_paper_n20_l4.jsonl`, and
+`outputs/cluster2/g_plus_c_paper_n20_l4.jsonl` remain the current authoritative
+2^2 artifacts. Template-G, n=5, smoke, failed, and partial artifacts are
+historical or diagnostic unless promoted into the registry with row counts,
+schema, provenance, and caveats.
 
 ## Required Run Metadata
 
@@ -177,9 +182,10 @@ Development-scale data may be plotted or summarized for engineering decisions,
 but every artifact and figure must label it as development scale. It must not
 appear in paper result tables.
 
-Paper-scale data is the only data that supports final reported claims. Paper
-tables must be generated from a manifest that lists the exact paper-scale
-artifacts, kernel IDs, model IDs, seed schedule, and git hash.
+Paper-scale or preliminary-scale data supports report-facing claims only when
+registered and not blocked by reportability caveats. Paper tables must be
+generated from a manifest or registry entry that lists the exact artifacts,
+kernel IDs, model IDs, seed schedule, and git hash where available.
 
 Aggregators must reject mixed-scale analysis by default. A mixed-scale report
 may exist only as an explicitly labeled diagnostic report.
@@ -227,18 +233,19 @@ Cluster 3 should follow the same pattern:
 one kernel, condition P, n=1 -> three kernels, active P conditions, n=3..5
 ```
 
-Only after Cluster 2 and Cluster 3 both reach stable development scale should
-the project schedule a paper-scale factorial run.
+Cluster 3/P is deferred. Do not schedule or report P-containing paper-scale
+runs until P semantics, failure boundaries, artifact schema, analyzer behavior,
+and registry rules are defined.
 
-## Paper Method Sentence
+## Preliminary Method Sentence
 
-The paper methodology should include a sentence like:
+The preliminary handoff methodology should include a sentence like:
 
-> The reported results were generated at a fixed evaluation scale of n=20
-> samples per cell across 6-9 KernelBench problems balanced across elementwise,
-> reduction, and matmul classes, using model X at temperature Y with seed
-> schedule Z. Pipeline development used a smaller subset and is not included in
-> the reported results.
+> The current preliminary registered artifacts cover the 2^2 subset over none,
+> G, C, and G+C at an n=20 target over the locked elementwise, reduction, and
+> matmul archetypes. The task-agnostic G and G+C artifacts are 177/180 and the
+> analyzer output is not official while `metadata.reportable=false`.
 
-This is the clean separation reviewers need: development scale is preserved for
-reproducibility, but only paper scale supports the paper claims.
+This preserves the separation reviewers need: development scale is preserved
+for reproducibility, while current report-facing claims must cite the registry
+and carry row-count and reportability caveats.

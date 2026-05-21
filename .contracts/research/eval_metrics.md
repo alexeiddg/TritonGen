@@ -3,19 +3,17 @@
 ## TritonGen Factorial Experiment — Shared Metrics Infrastructure
 
 **Version:** 1.0
-**Status:** research-facing metric and schema design reference.
-**Scope:** Defines every metric, its computation, gating logic, data schema, and code contract for all three clusters. The goal is a single `shared/eval/` package that every cluster imports identically, so baseline runs and experimental runs produce comparable results with zero per-cluster metric code.
+**Status:** research-facing metric and schema design reference aligned to the current documentation layer.  
+**Scope:** Defines current preliminary metric semantics and preserves future metric intent where explicitly labeled. The current report-facing scope is the 2^2 subset over `none`, `G`, `C`, and `G+C`; full 2^3 and P-containing metrics are deferred.
 
-> **Current status note (2026-05-11):** This file remains the metric and schema
-> reference, but it is not the phased implementation plan. The research scope
-> lives in `.contracts/research/research_scope.md`; internal execution notes
-> live under `.contracts/agentic/` when present. The current iteration analyzes
-> a temporary 2² subset over G and C: none, G, C, and G+C. The full 2³ factorial
-> over G, C, and P remains the defined project goal. P-containing cells are
-> deferred for this iteration and are not included in current paper-claiming
-> outputs. This is a current-status scope statement, not a methodology
-> realignment. The core metric ladder, null-field gating convention, and
-> result-schema intent remain valid.
+> **Current status note (2026-05-21):** Current citation-grade docs are
+> `docs/00_project_map.md`, `docs/05_artifacts_and_results_registry.md`,
+> `docs/06_failure_taxonomy_and_eval_ladder.md`,
+> `docs/07_analysis_and_statistics.md`, and `docs/08_decision_log.md`.
+> Current analyzer output exists at
+> `outputs/analysis/factorial_2x2_preliminary.json` and loads 714 rows, but
+> `metadata.reportable=false`. It is inspectable evidence, not an official
+> final statistical result.
 
 ---
 
@@ -25,8 +23,56 @@
 2. **Gating is code, not convention.** If Level N fails, Level N+1 metrics are JSON `null` / dataframe `NaN`. This is enforced by the `EvalResult` dataclass and the `run_eval_pipeline()` function, not by hoping each cluster remembers to check.
 3. **KernelBench alignment.** Metrics names and semantics align with KernelBench where possible (`fast_p`, `pass@k`). Where we extend beyond KernelBench (repair_iters, failure taxonomy), the extensions are additive — they never redefine a KernelBench metric.
 4. **Schema-first.** The `EvalResult` dataclass is the contract. Every downstream consumer (analysis scripts, paper tables, visualization) reads from `EvalResult` JSON. If a field is not in `EvalResult`, it does not exist.
-5. **Factor labels are canonical.** The 2³ factors are `G` (grammar), `C` (test-driven correctness feedback), and `P` (compiler/profiler repair). Use `none`, `G`, `C`, `P`, `G+C`, `G+P`, `C+P`, and `G+C+P` in result schemas. Do not add an older `T` label for test-driven feedback.
+5. **Factor labels are scoped.** The current preliminary labels are `none`, `G`, `C`, and `G+C`. P-containing labels are reserved for future Cluster 3 work and must be marked deferred or not populated until registered artifacts exist.
 6. **G acceptance is a two-layer contract.** The G factor means grammar-guided decoding plus offline semantic post-validation. XGrammar masks tokens against the GBNF grammar during generation; the offline validator then enforces structural and surface rules that the context-free grammar cannot fully express. A row is G-accepting only if both layers pass.
+
+---
+
+## Current Preliminary Metric Contract
+
+This section controls current report-facing use of the metrics in this file.
+Later sections that describe Level 3/4 or P behavior are future-facing until
+Cluster 3 defines P and registers artifacts.
+
+| Variable | Current role | Current interpretation |
+| --- | --- | --- |
+| `functional_success` | primary correctness outcome for Cluster 2 and the 2^2 analyzer | Level 2 numerical/correctness success; none/G normalize false/unproven because Cluster 1 did not run Level 2 |
+| `compile_success` | secondary structural outcome | Level 1 compile/launch success; not functional correctness |
+| `grammar_valid` | grammar-funnel diagnostic for G/G+C | joint acceptance, `gbnf_parse_valid AND semantic_valid`; not compile or functional success |
+| `failure_code` | failure-mode diagnostic and analyzer-normalization input | F0/F1/F2/F3 family semantics are defined in `docs/06_failure_taxonomy_and_eval_ladder.md` |
+
+Current normalization rules:
+
+- Cluster 1 none/G rows preserve `compile_success` separately.
+- Cluster 1 none/G rows normalize `functional_success=False` as unproven for
+  preliminary functional analysis because Level 2 was not run.
+- Cluster 2 C/G+C rows use `functional_success` as the primary correctness
+  outcome.
+- Cluster 2 C rows may require `compile_success` normalization from
+  `failure_code` because the raw field is absent.
+- F0/F1 imply `compile_success=False`; F2 implies `compile_success=True`;
+  F3 policy is evidence-sensitive and must remain caveated.
+- No performance, timing, profiling, speedup, or P metric is currently
+  reportable.
+- No official final statistical result may be quoted while analyzer
+  `metadata.reportable=false`.
+
+Current primary comparisons are paired 2^2 comparisons:
+
+| Comparison | Response | Expected pair count | Caveat |
+| --- | --- | ---: | --- |
+| C vs none | `functional_success` | 180 | matching must be explicit |
+| G+C vs G | `functional_success` | 177 | G/G+C coverage is 177/180 |
+| G vs none | `compile_success` | 177 when missing G rows are skipped | secondary structural diagnostic |
+| G+C vs C | `compile_success` | 177 when missing G+C rows are skipped | secondary structural diagnostic and F3 caveat |
+
+The current analyzer output is inspectable but not final or reportable:
+
+```text
+outputs/analysis/factorial_2x2_preliminary.json
+metadata.reportable=false
+diagnostics.rows_loaded=714
+```
 
 ---
 
@@ -1069,36 +1115,40 @@ def compute_speedup_significance(
 
 ### 5.7 Factorial Interaction Analysis
 
-The central thesis question is answered by fitting factorial models over the eight canonical cells: `none`, `G`, `C`, `P`, `G+C`, `G+P`, `C+P`, and `G+C+P`. Main effects alone answer whether each mechanism helps in isolation; interaction terms answer whether mechanisms compose additively or interfere.
-
-For current Cluster 2 paper claims, the canonical analyzer is
+The current preliminary analyzer covers the 2^2 subset over G and C: `none`,
+`G`, `C`, and `G+C`. The canonical analyzer is
 `shared/analysis/factorial.py`. Its default primary response is Level 2
 `functional_success`, not `compile_success`. The primary Cluster 2 comparisons
 are paired by replay-control seed identity: `C` versus frozen `none`, and
-`G+C` versus frozen `G`. These paired comparisons must use matched-cell
-statistics, paired bootstrap confidence intervals, McNemar-style binary
-discordance p-values, and Holm correction for the planned paired tests.
+`G+C` versus frozen `G`. These paired comparisons use matched-cell statistics,
+paired bootstrap confidence intervals, McNemar-style binary discordance
+p-values, and Holm correction where supported by the current analyzer.
 
 `compile_success` factorial output is secondary structural-validity diagnostic
 output only. It may be emitted by the same analyzer when explicitly requested,
 but it must not be used as the headline Cluster 2 result.
 
-For the current week/iteration/early testing cycle, the valid current design is
-the temporary 2² subset over G and C: `none`, `G`, `C`, and `G+C`. The analyzer
-must mark `P`, `G+P`, `C+P`, and `G+C+P` as `not_populated` and describe those
-P-containing cells as deferred for this iteration rather than treating them as
-failures or blocking current Cluster 2 tables. Current 2² outputs must not be
-described as completion of the full factorial. The full 2³ factorial over G, C,
-and P remains the defined project goal; this is a current-status scope
-statement, not a methodology realignment.
+P-containing cells are deferred. Current outputs must not be described as
+completion of the full factorial. Future full 2^3 models may use P terms only
+after Cluster 3 defines P semantics, registers P artifacts, and updates this
+contract and the artifact registry.
 
-For binary outcomes (`compile_success`, `functional_success`, `fast_tc@1.0`), use a logistic model:
+For future binary outcomes (`compile_success`, `functional_success`, or a
+registered P metric), use a logistic model. Current 2^2 functional analysis uses
+only G and C terms:
+
+```
+logit(functional_success) ~ G + C + G:C + kernel_class + dtype
+```
+
+The future full 2^3 form is reserved until P exists:
 
 ```
 logit(y) ~ G + C + P + G:C + G:P + C:P + G:C:P + kernel_class + dtype
 ```
 
-For continuous Level 4 speedups, use log-speedup as the response:
+For future continuous Level 4 speedups, use log-speedup as the response. No
+current preliminary result claims a speedup or performance metric:
 
 ```
 log(speedup_vs_compile) ~ G + C + P + G:C + G:P + C:P + G:C:P + kernel_class + dtype
