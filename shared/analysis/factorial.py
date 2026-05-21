@@ -57,7 +57,7 @@ FACTOR_NAMES = ("G", "C", "P")
 FACTOR_COLUMNS = ("grammar_active", "compiler_feedback_active", "perf_feedback_active")
 PRIMARY_RESPONSE_VARIABLE = "functional_success"
 SECONDARY_RESPONSE_VARIABLE = "compile_success"
-ANALYZER_VERSION = "factorial_alignment_v2"
+ANALYZER_VERSION = "factorial_alignment_v3_f3_eval_pipeline_policy"
 INPUT_ROLE_ALIASES = {
     "none": "none",
     "g": "G",
@@ -676,35 +676,33 @@ def _normalize_compile_success(
         return _bool_or_none(raw_compile_success)
 
     raw_failure_code = payload.get("failure_code", _MISSING_FIELD)
-    derived = (
-        None
-        if raw_failure_code is _MISSING_FIELD
-        else _cluster2_compile_success_from_failure_code(raw_failure_code)
-    )
 
-    # For Cluster 2 rows, compile_success is derived from the canonical
-    # failure_code when absent: null/F2/eval-pipeline F3 implies the row reached
-    # Level 2, therefore compile succeeded; F0/F1 implies compile did not
-    # succeed.
+    # For Cluster 2 rows, compile_success is derived only from unambiguous
+    # terminal evidence when absent. F2 failures prove Level 2 was reached, but
+    # F3_EVAL_PIPELINE is a malformed eval-payload/infrastructure failure and
+    # does not by itself prove Level 1 compile success.
     if _is_missing_value(raw_compile_success):
-        if derived is None:
+        if raw_failure_code is _MISSING_FIELD:
             raise ValueError(
                 "Cluster 2 compile_success is missing and cannot be derived "
                 "without failure_code"
                 f" for condition={condition!r}, source_path={source_path!r}, "
                 f"row_index={row_index}"
             )
-        resolved = derived
+        resolved = _cluster2_compile_success_from_failure_code(
+            raw_failure_code,
+            payload=payload,
+        )
     else:
         resolved = _bool_or_none(raw_compile_success)
-        if derived is not None and resolved != derived:
-            raise ValueError(
-                "Cluster 2 compile_success conflicts with failure_code-derived "
-                "semantics"
-                f" for condition={condition!r}, source_path={source_path!r}, "
-                f"row_index={row_index}: compile_success={resolved!r}, "
-                f"failure_code={raw_failure_code!r}, derived_compile_success={derived!r}"
-            )
+        _validate_cluster2_compile_success_consistency(
+            compile_success=resolved,
+            failure_code=raw_failure_code,
+            payload=payload,
+            condition=condition,
+            source_path=source_path,
+            row_index=row_index,
+        )
 
     if functional_success is True and resolved is False:
         raise ValueError(
@@ -715,7 +713,11 @@ def _normalize_compile_success(
     return resolved
 
 
-def _cluster2_compile_success_from_failure_code(failure_code: object) -> bool:
+def _cluster2_compile_success_from_failure_code(
+    failure_code: object,
+    *,
+    payload: Mapping[str, Any] | None = None,
+) -> bool:
     if _is_missing_value(failure_code) or failure_code == "":
         return True
     if not isinstance(failure_code, str):
@@ -723,10 +725,148 @@ def _cluster2_compile_success_from_failure_code(failure_code: object) -> bool:
             "Cluster 2 failure_code must be a string, null, or empty string; "
             f"got {failure_code!r}"
         )
-    return (
-        failure_code.startswith("F2_")
-        or failure_code == CLUSTER2_EVAL_PIPELINE_FAILURE_CODE
+    if failure_code.startswith(("F0_", "F1_")):
+        return False
+    if failure_code.startswith("F2_"):
+        return True
+    if failure_code == CLUSTER2_EVAL_PIPELINE_FAILURE_CODE:
+        return _cluster2_has_level1_compile_evidence(payload)
+    return False
+
+
+def _validate_cluster2_compile_success_consistency(
+    *,
+    compile_success: bool | None,
+    failure_code: object,
+    payload: Mapping[str, Any],
+    condition: str,
+    source_path: str | None,
+    row_index: int,
+) -> None:
+    if compile_success is None or failure_code is _MISSING_FIELD:
+        return
+    derived = _cluster2_hard_compile_requirement_from_failure_code(failure_code)
+    if derived is not None and compile_success != derived:
+        _raise_cluster2_compile_success_conflict(
+            compile_success=compile_success,
+            failure_code=failure_code,
+            derived=derived,
+            condition=condition,
+            source_path=source_path,
+            row_index=row_index,
+        )
+    if (
+        failure_code == CLUSTER2_EVAL_PIPELINE_FAILURE_CODE
+        and compile_success is False
+        and _cluster2_has_level1_compile_evidence(
+            payload,
+            include_explicit_compile_success=False,
+        )
+    ):
+        _raise_cluster2_compile_success_conflict(
+            compile_success=compile_success,
+            failure_code=failure_code,
+            derived=True,
+            condition=condition,
+            source_path=source_path,
+            row_index=row_index,
+        )
+
+
+def _cluster2_hard_compile_requirement_from_failure_code(
+    failure_code: object,
+) -> bool | None:
+    if _is_missing_value(failure_code) or failure_code == "":
+        return True
+    if not isinstance(failure_code, str):
+        raise ValueError(
+            "Cluster 2 failure_code must be a string, null, or empty string; "
+            f"got {failure_code!r}"
+        )
+    if failure_code.startswith(("F0_", "F1_")):
+        return False
+    if failure_code.startswith("F2_"):
+        return True
+    if failure_code == CLUSTER2_EVAL_PIPELINE_FAILURE_CODE:
+        return None
+    return False
+
+
+def _raise_cluster2_compile_success_conflict(
+    *,
+    compile_success: bool,
+    failure_code: object,
+    derived: bool,
+    condition: str,
+    source_path: str | None,
+    row_index: int,
+) -> None:
+    raise ValueError(
+        "Cluster 2 compile_success conflicts with failure_code-derived "
+        "semantics"
+        f" for condition={condition!r}, source_path={source_path!r}, "
+        f"row_index={row_index}: compile_success={compile_success!r}, "
+        f"failure_code={failure_code!r}, derived_compile_success={derived!r}"
     )
+
+
+def _cluster2_has_level1_compile_evidence(
+    payload: Mapping[str, Any] | None,
+    *,
+    include_explicit_compile_success: bool = True,
+) -> bool:
+    if payload is None:
+        return False
+    if include_explicit_compile_success and payload.get("compile_success") is True:
+        return True
+    if payload.get("level1_success") is True:
+        return True
+    if _level_reached_at_least_two(payload.get("level_reached")):
+        return True
+    if _level_reached_at_least_two(payload.get("reached_level")):
+        return True
+    if _eval_stage_reached_level2(payload.get("eval_stage")):
+        return True
+    for key in ("compile_result", "correctness_result"):
+        value = payload.get(key)
+        if isinstance(value, Mapping) and _mapping_has_level1_compile_evidence(value):
+            return True
+    return False
+
+
+def _mapping_has_level1_compile_evidence(value: Mapping[str, Any]) -> bool:
+    if value.get("compile_success") is True:
+        return True
+    if value.get("success") is True:
+        return True
+    if value.get("level1_success") is True:
+        return True
+    if _level_reached_at_least_two(value.get("level_reached")):
+        return True
+    if _level_reached_at_least_two(value.get("reached_level")):
+        return True
+    return _eval_stage_reached_level2(value.get("eval_stage"))
+
+
+def _level_reached_at_least_two(value: object) -> bool:
+    if _is_missing_value(value) or isinstance(value, bool):
+        return False
+    if isinstance(value, (int, np.integer)):
+        return int(value) >= 2
+    return False
+
+
+def _eval_stage_reached_level2(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    normalized = value.strip().lower().replace("-", "_")
+    return normalized in {
+        "level2",
+        "level_2",
+        "level2_correctness",
+        "level_2_correctness",
+        "correctness",
+    }
 
 
 def _condition_factors(condition: str) -> dict[str, bool]:
