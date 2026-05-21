@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -11,6 +12,7 @@ import pytest
 
 from shared.analysis.factorial import (
     analyze_factorial,
+    normalize_result_rows,
     validate_paired_replay_dataframe,
 )
 
@@ -217,6 +219,88 @@ def test_primary_analysis_skips_partial_compile_success_summary() -> None:
         == "not_emitted_partial_missing"
     )
     assert result["diagnostics"]["secondary_compile_summary"]["missing_rows"] == 1
+
+
+def test_cluster1_none_missing_functional_success_normalizes_false() -> None:
+    normalized = normalize_result_rows(
+        [{"compile_success": False}],
+        input_role="none",
+    )
+
+    row = normalized.iloc[0]
+    assert row["condition"] == "none"
+    assert bool(row["functional_success"]) is False
+    assert bool(row["compile_success"]) is False
+
+
+def test_cluster1_g_compile_success_true_missing_functional_success_normalizes_false() -> None:
+    normalized = normalize_result_rows(
+        [{"compile_success": True}],
+        input_role="g",
+    )
+
+    row = normalized.iloc[0]
+    assert row["condition"] == "G"
+    assert bool(row["functional_success"]) is False
+    assert bool(row["compile_success"]) is True
+
+
+def test_cluster1_g_compile_success_false_missing_functional_success_normalizes_false() -> None:
+    normalized = normalize_result_rows(
+        [{"compile_success": False}],
+        input_role="g",
+    )
+
+    row = normalized.iloc[0]
+    assert row["condition"] == "G"
+    assert bool(row["functional_success"]) is False
+    assert bool(row["compile_success"]) is False
+
+
+def test_cluster1_accidental_functional_success_true_is_overridden_false() -> None:
+    normalized = normalize_result_rows(
+        [{"compile_success": True, "functional_success": True}],
+        input_role="g",
+    )
+
+    row = normalized.iloc[0]
+    assert row["condition"] == "G"
+    assert bool(row["functional_success"]) is False
+    assert bool(row["compile_success"]) is True
+
+
+def test_cluster2_functional_success_is_not_overridden_by_role() -> None:
+    normalized = normalize_result_rows(
+        [
+            {
+                "condition": "C",
+                "compile_success": True,
+                "functional_success": True,
+            }
+        ],
+        input_role="c",
+    )
+
+    row = normalized.iloc[0]
+    assert row["condition"] == "C"
+    assert bool(row["functional_success"]) is True
+    assert bool(row["compile_success"]) is True
+
+
+def test_cluster1_real_artifact_samples_normalize_functional_success_false() -> None:
+    samples = {
+        "none": Path("outputs/cluster1/baseline_repaired_l4_n20.jsonl"),
+        "G": Path("outputs/cluster1/task_agnostic_g_aligned_pipeline_n20_l4.jsonl"),
+    }
+    for condition, path in samples.items():
+        if not path.exists():
+            pytest.skip(f"missing artifact sample: {path}")
+        rows = _jsonl_sample(path, limit=5)
+
+        normalized = normalize_result_rows(rows, source_path=str(path))
+
+        assert set(normalized["condition"]) == {condition}
+        assert normalized["functional_success"].eq(False).all()
 
 
 def test_primary_analysis_rejects_missing_functional_success() -> None:
@@ -743,3 +827,14 @@ def _generated_pair_metadata(
     )
     metadata["replay_control_condition"] = control_condition
     return metadata
+
+
+def _jsonl_sample(path: Path, *, limit: int) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        rows.append(json.loads(line))
+        if len(rows) == limit:
+            break
+    return rows

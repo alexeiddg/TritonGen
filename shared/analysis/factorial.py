@@ -58,6 +58,17 @@ FACTOR_COLUMNS = ("grammar_active", "compiler_feedback_active", "perf_feedback_a
 PRIMARY_RESPONSE_VARIABLE = "functional_success"
 SECONDARY_RESPONSE_VARIABLE = "compile_success"
 ANALYZER_VERSION = "factorial_alignment_v2"
+INPUT_ROLE_ALIASES = {
+    "none": "none",
+    "g": "G",
+    "G": "G",
+    "c": "C",
+    "C": "C",
+    "gc": "G+C",
+    "g+c": "G+C",
+    "G+C": "G+C",
+}
+CLUSTER1_COMPILE_ONLY_CONDITIONS = frozenset({"none", "G"})
 
 PAIRED_REPLAY_COMPARISONS = {"C": "none", "G+C": "G"}
 PAIR_KEY_COLUMNS = ("kernel_class", "kernel_id", "dtype", "base_seed")
@@ -86,7 +97,11 @@ CURRENT_STATUS_SCOPE_STATEMENT = (
 )
 
 
-def load_results(jsonl_path: Path) -> pd.DataFrame:
+def load_results(
+    jsonl_path: Path,
+    *,
+    input_role: str | None = None,
+) -> pd.DataFrame:
     """Load and normalize one EvalResult-shaped JSONL file."""
 
     rows = [
@@ -94,13 +109,31 @@ def load_results(jsonl_path: Path) -> pd.DataFrame:
         for line in jsonl_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    return normalize_result_rows(rows, source_path=str(jsonl_path))
+    return normalize_result_rows(
+        rows,
+        source_path=str(jsonl_path),
+        input_role=input_role,
+    )
 
 
-def load_result_paths(paths: Sequence[Path]) -> pd.DataFrame:
+def load_result_paths(
+    paths: Sequence[Path],
+    *,
+    input_roles: Sequence[str | None] | None = None,
+) -> pd.DataFrame:
     """Load and normalize one or more EvalResult JSONL paths."""
 
-    frames = [load_results(path) for path in paths]
+    role_list: Sequence[str | None]
+    if input_roles is None:
+        role_list = [None] * len(paths)
+    else:
+        if len(input_roles) != len(paths):
+            raise ValueError("input_roles length must match input paths length")
+        role_list = input_roles
+    frames = [
+        load_results(path, input_role=input_role)
+        for path, input_role in zip(paths, role_list, strict=True)
+    ]
     if not frames:
         raise ValueError("at least one input path is required")
     return pd.concat(frames, ignore_index=True)
@@ -124,10 +157,12 @@ def normalize_result_rows(
     rows: Iterable[Mapping[str, Any] | Any],
     *,
     source_path: str | None = None,
+    input_role: str | None = None,
 ) -> pd.DataFrame:
     """Normalize current EvalResult and Cluster 2 row shapes for analysis."""
 
     normalized: list[dict[str, Any]] = []
+    input_role_condition = _normalize_input_role(input_role)
     for row_index, row in enumerate(rows):
         payload = _row_to_dict(row)
         generated_metadata = _metadata_dict(payload.get("generated_metadata"))
@@ -146,7 +181,21 @@ def normalize_result_rows(
             "generation_index",
             default=0,
         )
-        condition = _normalize_condition(payload)
+        condition = _normalize_condition(
+            payload,
+            input_role_condition=input_role_condition,
+        )
+        functional_success = _bool_or_none(payload.get("functional_success"))
+        if _is_cluster1_compile_only_scope(
+            condition=condition,
+            input_role_condition=input_role_condition,
+            source_path=source_path,
+        ):
+            # Cluster 1 is compile-only and does not run Level 2 correctness. For
+            # factorial functional-success analysis, Cluster 1 rows normalize to
+            # functional_success=False; compile_success is preserved separately
+            # as a compile metric.
+            functional_success = False
         record = dict(payload)
         record.update(
             {
@@ -164,7 +213,7 @@ def normalize_result_rows(
                 "base_seed": _int_or_none(base_seed),
                 "attempt_index": _int_or_none(attempt_index),
                 "compile_success": _bool_or_none(payload.get("compile_success")),
-                "functional_success": _bool_or_none(payload.get("functional_success")),
+                "functional_success": functional_success,
                 "scale_tier": _first_present(payload, "scale_tier", default="unspecified"),
                 "grammar_variant": _first_present(
                     payload,
@@ -469,6 +518,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--inputs", nargs="+", type=Path, required=True)
     parser.add_argument(
+        "--input-roles",
+        nargs="+",
+        default=None,
+        help="Optional per-input roles: none, g, c, gc.",
+    )
+    parser.add_argument(
         "--response-variable",
         choices=(PRIMARY_RESPONSE_VARIABLE, SECONDARY_RESPONSE_VARIABLE),
         default=PRIMARY_RESPONSE_VARIABLE,
@@ -481,7 +536,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--bootstrap-seed", type=int, default=BOOTSTRAP_SEED)
     args = parser.parse_args(argv)
 
-    df = load_result_paths(args.inputs)
+    df = load_result_paths(args.inputs, input_roles=args.input_roles)
     result = analyze_factorial(
         df,
         response_variable=args.response_variable,
@@ -543,19 +598,59 @@ def _metadata_dict(value: object) -> dict[str, Any] | None:
     raise TypeError("metadata fields must be mappings when present")
 
 
-def _normalize_condition(payload: Mapping[str, Any]) -> str:
+def _normalize_input_role(input_role: str | None) -> str | None:
+    if input_role is None:
+        return None
+    key = str(input_role).strip()
+    if not key:
+        raise ValueError("input_role must not be empty")
+    normalized = INPUT_ROLE_ALIASES.get(key, INPUT_ROLE_ALIASES.get(key.lower()))
+    if normalized is None:
+        raise ValueError(f"unexpected analyzer input role: {input_role!r}")
+    return normalized
+
+
+def _normalize_condition(
+    payload: Mapping[str, Any],
+    *,
+    input_role_condition: str | None = None,
+) -> str:
     condition = payload.get("condition")
     if not _is_missing_value(condition):
         condition_text = str(condition)
         if condition_text not in CANONICAL_CONDITIONS:
             raise ValueError(f"unexpected non-canonical condition: {condition_text!r}")
+        if input_role_condition is not None and input_role_condition != condition_text:
+            raise ValueError(
+                f"input role {input_role_condition!r} does not match row "
+                f"condition {condition_text!r}"
+            )
         return condition_text
+    if input_role_condition is not None:
+        return input_role_condition
     factors = {
         "G": bool(payload.get("grammar_active", False)),
         "C": bool(payload.get("compiler_feedback_active", False)),
         "P": bool(payload.get("perf_feedback_active", False)),
     }
     return _factors_to_condition(factors)
+
+
+def _is_cluster1_compile_only_scope(
+    *,
+    condition: str,
+    input_role_condition: str | None,
+    source_path: str | None,
+) -> bool:
+    if input_role_condition in CLUSTER1_COMPILE_ONLY_CONDITIONS:
+        return True
+    if input_role_condition in {"C", "G+C"}:
+        return False
+    return (
+        condition in CLUSTER1_COMPILE_ONLY_CONDITIONS
+        and source_path is not None
+        and "cluster1" in Path(source_path).parts
+    )
 
 
 def _condition_factors(condition: str) -> dict[str, bool]:
