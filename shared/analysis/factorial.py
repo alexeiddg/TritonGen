@@ -11,6 +11,7 @@ defined project goal.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import random
@@ -18,6 +19,7 @@ import sys
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
+from statistics import NormalDist
 from typing import Any
 
 import numpy as np
@@ -74,6 +76,7 @@ CLUSTER2_EVAL_PIPELINE_FAILURE_CODE = "F3_EVAL_PIPELINE"
 _MISSING_FIELD = object()
 
 PAIRED_REPLAY_COMPARISONS = {"C": "none", "G+C": "G"}
+SECONDARY_COMPILE_COMPARISONS = {"G": "none", "G+C": "C"}
 PAIR_KEY_COLUMNS = ("kernel_class", "kernel_id", "dtype", "base_seed")
 UNAVAILABLE_FROZEN_REVISION = "unavailable_in_frozen_cluster1_artifact"
 MODE_COLLAPSE_FLAG = "mode_collapse_warning"
@@ -321,6 +324,7 @@ def analyze_factorial(
     _validate_conditions(df)
     scale_tiers = _validate_scale_tiers(df, allow_mixed_scale=allow_mixed_scale)
     _validate_response(df, response_variable, scope)
+    _validate_prompt_parity(df)
 
     populated_cells = tuple(
         condition
@@ -348,7 +352,10 @@ def analyze_factorial(
     cell_summaries = [
         row
         for variable in summary_variables
-        for row in _cell_summaries(df, response_variable=variable)
+        for row in _cell_summaries(
+            _summary_dataframe_for_response(df, variable),
+            response_variable=variable,
+        )
     ]
 
     paired_comparisons = _paired_comparison_rows(
@@ -360,6 +367,18 @@ def analyze_factorial(
         bootstrap_seed=bootstrap_seed,
     )
     paired_comparisons = _apply_paired_holm(paired_comparisons)
+    if _should_emit_secondary_compile_summary(df, response_variable=response_variable):
+        secondary_compile_comparisons = _secondary_compile_comparison_rows(
+            df,
+            populated_cells=populated_cells,
+            bootstrap_samples=bootstrap_samples,
+            bootstrap_seed=bootstrap_seed,
+        )
+        paired_comparisons.extend(
+            _apply_paired_holm(
+                secondary_compile_comparisons,
+            )
+        )
 
     factorial_model = _factorial_model(
         cell_outcomes,
@@ -405,9 +424,11 @@ def analyze_factorial(
             allow_mixed_scale=allow_mixed_scale,
         ),
         "interpretation_flags": global_flags,
+        **_f3_and_coverage_metadata(df),
     }
     result = {
         "metadata": metadata,
+        "condition_rates": _condition_rate_summaries(df),
         "cell_summaries": cell_summaries,
         "paired_comparisons": paired_comparisons,
         "factorial_model": factorial_model,
@@ -521,6 +542,81 @@ def paired_replay_summary(
     paired["treatment_condition"] = treatment_condition
     paired["control_condition"] = resolved_control
     paired["response_variable"] = response_variable
+    return paired
+
+
+def paired_condition_summary(
+    df: pd.DataFrame,
+    *,
+    treatment_condition: str,
+    control_condition: str,
+    response_variable: str,
+    allow_incomplete_coverage: bool = False,
+) -> pd.DataFrame:
+    """Return paired binary outcomes for arbitrary tuple-matched conditions."""
+
+    df = _ensure_pair_identity_columns(df)
+    _require_columns(
+        df,
+        ("condition", response_variable, "attempt_index", *PAIR_KEY_COLUMNS),
+    )
+    _require_non_missing_pair_keys(df)
+    subset = df[df["condition"].isin({treatment_condition, control_condition})]
+    if subset[response_variable].isna().any():
+        raise ValueError(
+            f"missing {response_variable} values in paired condition dataframe"
+        )
+    treatment = subset[subset["condition"] == treatment_condition]
+    control = subset[subset["condition"] == control_condition]
+    if treatment.empty or control.empty:
+        raise ValueError("paired condition analysis requires both treatment and control rows")
+
+    treatment_keys = _unique_pair_keys(treatment, allow_repeated_attempts=True)
+    control_keys = _unique_pair_keys(control, allow_repeated_attempts=True)
+    if treatment_keys != control_keys:
+        missing_control = treatment_keys - control_keys
+        missing_treatment = control_keys - treatment_keys
+        if not allow_incomplete_coverage:
+            raise ValueError(
+                "paired condition dataframe has unmatched seed rows: "
+                f"missing_control={sorted(missing_control)}, "
+                f"missing_treatment={sorted(missing_treatment)}"
+            )
+        common_keys = treatment_keys & control_keys
+        if not common_keys:
+            raise ValueError(
+                "paired condition dataframe has no matched seed rows after "
+                "coverage filtering: "
+                f"missing_control={sorted(missing_control)}, "
+                f"missing_treatment={sorted(missing_treatment)}"
+            )
+        treatment = _filter_pair_keys(treatment, common_keys)
+        control = _filter_pair_keys(control, common_keys)
+    else:
+        missing_control = set()
+        missing_treatment = set()
+    treatment_outcomes = (
+        treatment.groupby(list(PAIR_KEY_COLUMNS), dropna=False)[response_variable]
+        .any()
+        .rename("treatment_success")
+    )
+    control_outcomes = (
+        control.groupby(list(PAIR_KEY_COLUMNS), dropna=False)[response_variable]
+        .any()
+        .rename("control_success")
+    )
+    paired = pd.concat([treatment_outcomes, control_outcomes], axis=1).reset_index()
+    paired["paired_lift"] = paired["treatment_success"].astype(int) - paired[
+        "control_success"
+    ].astype(int)
+    paired["treatment_condition"] = treatment_condition
+    paired["control_condition"] = control_condition
+    paired["response_variable"] = response_variable
+    paired.attrs["missing_control_pairs"] = sorted(missing_control, key=_pair_key_sort_key)
+    paired.attrs["missing_treatment_pairs"] = sorted(
+        missing_treatment,
+        key=_pair_key_sort_key,
+    )
     return paired
 
 
@@ -1054,6 +1150,138 @@ def _cell_summaries(
     return rows
 
 
+def _summary_dataframe_for_response(
+    df: pd.DataFrame,
+    response_variable: str,
+) -> pd.DataFrame:
+    if response_variable == SECONDARY_RESPONSE_VARIABLE:
+        return _compile_success_rate_dataframe(df)
+    return df
+
+
+def _compile_success_rate_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    if "failure_code" not in df.columns:
+        return df
+    return df[df["failure_code"] != CLUSTER2_EVAL_PIPELINE_FAILURE_CODE]
+
+
+def _condition_rate_summaries(df: pd.DataFrame) -> dict[str, dict[str, Any]]:
+    summaries: dict[str, dict[str, Any]] = {}
+    functional = (
+        _cell_outcome_frame(df, response_variable=PRIMARY_RESPONSE_VARIABLE)
+        if PRIMARY_RESPONSE_VARIABLE in df.columns
+        and df[PRIMARY_RESPONSE_VARIABLE].notna().all()
+        else pd.DataFrame()
+    )
+    compile_complete = (
+        SECONDARY_RESPONSE_VARIABLE in df.columns
+        and df[SECONDARY_RESPONSE_VARIABLE].notna().all()
+    )
+    compile_outcomes = (
+        _cell_outcome_frame(
+            _compile_success_rate_dataframe(df),
+            response_variable=SECONDARY_RESPONSE_VARIABLE,
+        )
+        if compile_complete
+        else pd.DataFrame()
+    )
+    compile_matched_outcomes = (
+        _cell_outcome_frame(df, response_variable=SECONDARY_RESPONSE_VARIABLE)
+        if compile_complete
+        else pd.DataFrame()
+    )
+    f3_counts = _f3_excluded_counts(df)
+    for condition in sorted(set(df["condition"]), key=CANONICAL_CONDITIONS.index):
+        record: dict[str, Any] = {"condition": condition}
+        if functional.empty:
+            functional_successes = None
+            functional_n = 0
+            functional_rate = None
+            functional_ci = None
+        else:
+            functional_group = functional[functional["condition"] == condition]
+            functional_successes = int(functional_group["success"].sum())
+            functional_n = int(len(functional_group))
+            functional_rate = (
+                functional_successes / functional_n if functional_n else None
+            )
+            functional_ci = _wilson_ci(functional_successes, functional_n)
+        record.update(
+            {
+                "functional_success_successes": functional_successes,
+                "functional_success_n": functional_n,
+                "functional_success_rate": functional_rate,
+                "functional_success_wilson_ci_95": functional_ci,
+            }
+        )
+
+        if not compile_complete:
+            record.update(
+                {
+                    "compile_success_successes": None,
+                    "compile_success_n": 0,
+                    "compile_success_rate": None,
+                    "compile_success_wilson_ci_95": None,
+                    "compile_success_f3_excluded": f3_counts.get(condition, 0),
+                    "compile_success_matched_analysis_successes": None,
+                    "compile_success_matched_analysis_n": 0,
+                    "compile_success_matched_analysis_rate": None,
+                }
+            )
+        else:
+            if compile_outcomes.empty:
+                compile_successes = 0
+                compile_n = 0
+            else:
+                compile_group = compile_outcomes[
+                    compile_outcomes["condition"] == condition
+                ]
+                compile_successes = int(compile_group["success"].sum())
+                compile_n = int(len(compile_group))
+            compile_group_all = compile_matched_outcomes[
+                compile_matched_outcomes["condition"] == condition
+            ]
+            compile_all_successes = int(compile_group_all["success"].sum())
+            compile_all_n = int(len(compile_group_all))
+            compile_ci = _wilson_ci(compile_successes, compile_n)
+            record.update(
+                {
+                    "compile_success_successes": compile_successes,
+                    "compile_success_n": compile_n,
+                    "compile_success_rate": (
+                        compile_successes / compile_n if compile_n else None
+                    ),
+                    "compile_success_wilson_ci_95": compile_ci,
+                    "compile_success_f3_excluded": f3_counts.get(condition, 0),
+                    "compile_success_matched_analysis_successes": compile_all_successes,
+                    "compile_success_matched_analysis_n": compile_all_n,
+                    "compile_success_matched_analysis_rate": (
+                        compile_all_successes / compile_all_n if compile_all_n else None
+                    ),
+                }
+            )
+        summaries[condition] = record
+    return summaries
+
+
+def _wilson_ci(successes: int, n: int) -> list[float] | None:
+    if n == 0:
+        return None
+    confidence = CI_LEVEL
+    alpha = 1.0 - confidence
+    z = NormalDist().inv_cdf(1.0 - alpha / 2.0)
+    phat = successes / n
+    z2 = z * z
+    denominator = 1.0 + z2 / n
+    center = (phat + z2 / (2.0 * n)) / denominator
+    half_width = (
+        z
+        * math.sqrt((phat * (1.0 - phat) / n) + (z2 / (4.0 * n * n)))
+        / denominator
+    )
+    return [max(0.0, center - half_width), min(1.0, center + half_width)]
+
+
 def _summary_subset(
     df: pd.DataFrame,
     group_cols: Sequence[str],
@@ -1123,71 +1351,153 @@ def _paired_comparison_rows(
             control_condition=control_condition,
             response_variable=response_variable,
         )
-        treatment_values = paired["treatment_success"].astype(bool).tolist()
-        control_values = paired["control_success"].astype(bool).tolist()
-        n_pairs = len(paired)
-        treatment_rate = sum(treatment_values) / n_pairs
-        control_rate = sum(control_values) / n_pairs
-        absolute_lift = treatment_rate - control_rate
-        ci_low, ci_high = _paired_bootstrap_ci(
-            treatment_values,
-            control_values,
-            samples=bootstrap_samples,
-            seed=bootstrap_seed,
-        )
-        treatment_only = sum(t and not c for t, c in zip(treatment_values, control_values))
-        control_only = sum(c and not t for t, c in zip(treatment_values, control_values))
         flags = []
         if response_variable == SECONDARY_RESPONSE_VARIABLE:
             flags.extend(["diagnostic_only", "strict_surface_metric"])
         if any(condition not in populated_cells for condition in P_CONDITIONS):
             flags.append("p_cells_not_populated")
-        treatment_label = _condition_label_from_df(df, treatment_condition)
-        control_label = _condition_label_from_df(df, control_condition)
         rows.append(
-            {
-                "metric_name": _metric_name(response_variable),
-                "response_variable": response_variable,
-                "comparison": f"{treatment_condition} vs {control_condition}",
-                "comparison_label": f"{treatment_label} vs {control_label}",
-                "condition_a": control_condition,
-                "condition_b": treatment_condition,
-                "control_condition": control_condition,
-                "treatment_condition": treatment_condition,
-                "n_pairs": n_pairs,
-                "success_rate_a": control_rate,
-                "success_rate_b": treatment_rate,
-                "control_rate": control_rate,
-                "treatment_rate": treatment_rate,
-                "absolute_lift": absolute_lift,
-                "relative_lift": (
-                    None if control_rate == 0 else absolute_lift / control_rate
+            _paired_comparison_record(
+                df,
+                paired=paired,
+                treatment_condition=treatment_condition,
+                control_condition=control_condition,
+                response_variable=response_variable,
+                populated_cells=populated_cells,
+                bootstrap_samples=bootstrap_samples,
+                bootstrap_seed=bootstrap_seed,
+                interpretation_flags=flags,
+                comparison_role=(
+                    "primary"
+                    if response_variable == PRIMARY_RESPONSE_VARIABLE
+                    else "secondary_diagnostic"
                 ),
-                "ci_low": ci_low,
-                "ci_high": ci_high,
-                "ci_level": CI_LEVEL,
-                "p_value": _mcnemar_exact_p_value(treatment_only, control_only),
-                "p_value_holm": None,
-                "multiple_testing_method": MULTIPLE_TESTING_METHOD,
-                "paired_analysis": True,
-                "discordant_treatment_only": treatment_only,
-                "discordant_control_only": control_only,
-                "concordant_success": sum(t and c for t, c in zip(treatment_values, control_values)),
-                "concordant_failure": sum(
-                    not t and not c for t, c in zip(treatment_values, control_values)
-                ),
-                "bootstrap_samples": bootstrap_samples,
-                "bootstrap_seed": bootstrap_seed,
-                "cells_populated": list(populated_cells),
-                "cells_missing": [
-                    condition
-                    for condition in CANONICAL_CONDITIONS
-                    if condition not in populated_cells
-                ],
-                "interpretation_flags": flags,
-            }
+            )
         )
     return rows
+
+
+def _secondary_compile_comparison_rows(
+    df: pd.DataFrame,
+    *,
+    populated_cells: Sequence[str],
+    bootstrap_samples: int,
+    bootstrap_seed: int,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for treatment_condition, control_condition in SECONDARY_COMPILE_COMPARISONS.items():
+        if treatment_condition not in populated_cells or control_condition not in populated_cells:
+            continue
+        paired = paired_condition_summary(
+            df,
+            treatment_condition=treatment_condition,
+            control_condition=control_condition,
+            response_variable=SECONDARY_RESPONSE_VARIABLE,
+            allow_incomplete_coverage=True,
+        )
+        flags = ["diagnostic_only", "strict_surface_metric"]
+        if paired.attrs.get("missing_control_pairs") or paired.attrs.get(
+            "missing_treatment_pairs"
+        ):
+            flags.append("coverage_warning_skip_missing")
+        if any(condition not in populated_cells for condition in P_CONDITIONS):
+            flags.append("p_cells_not_populated")
+        rows.append(
+            _paired_comparison_record(
+                df,
+                paired=paired,
+                treatment_condition=treatment_condition,
+                control_condition=control_condition,
+                response_variable=SECONDARY_RESPONSE_VARIABLE,
+                populated_cells=populated_cells,
+                bootstrap_samples=bootstrap_samples,
+                bootstrap_seed=bootstrap_seed,
+                interpretation_flags=flags,
+                comparison_role="secondary_diagnostic",
+            )
+        )
+    return rows
+
+
+def _paired_comparison_record(
+    df: pd.DataFrame,
+    *,
+    paired: pd.DataFrame,
+    treatment_condition: str,
+    control_condition: str,
+    response_variable: str,
+    populated_cells: Sequence[str],
+    bootstrap_samples: int,
+    bootstrap_seed: int,
+    interpretation_flags: Sequence[str],
+    comparison_role: str,
+) -> dict[str, Any]:
+    treatment_values = paired["treatment_success"].astype(bool).tolist()
+    control_values = paired["control_success"].astype(bool).tolist()
+    n_pairs = len(paired)
+    treatment_rate = sum(treatment_values) / n_pairs
+    control_rate = sum(control_values) / n_pairs
+    absolute_lift = treatment_rate - control_rate
+    ci_low, ci_high = _paired_bootstrap_ci(
+        treatment_values,
+        control_values,
+        samples=bootstrap_samples,
+        seed=bootstrap_seed,
+    )
+    treatment_only = sum(t and not c for t, c in zip(treatment_values, control_values))
+    control_only = sum(c and not t for t, c in zip(treatment_values, control_values))
+    treatment_label = _condition_label_from_df(df, treatment_condition)
+    control_label = _condition_label_from_df(df, control_condition)
+    return {
+        "metric_name": _metric_name(response_variable),
+        "response_variable": response_variable,
+        "comparison_role": comparison_role,
+        "comparison": f"{treatment_condition} vs {control_condition}",
+        "comparison_label": f"{treatment_label} vs {control_label}",
+        "condition_a": control_condition,
+        "condition_b": treatment_condition,
+        "control_condition": control_condition,
+        "treatment_condition": treatment_condition,
+        "n_pairs": n_pairs,
+        "success_rate_a": control_rate,
+        "success_rate_b": treatment_rate,
+        "control_rate": control_rate,
+        "treatment_rate": treatment_rate,
+        "absolute_lift": absolute_lift,
+        "relative_lift": None if control_rate == 0 else absolute_lift / control_rate,
+        "ci_low": ci_low,
+        "ci_high": ci_high,
+        "ci_level": CI_LEVEL,
+        "p_value": _mcnemar_exact_p_value(treatment_only, control_only),
+        "p_value_holm": None,
+        "multiple_testing_method": MULTIPLE_TESTING_METHOD,
+        "paired_analysis": True,
+        "discordant_treatment_only": treatment_only,
+        "discordant_control_only": control_only,
+        "concordant_success": sum(
+            t and c for t, c in zip(treatment_values, control_values)
+        ),
+        "concordant_failure": sum(
+            not t and not c for t, c in zip(treatment_values, control_values)
+        ),
+        "missing_control_pairs": [
+            _pair_key_to_dict(key)
+            for key in paired.attrs.get("missing_control_pairs", [])
+        ],
+        "missing_treatment_pairs": [
+            _pair_key_to_dict(key)
+            for key in paired.attrs.get("missing_treatment_pairs", [])
+        ],
+        "bootstrap_samples": bootstrap_samples,
+        "bootstrap_seed": bootstrap_seed,
+        "cells_populated": list(populated_cells),
+        "cells_missing": [
+            condition
+            for condition in CANONICAL_CONDITIONS
+            if condition not in populated_cells
+        ],
+        "interpretation_flags": list(interpretation_flags),
+    }
 
 
 def _condition_label_from_df(df: pd.DataFrame, condition: str) -> str:
@@ -1287,6 +1597,11 @@ def _factorial_model(
     fit_result = _fit_binary_logistic_irls(design, y, column_names)
     warnings.extend(fit_result["warnings"])
     coefficient_map = fit_result["coefficients"]
+    standard_error_map = fit_result.get("standard_errors", {})
+    logistic_interaction_ci = _logistic_coefficient_ci(
+        coefficient_map.get("G:C"),
+        standard_error_map.get("G:C"),
+    )
 
     return {
         "response_variable": response_variable,
@@ -1298,10 +1613,19 @@ def _factorial_model(
         "n_observations": int(len(cell_outcomes)),
         "rank": rank,
         "iterations": fit_result["iterations"],
+        "interaction_logistic_coefficient": coefficient_map.get("G:C"),
+        "interaction_logistic_ci_95": logistic_interaction_ci,
+        "interaction_additive_did": _additive_difference_in_differences(
+            cell_outcomes,
+        ),
         "terms": [
             {
                 "term": term,
                 "coefficient": coefficient_map.get(term),
+                "ci_95": _logistic_coefficient_ci(
+                    coefficient_map.get(term),
+                    standard_error_map.get(term),
+                ),
                 "direction": _direction(coefficient_map.get(term)),
             }
             for term in factor_terms
@@ -1328,6 +1652,7 @@ def _fit_binary_logistic_irls(
         return {
             "status": "not_fit",
             "coefficients": unavailable,
+            "standard_errors": unavailable,
             "iterations": 0,
             "warnings": ["model_outcome_has_single_class"],
         }
@@ -1335,6 +1660,7 @@ def _fit_binary_logistic_irls(
         return {
             "status": "not_fit",
             "coefficients": unavailable,
+            "standard_errors": unavailable,
             "iterations": 0,
             "warnings": ["model_design_rank_deficient"],
         }
@@ -1356,10 +1682,16 @@ def _fit_binary_logistic_irls(
             return {
                 "status": "not_fit",
                 "coefficients": unavailable,
+                "standard_errors": unavailable,
                 "iterations": iteration,
                 "warnings": ["model_separation_detected"],
             }
         if np.max(np.abs(next_coefficients - coefficients)) < LOGISTIC_TOLERANCE:
+            standard_errors, se_warnings = _logistic_standard_errors(
+                design,
+                next_coefficients,
+                column_names,
+            )
             return {
                 "status": "fit",
                 "coefficients": {
@@ -1370,17 +1702,60 @@ def _fit_binary_logistic_irls(
                         strict=True,
                     )
                 },
+                "standard_errors": standard_errors,
                 "iterations": iteration,
-                "warnings": [],
+                "warnings": se_warnings,
             }
         coefficients = next_coefficients
 
     return {
         "status": "not_fit",
         "coefficients": unavailable,
+        "standard_errors": unavailable,
         "iterations": LOGISTIC_MAX_ITERATIONS,
         "warnings": ["model_logistic_fit_did_not_converge"],
     }
+
+
+def _logistic_standard_errors(
+    design: np.ndarray,
+    coefficients: np.ndarray,
+    column_names: Sequence[str],
+) -> tuple[dict[str, float | None], list[str]]:
+    eta = np.clip(design @ coefficients, -LOGISTIC_ETA_CLIP, LOGISTIC_ETA_CLIP)
+    probabilities = 1.0 / (1.0 + np.exp(-eta))
+    weights = np.maximum(probabilities * (1.0 - probabilities), LOGISTIC_MIN_WEIGHT)
+    information = design.T @ (design * weights[:, None])
+    try:
+        covariance = np.linalg.inv(information)
+    except np.linalg.LinAlgError:
+        return {column: None for column in column_names}, ["model_ci_unavailable"]
+    standard_errors = np.sqrt(np.maximum(np.diag(covariance), 0.0))
+    return {
+        column: float(value)
+        for column, value in zip(column_names, standard_errors, strict=True)
+    }, []
+
+
+def _logistic_coefficient_ci(
+    coefficient: float | None,
+    standard_error: float | None,
+) -> list[float] | None:
+    if coefficient is None or standard_error is None:
+        return None
+    alpha = 1.0 - CI_LEVEL
+    z = NormalDist().inv_cdf(1.0 - alpha / 2.0)
+    return [coefficient - z * standard_error, coefficient + z * standard_error]
+
+
+def _additive_difference_in_differences(cell_outcomes: pd.DataFrame) -> float | None:
+    rates: dict[str, float] = {}
+    for condition in CURRENT_FOUR_CELL_CONDITIONS:
+        subset = cell_outcomes[cell_outcomes["condition"] == condition]
+        if subset.empty:
+            return None
+        rates[condition] = float(subset["success"].mean())
+    return (rates["G+C"] - rates["G"]) - (rates["C"] - rates["none"])
 
 
 def _design_matrix(
@@ -1454,6 +1829,93 @@ def _diagnostics(
             MODE_COLLAPSE_TEXT if not mode_collapse_rows.empty else None
         ),
     }
+
+
+def _f3_and_coverage_metadata(df: pd.DataFrame) -> dict[str, Any]:
+    return {
+        "f3_eval_pipeline_policy": (
+            "F3_EVAL_PIPELINE rows excluded from compile_success rate calculations; "
+            "treated as compile_success=False in matched-pair analysis when "
+            "independent compile-pass evidence is absent."
+        ),
+        "f3_excluded_counts": _f3_excluded_counts(df),
+        "g_replay_coverage": _g_replay_coverage_statement(df),
+    }
+
+
+def _f3_excluded_counts(df: pd.DataFrame) -> dict[str, int]:
+    if "failure_code" not in df.columns:
+        return {}
+    f3 = df[df["failure_code"] == CLUSTER2_EVAL_PIPELINE_FAILURE_CODE]
+    if f3.empty:
+        return {}
+    return {
+        str(condition): int(count)
+        for condition, count in f3.groupby("condition", sort=True).size().items()
+    }
+
+
+def _f3_pair_keys_by_condition(df: pd.DataFrame) -> dict[str, set[tuple[object, ...]]]:
+    if "failure_code" not in df.columns:
+        return {}
+    f3 = df[df["failure_code"] == CLUSTER2_EVAL_PIPELINE_FAILURE_CODE]
+    result: dict[str, set[tuple[object, ...]]] = {}
+    for condition, group in f3.groupby("condition", sort=True):
+        result[str(condition)] = {
+            tuple(row[column] for column in PAIR_KEY_COLUMNS)
+            for _, row in group.iterrows()
+        }
+    return result
+
+
+def _g_replay_coverage_statement(df: pd.DataFrame) -> str | None:
+    if not {"none", "G"}.issubset(set(df["condition"])):
+        return None
+    none_keys = _condition_pair_keys(df, "none")
+    g_keys = _condition_pair_keys(df, "G")
+    missing = sorted(none_keys - g_keys, key=_pair_key_sort_key)
+    if not missing:
+        return (
+            f"{len(g_keys)}/{len(none_keys)} task-agnostic G replay rows; "
+            "0 rows missing. Policy: COVERAGE_WARNING_SKIP_MISSING."
+        )
+    missing_text = ", ".join(
+        f"{kernel_class}/{dtype}/base_seed={base_seed}"
+        for kernel_class, _kernel_id, dtype, base_seed in missing
+    )
+    return (
+        f"{len(g_keys)}/{len(none_keys)} task-agnostic G replay rows; "
+        f"{len(missing)} {missing[0][0]} rows missing ({missing_text}). "
+        "Policy: COVERAGE_WARNING_SKIP_MISSING."
+    )
+
+
+def _condition_pair_keys(df: pd.DataFrame, condition: str) -> set[tuple[object, ...]]:
+    subset = df[df["condition"] == condition]
+    return {
+        tuple(row[column] for column in PAIR_KEY_COLUMNS)
+        for _, row in subset.iterrows()
+    }
+
+
+def _pair_key_from_row(row: pd.Series) -> tuple[object, ...]:
+    return tuple(row[column] for column in PAIR_KEY_COLUMNS)
+
+
+def _pair_key_to_dict(key: tuple[object, ...]) -> dict[str, Any]:
+    return dict(zip(PAIR_KEY_COLUMNS, key, strict=True))
+
+
+def _pair_key_sort_key(key: tuple[object, ...]) -> tuple[str, str, str, int]:
+    kernel_class, kernel_id, dtype, base_seed = key
+    dtype_order = {"fp32": 0, "fp16": 1, "bf16": 2}
+    dtype_text = str(dtype)
+    return (
+        str(kernel_class),
+        str(kernel_id),
+        f"{dtype_order.get(dtype_text, 99):02d}:{dtype_text}",
+        int(base_seed),
+    )
 
 
 def _grammar_acceptance_summary(df: pd.DataFrame) -> list[dict[str, Any]]:
@@ -1796,6 +2258,16 @@ def _unique_pair_keys(
     return set(df[key_cols].itertuples(index=False, name=None))
 
 
+def _filter_pair_keys(
+    df: pd.DataFrame,
+    keys: set[tuple[object, ...]],
+) -> pd.DataFrame:
+    if not keys:
+        return df.iloc[0:0]
+    mask = df.apply(lambda row: _pair_key_from_row(row) in keys, axis=1)
+    return df[mask]
+
+
 def _require_replay_attempt_zero(control: pd.DataFrame) -> None:
     nonzero = control[control["attempt_index"] != 0]
     if not nonzero.empty:
@@ -1870,23 +2342,72 @@ def _validate_pair_metadata_columns(
         required_metadata_fields=required_metadata_columns,
         optional_metadata_fields=revision_columns,
     )
-    control_meta = _pair_metadata_frame(
-        control,
-        metadata_column="replay_metadata",
-        required_metadata_fields=required_metadata_columns,
-        optional_metadata_fields=revision_columns,
-    )
-    if not treatment_meta[list(paired_identity_columns)].equals(
-        control_meta[list(paired_identity_columns)]
-    ):
-        raise ValueError("metadata mismatch in paired replay dataframe")
     _validate_seed_metadata_matches_pair_key(treatment_meta)
-    _validate_seed_metadata_matches_pair_key(control_meta)
     _validate_generated_seed_metadata(
         treatment,
         expected_control_condition=expected_control_condition,
     )
-    _validate_known_revision_metadata(treatment_meta, control_meta)
+    if _control_has_replay_metadata(
+        control,
+        metadata_fields=(
+            "replay_pair_id",
+            "replay_base_seed",
+            "replay_generation_seed",
+        ),
+    ):
+        control_meta = _pair_metadata_frame(
+            control,
+            metadata_column="replay_metadata",
+            required_metadata_fields=required_metadata_columns,
+            optional_metadata_fields=revision_columns,
+        )
+        if not treatment_meta[list(paired_identity_columns)].equals(
+            control_meta[list(paired_identity_columns)]
+        ):
+            raise ValueError("metadata mismatch in paired replay dataframe")
+        _validate_seed_metadata_matches_pair_key(control_meta)
+        _validate_known_revision_metadata(treatment_meta, control_meta)
+        return
+
+    _validate_cluster1_raw_control_identity(control)
+    _validate_prompt_parity(pd.concat([treatment, control], ignore_index=True))
+
+
+def _control_has_replay_metadata(
+    control: pd.DataFrame,
+    *,
+    metadata_fields: Sequence[str],
+) -> bool:
+    if control.empty:
+        return False
+    for _, row in control.iterrows():
+        nested = row.get("replay_metadata")
+        if isinstance(nested, Mapping):
+            return True
+        if any(not _is_missing_value(row.get(field)) for field in metadata_fields):
+            return True
+    return False
+
+
+def _validate_cluster1_raw_control_identity(control: pd.DataFrame) -> None:
+    missing: set[str] = set()
+    for _, row in control.iterrows():
+        for column in ("kernel_class", "kernel_name", "dtype"):
+            if _is_missing_value(row.get(column)):
+                missing.add(column)
+        if _is_missing_value(row.get("base_seed")) and _is_missing_value(
+            row.get("generation_seed")
+        ):
+            missing.add("generation_seed_or_base_seed")
+        if not _is_missing_value(
+            _metadata_value(row, row.get("generated_metadata"), "replay_pair_id")
+        ):
+            raise ValueError("Cluster 1 raw controls must not contain replay_pair_id")
+    if missing:
+        raise ValueError(
+            "missing required Cluster 1 raw paired identity fields: "
+            + ", ".join(sorted(missing))
+        )
 
 
 def _pair_metadata_frame(
@@ -1975,6 +2496,57 @@ def _known_frozen_revision(value: object) -> bool:
         and not _is_missing_value(value)
         and value != UNAVAILABLE_FROZEN_REVISION
     )
+
+
+def _validate_prompt_parity(df: pd.DataFrame) -> None:
+    if df.empty:
+        return
+    _require_columns(df, ("condition", "kernel_class", "dtype"))
+    for (kernel_class, dtype), group in df.groupby(
+        ["kernel_class", "dtype"],
+        sort=True,
+        dropna=False,
+    ):
+        condition_hashes: dict[str, str] = {}
+        for condition, condition_group in group.groupby("condition", sort=True):
+            hashes = {
+                _prompt_sha256_for_row(row)
+                for _, row in condition_group.iterrows()
+            }
+            if len(hashes) != 1:
+                raise ValueError(
+                    "prompt parity mismatch within condition "
+                    f"{condition!r} for kernel_class={kernel_class!r}, dtype={dtype!r}: "
+                    f"{sorted(hashes)}"
+                )
+            condition_hashes[str(condition)] = next(iter(hashes))
+        unique_hashes = set(condition_hashes.values())
+        if len(unique_hashes) > 1:
+            raise ValueError(
+                "prompt parity mismatch across conditions for "
+                f"kernel_class={kernel_class!r}, dtype={dtype!r}: {condition_hashes}"
+            )
+
+
+def _prompt_sha256_for_row(row: pd.Series) -> str:
+    for metadata_column in ("generated_metadata", "replay_metadata"):
+        nested = row.get(metadata_column)
+        value = _metadata_value(row, nested, "prompt_sha256")
+        if not _is_missing_value(value):
+            return str(value)
+    return _expected_prompt_sha256(str(row["kernel_class"]), str(row["dtype"]))
+
+
+def _expected_prompt_sha256(kernel_class: str, dtype: str) -> str:
+    from cluster1.data.kernels import KERNEL_SPECS
+    from cluster1.data.prompts.prompt_contract import build_prompt
+
+    try:
+        spec = KERNEL_SPECS[kernel_class]
+    except KeyError as exc:
+        raise ValueError(f"unknown kernel_class for prompt parity: {kernel_class!r}") from exc
+    prompt = build_prompt(spec, dtype)
+    return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 
 
 def _metadata_value(

@@ -11,6 +11,7 @@ import pandas as pd
 import pytest
 
 from shared.analysis.factorial import (
+    _expected_prompt_sha256,
     analyze_factorial,
     normalize_result_rows,
     validate_paired_replay_dataframe,
@@ -90,10 +91,20 @@ def test_analyze_factorial_emits_primary_four_cell_output() -> None:
     assert result["diagnostics"]["analysis_label"] == "current 2² subset analysis over G and C"
 
     comparisons = {
-        row["comparison"]: row for row in result["paired_comparisons"]
+        (row["response_variable"], row["comparison"]): row
+        for row in result["paired_comparisons"]
     }
-    assert set(comparisons) == {"C vs none", "G+C vs G"}
-    primary = comparisons["C vs none"]
+    assert {
+        comparison
+        for response_variable, comparison in comparisons
+        if response_variable == "functional_success"
+    } == {"C vs none", "G+C vs G"}
+    assert {
+        comparison
+        for response_variable, comparison in comparisons
+        if response_variable == "compile_success"
+    } == {"G vs none", "G+C vs C"}
+    primary = comparisons[("functional_success", "C vs none")]
     assert primary["paired_analysis"] is True
     assert primary["n_pairs"] == 4
     assert primary["success_rate_a"] == 0.25
@@ -101,6 +112,9 @@ def test_analyze_factorial_emits_primary_four_cell_output() -> None:
     assert primary["absolute_lift"] == 0.25
     assert primary["ci_low"] <= primary["absolute_lift"] <= primary["ci_high"]
     assert primary["p_value_holm"] is not None
+    secondary = comparisons[("compile_success", "G vs none")]
+    assert secondary["comparison_role"] == "secondary_diagnostic"
+    assert secondary["n_pairs"] == 4
 
     model_terms = {
         row["term"]: row["coefficient"]
@@ -110,6 +124,14 @@ def test_analyze_factorial_emits_primary_four_cell_output() -> None:
     assert result["factorial_model"]["model_family"] == "binary_logistic_irls"
     assert result["factorial_model"]["model_fit_status"] == "fit"
     assert model_terms["G:C"] > 0
+    assert result["factorial_model"]["interaction_logistic_coefficient"] == model_terms["G:C"]
+    assert result["factorial_model"]["interaction_logistic_ci_95"] is not None
+    assert result["factorial_model"]["interaction_additive_did"] == 0.25
+    assert result["condition_rates"]["none"]["functional_success_rate"] == 0.25
+    assert len(result["condition_rates"]["none"]["functional_success_wilson_ci_95"]) == 2
+    assert result["metadata"]["f3_eval_pipeline_policy"].startswith(
+        "F3_EVAL_PIPELINE rows excluded"
+    )
     assert result["paper_tables"]["table_1_cell_summaries"]
     assert result["paper_tables"]["table_2_paired_comparisons"]
     assert result["paper_tables"]["table_3_factorial_terms"]
@@ -129,6 +151,29 @@ def test_analyze_factorial_emits_primary_four_cell_output() -> None:
     table_3_rows = result["paper_tables"]["table_3_factorial_terms"]
     assert {row["model_fit_status"] for row in table_3_rows} == {"fit"}
     assert {row["model_type"] for row in table_3_rows} == {"reduced_four_cell"}
+
+
+def test_primary_holm_adjustment_excludes_secondary_diagnostics() -> None:
+    rows = _rows_from_patterns(
+        {
+            "none": (False, False, False, False, False, False),
+            "G": (False, False, False, False, False, False),
+            "C": (True, True, True, True, True, True),
+            "G+C": (False, False, False, False, False, False),
+        },
+        kernel_name="relu",
+    )
+
+    result = analyze_factorial(rows, bootstrap_samples=100)
+    primary = next(
+        row
+        for row in result["paired_comparisons"]
+        if row["response_variable"] == "functional_success"
+        and row["comparison"] == "C vs none"
+    )
+
+    assert primary["p_value"] == 0.03125
+    assert primary["p_value_holm"] == 0.0625
 
 
 @pytest.mark.parametrize("scale_tier", ["smoke", "development", "unspecified"])
@@ -204,6 +249,36 @@ def test_compile_success_analysis_is_secondary_diagnostic() -> None:
     assert "diagnostic_only" in result["paired_comparisons"][0]["interpretation_flags"]
 
 
+def test_compile_success_condition_rates_allow_compile_only_dataframe() -> None:
+    result = analyze_factorial(
+        pd.DataFrame(
+            [
+                {
+                    "condition": "none",
+                    "kernel_class": "elementwise",
+                    "kernel_id": "relu",
+                    "kernel_name": "relu",
+                    "dtype": "fp32",
+                    "dtype_original": "fp32",
+                    "base_seed": 0,
+                    "attempt_index": 0,
+                    "compile_success": True,
+                    "scale_tier": "paper",
+                }
+            ]
+        ),
+        response_variable="compile_success",
+        analysis_scope="secondary_compile_diagnostic",
+        bootstrap_samples=100,
+    )
+
+    rates = result["condition_rates"]["none"]
+    assert rates["compile_success_rate"] == 1.0
+    assert rates["functional_success_successes"] is None
+    assert rates["functional_success_rate"] is None
+    assert rates["functional_success_wilson_ci_95"] is None
+
+
 def test_primary_analysis_skips_partial_compile_success_summary() -> None:
     rows = _four_cell_rows()
     rows[0]["compile_success"] = None
@@ -219,6 +294,10 @@ def test_primary_analysis_skips_partial_compile_success_summary() -> None:
         == "not_emitted_partial_missing"
     )
     assert result["diagnostics"]["secondary_compile_summary"]["missing_rows"] == 1
+    none_rates = result["condition_rates"]["none"]
+    assert none_rates["compile_success_successes"] is None
+    assert none_rates["compile_success_rate"] is None
+    assert none_rates["compile_success_wilson_ci_95"] is None
 
 
 def test_cluster1_none_missing_functional_success_normalizes_false() -> None:
@@ -591,7 +670,7 @@ def test_primary_analysis_rejects_metadata_mismatch() -> None:
         if row["condition"] == "none" and row["base_seed"] == 0:
             row["replay_metadata"]["prompt_sha256"] = "d" * 64
 
-    with pytest.raises(ValueError, match="metadata mismatch"):
+    with pytest.raises(ValueError, match="prompt parity mismatch|metadata mismatch"):
         analyze_factorial(rows)
 
 
@@ -787,6 +866,182 @@ def test_validate_paired_replay_dataframe_reads_nested_metadata() -> None:
     validate_paired_replay_dataframe(df, treatment_condition="C")
 
 
+def test_validate_paired_replay_dataframe_accepts_cluster1_raw_tuple_control() -> None:
+    prompt_sha256 = _expected_prompt_sha256("elementwise", "fp32")
+    generated = _generated_row(base_seed=0)
+    generated["generated_metadata"]["prompt_sha256"] = prompt_sha256
+    raw_control = {
+        "condition": "none",
+        "kernel_class": "elementwise",
+        "kernel_name": "relu",
+        "dtype": "fp32",
+        "generation_seed": 0,
+        "attempt_index": 0,
+        "compile_success": False,
+    }
+    df = pd.concat(
+        [
+            normalize_result_rows([generated], input_role="c"),
+            normalize_result_rows([raw_control], input_role="none"),
+        ],
+        ignore_index=True,
+    )
+
+    validate_paired_replay_dataframe(df, treatment_condition="C")
+
+
+def test_validate_paired_replay_dataframe_still_requires_generated_replay_metadata() -> None:
+    generated = _generated_row(base_seed=0)
+    generated.pop("generated_metadata")
+    raw_control = {
+        "condition": "none",
+        "kernel_class": "elementwise",
+        "kernel_name": "relu",
+        "dtype": "fp32",
+        "generation_seed": 0,
+        "attempt_index": 0,
+        "compile_success": False,
+    }
+    df = pd.concat(
+        [
+            normalize_result_rows([generated], input_role="c"),
+            normalize_result_rows([raw_control], input_role="none"),
+        ],
+        ignore_index=True,
+    )
+
+    with pytest.raises(ValueError, match="missing paired replay metadata"):
+        validate_paired_replay_dataframe(df, treatment_condition="C")
+
+
+def test_prompt_parity_validation_rejects_divergent_cluster2_prompt_hash() -> None:
+    rows = _four_cell_rows()
+    expected = _expected_prompt_sha256("elementwise", "fp32")
+    for row in rows:
+        if row["condition"] in {"none", "G"}:
+            row.pop("replay_metadata")
+            row["generation_seed"] = row["base_seed"]
+        else:
+            row["generated_metadata"]["prompt_sha256"] = expected
+    rows[-1]["generated_metadata"]["prompt_sha256"] = "d" * 64
+
+    with pytest.raises(ValueError, match="prompt parity mismatch"):
+        analyze_factorial(rows, bootstrap_samples=100)
+
+
+def test_all_zero_mcnemar_reports_p_one_and_zero_ci() -> None:
+    rows = _rows_from_patterns(
+        {
+            "none": (False, False, False, False),
+            "G": (False, False, False, False),
+            "C": (False, False, False, False),
+            "G+C": (False, False, False, False),
+        },
+        kernel_name="relu",
+    )
+
+    result = analyze_factorial(rows, bootstrap_samples=100)
+    comparison = next(
+        row
+        for row in result["paired_comparisons"]
+        if row["response_variable"] == "functional_success"
+        and row["comparison"] == "C vs none"
+    )
+
+    assert comparison["p_value"] == 1.0
+    assert comparison["ci_low"] == 0.0
+    assert comparison["ci_high"] == 0.0
+
+
+def test_f3_policy_section_appears_and_excludes_individual_compile_rate() -> None:
+    rows = _four_cell_rows()
+    for row in rows:
+        if row["condition"] == "G+C" and row["base_seed"] == 0:
+            row["failure_code"] = "F3_EVAL_PIPELINE"
+            row["compile_success"] = False
+            row["functional_success"] = False
+
+    result = analyze_factorial(rows, bootstrap_samples=100)
+
+    assert result["metadata"]["f3_excluded_counts"] == {"G+C": 1}
+    gc_rates = result["condition_rates"]["G+C"]
+    assert gc_rates["compile_success_f3_excluded"] == 1
+    assert gc_rates["compile_success_n"] == 3
+    assert gc_rates["compile_success_matched_analysis_n"] == 4
+    gc_compile_summary = next(
+        row
+        for row in result["cell_summaries"]
+        if row["summary_level"] == "condition"
+        and row["condition"] == "G+C"
+        and row["response_variable"] == "compile_success"
+    )
+    assert gc_compile_summary["successes"] == 3
+    assert gc_compile_summary["n_cells"] == 3
+
+
+def test_f3_compile_rate_excludes_only_f3_attempt_not_pair_key() -> None:
+    rows = _four_cell_rows()
+    for row in rows:
+        if row["condition"] == "G+C" and row["base_seed"] == 0:
+            row["failure_code"] = "F3_EVAL_PIPELINE"
+            row["compile_success"] = False
+            row["functional_success"] = False
+    retry = _generated_row(
+        condition="G+C",
+        base_seed=0,
+        attempt_index=1,
+        functional_success=False,
+        compile_success=True,
+    )
+    retry["failure_code"] = ""
+    rows.append(retry)
+
+    result = analyze_factorial(rows, bootstrap_samples=100)
+
+    gc_rates = result["condition_rates"]["G+C"]
+    assert gc_rates["compile_success_f3_excluded"] == 1
+    assert gc_rates["compile_success_successes"] == 4
+    assert gc_rates["compile_success_n"] == 4
+    assert gc_rates["compile_success_matched_analysis_successes"] == 4
+    assert gc_rates["compile_success_matched_analysis_n"] == 4
+    gc_compile_summary = next(
+        row
+        for row in result["cell_summaries"]
+        if row["summary_level"] == "condition"
+        and row["condition"] == "G+C"
+        and row["response_variable"] == "compile_success"
+    )
+    assert gc_compile_summary["successes"] == gc_rates["compile_success_successes"]
+    assert gc_compile_summary["n_cells"] == gc_rates["compile_success_n"]
+
+
+def test_interaction_output_includes_logistic_and_additive_representations() -> None:
+    result = analyze_factorial(_four_cell_rows(), bootstrap_samples=100)
+    model = result["factorial_model"]
+
+    assert model["interaction_logistic_coefficient"] is not None
+    assert model["interaction_logistic_ci_95"] is not None
+    assert model["interaction_additive_did"] == 0.25
+
+
+def test_secondary_compile_comparison_rejects_empty_coverage_intersection() -> None:
+    rows = _four_cell_rows()
+    for row in rows:
+        if row["condition"] not in {"G", "G+C"}:
+            continue
+        shifted_seed = int(row["base_seed"]) + 100
+        row["base_seed"] = shifted_seed
+        metadata = row.get("generated_metadata") or row.get("replay_metadata")
+        assert isinstance(metadata, dict)
+        metadata["replay_pair_id"] = f"elementwise:relu:fp32:{shifted_seed}"
+        metadata["replay_base_seed"] = shifted_seed
+        metadata["replay_generation_seed"] = shifted_seed
+        metadata["generation_seed"] = shifted_seed
+
+    with pytest.raises(ValueError, match="no matched seed rows"):
+        analyze_factorial(rows, bootstrap_samples=100)
+
+
 def test_validate_paired_replay_dataframe_rejects_nested_metadata_mismatch() -> None:
     generated = _generated_row(base_seed=0)
     replay = _replay_row(base_seed=0)
@@ -794,6 +1049,16 @@ def test_validate_paired_replay_dataframe_rejects_nested_metadata_mismatch() -> 
     df = pd.DataFrame([generated, replay])
 
     with pytest.raises(ValueError, match="metadata mismatch"):
+        validate_paired_replay_dataframe(df, treatment_condition="C")
+
+
+def test_validate_paired_replay_dataframe_rejects_partial_replay_metadata() -> None:
+    generated = _generated_row(base_seed=0)
+    replay = _replay_row(base_seed=0)
+    replay["replay_metadata"].pop("replay_pair_id")
+    df = pd.DataFrame([generated, replay])
+
+    with pytest.raises(ValueError, match="missing paired replay metadata: replay_pair_id"):
         validate_paired_replay_dataframe(df, treatment_condition="C")
 
 
