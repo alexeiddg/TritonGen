@@ -74,6 +74,13 @@ CLUSTER1_COMPILE_ONLY_CONDITIONS = frozenset({"none", "G"})
 CLUSTER2_GENERATED_CONDITIONS = frozenset({"C", "G+C"})
 CLUSTER2_EVAL_PIPELINE_FAILURE_CODE = "F3_EVAL_PIPELINE"
 _MISSING_FIELD = object()
+SCALE_TIER_SOURCE_COLUMN = "_scale_tier_source"
+RAW_SCALE_TIER_COLUMN = "_raw_scale_tier_before_annotation"
+RAW_SCALE_TIER_EXPLICIT_COLUMN = "_raw_scale_tier_explicit"
+REQUESTED_SCALE_TIER_COLUMN = "_requested_scale_tier"
+SCALE_TIER_SOURCE_RAW = "raw_row"
+SCALE_TIER_SOURCE_MISSING_DEFAULT = "raw_missing_default_unspecified"
+SCALE_TIER_SOURCE_ANALYSIS_ANNOTATION = "analysis_cli_annotation"
 
 PAIRED_REPLAY_COMPARISONS = {"C": "none", "G+C": "G"}
 SECONDARY_COMPILE_COMPARISONS = {"G": "none", "G+C": "C"}
@@ -107,6 +114,7 @@ def load_results(
     jsonl_path: Path,
     *,
     input_role: str | None = None,
+    scale_tier_annotation: str | None = None,
 ) -> pd.DataFrame:
     """Load and normalize one EvalResult-shaped JSONL file."""
 
@@ -119,6 +127,7 @@ def load_results(
         rows,
         source_path=str(jsonl_path),
         input_role=input_role,
+        scale_tier_annotation=scale_tier_annotation,
     )
 
 
@@ -126,6 +135,7 @@ def load_result_paths(
     paths: Sequence[Path],
     *,
     input_roles: Sequence[str | None] | None = None,
+    scale_tier_annotation: str | None = None,
 ) -> pd.DataFrame:
     """Load and normalize one or more EvalResult JSONL paths."""
 
@@ -137,7 +147,11 @@ def load_result_paths(
             raise ValueError("input_roles length must match input paths length")
         role_list = input_roles
     frames = [
-        load_results(path, input_role=input_role)
+        load_results(
+            path,
+            input_role=input_role,
+            scale_tier_annotation=scale_tier_annotation,
+        )
         for path, input_role in zip(paths, role_list, strict=True)
     ]
     if not frames:
@@ -164,15 +178,31 @@ def normalize_result_rows(
     *,
     source_path: str | None = None,
     input_role: str | None = None,
+    scale_tier_annotation: str | None = None,
 ) -> pd.DataFrame:
     """Normalize current EvalResult and Cluster 2 row shapes for analysis."""
 
     normalized: list[dict[str, Any]] = []
     input_role_condition = _normalize_input_role(input_role)
+    requested_scale_tier = _normalize_requested_scale_tier(scale_tier_annotation)
     for row_index, row in enumerate(rows):
         payload = _row_to_dict(row)
         generated_metadata = _metadata_dict(payload.get("generated_metadata"))
         replay_metadata = _metadata_dict(payload.get("replay_metadata"))
+        raw_scale_tier, raw_scale_tier_explicit = _raw_scale_tier_from_payload(
+            payload,
+            generated_metadata,
+            replay_metadata,
+            source_path=source_path,
+            row_index=row_index,
+        )
+        scale_tier, scale_tier_source = _resolve_scale_tier(
+            raw_scale_tier=raw_scale_tier,
+            raw_scale_tier_explicit=raw_scale_tier_explicit,
+            requested_scale_tier=requested_scale_tier,
+            source_path=source_path,
+            row_index=row_index,
+        )
         dtype = _first_present(payload, "dtype", "dtype_tested")
         base_seed = _first_present(
             payload,
@@ -227,7 +257,11 @@ def normalize_result_rows(
                 "attempt_index": _int_or_none(attempt_index),
                 "compile_success": compile_success,
                 "functional_success": functional_success,
-                "scale_tier": _first_present(payload, "scale_tier", default="unspecified"),
+                "scale_tier": scale_tier,
+                RAW_SCALE_TIER_COLUMN: raw_scale_tier,
+                RAW_SCALE_TIER_EXPLICIT_COLUMN: raw_scale_tier_explicit,
+                SCALE_TIER_SOURCE_COLUMN: scale_tier_source,
+                REQUESTED_SCALE_TIER_COLUMN: requested_scale_tier,
                 "grammar_variant": _first_present(
                     payload,
                     "grammar_variant",
@@ -303,6 +337,7 @@ def analyze_factorial(
     response_variable: str = PRIMARY_RESPONSE_VARIABLE,
     analysis_scope: str | None = None,
     allow_mixed_scale: bool = False,
+    scale_tier_annotation: str | None = None,
     bootstrap_samples: int = BOOTSTRAP_SAMPLES,
     bootstrap_seed: int = BOOTSTRAP_SEED,
 ) -> dict[str, Any]:
@@ -315,14 +350,28 @@ def analyze_factorial(
             "response_variable must be functional_success or compile_success"
         )
     scope = _resolve_analysis_scope(response_variable, analysis_scope)
-    df = rows.copy() if isinstance(rows, pd.DataFrame) else normalize_result_rows(rows)
+    df = (
+        rows.copy()
+        if isinstance(rows, pd.DataFrame)
+        else normalize_result_rows(rows, scale_tier_annotation=scale_tier_annotation)
+    )
     if df.empty:
         raise ValueError("factorial analysis requires at least one row")
-    df = normalize_result_rows(df.to_dict("records")) if "dtype_original" not in df else df
+    if "dtype_original" not in df:
+        df = normalize_result_rows(
+            df.to_dict("records"),
+            scale_tier_annotation=scale_tier_annotation,
+        )
+    elif scale_tier_annotation is not None or not _has_scale_tier_metadata_columns(df):
+        df = _apply_scale_tier_annotation_to_dataframe(
+            df,
+            scale_tier_annotation=scale_tier_annotation,
+        )
     df = _ensure_pair_identity_columns(df)
 
     _validate_conditions(df)
     scale_tiers = _validate_scale_tiers(df, allow_mixed_scale=allow_mixed_scale)
+    scale_tier_metadata = _scale_tier_metadata(df, normalized_scale_tiers=scale_tiers)
     _validate_response(df, response_variable, scope)
     _validate_prompt_parity(df)
 
@@ -408,6 +457,7 @@ def analyze_factorial(
             for treatment, control in PAIRED_REPLAY_COMPARISONS.items()
         ],
         "scale_tiers": scale_tiers,
+        **scale_tier_metadata,
         "cells_populated": list(populated_cells),
         "cells_missing": list(missing_cells),
         "cells_status": cell_status,
@@ -622,7 +672,11 @@ def paired_condition_summary(
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--inputs", nargs="+", type=Path, required=True)
+    parser.add_argument("--inputs", nargs="+", type=Path)
+    parser.add_argument("--none", dest="none_input", type=Path)
+    parser.add_argument("--g", dest="g_input", type=Path)
+    parser.add_argument("--c", dest="c_input", type=Path)
+    parser.add_argument("--gc", dest="gc_input", type=Path)
     parser.add_argument(
         "--input-roles",
         nargs="+",
@@ -636,18 +690,32 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--analysis-scope", default=None)
     parser.add_argument("--allow-mixed-scale", action="store_true")
+    parser.add_argument(
+        "--scale-tier",
+        default=None,
+        help=(
+            "Analysis-level scale-tier annotation for rows that lack an explicit "
+            "raw scale_tier. Explicit conflicting raw tiers are rejected."
+        ),
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--markdown-output", type=Path)
     parser.add_argument("--bootstrap-samples", type=int, default=BOOTSTRAP_SAMPLES)
     parser.add_argument("--bootstrap-seed", type=int, default=BOOTSTRAP_SEED)
     args = parser.parse_args(argv)
 
-    df = load_result_paths(args.inputs, input_roles=args.input_roles)
+    input_paths, input_roles = _cli_input_paths_and_roles(parser, args)
+    df = load_result_paths(
+        input_paths,
+        input_roles=input_roles,
+        scale_tier_annotation=args.scale_tier,
+    )
     result = analyze_factorial(
         df,
         response_variable=args.response_variable,
         analysis_scope=args.analysis_scope,
         allow_mixed_scale=args.allow_mixed_scale,
+        scale_tier_annotation=args.scale_tier,
         bootstrap_samples=args.bootstrap_samples,
         bootstrap_seed=args.bootstrap_seed,
     )
@@ -668,6 +736,34 @@ def main(argv: Sequence[str] | None = None) -> int:
             encoding="utf-8",
         )
     return 0
+
+
+def _cli_input_paths_and_roles(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+) -> tuple[list[Path], Sequence[str | None] | None]:
+    role_inputs = [
+        ("none", args.none_input),
+        ("g", args.g_input),
+        ("c", args.c_input),
+        ("gc", args.gc_input),
+    ]
+    supplied_role_inputs = [(role, path) for role, path in role_inputs if path is not None]
+    if supplied_role_inputs:
+        if args.inputs is not None or args.input_roles is not None:
+            parser.error("use either --inputs/--input-roles or --none/--g/--c/--gc")
+        missing_roles = [role for role, path in role_inputs if path is None]
+        if missing_roles:
+            parser.error(
+                "condition-specific input flags require --none, --g, --c, and --gc; "
+                f"missing: {', '.join(missing_roles)}"
+            )
+        return [path for _, path in role_inputs if path is not None], [
+            role for role, _ in role_inputs
+        ]
+    if args.inputs is None:
+        parser.error("one of --inputs or --none/--g/--c/--gc is required")
+    return list(args.inputs), args.input_roles
 
 
 def _resolve_analysis_scope(response_variable: str, analysis_scope: str | None) -> str:
@@ -1017,6 +1113,190 @@ def _validate_scale_tiers(
             f"to override: {tiers}"
         )
     return tiers
+
+
+def _has_scale_tier_metadata_columns(df: pd.DataFrame) -> bool:
+    return all(
+        column in df.columns
+        for column in (
+            RAW_SCALE_TIER_COLUMN,
+            RAW_SCALE_TIER_EXPLICIT_COLUMN,
+            SCALE_TIER_SOURCE_COLUMN,
+            REQUESTED_SCALE_TIER_COLUMN,
+        )
+    )
+
+
+def _raw_scale_tier_from_payload(
+    payload: Mapping[str, Any],
+    generated_metadata: Mapping[str, Any] | None,
+    replay_metadata: Mapping[str, Any] | None,
+    *,
+    source_path: str | None,
+    row_index: int,
+) -> tuple[str, bool]:
+    values = []
+    for container in (payload, generated_metadata, replay_metadata):
+        if (
+            container is not None
+            and "scale_tier" in container
+            and not _is_missing_value(container.get("scale_tier"))
+        ):
+            values.append(_normalize_scale_tier(container["scale_tier"]))
+    tiers = sorted(set(values))
+    if len(tiers) > 1:
+        raise ValueError(
+            "conflicting raw scale_tier values"
+            f" for source_path={source_path!r}, row_index={row_index}: {tiers}"
+        )
+    if tiers:
+        return tiers[0], True
+    return "unspecified", False
+
+
+def _normalize_requested_scale_tier(value: object) -> str | None:
+    if _is_missing_value(value):
+        return None
+    tier = str(value).strip()
+    if not tier:
+        raise ValueError("scale_tier annotation must not be empty")
+    return tier
+
+
+def _resolve_scale_tier(
+    *,
+    raw_scale_tier: object,
+    raw_scale_tier_explicit: bool,
+    requested_scale_tier: str | None,
+    source_path: str | None,
+    row_index: int,
+) -> tuple[str, str]:
+    raw_tier = _normalize_scale_tier(raw_scale_tier)
+    if requested_scale_tier is None:
+        source = (
+            SCALE_TIER_SOURCE_RAW
+            if raw_scale_tier_explicit
+            else SCALE_TIER_SOURCE_MISSING_DEFAULT
+        )
+        return raw_tier, source
+    if raw_scale_tier_explicit:
+        if raw_tier != requested_scale_tier:
+            raise ValueError(
+                "scale_tier annotation conflicts with explicit raw scale_tier"
+                f" for source_path={source_path!r}, row_index={row_index}: "
+                f"raw={raw_tier!r}, requested={requested_scale_tier!r}"
+            )
+        return raw_tier, SCALE_TIER_SOURCE_RAW
+    return requested_scale_tier, SCALE_TIER_SOURCE_ANALYSIS_ANNOTATION
+
+
+def _apply_scale_tier_annotation_to_dataframe(
+    df: pd.DataFrame,
+    *,
+    scale_tier_annotation: str | None,
+) -> pd.DataFrame:
+    requested_scale_tier = _normalize_requested_scale_tier(scale_tier_annotation)
+    updated = df.copy()
+    scale_tiers: list[str] = []
+    raw_scale_tiers: list[str] = []
+    raw_explicit_values: list[bool] = []
+    scale_tier_sources: list[str] = []
+    requested_scale_tiers: list[str | None] = []
+    for row_index, (_, row) in enumerate(updated.iterrows()):
+        if RAW_SCALE_TIER_COLUMN in updated.columns and not _is_missing_value(
+            row.get(RAW_SCALE_TIER_COLUMN)
+        ):
+            raw_scale_tier = row.get(RAW_SCALE_TIER_COLUMN)
+            if RAW_SCALE_TIER_EXPLICIT_COLUMN in updated.columns and not _is_missing_value(
+                row.get(RAW_SCALE_TIER_EXPLICIT_COLUMN)
+            ):
+                raw_scale_tier_explicit = bool(row.get(RAW_SCALE_TIER_EXPLICIT_COLUMN))
+            else:
+                raw_scale_tier_explicit = False
+        else:
+            payload = row.to_dict()
+            raw_scale_tier, raw_scale_tier_explicit = _raw_scale_tier_from_payload(
+                payload,
+                _metadata_dict(payload.get("generated_metadata")),
+                _metadata_dict(payload.get("replay_metadata")),
+                source_path=None,
+                row_index=row_index,
+            )
+
+        scale_tier, scale_tier_source = _resolve_scale_tier(
+            raw_scale_tier=raw_scale_tier,
+            raw_scale_tier_explicit=raw_scale_tier_explicit,
+            requested_scale_tier=requested_scale_tier,
+            source_path=None,
+            row_index=row_index,
+        )
+        scale_tiers.append(scale_tier)
+        raw_scale_tiers.append(_normalize_scale_tier(raw_scale_tier))
+        raw_explicit_values.append(raw_scale_tier_explicit)
+        scale_tier_sources.append(scale_tier_source)
+        requested_scale_tiers.append(requested_scale_tier)
+
+    updated["scale_tier"] = scale_tiers
+    updated[RAW_SCALE_TIER_COLUMN] = raw_scale_tiers
+    updated[RAW_SCALE_TIER_EXPLICIT_COLUMN] = raw_explicit_values
+    updated[SCALE_TIER_SOURCE_COLUMN] = scale_tier_sources
+    updated[REQUESTED_SCALE_TIER_COLUMN] = requested_scale_tiers
+    return updated
+
+
+def _scale_tier_metadata(
+    df: pd.DataFrame,
+    *,
+    normalized_scale_tiers: Sequence[str],
+) -> dict[str, Any]:
+    if RAW_SCALE_TIER_COLUMN in df.columns:
+        raw_scale_tiers = _scale_tier_values(df[RAW_SCALE_TIER_COLUMN])
+    else:
+        raw_scale_tiers = list(normalized_scale_tiers)
+    if not raw_scale_tiers:
+        raw_scale_tiers = ["unspecified"]
+
+    scale_tier_sources = (
+        _non_missing_sorted_text_values(df[SCALE_TIER_SOURCE_COLUMN])
+        if SCALE_TIER_SOURCE_COLUMN in df.columns
+        else [SCALE_TIER_SOURCE_RAW]
+    )
+    if not scale_tier_sources:
+        scale_tier_sources = [SCALE_TIER_SOURCE_RAW]
+    if len(scale_tier_sources) == 1:
+        scale_tier_source: str | list[str] = scale_tier_sources[0]
+    else:
+        scale_tier_source = "mixed:" + ",".join(scale_tier_sources)
+
+    requested_values = (
+        _non_missing_sorted_text_values(df[REQUESTED_SCALE_TIER_COLUMN])
+        if REQUESTED_SCALE_TIER_COLUMN in df.columns
+        else []
+    )
+    if len(requested_values) == 0:
+        requested_scale_tier: str | list[str] | None = None
+    elif len(requested_values) == 1:
+        requested_scale_tier = requested_values[0]
+    else:
+        requested_scale_tier = requested_values
+
+    return {
+        "scale_tier_source": scale_tier_source,
+        "scale_tier_sources": scale_tier_sources,
+        "requested_scale_tier": requested_scale_tier,
+        "raw_scale_tiers_before_annotation": raw_scale_tiers,
+        "normalized_scale_tiers": list(normalized_scale_tiers),
+    }
+
+
+def _non_missing_sorted_text_values(series: pd.Series) -> list[str]:
+    return sorted(
+        {
+            str(value)
+            for value in series
+            if not _is_missing_value(value)
+        }
+    )
 
 
 def _is_reportable_output(
