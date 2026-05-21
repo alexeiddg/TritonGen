@@ -148,6 +148,8 @@ def _summary_text(
         return "Candidate passed Level 2."
     if repair_set_success is True and eval_set_success is False:
         return GENERIC_EVAL_FAILURE_FEEDBACK
+    if failure_code == "F3_EVAL_PIPELINE" and public_failure_summary:
+        return sanitize_public_feedback_text(public_failure_summary, limit=None)
     if public_failure_summary:
         return sanitize_public_feedback_text(public_failure_summary)
     if failure_code is None:

@@ -223,6 +223,16 @@
     "status_short_before_phase_minus1_manifest_generation": "",
     "tags_created_by_this_phase_minus1_run": []
   },
+  "accepted_boundary_hash_overrides": {
+    "shared_modal_files": {
+      "shared/modal_harness/smoke.py": {
+        "classification": "A_INTENTIONAL_BEHAVIOR_CHANGE",
+        "expected_sha256": "4c999a29a1e966635e186c16d211fe07a36ebd132e8ba47b150eaebab2691e30",
+        "previous_phase_minus1_sha256": "03848df1d3196377a8bdaa363f5b7dd47f59cabcafd7f4011091ac933daa9e16",
+        "reason": "Import-only Modal smoke now verifies cluster2 is present in the shared Modal image that copies cluster1, cluster2, and shared; this does not change generation or evaluation methodology."
+      }
+    }
+  },
   "goal": "Freeze and fingerprint Cluster 1 replay controls before Cluster 2 Phase 0.",
   "phase": "-1",
   "phase0_gate": {

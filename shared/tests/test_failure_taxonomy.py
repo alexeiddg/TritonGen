@@ -16,6 +16,14 @@ def test_classifies_explicit_f0_surface_violation() -> None:
     assert classify_failure(result) == "F0_SURFACE_VIOLATION"
 
 
+def test_f3_eval_pipeline_is_registered_and_preserved() -> None:
+    assert "F3_EVAL_PIPELINE" in FAILURE_CODES
+
+    result = _make_eval_result(failure_code="F3_EVAL_PIPELINE")
+
+    assert classify_failure(result) == "F3_EVAL_PIPELINE"
+
+
 def test_classifies_level0_sanitizer_failure_as_surface_violation() -> None:
     result = _make_eval_result(
         safe_success=False,

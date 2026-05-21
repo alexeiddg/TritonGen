@@ -86,6 +86,8 @@ SCALE_TIER_CHOICES: tuple[str, ...] = ("smoke", "development", "paper")
 MAX_CLI_N = 20
 F2_SMOKE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 REPO_ROOT = Path(__file__).resolve().parents[2]
+MALFORMED_CORRECTNESS_PAYLOAD_FAILURE_CODE = "F3_EVAL_PIPELINE"
+MALFORMED_CORRECTNESS_PAYLOAD_MISSING_FIELD = "correctness_result"
 
 GenerationAdapter = Callable[..., dict[str, Any]]
 CorrectnessAdapter = Callable[[RemoteCorrectnessRequest], dict[str, Any]]
@@ -612,8 +614,10 @@ def _evaluate_replay_mapping(
         request = RemoteCorrectnessRequest(identity=identity, source=candidate.source)
         payload = correctness(request)
         stats.correctness_calls += 1
-        correctness_result = _extract_correctness_result_dict(payload)
-        _validate_correctness_identity(correctness_result, identity)
+        correctness_result = _extract_or_synthesize_correctness_result_dict(
+            payload,
+            identity,
+        )
         record_row(
             replay_control_row(
                 condition=candidate.condition,
@@ -785,8 +789,7 @@ def _run_generated_cell(
         request = RemoteCorrectnessRequest(identity=identity, source=inputs.source)
         payload = correctness(request)
         stats.correctness_calls += 1
-        result = _extract_correctness_result_dict(payload)
-        _validate_correctness_identity(result, identity)
+        result = _extract_or_synthesize_correctness_result_dict(payload, identity)
         attempt_records[inputs.attempt_index].correctness_payload = payload
         attempt_records[inputs.attempt_index].correctness_result = result
         return result
@@ -1247,11 +1250,112 @@ def _extract_generated_source(payload: dict[str, Any]) -> str:
     return source
 
 
-def _extract_correctness_result_dict(payload: dict[str, Any]) -> dict[str, Any]:
-    result = payload.get("correctness_result")
+def _extract_correctness_result_dict(payload: Any) -> dict[str, Any]:
+    result = (
+        payload.get(MALFORMED_CORRECTNESS_PAYLOAD_MISSING_FIELD)
+        if isinstance(payload, dict)
+        else None
+    )
     if not isinstance(result, dict):
-        raise RuntimeError("correctness payload did not contain correctness_result")
+        raise RuntimeError(
+            "correctness payload did not contain "
+            f"{MALFORMED_CORRECTNESS_PAYLOAD_MISSING_FIELD}"
+        )
     return result
+
+
+def _extract_or_synthesize_correctness_result_dict(
+    payload: Any,
+    identity: EvalIdentity,
+) -> dict[str, Any]:
+    try:
+        result = _extract_correctness_result_dict(payload)
+    except RuntimeError as exc:
+        return _malformed_correctness_payload_result(
+            payload,
+            identity=identity,
+            error_message=str(exc),
+        )
+    _validate_correctness_identity(result, identity)
+    return result
+
+
+def _malformed_correctness_payload_result(
+    payload: Any,
+    *,
+    identity: EvalIdentity,
+    error_message: str,
+) -> dict[str, Any]:
+    return {
+        "identity": identity.model_dump(),
+        "functional_success": False,
+        "repair_set_success": False,
+        "eval_set_success": False,
+        "level_reached": 0,
+        "parse_success": None,
+        "parse_error": None,
+        "signature_valid": None,
+        "signature_error": None,
+        "compile_success": False,
+        "compile_error": None,
+        "compile_error_type": None,
+        "failure_code": MALFORMED_CORRECTNESS_PAYLOAD_FAILURE_CODE,
+        "correctness_error": _malformed_correctness_payload_summary(
+            payload,
+            error_message=error_message,
+        ),
+        "feedback": None,
+        "num_repair_shapes": 0,
+        "num_eval_shapes": 0,
+        "num_test_shapes": 0,
+        "shapes_passed": 0,
+        "repair_shapes_passed": 0,
+        "eval_shapes_passed": 0,
+        "max_abs_diff": None,
+        "max_rel_diff": None,
+    }
+
+
+def _malformed_correctness_payload_summary(
+    payload: Any,
+    *,
+    error_message: str,
+) -> str:
+    payload_type = type(payload).__name__
+    payload_keys: list[str] = []
+    raw_error = error_message
+    if isinstance(payload, dict):
+        payload_keys = sorted(str(key) for key in payload.keys())
+        raw_error = _correctness_payload_raw_error(payload) or error_message
+    key_summary = ",".join(payload_keys) if payload_keys else "<none>"
+    return (
+        "Malformed correctness payload: "
+        f"missing_field={MALFORMED_CORRECTNESS_PAYLOAD_MISSING_FIELD}; "
+        f"payload_type={payload_type}; "
+        f"raw_error={raw_error}; "
+        f"keys=[{key_summary}]"
+    )
+
+
+def _correctness_payload_raw_error(payload: dict[str, Any]) -> str | None:
+    infrastructure_failure = payload.get("infrastructure_failure")
+    if isinstance(infrastructure_failure, dict):
+        for field_name in ("error_msg", "error_message", "message", "exception"):
+            value = infrastructure_failure.get(field_name)
+            if isinstance(value, str) and value:
+                return value
+    for field_name in (
+        "raw_error",
+        "error_message",
+        "error_msg",
+        "error",
+        "exception",
+        "message",
+    ):
+        value = payload.get(field_name)
+        if isinstance(value, str) and value:
+            return value
+    return None
 
 
 def _validate_correctness_identity(

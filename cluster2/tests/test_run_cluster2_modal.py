@@ -710,6 +710,112 @@ def test_runner_durable_rows_survive_mid_run_exception(tmp_path: Path) -> None:
     assert len(generation_calls) == 3
 
 
+@pytest.mark.parametrize("condition", ("C", "G+C"))
+def test_runner_records_malformed_correctness_payload_and_continues(
+    tmp_path: Path,
+    condition: str,
+) -> None:
+    generation_calls: list[dict[str, Any]] = []
+    correctness_calls: list[Any] = []
+    config = _config(
+        tmp_path / condition.replace("+", "plus"),
+        condition=condition,
+        repair_budget=3,
+        n=2,
+    )
+
+    result = run_cluster2(
+        config,
+        dependencies=RunnerDependencies(
+            generation=_fake_generation(generation_calls),
+            correctness=_malformed_once_then_success_correctness(correctness_calls),
+        ),
+    )
+
+    assert len(result.rows) == 2
+    first, second = result.rows
+    assert first.condition == condition
+    assert first.base_seed == 0
+    assert first.attempt_index == 0
+    assert (
+        first.failure_code
+        == runner_mod.MALFORMED_CORRECTNESS_PAYLOAD_FAILURE_CODE
+    )
+    assert first.compile_success is False
+    assert first.functional_success is False
+    assert first.repair_set_success is False
+    assert first.eval_set_success is False
+    assert first.generated_metadata is not None
+    assert first.generated_metadata.generation_seed == 0
+    assert first.trace_summary is not None
+    assert first.repair_trace == (first.trace_summary,)
+    summary = first.trace_summary.public_failure_summary or ""
+    assert "missing_field=correctness_result" in summary
+    assert "payload_type=dict" in summary
+    assert "arbitrary_payload_key" in summary
+    assert "remote wrapper missing nested result" in summary
+
+    assert second.base_seed == 1
+    assert second.functional_success is True
+    assert second.failure_code is None
+    assert [call["identity"].base_seed for call in generation_calls] == [0, 1]
+    assert [call["identity"].attempt_index for call in generation_calls] == [0, 0]
+    assert len(correctness_calls) == 2
+
+
+def test_malformed_correctness_payload_durable_jsonl_remains_appendable(
+    tmp_path: Path,
+) -> None:
+    correctness_calls: list[Any] = []
+    config = _config(tmp_path, condition="C", repair_budget=2, n=2)
+
+    run_cluster2(
+        config,
+        dependencies=RunnerDependencies(
+            generation=_fake_generation([]),
+            correctness=_malformed_once_then_success_correctness(correctness_calls),
+        ),
+    )
+
+    lines = Path(config.output).read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+    payloads = [json.loads(line) for line in lines]
+    assert (
+        payloads[0]["failure_code"]
+        == runner_mod.MALFORMED_CORRECTNESS_PAYLOAD_FAILURE_CODE
+    )
+    assert payloads[1]["functional_success"] is True
+    persisted_rows = load_cluster2_results_jsonl(config.output)
+    assert [row.base_seed for row in persisted_rows] == [0, 1]
+    assert (
+        persisted_rows[0].failure_code
+        == runner_mod.MALFORMED_CORRECTNESS_PAYLOAD_FAILURE_CODE
+    )
+    assert persisted_rows[1].functional_success is True
+
+
+def test_well_formed_correctness_payload_still_records_success(
+    tmp_path: Path,
+) -> None:
+    correctness_calls: list[Any] = []
+
+    result = run_cluster2(
+        _config(tmp_path, condition="C", repair_budget=1, n=1),
+        dependencies=RunnerDependencies(
+            generation=_fake_generation([]),
+            correctness=_success_correctness(correctness_calls),
+        ),
+    )
+
+    assert len(correctness_calls) == 1
+    row = result.rows[0]
+    assert row.functional_success is True
+    assert row.compile_success is True
+    assert row.failure_code is None
+    assert row.trace_summary is not None
+    assert row.trace_summary.public_failure_summary == "Candidate passed Level 2."
+
+
 def test_runner_preflights_all_requested_cells_before_generation(
     tmp_path: Path,
 ) -> None:
@@ -1629,6 +1735,33 @@ def _success_correctness(calls: list[Any]):
                 "functional_success": True,
                 "repair_set_success": True,
                 "eval_set_success": True,
+                "failure_code": None,
+                "correctness_error": None,
+            }
+        }
+
+    return correctness
+
+
+def _malformed_once_then_success_correctness(calls: list[Any]):
+    def correctness(request: Any) -> dict[str, Any]:
+        calls.append(request)
+        if request.identity.base_seed == 0:
+            return {
+                "correctness_status": "INFRA_FAILURE",
+                "infrastructure_failure": {
+                    "error_type": "SubprocessResultSchemaError",
+                    "error_msg": "remote wrapper missing nested result",
+                },
+                "arbitrary_payload_key": "preserve-me",
+            }
+        return {
+            "correctness_result": {
+                "identity": request.identity.model_dump(),
+                "functional_success": True,
+                "repair_set_success": True,
+                "eval_set_success": True,
+                "compile_success": True,
                 "failure_code": None,
                 "correctness_error": None,
             }

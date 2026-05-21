@@ -190,7 +190,8 @@ def test_cluster1_model_loading_hash_matches_phase_minus1_if_recorded() -> None:
     ],
 )
 def test_shared_modal_files_match_phase_minus1_git_head(rel_path: str) -> None:
-    phase_head = _load_json(PHASE_MINUS1_MANIFEST)["git"]["current_head"]
+    manifest = _load_json(PHASE_MINUS1_MANIFEST)
+    phase_head = manifest["git"]["current_head"]
     current_hash = _file_sha256(REPO_ROOT / rel_path)
     phase_hash = _git_blob_sha256(phase_head, rel_path)
     instrumented_modal_files = {
@@ -200,6 +201,16 @@ def test_shared_modal_files_match_phase_minus1_git_head(rel_path: str) -> None:
     if rel_path in instrumented_modal_files:
         assert current_hash != phase_hash
         assert current_hash
+        return
+
+    accepted_hash_record = (
+        manifest.get("accepted_boundary_hash_overrides", {})
+        .get("shared_modal_files", {})
+        .get(rel_path)
+    )
+    if accepted_hash_record is not None:
+        assert accepted_hash_record["previous_phase_minus1_sha256"] == phase_hash
+        assert current_hash == accepted_hash_record["expected_sha256"]
         return
 
     assert current_hash == phase_hash
