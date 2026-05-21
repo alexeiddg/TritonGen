@@ -69,6 +69,9 @@ INPUT_ROLE_ALIASES = {
     "G+C": "G+C",
 }
 CLUSTER1_COMPILE_ONLY_CONDITIONS = frozenset({"none", "G"})
+CLUSTER2_GENERATED_CONDITIONS = frozenset({"C", "G+C"})
+CLUSTER2_EVAL_PIPELINE_FAILURE_CODE = "F3_EVAL_PIPELINE"
+_MISSING_FIELD = object()
 
 PAIRED_REPLAY_COMPARISONS = {"C": "none", "G+C": "G"}
 PAIR_KEY_COLUMNS = ("kernel_class", "kernel_id", "dtype", "base_seed")
@@ -196,6 +199,13 @@ def normalize_result_rows(
             # functional_success=False; compile_success is preserved separately
             # as a compile metric.
             functional_success = False
+        compile_success = _normalize_compile_success(
+            payload,
+            condition=condition,
+            functional_success=functional_success,
+            source_path=source_path,
+            row_index=row_index,
+        )
         record = dict(payload)
         record.update(
             {
@@ -212,7 +222,7 @@ def normalize_result_rows(
                 "dtype_original": dtype,
                 "base_seed": _int_or_none(base_seed),
                 "attempt_index": _int_or_none(attempt_index),
-                "compile_success": _bool_or_none(payload.get("compile_success")),
+                "compile_success": compile_success,
                 "functional_success": functional_success,
                 "scale_tier": _first_present(payload, "scale_tier", default="unspecified"),
                 "grammar_variant": _first_present(
@@ -650,6 +660,72 @@ def _is_cluster1_compile_only_scope(
         condition in CLUSTER1_COMPILE_ONLY_CONDITIONS
         and source_path is not None
         and "cluster1" in Path(source_path).parts
+    )
+
+
+def _normalize_compile_success(
+    payload: Mapping[str, Any],
+    *,
+    condition: str,
+    functional_success: bool | None,
+    source_path: str | None,
+    row_index: int,
+) -> bool | None:
+    raw_compile_success = payload.get("compile_success")
+    if condition not in CLUSTER2_GENERATED_CONDITIONS:
+        return _bool_or_none(raw_compile_success)
+
+    raw_failure_code = payload.get("failure_code", _MISSING_FIELD)
+    derived = (
+        None
+        if raw_failure_code is _MISSING_FIELD
+        else _cluster2_compile_success_from_failure_code(raw_failure_code)
+    )
+
+    # For Cluster 2 rows, compile_success is derived from the canonical
+    # failure_code when absent: null/F2/eval-pipeline F3 implies the row reached
+    # Level 2, therefore compile succeeded; F0/F1 implies compile did not
+    # succeed.
+    if _is_missing_value(raw_compile_success):
+        if derived is None:
+            raise ValueError(
+                "Cluster 2 compile_success is missing and cannot be derived "
+                "without failure_code"
+                f" for condition={condition!r}, source_path={source_path!r}, "
+                f"row_index={row_index}"
+            )
+        resolved = derived
+    else:
+        resolved = _bool_or_none(raw_compile_success)
+        if derived is not None and resolved != derived:
+            raise ValueError(
+                "Cluster 2 compile_success conflicts with failure_code-derived "
+                "semantics"
+                f" for condition={condition!r}, source_path={source_path!r}, "
+                f"row_index={row_index}: compile_success={resolved!r}, "
+                f"failure_code={raw_failure_code!r}, derived_compile_success={derived!r}"
+            )
+
+    if functional_success is True and resolved is False:
+        raise ValueError(
+            "Cluster 2 functional_success=True requires compile_success=True"
+            f" for condition={condition!r}, source_path={source_path!r}, "
+            f"row_index={row_index}"
+        )
+    return resolved
+
+
+def _cluster2_compile_success_from_failure_code(failure_code: object) -> bool:
+    if _is_missing_value(failure_code) or failure_code == "":
+        return True
+    if not isinstance(failure_code, str):
+        raise ValueError(
+            "Cluster 2 failure_code must be a string, null, or empty string; "
+            f"got {failure_code!r}"
+        )
+    return (
+        failure_code.startswith("F2_")
+        or failure_code == CLUSTER2_EVAL_PIPELINE_FAILURE_CODE
     )
 
 

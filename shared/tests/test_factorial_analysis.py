@@ -287,6 +287,158 @@ def test_cluster2_functional_success_is_not_overridden_by_role() -> None:
     assert bool(row["compile_success"]) is True
 
 
+@pytest.mark.parametrize(
+    ("role", "condition", "failure_code", "expected"),
+    [
+        ("c", "C", "F0_PARSE", False),
+        ("c", "C", "F1_COMPILE", False),
+        ("c", "C", "F2_NUMERIC_LARGE", True),
+        ("gc", "G+C", "F2_SHAPE_MISMATCH", True),
+        ("gc", "G+C", "F3_EVAL_PIPELINE", True),
+        ("gc", "G+C", "F3_TIMEOUT", False),
+    ],
+)
+def test_cluster2_compile_success_derives_from_failure_code(
+    role: str,
+    condition: str,
+    failure_code: str,
+    expected: bool,
+) -> None:
+    normalized = normalize_result_rows(
+        [{"condition": condition, "failure_code": failure_code}],
+        input_role=role,
+    )
+
+    assert bool(normalized.iloc[0]["compile_success"]) is expected
+
+
+@pytest.mark.parametrize("failure_code", [None, ""])
+def test_cluster2_success_failure_code_derives_compile_success_true(
+    failure_code: str | None,
+) -> None:
+    normalized = normalize_result_rows(
+        [
+            {
+                "condition": "G+C",
+                "failure_code": failure_code,
+                "functional_success": True,
+            }
+        ],
+        input_role="gc",
+    )
+
+    row = normalized.iloc[0]
+    assert bool(row["compile_success"]) is True
+    assert bool(row["functional_success"]) is True
+
+
+def test_cluster2_explicit_compile_success_agrees_with_failure_code() -> None:
+    normalized = normalize_result_rows(
+        [
+            {
+                "condition": "C",
+                "failure_code": "F2_NUMERIC_NAN",
+                "compile_success": True,
+            }
+        ],
+        input_role="c",
+    )
+
+    assert bool(normalized.iloc[0]["compile_success"]) is True
+
+
+def test_cluster2_explicit_compile_success_conflict_fails_loudly() -> None:
+    with pytest.raises(
+        ValueError,
+        match="compile_success conflicts with failure_code-derived semantics.*F1_COMPILE",
+    ):
+        normalize_result_rows(
+            [
+                {
+                    "condition": "C",
+                    "failure_code": "F1_COMPILE",
+                    "compile_success": True,
+                }
+            ],
+            input_role="c",
+        )
+
+
+def test_cluster2_functional_success_compile_success_conflict_without_failure_code_fails() -> None:
+    with pytest.raises(
+        ValueError,
+        match="functional_success=True requires compile_success=True",
+    ):
+        normalize_result_rows(
+            [
+                {
+                    "condition": "C",
+                    "compile_success": False,
+                    "functional_success": True,
+                }
+            ],
+            input_role="c",
+        )
+
+
+def test_cluster2_functional_success_derived_compile_conflict_fails() -> None:
+    with pytest.raises(
+        ValueError,
+        match="functional_success=True requires compile_success=True",
+    ):
+        normalize_result_rows(
+            [
+                {
+                    "condition": "C",
+                    "failure_code": "F1_COMPILE",
+                    "functional_success": True,
+                }
+            ],
+            input_role="c",
+        )
+
+
+def test_cluster1_g_compile_success_ignores_cluster2_failure_code_derivation() -> None:
+    normalized = normalize_result_rows(
+        [
+            {
+                "compile_success": True,
+                "functional_success": True,
+                "failure_code": "F1_COMPILE",
+            }
+        ],
+        input_role="g",
+    )
+
+    row = normalized.iloc[0]
+    assert row["condition"] == "G"
+    assert bool(row["compile_success"]) is True
+    assert bool(row["functional_success"]) is False
+
+
+def test_cluster2_real_artifact_samples_normalize_missing_compile_success() -> None:
+    samples = {
+        "c": Path("outputs/cluster2/c_paper_n20_l4.jsonl"),
+        "gc": Path("outputs/cluster2/g_plus_c_paper_n20_l4.jsonl"),
+    }
+    for role, path in samples.items():
+        if not path.exists():
+            pytest.skip(f"missing artifact sample: {path}")
+        rows = []
+        for payload in _jsonl_sample(path, limit=10):
+            row = dict(payload)
+            row.pop("compile_success", None)
+            rows.append(row)
+
+        normalized = normalize_result_rows(rows, source_path=str(path), input_role=role)
+
+        assert normalized["compile_success"].notna().all()
+        expected = [
+            _expected_cluster2_compile_success(row.get("failure_code")) for row in rows
+        ]
+        assert normalized["compile_success"].astype(bool).tolist() == expected
+
+
 def test_cluster1_real_artifact_samples_normalize_functional_success_false() -> None:
     samples = {
         "none": Path("outputs/cluster1/baseline_repaired_l4_n20.jsonl"),
@@ -838,3 +990,12 @@ def _jsonl_sample(path: Path, *, limit: int) -> list[dict[str, object]]:
         if len(rows) == limit:
             break
     return rows
+
+
+def _expected_cluster2_compile_success(failure_code: object) -> bool:
+    return (
+        failure_code is None
+        or failure_code == ""
+        or (isinstance(failure_code, str) and failure_code.startswith("F2_"))
+        or failure_code == "F3_EVAL_PIPELINE"
+    )
