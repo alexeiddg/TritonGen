@@ -11,9 +11,10 @@
 > `docs/06_failure_taxonomy_and_eval_ladder.md`,
 > `docs/07_analysis_and_statistics.md`, and `docs/08_decision_log.md`.
 > Current analyzer output exists at
-> `outputs/analysis/factorial_2x2_preliminary.json` and loads 714 rows, but
-> `metadata.reportable=false`. It is inspectable evidence, not an official
-> final statistical result.
+> `outputs/analysis/factorial_2x2_preliminary.json`, loads 714 rows, and
+> records `metadata.reportable=true` under explicit `analysis_cli_annotation`
+> paper-scale policy. It remains a preliminary 2^2 output with coverage, F3,
+> P-deferred, model-fit, and provenance caveats.
 
 ---
 
@@ -54,8 +55,18 @@ Current normalization rules:
   F3 policy is evidence-sensitive and must remain caveated.
 - No performance, timing, profiling, speedup, or P metric is currently
   reportable.
-- No official final statistical result may be quoted while analyzer
-  `metadata.reportable=false`.
+- Preliminary statistical prose must cite the verified reportable analyzer JSON
+  and preserve all current caveats.
+- Current 2^2 legacy/current artifacts lack raw row `scale_tier`; the accepted
+  analyzer output uses explicit annotation and records the annotation source.
+- Legacy template-G rows such as `outputs/cluster1/final_g_l4_n20.jsonl` fail
+  the current paper-scale generation metadata gate and are not current primary
+  paper-scale evidence. They may be referenced only as compile-only
+  `template_upper_bound` diagnostics unless rerun through the current metadata
+  pipeline with matching template G+C evidence.
+- Future `EvalResult` and `RunConfig` rows must carry `scale_tier`; future
+  metric reportability must reject row, registry/manifest, and invocation
+  scale-tier conflicts.
 
 Current primary comparisons are paired 2^2 comparisons:
 
@@ -66,11 +77,16 @@ Current primary comparisons are paired 2^2 comparisons:
 | G vs none | `compile_success` | 177 when missing G rows are skipped | secondary structural diagnostic |
 | G+C vs C | `compile_success` | 177 when missing G+C rows are skipped | secondary structural diagnostic and F3 caveat |
 
-The current analyzer output is inspectable but not final or reportable:
+The current analyzer output is reportable for the covered 2^2 scope under the
+recorded scale-tier annotation:
 
 ```text
 outputs/analysis/factorial_2x2_preliminary.json
-metadata.reportable=false
+metadata.reportable=true
+metadata.scale_tiers=["paper"]
+metadata.raw_scale_tiers_before_annotation=["unspecified"]
+metadata.scale_tier_source="analysis_cli_annotation"
+metadata.requested_scale_tier="paper"
 diagnostics.rows_loaded=714
 ```
 

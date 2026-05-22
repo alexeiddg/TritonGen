@@ -19,8 +19,11 @@ development
 paper
 ```
 
-Every run config, JSONL sidecar, aggregate summary, and artifact filename should
-record `scale_tier` using one of those values.
+Every future run config, row schema, JSONL sidecar, aggregate summary, registry
+entry, and artifact filename should record `scale_tier` using one of those
+values. The current registered 2^2 artifacts predate row-level scale-tier
+serialization; they are handled through explicit analyzer annotation recorded in
+analyzer metadata, not by rewriting raw JSONL.
 
 ## Scale Tiers
 
@@ -76,8 +79,13 @@ artifacts are development/legacy evidence unless explicitly promoted into the
 artifact registry.
 
 The analyzer output at `outputs/analysis/factorial_2x2_preliminary.json` is
-valid JSON and loads 714 rows, but `metadata.reportable=false`. It is
-inspectable evidence, not an official final statistical result.
+valid JSON, loads 714 rows, and records `metadata.reportable=true`,
+`metadata.scale_tiers=["paper"]`,
+`metadata.raw_scale_tiers_before_annotation=["unspecified"]`,
+`metadata.scale_tier_source="analysis_cli_annotation"`, and
+`metadata.requested_scale_tier="paper"`. The raw none/G/C/G+C JSONL artifacts
+were not rewritten; the paper scale label is attached at analysis time for this
+legacy/current artifact set.
 
 Current C/G+C artifacts record `max_new_tokens=2048` according to the artifact
 registry and Phase 0/7 evidence. Older `1536` token-budget references are
@@ -132,6 +140,13 @@ Existing registered artifacts such as
 historical or diagnostic unless promoted into the registry with row counts,
 schema, provenance, and caveats.
 
+The old template artifact `outputs/cluster1/final_g_l4_n20.jsonl` is registered
+only as legacy diagnostic/reference material. Its 180/180 legacy compile result
+does not make it current paper-scale primary G; it remains current-excluded
+unless a new template G lineage and matching template G+C lineage are rerun
+under the current metadata policy and analyzed separately as non-primary
+diagnostics.
+
 ## Required Run Metadata
 
 Every run should record:
@@ -169,9 +184,11 @@ Every run should record:
 
 For paper-scale runs, also record the final prompt version, grammar version,
 feedback-template version, eval-suite version, and whether a secondary model
-replication was run. Paper-scale current-grammar rows must pass the generation
-metadata gate; legacy rows with `unknown`/missing provenance remain readable but
-are not reportable paper-scale evidence.
+replication was run. Future paper-scale current-grammar rows must pass the
+generation metadata gate and must serialize `scale_tier`. Legacy/current rows
+with missing scale-tier fields or `unknown` provenance remain readable only
+under explicit registry and analyzer caveats; they must not be silently promoted
+by default.
 
 ## Analysis Rules
 
@@ -190,6 +207,22 @@ kernel IDs, model IDs, seed schedule, and git hash where available.
 Aggregators must reject mixed-scale analysis by default. A mixed-scale report
 may exist only as an explicitly labeled diagnostic report.
 
+Analyzer scale-tier handling:
+
+- Current legacy/current 2^2 artifacts may use explicit analyzer annotation
+  because raw rows lack `scale_tier`, provided the analyzer records
+  `scale_tier_source`, `requested_scale_tier`, and
+  `raw_scale_tiers_before_annotation`.
+- CLI annotation may fill missing legacy row tiers only when the registry,
+  manifest, or analysis policy authorizes that exact artifact set.
+- Future artifacts, including Cluster 3/P rows, must persist `scale_tier` in
+  rows and registry entries; CLI annotation is not the normal path for future
+  paper-scale rows.
+- In short, future rows must include `scale_tier`, and registry entries must
+  include `scale_tier`.
+- Analyzer reportability must reject conflicts between explicit raw row
+  `scale_tier`, registry/manifest scale tier, and invocation annotation.
+
 ## Cluster 1 Template-Grammar Reference Control
 
 The current template Cluster 1 grammar was developed against the three-kernel
@@ -202,6 +235,9 @@ Default paper-scale policy:
 - keep the current template grammar frozen as `template_upper_bound` reference;
 - report it only as reference/diagnostic on the original three-kernel subset
   unless a new contract says otherwise;
+- keep old template artifacts such as `outputs/cluster1/final_g_l4_n20.jsonl`
+  outside the current primary analyzer unless explicitly rerun under current
+  metadata and paired with matching template G+C diagnostic evidence;
 - do not expand the diagnostic/reference template grammar merely to cover the larger paper-scale
   kernel set;
 - use the task-agnostic Triton grammar for the primary task-agnostic G condition
@@ -244,7 +280,9 @@ The preliminary handoff methodology should include a sentence like:
 > The current preliminary registered artifacts cover the 2^2 subset over none,
 > G, C, and G+C at an n=20 target over the locked elementwise, reduction, and
 > matmul archetypes. The task-agnostic G and G+C artifacts are 177/180 and the
-> analyzer output is not official while `metadata.reportable=false`.
+> analyzer output is reportable for the covered 2^2 scope through explicit
+> paper-scale analysis annotation, with raw rows still recorded as missing
+> row-level `scale_tier` before annotation.
 
 This preserves the separation reviewers need: development scale is preserved
 for reproducibility, while current report-facing claims must cite the registry
