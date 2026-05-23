@@ -34,11 +34,18 @@ Use these docs as the current report-facing navigation layer:
 | Failure taxonomy and evaluation ladder | `docs/06_failure_taxonomy_and_eval_ladder.md` |
 | Analysis and statistics semantics | `docs/07_analysis_and_statistics.md` |
 | Decision log | `docs/08_decision_log.md` |
+| Preliminary report outline | `docs/09_preliminary_report_outline.md` |
+| Cluster 3 drift-prevention plan | `docs/10_cluster3_drift_prevention_plan.md` |
 | Codebase handoff guide | `docs/handoff/codebase_handoff_guide.md` |
 | Stale-doc inventory | `docs/handoff/stale_docs_inventory.md` |
 
 The artifact registry is the source of truth for current artifact identities,
 row counts, schema caveats, and analyzer status.
+
+Post-Phase-11 status: the handoff-readiness documentation pipeline is complete
+and preliminary report drafting is ready with a results placeholder. Official
+statistical-result prose remains blocked while analyzer `metadata.reportable`
+is `false`.
 
 ## Important Caveats
 
