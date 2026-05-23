@@ -41,6 +41,11 @@ Template G and `template_upper_bound` artifacts are diagnostic/reference
 material only. They are not the current primary G condition and must not be used
 to fill task-agnostic G coverage gaps.
 
+The old template artifact `outputs/cluster1/final_g_l4_n20.jsonl` is preserved
+only as legacy `template_upper_bound` compile-only diagnostic evidence. It is
+not task-agnostic G, not current primary G, not current G+C pairing evidence,
+and not Level 2 functional correctness evidence.
+
 ## G Acceptance Contract
 
 Current primary G uses the task-agnostic grammar variant. G acceptance requires
@@ -86,10 +91,11 @@ Current artifact identities and row counts are owned by
 | G | `outputs/cluster1/task_agnostic_g_aligned_pipeline_n20_l4.jsonl` | 177 | missing three matmul rows; compile-only; `modal_image_sha=unknown` |
 | C | `outputs/cluster2/c_paper_n20_l4.jsonl` | 180 | C lacks raw `compile_success`; analyzer normalization required |
 | G+C | `outputs/cluster2/g_plus_c_paper_n20_l4.jsonl` | 177 | missing same three matmul rows; five `F3_EVAL_PIPELINE` rows |
-| analyzer | `outputs/analysis/factorial_2x2_preliminary.json` | 714 loaded rows | valid JSON but `metadata.reportable=false` |
+| analyzer | `outputs/analysis/factorial_2x2_preliminary.json` | 714 loaded rows | valid JSON; `metadata.reportable=true` via `analysis_cli_annotation`; P cells deferred |
 
-The analyzer output is inspectable evidence, not an official final statistical
-result while `metadata.reportable=false`.
+The analyzer output is reportable for the current covered 2^2 scope under the
+recorded paper-scale annotation. It is not a full 2^3/P result and must carry
+the 177/180, F3, single-class model, and provenance caveats.
 
 ## Scale Boundary
 
@@ -118,7 +124,7 @@ weights.
 - Performance, timing, profiling, or speedup claims.
 - Treating template-G as primary G.
 - Treating missing G/G+C rows as ignorable.
-- Treating analyzer output as official while `metadata.reportable=false`.
+- Treating analyzer output as broader than the verified, caveated 2^2 scope.
 
 ## Future Cluster 3 Boundary
 

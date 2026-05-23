@@ -36,29 +36,37 @@ Use these docs as the current report-facing navigation layer:
 | Decision log | `docs/08_decision_log.md` |
 | Preliminary report outline | `docs/09_preliminary_report_outline.md` |
 | Cluster 3 drift-prevention plan | `docs/10_cluster3_drift_prevention_plan.md` |
+| Agentic document hub | `docs/handoff/agentic_document_hub.md` |
+| Document version registry | `docs/handoff/document_version_registry.md` |
+| Code update documentation policy | `docs/handoff/code_update_documentation_policy.md` |
 | Codebase handoff guide | `docs/handoff/codebase_handoff_guide.md` |
 | Stale-doc inventory | `docs/handoff/stale_docs_inventory.md` |
 
 The artifact registry is the source of truth for current artifact identities,
 row counts, schema caveats, and analyzer status.
 
-Post-Phase-11 status: the handoff-readiness documentation pipeline is complete
-and preliminary report drafting is ready with a results placeholder. Official
-statistical-result prose remains blocked while analyzer `metadata.reportable`
-is `false`.
+Post-Phase-11 status: the handoff-readiness documentation pipeline is complete.
+Preliminary result prose may now be drafted only from the verified reportable
+analyzer output and only with the coverage, F3, P-deferred, model-fit, and
+provenance caveats preserved.
 
 ## Important Caveats
 
 - `G` and `G+C` are 177/180 artifacts, not complete 180/180 artifacts.
 - Missing `G` and `G+C` rows are `matmul/fp32` seed 5 and `matmul/bf16` seeds
   0 and 18.
-- `outputs/analysis/factorial_2x2_preliminary.json` exists and loads 714 rows,
-  but `metadata.reportable=false`; it is inspectable evidence, not an official
-  final statistical result.
+- `outputs/analysis/factorial_2x2_preliminary.json` exists, loads 714 rows, and
+  has `metadata.reportable=true` under explicit `analysis_cli_annotation`
+  paper-scale policy. The raw JSONL artifacts were not rewritten and still do
+  not serialize row-level `scale_tier`.
 - Cluster 1 is compile-only. It does not run Level 2 numerical correctness and
   does not claim functional correctness.
 - Template G and `template_upper_bound` artifacts are diagnostic/reference only.
   Current primary G is task-agnostic.
+- The old template artifact `outputs/cluster1/final_g_l4_n20.jsonl` is legacy
+  compile-only diagnostic evidence only. It must not fill missing task-agnostic
+  G rows, pair with current task-agnostic G+C, or enter the current primary
+  2^2 analyzer.
 - Old n=5, template, smoke, failed, and partial artifacts are non-authoritative
   unless promoted into `docs/05_artifacts_and_results_registry.md`.
 - No performance, timing, profiling, or speedup result is currently claimed.
