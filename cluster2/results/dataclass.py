@@ -321,6 +321,8 @@ class Cluster2GeneratedRowMetadata:
     replay_control_condition: str | None = None
     replay_base_seed: int | None = None
     replay_generation_seed: int | None = None
+    cluster1_artifact_id: str | None = None
+    replay_source: str | None = None
     prompt_sha256: str | None = None
     model_id: str | None = None
     model_revision: str | None = None
@@ -364,6 +366,11 @@ class Cluster2GeneratedRowMetadata:
                     "replay_control_condition must be one of: "
                     f"{', '.join(REPLAY_CONTROL_CONDITIONS)}"
                 )
+        _require_optional_non_empty_str(
+            self.cluster1_artifact_id,
+            "cluster1_artifact_id",
+        )
+        _require_optional_non_empty_str(self.replay_source, "replay_source")
         _validate_pairing_metadata(
             replay_pair_id=self.replay_pair_id,
             replay_base_seed=self.replay_base_seed,
@@ -911,6 +918,8 @@ def generated_row(
     replay_control_condition: str | None = None,
     replay_base_seed: int | None = None,
     replay_generation_seed: int | None = None,
+    cluster1_artifact_id: str | None = None,
+    replay_source: str | None = None,
     prompt_sha256: str | None = None,
     model_id: str | None = None,
     model_revision: str | None = None,
@@ -976,6 +985,8 @@ def generated_row(
             replay_control_condition=replay_control_condition,
             replay_base_seed=replay_base_seed,
             replay_generation_seed=replay_generation_seed,
+            cluster1_artifact_id=cluster1_artifact_id,
+            replay_source=replay_source,
             prompt_sha256=prompt_sha256,
             model_id=model_id,
             model_revision=model_revision,

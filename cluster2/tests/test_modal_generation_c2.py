@@ -721,6 +721,9 @@ def test_g_plus_c_hash_gate_uses_current_task_agnostic_n20_artifact() -> None:
     assert c2_generation.C2_FROZEN_G_ARTIFACT_BY_GRAMMAR_VARIANT[
         C2_G_PLUS_C_GRAMMAR_VARIANT
     ] == "g_task_agnostic_aligned_pipeline_n20_l4"
+    assert c2_generation.C2_FROZEN_G_ARTIFACT_BY_GRAMMAR_VARIANT[
+        c2_generation.C2_G_PLUS_C_TEMPLATE_UPPER_BOUND_GRAMMAR_VARIANT
+    ] == "g_template_upper_bound_current_pipeline_n20_l4"
     assert "g_task_agnostic_n5_l4_rerun" not in {
         c2_generation.C2_FROZEN_G_ARTIFACT_BY_GRAMMAR_VARIANT[
             C2_G_PLUS_C_GRAMMAR_VARIANT

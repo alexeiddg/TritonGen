@@ -63,6 +63,9 @@ provenance caveats preserved.
   does not claim functional correctness.
 - Template G and `template_upper_bound` artifacts are diagnostic/reference only.
   Current primary G is task-agnostic.
+- The current-pipeline template upper-bound G diagnostic artifact is
+  `outputs/cluster1/template_upper_bound_g_current_pipeline_n20_l4.jsonl`.
+  It is compile-only, non-primary, and excluded from the primary analyzer.
 - The old template artifact `outputs/cluster1/final_g_l4_n20.jsonl` is legacy
   compile-only diagnostic evidence only. It must not fill missing task-agnostic
   G rows, pair with current task-agnostic G+C, or enter the current primary
