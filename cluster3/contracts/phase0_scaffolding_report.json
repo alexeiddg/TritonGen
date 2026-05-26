@@ -1,0 +1,66 @@
+{
+  "schema_version": "cluster3.phase0_scaffolding_report.v1",
+  "phase": 0,
+  "task": "cluster3_scaffolding",
+  "preflight_git_status": "",
+  "known_dirty_paths": [],
+  "unexpected_dirty_paths": [],
+  "files_added": [
+    "cluster3/constants.py",
+    "cluster3/tests/test_cluster3_imports.py",
+    "cluster3/contracts/phase0_scaffolding_report.json",
+    "audits/cluster3_phase0_scaffolding_report.md"
+  ],
+  "files_modified": [
+    ".contracts/agentic/preliminary_report_handoff/phase_state.md",
+    "docs/handoff/document_version_registry.md"
+  ],
+  "tests_added": [
+    "cluster3/tests/test_cluster3_imports.py::test_cluster3_package_imports_cheap",
+    "cluster3/tests/test_cluster3_imports.py::test_cluster3_constants_contract",
+    "cluster3/tests/test_cluster3_imports.py::test_cluster3_allowed_cells_match_registry",
+    "cluster3/tests/test_cluster3_imports.py::test_source_class_for_cluster3_condition_returns_generated_for_all_p_cells",
+    "cluster3/tests/test_cluster3_imports.py::test_generation_mode_for_cluster3_condition_matches_c2_after_translation",
+    "cluster3/tests/test_cluster3_imports.py::test_source_class_for_cluster3_condition_rejects_non_cluster3",
+    "cluster3/tests/test_cluster3_imports.py::test_phase0_contract_report_json_exists",
+    "cluster3/tests/test_cluster3_imports.py::test_phase0_contract_report_schema",
+    "cluster3/tests/test_cluster3_imports.py::test_phase0_contract_report_classification_allowed",
+    "cluster3/tests/test_cluster3_imports.py::test_phase0_contract_report_has_git_status_fields",
+    "cluster3/tests/test_cluster3_imports.py::test_phase0_contract_report_preflight_git_status_is_string",
+    "cluster3/tests/test_cluster3_imports.py::test_phase0_contract_report_known_dirty_paths_schema",
+    "cluster3/tests/test_cluster3_imports.py::test_phase0_contract_report_unexpected_dirty_paths_schema",
+    "cluster3/tests/test_cluster3_imports.py::test_phase0_contract_report_blocks_on_unexpected_dirty_paths",
+    "cluster3/tests/test_cluster3_imports.py::test_phase0_contract_report_does_not_require_current_git_status_match"
+  ],
+  "tests_run": [
+    {
+      "command": ".venv/bin/python -m pytest cluster3/tests/test_cluster3_imports.py -v",
+      "result": "passed",
+      "notes": "15 passed."
+    }
+  ],
+  "regression_checks": [
+    {
+      "command": ".venv/bin/python -m pytest cluster1/tests cluster2/tests shared/tests -x",
+      "result": "failed",
+      "notes": "Pre-implementation baseline failed before Phase 0 edits at cluster1/tests/test_documentation_language_lock.py::test_committed_docs_lock_primary_and_reference_grammar_roles; no dirty paths were present."
+    },
+    {
+      "command": ".venv/bin/python -m pytest cluster1/tests cluster2/tests shared/tests cluster3/tests -x",
+      "result": "failed",
+      "notes": "Post-implementation regression stopped at the same pre-existing Cluster 1 documentation-language lock failure before reaching Cluster 2/shared/Cluster 3."
+    },
+    {
+      "command": "rg \"import torch|import triton|import transformers|import xgrammar|import modal\" cluster3/__init__.py cluster3/constants.py cluster3/tests/test_cluster3_imports.py",
+      "result": "passed",
+      "notes": "No matches."
+    },
+    {
+      "command": "Cluster 3 Modal API surface rg scan",
+      "result": "passed",
+      "notes": "No matches."
+    }
+  ],
+  "negative_scope_verified": true,
+  "classification": "PHASE0_SCAFFOLDING_COMPLETE_WITH_WARNINGS"
+}
