@@ -794,7 +794,7 @@ def _write_replay_fixture(
         (
             TASK_AGNOSTIC_G_N20_ARTIFACT_ID
             if grammar_variant == "task_agnostic"
-            else "g_template_upper_bound_n20_l4"
+            else "g_template_upper_bound_current_pipeline_n20_l4"
         )
         if condition == "G"
         else "none_baseline_n20_l4"

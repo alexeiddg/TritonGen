@@ -948,6 +948,12 @@ def test_runner_template_upper_bound_requires_explicit_diagnostic_flag(
     assert generation_calls[0]["grammar_variant"] == "template_upper_bound"
     assert result.rows[0].generated_metadata is not None
     assert result.rows[0].generated_metadata.grammar_variant == "template_upper_bound"
+    assert result.rows[0].generated_metadata.cluster1_artifact_id == (
+        "g_template_upper_bound_current_pipeline_n20_l4"
+    )
+    assert result.rows[0].generated_metadata.replay_source == (
+        "g_template_upper_bound_current_pipeline_n20_l4"
+    )
     assert (
         result.rows[0].generated_metadata.grammar_path
         == "cluster1/grammar/triton_kernel.gbnf"

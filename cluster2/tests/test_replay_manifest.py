@@ -26,7 +26,7 @@ def test_selected_template_replay_artifacts_are_locked() -> None:
 
     assert selected_template_control_artifact_ids(manifest) == (
         "none_baseline_n20_l4",
-        "g_template_upper_bound_n20_l4",
+        "g_template_upper_bound_current_pipeline_n20_l4",
     )
 
 
@@ -38,7 +38,11 @@ def test_artifact_for_replay_condition_returns_frozen_paths() -> None:
 
     assert none.path == "outputs/cluster1/baseline_repaired_l4_n20.jsonl"
     assert none.grammar_active is False
-    assert g.path == "outputs/cluster1/final_g_l4_n20.jsonl"
+    assert g.artifact_id == "g_template_upper_bound_current_pipeline_n20_l4"
+    assert g.path == (
+        "outputs/cluster1/template_upper_bound_g_current_pipeline_n20_l4.jsonl"
+    )
+    assert g.row_count == 180
     assert g.grammar_active is True
 
 

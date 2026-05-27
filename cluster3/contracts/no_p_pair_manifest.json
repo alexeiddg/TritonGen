@@ -1,0 +1,5 @@
+{
+  "schema_version": "cluster3.no_p_pair_manifest.v1",
+  "description": "Cluster 3 no-P control manifest for P vs none, G+P vs G, C+P vs C, and G+C+P vs G+C pair validation.",
+  "entries": []
+}

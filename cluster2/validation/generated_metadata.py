@@ -46,6 +46,8 @@ GENERATED_METADATA_FIELDS: frozenset[str] = frozenset(
         "replay_control_condition",
         "replay_base_seed",
         "replay_generation_seed",
+        "cluster1_artifact_id",
+        "replay_source",
         "prompt_sha256",
         "temperature",
         "max_new_tokens",
