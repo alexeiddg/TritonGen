@@ -1,99 +1,85 @@
 # Cluster 3 - Compile-Error Repair Loop (P-factor v1)
 
-**Status: IMPLEMENTATION READY - v1 spec reviewed, code not implemented yet**
+**Status: v1 implemented locally through Phase 10.**
 
-Cluster 3 research scope is governed by
-`.contracts/research/research_scope.md` and
-`.contracts/research/scale_policy.md`. Detailed internal execution notes may
-exist under `.contracts/agentic/`, but those notes are not paper-facing
-methodology.
+Development-scale/paper-scale runs are deferred until paid Modal gates. Scope:
+compile-error feedback repair only.
 
-The active implementation source for v1 is
-`docs/cluster3_implementation_specification.md`. It narrows the first
-implementation to compile-error repair only. No Cluster 3 artifacts, P results,
-profiler feedback, speedup claims, or paper-scale runs exist yet.
+The report-facing methodology owner is `docs/04_methodology_cluster3.md`. The
+implementation contract remains `docs/cluster3_implementation_specification.md`.
 
-## Scope
+## What Cluster 3 Adds
 
-Cluster 3 v1 owns the P-factor as bounded compile-error repair for generated
-Triton kernels. P observes `F1_COMPILE` evidence only and uses structured
-Triton compiler errors to improve compilability.
+Cluster 3 adds P, a compile-error feedback repair factor for generated Triton
+kernels. P is bounded to `F1_COMPILE` evidence and does not change Cluster 1 G
+or Cluster 2 C semantics.
 
-Profiler feedback, timing feedback, speedup optimization, Level 4 performance
-repair, and F1 runtime-launch repair are deferred to a future contract. Cluster
-3 v1 does not make performance claims.
+## Conditions
 
-Cluster 3 is not an RL cluster. It does not train, fine-tune, or update the
-model. It also does not generate CUDA/C++/CUTLASS/CuTe kernels.
+P-containing conditions are:
 
-## Scale policy
+- `P`
+- `G+P`
+- `C+P`
+- `G+C+P`
 
-Cluster 3 must follow `.contracts/research/scale_policy.md`.
+Their no-P controls are `none`, `G`, `C`, and `G+C` through
+`cluster3/contracts/no_p_pair_manifest.json`.
 
-Build P at smoke scale first:
+## What P Observes
 
-```text
-one kernel, condition P, n=1, development model
-```
+P observes `F1_COMPILE` only.
 
-After compile-error repair runs end to end, promote to development scale:
+## What P Does Not Observe
 
-```text
-three kernels, active P conditions, n=3..5, development model
-```
+P does not observe F0, `F1_RUNTIME`, F2, or F3. `F1_RUNTIME` is deferred to v2.
+F3 remains infrastructure/eval-pipeline failure, not P success.
 
-Cluster 3 paper-scale runs are not allowed until both Cluster 2 and Cluster 3
-are stable at development scale. Paper-scale P results require frozen
-prompts/feedback templates, explicit artifact manifests, analyzer
-reportability, and a separate promotion review.
+## Relationship To Cluster 2
 
-## Factorial conditions
+Generation and correctness surfaces are reused through local adapters over the
+existing Cluster 2 Modal surfaces. C remains F2-gated. Cluster 3 P does not
+turn C into a compile-error repair loop and does not introduce new failure
+codes.
 
-| Condition | Grammar (G) | Test-driven feedback (C) | Compile-error repair (P) |
-|-----------|-------------|--------------------------|------------------------------|
-| P         | OFF         | OFF                  | ON                |
-| G+P       | ON          | OFF                  | ON                |
-| C+P       | OFF         | ON                   | ON                |
-| G+C+P     | ON          | ON                   | ON                |
+## Key Files
 
-Where G appears, it inherits the Cluster 1 two-layer acceptance model:
-grammar-guided decoding plus offline semantic post-validation. XGrammar
-token-level masking is the decoding layer; the offline semantic validator is the
-structural/surface validation layer. P must not reinterpret grammar rejection as
-compile-error repair input unless a later contract explicitly adds that handoff.
+| Surface | Path |
+|---|---|
+| Constants | `cluster3/constants.py` |
+| Dispatcher | `cluster3/feedback/dispatcher.py` |
+| P repair loop | `cluster3/feedback/compile_error_repair.py` |
+| P prompts and sanitizer | `cluster3/feedback/prompts.py`, `cluster3/feedback/sanitizer.py` |
+| C adapter | `cluster3/feedback/c_loop_adapter.py` |
+| Correctness adapter | `cluster3/modal/correctness_runner.py` |
+| Row schema and logger | `cluster3/results/dataclass.py`, `cluster3/results/logger.py` |
+| No-P replay controls | `cluster3/replay/no_p_pairs.py`, `cluster3/replay/build_no_p_pair_manifest.py` |
+| Analyzer support | `shared/analysis/factorial.py` |
 
-`C` in this table means the Cluster 2 test-driven feedback loop is active when
-the candidate reaches Level 2 correctness failure. Cluster 3 owns only
-P-enabled conditions and reuses Cluster 2 surfaces through the compatibility
-adapters defined in the implementation specification.
+## Tests
 
-## Boundary rules
+- `cluster3/tests/test_dispatcher.py`
+- `cluster3/tests/test_p_prompts.py`
+- `cluster3/tests/test_p_sanitizer.py`
+- `cluster3/tests/test_p_repair_loop.py`
+- `cluster3/tests/test_cluster3_schema.py`
+- `cluster3/tests/test_cluster3_logger.py`
+- `cluster3/tests/test_correctness_runner_adapter.py`
+- `cluster3/tests/test_run_cluster3_modal_cli.py`
+- `cluster3/tests/test_replay_pairing.py`
+- `cluster3/tests/test_p_repair_f1_fixtures.py`
+- `cluster3/tests/test_cluster3_boundary.py`
+- `cluster3/tests/test_docs_consistency.py`
 
-- **IN SCOPE:** Triton compile-error feedback, `F1_COMPILE` dispatch,
-  compile-error prompt construction, bounded compile-repair attempts, P/C
-  orchestration compatibility, row schema, analyzer compatibility, and local
-  tests.
-- **OUT OF SCOPE:** Grammar constraint logic (Cluster 1), test-driven semantic
-  repair beyond reusing Cluster 2, profiler/timing/speedup repair, runtime
-  launch repair, RL/model training, CUDA/C++/CUTLASS/CuTe generation, and
-  TritonBench expansion until the core KernelBench subset is stable.
+## Out Of Scope
 
-Level 3 memory-safety checks are optional/deferred. Do not block Cluster 3 on
-sanitizer tooling unless a separate safety contract is written.
+- profiler
+- speedup
+- timing
+- RL
+- performance feedback
+- paper-scale claims
 
-## Dependencies on Cluster 1 and 2
+## Next Gate
 
-- `shared.eval` - Level 0/1/2 gated evaluation and shared failure taxonomy
-- `shared.modal_harness` - existing Modal image and provenance helpers
-- `cluster2.feedback` - test-driven Level 2 loop as a sub-component when
-  condition contains C
-- `cluster1.data.kernels` - same three KernelBench kernel specs as baseline;
-  broader datasets are future work
-
-## Contract
-
-The v1 implementation contract is
-`docs/cluster3_implementation_specification.md`. Formal research contracts still
-govern report-facing claims. Do not expand the v1 scope beyond compile-error
-repair without updating the implementation specification, current docs, and
-formal contracts first.
+Phase 11 n=1 Modal smoke requires explicit user approval.

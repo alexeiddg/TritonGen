@@ -10,9 +10,12 @@ from cluster3.feedback.sanitizer import (
 
 
 def test_cluster3_sanitizer_terms_match_cluster2_current_terms() -> None:
-    assert set(P_FORBIDDEN_FEEDBACK_TERMS) == set(FORBIDDEN_FEEDBACK_TERMS) - {
+    cluster2_terms_allowed_for_p = set(FORBIDDEN_FEEDBACK_TERMS) - {
         "LLVM",
         "PTX",
+    }
+    assert set(P_FORBIDDEN_FEEDBACK_TERMS) == cluster2_terms_allowed_for_p | {
+        "latency",
     }
     assert LLVM_PTX_ALLOWED is True
 
@@ -26,6 +29,11 @@ def test_validate_no_forbidden_p_terms_rejects_profil_token_benchmark() -> None:
     for term in ("profiling", "tokens", "benchmarks"):
         with pytest.raises(ValueError):
             validate_no_forbidden_p_terms(f"contains {term}")
+
+
+def test_validate_no_forbidden_p_terms_rejects_latency() -> None:
+    with pytest.raises(ValueError, match="latency"):
+        validate_no_forbidden_p_terms("compile stderr mentioned latency detail")
 
 
 def test_validate_no_forbidden_p_terms_allows_llvm() -> None:
@@ -42,4 +50,3 @@ def test_sanitize_p_feedback_text_redacts_eval_set_details() -> None:
 
 def test_sanitize_p_feedback_text_truncates_to_limit() -> None:
     assert sanitize_p_feedback_text("a" * 5000, limit=2000) == "a" * 2000
-

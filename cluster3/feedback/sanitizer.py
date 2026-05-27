@@ -23,6 +23,7 @@ P_FORBIDDEN_FEEDBACK_TERMS: Final[tuple[str, ...]] = (
     "compute-sanitizer",
     "profil",
     "timing",
+    "latency",
     "performance",
     "token",
     "benchmark",
@@ -53,7 +54,15 @@ P_SENSITIVE_DETAIL_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
 
 def _term_pattern(term: str) -> str:
     escaped = re.escape(term)
-    if term in {"speedup", "profil", "timing", "performance", "token", "benchmark"}:
+    if term in {
+        "speedup",
+        "profil",
+        "timing",
+        "latency",
+        "performance",
+        "token",
+        "benchmark",
+    }:
         return rf"(?<![A-Za-z0-9]){escaped}[A-Za-z0-9_]*"
     if re.fullmatch(r"[A-Za-z0-9_]+", term):
         return rf"(?<![A-Za-z0-9_]){escaped}(?![A-Za-z0-9_])"
@@ -104,4 +113,3 @@ def validate_no_forbidden_p_terms(value: str) -> None:
     ):
         if pattern.search(value):
             raise ValueError(f"feedback contains forbidden term: {term}")
-
