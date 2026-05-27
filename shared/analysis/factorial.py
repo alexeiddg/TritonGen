@@ -56,7 +56,12 @@ CANONICAL_CONDITIONS = (
 CURRENT_FOUR_CELL_CONDITIONS = ("none", "G", "C", "G+C")
 P_CONDITIONS = ("P", "G+P", "C+P", "G+C+P")
 FACTOR_NAMES = ("G", "C", "P")
-FACTOR_COLUMNS = ("grammar_active", "compiler_feedback_active", "perf_feedback_active")
+FACTOR_COLUMNS = (
+    "grammar_active",
+    "compiler_feedback_active",
+    "perf_feedback_active",
+    "compile_feedback_active",
+)
 PRIMARY_RESPONSE_VARIABLE = "functional_success"
 SECONDARY_RESPONSE_VARIABLE = "compile_success"
 ANALYZER_VERSION = "factorial_alignment_v3_f3_eval_pipeline_policy"
@@ -83,8 +88,16 @@ SCALE_TIER_SOURCE_MISSING_DEFAULT = "raw_missing_default_unspecified"
 SCALE_TIER_SOURCE_ANALYSIS_ANNOTATION = "analysis_cli_annotation"
 
 PAIRED_REPLAY_COMPARISONS = {"C": "none", "G+C": "G"}
+P_PAIRED_REPLAY_COMPARISONS: dict[str, str] = {
+    "P": "none",
+    "G+P": "G",
+    "C+P": "C",
+    "G+C+P": "G+C",
+}
 SECONDARY_COMPILE_COMPARISONS = {"G": "none", "G+C": "C"}
 PAIR_KEY_COLUMNS = ("kernel_class", "kernel_id", "dtype", "base_seed")
+P_PAIR_COVERAGE_WARNING_FLAG = "missing_p_pair_controls"
+_MISSING_PAIR_KEY = object()
 UNAVAILABLE_FROZEN_REVISION = "unavailable_in_frozen_cluster1_artifact"
 MODE_COLLAPSE_FLAG = "mode_collapse_warning"
 MODE_COLLAPSE_TEXT = (
@@ -108,6 +121,19 @@ P_CELL_DEFERRAL_STATEMENT = (
 CURRENT_STATUS_SCOPE_STATEMENT = (
     "This is a current-status scope statement, not a methodology realignment."
 )
+
+
+def effective_paired_replay_comparisons(
+    populated_cells: Sequence[str],
+) -> dict[str, str]:
+    """Return paired primary comparisons enabled by the populated condition cells."""
+
+    populated = set(populated_cells)
+    comparisons = dict(PAIRED_REPLAY_COMPARISONS)
+    for treatment_condition, control_condition in P_PAIRED_REPLAY_COMPARISONS.items():
+        if treatment_condition in populated and control_condition in populated:
+            comparisons[treatment_condition] = control_condition
+    return comparisons
 
 
 def load_results(
@@ -239,6 +265,13 @@ def normalize_result_rows(
             source_path=source_path,
             row_index=row_index,
         )
+        cluster3_diagnostics = _normalize_cluster3_diagnostic_fields(
+            payload,
+            generated_metadata=generated_metadata,
+            condition=condition,
+            source_path=source_path,
+            row_index=row_index,
+        )
         record = dict(payload)
         record.update(
             {
@@ -254,6 +287,22 @@ def normalize_result_rows(
                 "dtype": dtype,
                 "dtype_original": dtype,
                 "base_seed": _int_or_none(base_seed),
+                "sample_index": _int_or_none(
+                    _metadata_first_present(
+                        payload,
+                        generated_metadata,
+                        replay_metadata,
+                        "sample_index",
+                        default=None,
+                    )
+                ),
+                "replay_pair_id": _metadata_first_present(
+                    payload,
+                    generated_metadata,
+                    replay_metadata,
+                    "replay_pair_id",
+                    default=None,
+                ),
                 "attempt_index": _int_or_none(attempt_index),
                 "compile_success": compile_success,
                 "functional_success": functional_success,
@@ -323,6 +372,7 @@ def normalize_result_rows(
                 "replay_metadata": replay_metadata,
                 "source_path": source_path,
                 "source_row_index": row_index,
+                **cluster3_diagnostics,
             }
         )
         for factor, active in _condition_factors(condition).items():
@@ -368,6 +418,7 @@ def analyze_factorial(
             scale_tier_annotation=scale_tier_annotation,
         )
     df = _ensure_pair_identity_columns(df)
+    df = _ensure_cluster3_analysis_columns(df)
 
     _validate_conditions(df)
     scale_tiers = _validate_scale_tiers(df, allow_mixed_scale=allow_mixed_scale)
@@ -390,6 +441,9 @@ def analyze_factorial(
     global_flags = []
     if any(condition in missing_cells for condition in P_CONDITIONS):
         global_flags.append("p_cells_not_populated")
+    p_pair_control_warnings = _missing_p_pair_control_entries(df, populated_cells)
+    if p_pair_control_warnings:
+        global_flags.append(P_PAIR_COVERAGE_WARNING_FLAG)
 
     if scope == "primary_functional":
         _require_current_primary_cells(populated_cells)
@@ -454,7 +508,9 @@ def analyze_factorial(
                 "treatment_condition": treatment,
                 "control_condition": control,
             }
-            for treatment, control in PAIRED_REPLAY_COMPARISONS.items()
+            for treatment, control in effective_paired_replay_comparisons(
+                populated_cells
+            ).items()
         ],
         "scale_tiers": scale_tiers,
         **scale_tier_metadata,
@@ -472,10 +528,28 @@ def analyze_factorial(
             scope=scope,
             scale_tiers=scale_tiers,
             allow_mixed_scale=allow_mixed_scale,
+            populated_cells=populated_cells,
         ),
         "interpretation_flags": global_flags,
         **_f3_and_coverage_metadata(df),
     }
+    if p_pair_control_warnings:
+        metadata["p_paired_control_warnings"] = p_pair_control_warnings
+    if set(CANONICAL_CONDITIONS).issubset(set(populated_cells)):
+        metadata["three_way_interaction"] = {
+            "formula": (
+                "(rate_GCP - rate_GC) - (rate_GP - rate_G) - "
+                "(rate_CP - rate_C) + (rate_P - rate_none)"
+            ),
+            "reportable": True,
+            "response_variable": response_variable,
+        }
+    elif any(condition in populated_cells for condition in P_CONDITIONS):
+        metadata["three_way_interaction"] = {
+            "reportable": False,
+            "reason": "requires_all_eight_cells",
+            "response_variable": response_variable,
+        }
     result = {
         "metadata": metadata,
         "condition_rates": _condition_rate_summaries(df),
@@ -492,8 +566,9 @@ def factorial_summary(df: pd.DataFrame) -> pd.DataFrame:
     """Return secondary compile-only pass@1 diagnostics by factor combination."""
 
     normalized = df if "dtype_original" in df else normalize_result_rows(df.to_dict("records"))
+    normalized = _ensure_cluster3_analysis_columns(normalized)
     _validate_response(normalized, SECONDARY_RESPONSE_VARIABLE, "secondary_compile_diagnostic")
-    group_cols = [column for column in FACTOR_COLUMNS if column in normalized.columns]
+    group_cols = _factorial_summary_group_columns(normalized)
     group_cols.extend(["kernel_class", "dtype"])
     return (
         normalized.groupby(group_cols, dropna=False)[SECONDARY_RESPONSE_VARIABLE]
@@ -602,16 +677,25 @@ def paired_condition_summary(
     control_condition: str,
     response_variable: str,
     allow_incomplete_coverage: bool = False,
+    pair_key_columns: Sequence[str] | None = None,
+    nullable_pair_key_columns: Sequence[str] = (),
 ) -> pd.DataFrame:
     """Return paired binary outcomes for arbitrary tuple-matched conditions."""
 
     df = _ensure_pair_identity_columns(df)
+    key_columns = tuple(pair_key_columns or PAIR_KEY_COLUMNS)
     _require_columns(
         df,
-        ("condition", response_variable, "attempt_index", *PAIR_KEY_COLUMNS),
+        ("condition", response_variable, "attempt_index", *key_columns),
     )
-    _require_non_missing_pair_keys(df)
     subset = df[df["condition"].isin({treatment_condition, control_condition})]
+    non_nullable_key_columns = tuple(
+        column for column in key_columns if column not in set(nullable_pair_key_columns)
+    )
+    _require_non_missing_pair_keys(
+        subset,
+        pair_key_columns=non_nullable_key_columns,
+    )
     if subset[response_variable].isna().any():
         raise ValueError(
             f"missing {response_variable} values in paired condition dataframe"
@@ -621,37 +705,53 @@ def paired_condition_summary(
     if treatment.empty or control.empty:
         raise ValueError("paired condition analysis requires both treatment and control rows")
 
-    treatment_keys = _unique_pair_keys(treatment, allow_repeated_attempts=True)
-    control_keys = _unique_pair_keys(control, allow_repeated_attempts=True)
+    treatment_keys = _unique_pair_keys(
+        treatment,
+        allow_repeated_attempts=True,
+        pair_key_columns=key_columns,
+    )
+    control_keys = _unique_pair_keys(
+        control,
+        allow_repeated_attempts=True,
+        pair_key_columns=key_columns,
+    )
     if treatment_keys != control_keys:
         missing_control = treatment_keys - control_keys
         missing_treatment = control_keys - treatment_keys
         if not allow_incomplete_coverage:
             raise ValueError(
                 "paired condition dataframe has unmatched seed rows: "
-                f"missing_control={sorted(missing_control)}, "
-                f"missing_treatment={sorted(missing_treatment)}"
+                f"missing_control={sorted(missing_control, key=_pair_key_sort_key)}, "
+                f"missing_treatment={sorted(missing_treatment, key=_pair_key_sort_key)}"
             )
         common_keys = treatment_keys & control_keys
         if not common_keys:
             raise ValueError(
                 "paired condition dataframe has no matched seed rows after "
                 "coverage filtering: "
-                f"missing_control={sorted(missing_control)}, "
-                f"missing_treatment={sorted(missing_treatment)}"
+                f"missing_control={sorted(missing_control, key=_pair_key_sort_key)}, "
+                f"missing_treatment={sorted(missing_treatment, key=_pair_key_sort_key)}"
             )
-        treatment = _filter_pair_keys(treatment, common_keys)
-        control = _filter_pair_keys(control, common_keys)
+        treatment = _filter_pair_keys(
+            treatment,
+            common_keys,
+            pair_key_columns=key_columns,
+        )
+        control = _filter_pair_keys(
+            control,
+            common_keys,
+            pair_key_columns=key_columns,
+        )
     else:
         missing_control = set()
         missing_treatment = set()
     treatment_outcomes = (
-        treatment.groupby(list(PAIR_KEY_COLUMNS), dropna=False)[response_variable]
+        treatment.groupby(list(key_columns), dropna=False)[response_variable]
         .any()
         .rename("treatment_success")
     )
     control_outcomes = (
-        control.groupby(list(PAIR_KEY_COLUMNS), dropna=False)[response_variable]
+        control.groupby(list(key_columns), dropna=False)[response_variable]
         .any()
         .rename("control_success")
     )
@@ -667,7 +767,221 @@ def paired_condition_summary(
         missing_treatment,
         key=_pair_key_sort_key,
     )
+    paired.attrs["pair_key_columns"] = key_columns
     return paired
+
+
+def paired_p_factor_summary(
+    df: pd.DataFrame,
+    *,
+    treatment_condition: str,
+    control_condition: str,
+    response_variable: str,
+    allow_incomplete_coverage: bool = False,
+    allow_mixed_grammar_variant: bool = False,
+) -> pd.DataFrame:
+    """Return paired P/no-P outcomes for a Cluster 3 comparison."""
+
+    expected_control = P_PAIRED_REPLAY_COMPARISONS.get(treatment_condition)
+    if expected_control is None:
+        raise ValueError(f"{treatment_condition!r} is not a P paired condition")
+    if control_condition != expected_control:
+        raise ValueError(
+            f"{treatment_condition!r} must pair with {expected_control!r}; "
+            f"got {control_condition!r}"
+        )
+    normalized = _ensure_p_pair_metadata_columns(
+        _ensure_cluster3_analysis_columns(_ensure_pair_identity_columns(df))
+    )
+    subset = normalized[
+        normalized["condition"].isin({treatment_condition, control_condition})
+    ]
+    if subset.empty:
+        raise ValueError("paired P analysis requires treatment and control rows")
+    pair_key_columns = _p_pair_key_columns(subset)
+    _validate_p_pair_grammar_variant(
+        subset,
+        treatment_condition=treatment_condition,
+        control_condition=control_condition,
+        pair_key_columns=pair_key_columns,
+        allow_mixed_grammar_variant=allow_mixed_grammar_variant,
+    )
+    return paired_condition_summary(
+        normalized,
+        treatment_condition=treatment_condition,
+        control_condition=control_condition,
+        response_variable=response_variable,
+        allow_incomplete_coverage=allow_incomplete_coverage,
+        pair_key_columns=pair_key_columns,
+        nullable_pair_key_columns=_p_nullable_pair_key_columns(pair_key_columns),
+    )
+
+
+def _p_pair_key_columns(df: pd.DataFrame) -> tuple[str, ...]:
+    columns: list[str] = ["kernel_class"]
+    if "kernel_name" in df.columns and not df["kernel_name"].map(_is_missing_value).any():
+        columns.append("kernel_name")
+    else:
+        columns.append("kernel_id")
+    columns.extend(["dtype", "base_seed"])
+    for optional in ("sample_index", "replay_pair_id"):
+        if optional in df.columns and not df[optional].map(_is_missing_value).all():
+            columns.append(optional)
+    return tuple(columns)
+
+
+def _p_nullable_pair_key_columns(pair_key_columns: Sequence[str]) -> tuple[str, ...]:
+    return tuple(
+        column
+        for column in pair_key_columns
+        if column in {"sample_index", "replay_pair_id"}
+    )
+
+
+P_PAIR_GRAMMAR_METADATA_COLUMNS: tuple[str, ...] = (
+    "grammar_variant",
+    "grammar_claim_scope",
+    "grammar_sha",
+    "grammar_sha256",
+    "grammar_path",
+)
+
+
+def _ensure_p_pair_metadata_columns(df: pd.DataFrame) -> pd.DataFrame:
+    normalized = _ensure_p_pair_identity_columns(df)
+    for column in P_PAIR_GRAMMAR_METADATA_COLUMNS:
+        extracted_values = [
+            _p_pair_metadata_value(row.to_dict(), column)
+            for _, row in normalized.iterrows()
+        ]
+        if column not in normalized.columns:
+            normalized[column] = extracted_values
+            continue
+        normalized[column] = [
+            existing if not _is_missing_value(existing) else extracted
+            for existing, extracted in zip(
+                normalized[column].tolist(),
+                extracted_values,
+                strict=True,
+            )
+        ]
+    return normalized
+
+
+def _ensure_p_pair_identity_columns(df: pd.DataFrame) -> pd.DataFrame:
+    normalized = df.copy()
+    for column in ("sample_index", "replay_pair_id"):
+        extracted_values = [
+            _p_pair_identity_value(row.to_dict(), column)
+            for _, row in normalized.iterrows()
+        ]
+        if column not in normalized.columns:
+            normalized[column] = extracted_values
+            continue
+        normalized[column] = [
+            existing if not _is_missing_value(existing) else extracted
+            for existing, extracted in zip(
+                normalized[column].tolist(),
+                extracted_values,
+                strict=True,
+            )
+        ]
+    return normalized
+
+
+def _p_pair_identity_value(payload: Mapping[str, Any], column: str) -> Any:
+    generated_metadata = _metadata_dict(payload.get("generated_metadata"))
+    replay_metadata = _metadata_dict(payload.get("replay_metadata"))
+    value = _metadata_first_present(
+        payload,
+        generated_metadata,
+        replay_metadata,
+        column,
+        default=None,
+    )
+    if column == "sample_index":
+        return _int_or_none(value)
+    return value
+
+
+def _p_pair_metadata_value(payload: Mapping[str, Any], column: str) -> Any:
+    generated_metadata = _metadata_dict(payload.get("generated_metadata"))
+    replay_metadata = _metadata_dict(payload.get("replay_metadata"))
+    return _metadata_first_present(
+        payload,
+        generated_metadata,
+        replay_metadata,
+        column,
+        default=None,
+    )
+
+
+def _validate_p_pair_grammar_variant(
+    df: pd.DataFrame,
+    *,
+    treatment_condition: str,
+    control_condition: str,
+    pair_key_columns: Sequence[str],
+    allow_mixed_grammar_variant: bool,
+) -> None:
+    if allow_mixed_grammar_variant:
+        return
+    if "G" not in _condition_factor_labels(treatment_condition) and "G" not in (
+        _condition_factor_labels(control_condition)
+    ):
+        return
+    for column in (
+        "grammar_variant",
+        "grammar_claim_scope",
+        "grammar_sha",
+        "grammar_sha256",
+        "grammar_path",
+    ):
+        if column not in df.columns:
+            continue
+        treatment_values = _single_values_by_pair_key(
+            df[df["condition"] == treatment_condition],
+            column=column,
+            pair_key_columns=pair_key_columns,
+        )
+        control_values = _single_values_by_pair_key(
+            df[df["condition"] == control_condition],
+            column=column,
+            pair_key_columns=pair_key_columns,
+        )
+        for key in sorted(
+            set(treatment_values) & set(control_values),
+            key=_pair_key_sort_key,
+        ):
+            if treatment_values[key] != control_values[key]:
+                raise ValueError(
+                    "mixed grammar variants in paired P comparison"
+                    f" for {treatment_condition} vs {control_condition}: "
+                    f"{column} differs at pair {key!r}"
+                )
+
+
+def _single_values_by_pair_key(
+    df: pd.DataFrame,
+    *,
+    column: str,
+    pair_key_columns: Sequence[str],
+) -> dict[tuple[object, ...], object]:
+    values_by_key: dict[tuple[object, ...], object] = {}
+    for key, group in df.groupby(list(pair_key_columns), sort=True, dropna=False):
+        raw_key_tuple = key if isinstance(key, tuple) else (key,)
+        key_tuple = _canonical_pair_key_tuple(raw_key_tuple)
+        values = {
+            None if _is_missing_value(value) else value
+            for value in group[column].tolist()
+        }
+        if len(values) > 1:
+            raise ValueError(
+                f"metadata mismatch within paired P dataframe for {column}: "
+                f"{key_tuple!r}"
+            )
+        values_by_key[key_tuple] = next(iter(values)) if values else None
+    return values_by_key
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -833,7 +1147,8 @@ def _normalize_condition(
     factors = {
         "G": bool(payload.get("grammar_active", False)),
         "C": bool(payload.get("compiler_feedback_active", False)),
-        "P": bool(payload.get("perf_feedback_active", False)),
+        "P": bool(payload.get("compile_feedback_active", False))
+        or bool(payload.get("perf_feedback_active", False)),
     }
     return _factors_to_condition(factors)
 
@@ -903,6 +1218,141 @@ def _normalize_compile_success(
             f"row_index={row_index}"
         )
     return resolved
+
+
+def _normalize_cluster3_diagnostic_fields(
+    payload: Mapping[str, Any],
+    *,
+    generated_metadata: Mapping[str, Any] | None,
+    condition: str,
+    source_path: str | None,
+    row_index: int,
+) -> dict[str, Any]:
+    has_p_factor = "P" in _condition_factor_labels(condition)
+    if not has_p_factor and _has_active_p_diagnostic_field(payload, generated_metadata):
+        raise ValueError(
+            "non-P analyzer row must not carry active Cluster 3 P diagnostic fields"
+            f" for condition={condition!r}, source_path={source_path!r}, "
+            f"row_index={row_index}"
+        )
+
+    p_repair_attempted = _bool_with_default(
+        _first_present(
+            payload,
+            "p_repair_attempted",
+            nested=generated_metadata,
+            default=False,
+        ),
+        default=False,
+    )
+    p_compile_repair_succeeded = _bool_with_default(
+        _first_present(
+            payload,
+            "p_compile_repair_succeeded",
+            nested=generated_metadata,
+            default=False,
+        ),
+        default=False,
+    )
+    p_repair_changed_terminal_class = _bool_with_default(
+        _first_present(
+            payload,
+            "p_repair_changed_terminal_class",
+            nested=generated_metadata,
+            default=False,
+        ),
+        default=False,
+    )
+    c_loop_fired = _bool_with_default(
+        _first_present(
+            payload,
+            "c_loop_fired",
+            nested=generated_metadata,
+            default=False,
+        ),
+        default=False,
+    )
+    failure_code = payload.get("failure_code")
+    return {
+        "p_repair_attempted": p_repair_attempted,
+        "p_compile_repair_succeeded": p_compile_repair_succeeded,
+        "p_repair_changed_terminal_class": p_repair_changed_terminal_class,
+        "p_repair_trace_summary": (
+            _first_present(
+                payload,
+                "p_repair_trace_summary",
+                "trace_summary",
+                "p_repair_trace",
+                nested=generated_metadata,
+                default=None,
+            )
+            if has_p_factor
+            else None
+        ),
+        "c_loop_fired": c_loop_fired,
+        "c_loop_source": _first_present(
+            payload,
+            "c_loop_source",
+            nested=generated_metadata,
+            default="none",
+        ),
+        "c_terminal_failure_code": _first_present(
+            payload,
+            "c_terminal_failure_code",
+            nested=generated_metadata,
+            default=None,
+        ),
+        # Conservative v1 diagnostic only. The research predicate for whether
+        # P "helped" remains pending; do not treat terminal-class change as help.
+        "p_helped": bool(p_repair_attempted and failure_code is None),
+    }
+
+
+def _has_active_p_diagnostic_field(
+    payload: Mapping[str, Any],
+    generated_metadata: Mapping[str, Any] | None,
+) -> bool:
+    if generated_metadata is None:
+        generated_metadata = _metadata_dict(payload.get("generated_metadata"))
+    for field in (
+        "p_repair_attempted",
+        "p_compile_repair_succeeded",
+        "p_repair_changed_terminal_class",
+    ):
+        value = _first_present(payload, field, nested=generated_metadata, default=None)
+        if not _is_missing_value(value) and _bool_or_none(value) is True:
+            return True
+    attempt_count = _first_present(
+        payload,
+        "p_repair_attempt_count",
+        nested=generated_metadata,
+        default=None,
+    )
+    if not _is_missing_value(attempt_count) and int(attempt_count) > 0:
+        return True
+    for field in (
+        "p_initial_failure_code",
+        "p_terminal_failure_code",
+        "p_compile_error_class",
+        "p_raw_error_excerpt_sha256",
+        "p_repair_trace_summary",
+        "p_repair_trace",
+    ):
+        value = _first_present(payload, field, nested=generated_metadata, default=None)
+        if not _is_missing_value(value):
+            return True
+    stop_reason = _first_present(
+        payload,
+        "p_repair_stop_reason",
+        nested=generated_metadata,
+        default=None,
+    )
+    return not _is_missing_value(stop_reason) and stop_reason != "p_not_applicable"
+
+
+def _bool_with_default(value: object, *, default: bool) -> bool:
+    resolved = _bool_or_none(value)
+    return default if resolved is None else resolved
 
 
 def _cluster2_compile_success_from_failure_code(
@@ -1067,6 +1517,7 @@ def _condition_factors(condition: str) -> dict[str, bool]:
         "grammar_active": "G" in parts,
         "compiler_feedback_active": "C" in parts,
         "perf_feedback_active": "P" in parts,
+        "compile_feedback_active": "P" in parts,
     }
 
 
@@ -1095,6 +1546,141 @@ def _validate_conditions(df: pd.DataFrame) -> None:
         raise ValueError(
             "missing required analyzer fields: " + ", ".join(required_missing)
         )
+
+
+def _ensure_cluster3_analysis_columns(df: pd.DataFrame) -> pd.DataFrame:
+    normalized = df.copy()
+    if "condition" not in normalized.columns:
+        return normalized
+    derived_factors = [
+        _condition_factors(str(condition)) for condition in normalized["condition"]
+    ]
+    for factor in FACTOR_COLUMNS:
+        derived_values = [factors[factor] for factors in derived_factors]
+        if factor not in normalized.columns:
+            normalized[factor] = derived_values
+            continue
+        resolved_values = []
+        for raw_value, derived_value in zip(
+            normalized[factor].tolist(),
+            derived_values,
+            strict=True,
+        ):
+            value = _bool_or_none(raw_value)
+            if value is None:
+                resolved_values.append(derived_value)
+            elif value != derived_value:
+                raise ValueError(
+                    f"{factor} conflicts with canonical condition-derived factors"
+                )
+            else:
+                resolved_values.append(value)
+        normalized[factor] = resolved_values
+
+    if "p_helped" in normalized.columns:
+        normalized = normalized.drop(columns=["p_helped"])
+    for column, default in (
+        ("p_repair_attempted", False),
+        ("p_compile_repair_succeeded", False),
+        ("p_repair_changed_terminal_class", False),
+        ("c_loop_fired", False),
+    ):
+        normalized[column] = [
+            _cluster3_bool_diagnostic_value(row.to_dict(), column, default=default)
+            for _, row in normalized.iterrows()
+        ]
+    for column, default in (
+        ("p_repair_trace_summary", None),
+        ("c_loop_source", "none"),
+        ("c_terminal_failure_code", None),
+    ):
+        normalized[column] = [
+            _cluster3_scalar_diagnostic_value(row.to_dict(), column, default=default)
+            for _, row in normalized.iterrows()
+        ]
+
+    for row_index, row in normalized.iterrows():
+        condition = str(row["condition"])
+        if (
+            "P" not in _condition_factor_labels(condition)
+            and _has_active_p_diagnostic_field(row.to_dict(), None)
+        ):
+            raise ValueError(
+                "non-P analyzer row must not carry active Cluster 3 P diagnostic fields"
+                f" for condition={condition!r}, row_index={row_index}"
+            )
+
+    failure_codes = (
+        normalized["failure_code"]
+        if "failure_code" in normalized.columns
+        else pd.Series([None] * len(normalized), index=normalized.index)
+    )
+    normalized["p_helped"] = [
+        bool(attempted and failure_code is None)
+        for attempted, failure_code in zip(
+            normalized["p_repair_attempted"].tolist(),
+            failure_codes.tolist(),
+            strict=True,
+        )
+    ]
+    return normalized
+
+
+def _cluster3_bool_diagnostic_value(
+    payload: Mapping[str, Any],
+    column: str,
+    *,
+    default: bool,
+) -> bool:
+    generated_metadata = _metadata_dict(payload.get("generated_metadata"))
+    return _bool_with_default(
+        _first_present(
+            payload,
+            column,
+            nested=generated_metadata,
+            default=default,
+        ),
+        default=default,
+    )
+
+
+def _cluster3_scalar_diagnostic_value(
+    payload: Mapping[str, Any],
+    column: str,
+    *,
+    default: Any,
+) -> Any:
+    generated_metadata = _metadata_dict(payload.get("generated_metadata"))
+    if column == "p_repair_trace_summary":
+        condition = str(payload.get("condition", "none"))
+        fields = ("p_repair_trace_summary", "p_repair_trace")
+        if "P" in _condition_factor_labels(condition):
+            fields = ("p_repair_trace_summary", "trace_summary", "p_repair_trace")
+        return _first_present(
+            payload,
+            *fields,
+            nested=generated_metadata,
+            default=default,
+        )
+    return _first_present(
+        payload,
+        column,
+        nested=generated_metadata,
+        default=default,
+    )
+
+
+def _factorial_summary_group_columns(df: pd.DataFrame) -> list[str]:
+    group_cols: list[str] = []
+    for column in (
+        "grammar_active",
+        "compiler_feedback_active",
+        "perf_feedback_active",
+        "compile_feedback_active",
+    ):
+        if column in df.columns:
+            group_cols.append(column)
+    return group_cols
 
 
 def _validate_scale_tiers(
@@ -1304,12 +1890,20 @@ def _is_reportable_output(
     scope: str,
     scale_tiers: Sequence[str],
     allow_mixed_scale: bool,
+    populated_cells: Sequence[str],
 ) -> bool:
-    return (
+    base_reportable = (
         scope == "primary_functional"
         and not allow_mixed_scale
         and tuple(scale_tiers) == ("paper",)
     )
+    if not base_reportable:
+        return False
+    populated = set(populated_cells)
+    has_any_p = any(condition in populated for condition in P_CONDITIONS)
+    if has_any_p:
+        return set(CANONICAL_CONDITIONS).issubset(populated)
+    return set(CURRENT_FOUR_CELL_CONDITIONS).issubset(populated)
 
 
 def _validate_response(df: pd.DataFrame, response_variable: str, scope: str) -> None:
@@ -1378,6 +1972,7 @@ def _cell_outcome_frame(
                 "kernel_id": kernel_id,
                 "dtype": dtype,
                 "base_seed": int(base_seed),
+                **_condition_factors(str(condition)),
                 "response_variable": response_variable,
                 "success": success,
                 "attempts_observed": len(group),
@@ -1617,23 +2212,46 @@ def _paired_comparison_rows(
     bootstrap_seed: int,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for treatment_condition, control_condition in PAIRED_REPLAY_COMPARISONS.items():
+    for treatment_condition, control_condition in effective_paired_replay_comparisons(
+        populated_cells
+    ).items():
+        is_p_pair = treatment_condition in P_PAIRED_REPLAY_COMPARISONS
         if treatment_condition not in populated_cells or control_condition not in populated_cells:
-            if scope == "primary_functional":
+            if scope == "primary_functional" and not is_p_pair:
                 raise ValueError(
                     "paired primary comparison cannot be constructed because "
                     f"{treatment_condition} or {control_condition} is missing"
                 )
             continue
-        paired = paired_replay_summary(
-            df,
-            treatment_condition=treatment_condition,
-            control_condition=control_condition,
-            response_variable=response_variable,
-        )
+        try:
+            if is_p_pair:
+                paired = paired_p_factor_summary(
+                    df,
+                    treatment_condition=treatment_condition,
+                    control_condition=control_condition,
+                    response_variable=response_variable,
+                    allow_incomplete_coverage=True,
+                )
+            else:
+                paired = paired_replay_summary(
+                    df,
+                    treatment_condition=treatment_condition,
+                    control_condition=control_condition,
+                    response_variable=response_variable,
+                )
+        except ValueError as exc:
+            if is_p_pair and _is_skippable_p_pair_error(exc):
+                continue
+            raise
         flags = []
         if response_variable == SECONDARY_RESPONSE_VARIABLE:
             flags.extend(["diagnostic_only", "strict_surface_metric"])
+        if is_p_pair:
+            flags.append("p_paired_comparison")
+        if paired.attrs.get("missing_control_pairs") or paired.attrs.get(
+            "missing_treatment_pairs"
+        ):
+            flags.append("coverage_warning_skip_missing")
         if any(condition not in populated_cells for condition in P_CONDITIONS):
             flags.append("p_cells_not_populated")
         rows.append(
@@ -1699,6 +2317,15 @@ def _secondary_compile_comparison_rows(
     return rows
 
 
+def _is_skippable_p_pair_error(exc: ValueError) -> bool:
+    text = str(exc)
+    return (
+        "requires treatment and control rows" in text
+        or "requires both treatment and control rows" in text
+        or "no matched seed rows" in text
+    )
+
+
 def _paired_comparison_record(
     df: pd.DataFrame,
     *,
@@ -1728,6 +2355,7 @@ def _paired_comparison_record(
     control_only = sum(c and not t for t, c in zip(treatment_values, control_values))
     treatment_label = _condition_label_from_df(df, treatment_condition)
     control_label = _condition_label_from_df(df, control_condition)
+    pair_key_columns = tuple(paired.attrs.get("pair_key_columns", PAIR_KEY_COLUMNS))
     return {
         "metric_name": _metric_name(response_variable),
         "response_variable": response_variable,
@@ -1761,11 +2389,11 @@ def _paired_comparison_record(
             not t and not c for t, c in zip(treatment_values, control_values)
         ),
         "missing_control_pairs": [
-            _pair_key_to_dict(key)
+            _pair_key_to_dict(key, pair_key_columns=pair_key_columns)
             for key in paired.attrs.get("missing_control_pairs", [])
         ],
         "missing_treatment_pairs": [
-            _pair_key_to_dict(key)
+            _pair_key_to_dict(key, pair_key_columns=pair_key_columns)
             for key in paired.attrs.get("missing_treatment_pairs", [])
         ],
         "bootstrap_samples": bootstrap_samples,
@@ -1883,7 +2511,7 @@ def _factorial_model(
         standard_error_map.get("G:C"),
     )
 
-    return {
+    result = {
         "response_variable": response_variable,
         "model_type": model_type,
         "model_family": "binary_logistic_irls",
@@ -1920,6 +2548,18 @@ def _factorial_model(
         ],
         "warnings": warnings,
     }
+    if has_all_eight:
+        result["three_way_interaction_additive"] = _additive_three_way_interaction(
+            cell_outcomes,
+        )
+        result["three_way_interaction_formula"] = (
+            "(rate_GCP - rate_GC) - (rate_GP - rate_G) - "
+            "(rate_CP - rate_C) + (rate_P - rate_none)"
+        )
+        result["three_way_interaction_reportable"] = True
+    elif has_p:
+        result["three_way_interaction_reportable"] = False
+    return result
 
 
 def _fit_binary_logistic_irls(
@@ -2038,6 +2678,21 @@ def _additive_difference_in_differences(cell_outcomes: pd.DataFrame) -> float | 
     return (rates["G+C"] - rates["G"]) - (rates["C"] - rates["none"])
 
 
+def _additive_three_way_interaction(cell_outcomes: pd.DataFrame) -> float | None:
+    rates: dict[str, float] = {}
+    for condition in CANONICAL_CONDITIONS:
+        subset = cell_outcomes[cell_outcomes["condition"] == condition]
+        if subset.empty:
+            return None
+        rates[condition] = float(subset["success"].mean())
+    return (
+        (rates["G+C+P"] - rates["G+C"])
+        - (rates["G+P"] - rates["G"])
+        - (rates["C+P"] - rates["C"])
+        + (rates["P"] - rates["none"])
+    )
+
+
 def _design_matrix(
     cell_outcomes: pd.DataFrame,
     *,
@@ -2053,17 +2708,28 @@ def _design_matrix(
     columns.extend(control_columns)
     matrix: list[list[float]] = []
     for _, row in cell_outcomes.iterrows():
-        factors = _condition_factor_labels(str(row["condition"]))
         values = [1.0]
         for term in factor_terms:
             term_parts = term.split(":")
-            values.append(float(all(part in factors for part in term_parts)))
+            values.append(float(all(_model_factor_active(row, part) for part in term_parts)))
         values.extend(
             float(row["kernel_class"] == value) for value in kernel_classes[1:]
         )
         values.extend(float(row["dtype"] == value) for value in dtypes[1:])
         matrix.append(values)
     return np.asarray(matrix, dtype=float), columns
+
+
+def _model_factor_active(row: pd.Series, factor: str) -> bool:
+    column_by_factor = {
+        "G": "grammar_active",
+        "C": "compiler_feedback_active",
+        "P": "compile_feedback_active",
+    }
+    column = column_by_factor[factor]
+    if column in row and not _is_missing_value(row[column]):
+        return bool(row[column])
+    return factor in _condition_factor_labels(str(row["condition"]))
 
 
 def _condition_factor_labels(condition: str) -> set[str]:
@@ -2170,23 +2836,94 @@ def _g_replay_coverage_statement(df: pd.DataFrame) -> str | None:
     )
 
 
-def _condition_pair_keys(df: pd.DataFrame, condition: str) -> set[tuple[object, ...]]:
+def _condition_pair_keys(
+    df: pd.DataFrame,
+    condition: str,
+    *,
+    pair_key_columns: Sequence[str] = PAIR_KEY_COLUMNS,
+) -> set[tuple[object, ...]]:
     subset = df[df["condition"] == condition]
     return {
-        tuple(row[column] for column in PAIR_KEY_COLUMNS)
+        _pair_key_from_row(row, pair_key_columns=pair_key_columns)
         for _, row in subset.iterrows()
     }
 
 
-def _pair_key_from_row(row: pd.Series) -> tuple[object, ...]:
-    return tuple(row[column] for column in PAIR_KEY_COLUMNS)
+def _missing_p_pair_control_entries(
+    df: pd.DataFrame,
+    populated_cells: Sequence[str],
+) -> list[dict[str, Any]]:
+    df = _ensure_p_pair_identity_columns(df)
+    populated = set(populated_cells)
+    entries: list[dict[str, Any]] = []
+    for treatment_condition, control_condition in P_PAIRED_REPLAY_COMPARISONS.items():
+        if treatment_condition not in populated:
+            continue
+        if control_condition not in populated:
+            entries.append(
+                {
+                    "treatment_condition": treatment_condition,
+                    "control_condition": control_condition,
+                    "reason": "control_cell_missing",
+                    "missing_control_pairs": [],
+                }
+            )
+            continue
+        subset = df[df["condition"].isin({treatment_condition, control_condition})]
+        pair_key_columns = _p_pair_key_columns(subset)
+        treatment_keys = _condition_pair_keys(
+            subset,
+            treatment_condition,
+            pair_key_columns=pair_key_columns,
+        )
+        control_keys = _condition_pair_keys(
+            subset,
+            control_condition,
+            pair_key_columns=pair_key_columns,
+        )
+        missing_keys = sorted(treatment_keys - control_keys, key=_pair_key_sort_key)
+        if missing_keys:
+            entries.append(
+                {
+                    "treatment_condition": treatment_condition,
+                    "control_condition": control_condition,
+                    "reason": "control_pair_keys_missing",
+                    "missing_control_pairs": [
+                        _pair_key_to_dict(key, pair_key_columns=pair_key_columns)
+                        for key in missing_keys
+                    ],
+                }
+            )
+    return entries
 
 
-def _pair_key_to_dict(key: tuple[object, ...]) -> dict[str, Any]:
-    return dict(zip(PAIR_KEY_COLUMNS, key, strict=True))
+def _pair_key_from_row(
+    row: pd.Series,
+    *,
+    pair_key_columns: Sequence[str] = PAIR_KEY_COLUMNS,
+) -> tuple[object, ...]:
+    return _canonical_pair_key_tuple(row[column] for column in pair_key_columns)
 
 
-def _pair_key_sort_key(key: tuple[object, ...]) -> tuple[str, str, str, int]:
+def _pair_key_to_dict(
+    key: tuple[object, ...],
+    *,
+    pair_key_columns: Sequence[str] = PAIR_KEY_COLUMNS,
+) -> dict[str, Any]:
+    return dict(
+        zip(
+            pair_key_columns,
+            (_pair_key_output_value(value) for value in key),
+            strict=True,
+        )
+    )
+
+
+def _pair_key_sort_key(key: tuple[object, ...]) -> tuple[object, ...]:
+    if len(key) != len(PAIR_KEY_COLUMNS) or any(
+        _is_canonical_missing_pair_key(value) for value in key
+    ):
+        return tuple(_pair_key_sort_value(value) for value in key)
     kernel_class, kernel_id, dtype, base_seed = key
     dtype_order = {"fp32": 0, "fp16": 1, "bf16": 2}
     dtype_text = str(dtype)
@@ -2196,6 +2933,32 @@ def _pair_key_sort_key(key: tuple[object, ...]) -> tuple[str, str, str, int]:
         f"{dtype_order.get(dtype_text, 99):02d}:{dtype_text}",
         int(base_seed),
     )
+
+
+def _canonical_pair_key_tuple(values: Iterable[object]) -> tuple[object, ...]:
+    return tuple(_canonical_pair_key_value(value) for value in values)
+
+
+def _canonical_pair_key_value(value: object) -> object:
+    if _is_missing_value(value):
+        return _MISSING_PAIR_KEY
+    return value
+
+
+def _is_canonical_missing_pair_key(value: object) -> bool:
+    return value is _MISSING_PAIR_KEY or _is_missing_value(value)
+
+
+def _pair_key_output_value(value: object) -> Any:
+    if _is_canonical_missing_pair_key(value):
+        return None
+    return value
+
+
+def _pair_key_sort_value(value: object) -> str:
+    if _is_canonical_missing_pair_key(value):
+        return ""
+    return str(value)
 
 
 def _grammar_acceptance_summary(df: pd.DataFrame) -> list[dict[str, Any]]:
@@ -2512,10 +3275,14 @@ def _ensure_pair_identity_columns(df: pd.DataFrame) -> pd.DataFrame:
     return normalized
 
 
-def _require_non_missing_pair_keys(df: pd.DataFrame) -> None:
+def _require_non_missing_pair_keys(
+    df: pd.DataFrame,
+    *,
+    pair_key_columns: Sequence[str] = PAIR_KEY_COLUMNS,
+) -> None:
     missing = [
         column
-        for column in PAIR_KEY_COLUMNS
+        for column in pair_key_columns
         if df[column].map(_is_missing_value).any()
     ]
     if missing:
@@ -2528,23 +3295,32 @@ def _unique_pair_keys(
     df: pd.DataFrame,
     *,
     allow_repeated_attempts: bool,
+    pair_key_columns: Sequence[str] = PAIR_KEY_COLUMNS,
 ) -> set[tuple[object, ...]]:
-    key_cols = list(PAIR_KEY_COLUMNS)
+    key_cols = list(pair_key_columns)
     if not allow_repeated_attempts and df.duplicated(key_cols).any():
         raise ValueError("duplicate replay pair in dataframe")
     if allow_repeated_attempts and "attempt_index" in df.columns:
         if df.duplicated([*key_cols, "attempt_index"]).any():
             raise ValueError("duplicate generated pair attempt in dataframe")
-    return set(df[key_cols].itertuples(index=False, name=None))
+    return {
+        _canonical_pair_key_tuple(row)
+        for row in df[key_cols].itertuples(index=False, name=None)
+    }
 
 
 def _filter_pair_keys(
     df: pd.DataFrame,
     keys: set[tuple[object, ...]],
+    *,
+    pair_key_columns: Sequence[str] = PAIR_KEY_COLUMNS,
 ) -> pd.DataFrame:
     if not keys:
         return df.iloc[0:0]
-    mask = df.apply(lambda row: _pair_key_from_row(row) in keys, axis=1)
+    mask = df.apply(
+        lambda row: _pair_key_from_row(row, pair_key_columns=pair_key_columns) in keys,
+        axis=1,
+    )
     return df[mask]
 
 
@@ -2847,6 +3623,26 @@ def _metadata_value(
             if not _is_missing_value(value):
                 return value
     return None
+
+
+def _metadata_first_present(
+    payload: Mapping[str, Any],
+    generated_metadata: Mapping[str, Any] | None,
+    replay_metadata: Mapping[str, Any] | None,
+    *fields: str,
+    default: Any = None,
+) -> Any:
+    for field in fields:
+        value = payload.get(field)
+        if not _is_missing_value(value):
+            return value
+        for nested in (generated_metadata, replay_metadata):
+            if nested is None:
+                continue
+            value = nested.get(field)
+            if not _is_missing_value(value):
+                return value
+    return default
 
 
 def _first_present(
