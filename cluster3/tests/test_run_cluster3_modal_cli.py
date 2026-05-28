@@ -35,6 +35,8 @@ SEED_SOURCE = "def relu(x):\n    return x\n"
 C_SOURCE = "def relu_c(x):\n    return x\n"
 P_SOURCE = "def relu_p(x):\n    return x\n"
 BASE_PROMPT = "Implement relu."
+F1_DIAGNOSTIC_FIXTURE = "cluster3/tests/fixtures/f1_compile_kernels/bad_constexpr.py"
+F2_DIAGNOSTIC_FIXTURE = "cluster2/tests/fixtures/f2_corrupted_relu.py"
 
 
 def _sha(value: str) -> str:
@@ -399,6 +401,250 @@ def test_run_cluster3_uses_synchronous_c2_modal_calls_no_spawn_or_map() -> None:
     assert ".spawn_map(" not in source
     assert ".map(" not in source
     assert "FunctionCall" + ".get" not in source
+
+
+def test_run_cluster3_modal_entrypoint_delegates_to_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+    observed: list[str] = []
+
+    def fake_main(argv: list[str]) -> None:
+        observed.extend(argv)
+
+    monkeypatch.setattr(runner_mod, "main", fake_main)
+
+    runner_mod.modal_entrypoint(
+        condition="P",
+        kernel_class="elementwise",
+        scale_tier="smoke",
+        n=1,
+        output="outputs/cluster3/p_smoke_l4_n1.jsonl",
+        model_revision=REV_A,
+        tokenizer_revision=REV_B,
+        dtypes="fp32",
+        p_repair_budget=5,
+        c_repair_budget=0,
+        overwrite=True,
+    )
+
+    assert observed == [
+        "--condition",
+        "P",
+        "--kernel-class",
+        "elementwise",
+        "--scale-tier",
+        "smoke",
+        "--n",
+        "1",
+        "--model-id",
+        runner_mod.MODEL_ID_DEFAULT,
+        "--model-revision",
+        REV_A,
+        "--tokenizer-revision",
+        REV_B,
+        "--grammar-variant",
+        runner_mod.GRAMMAR_VARIANT_TASK_AGNOSTIC,
+        "--dtypes",
+        "fp32",
+        "--temperature",
+        "0.2",
+        "--max-new-tokens",
+        str(runner_mod.DEFAULT_MAX_NEW_TOKENS),
+        "--p-repair-budget",
+        "5",
+        "--c-repair-budget",
+        "0",
+        "--modal-generation-gpu",
+        runner_mod.DEFAULT_C2_MODAL_GENERATION_GPU,
+        "--modal-eval-gpu",
+        runner_mod.DEFAULT_C2_MODAL_EVAL_GPU,
+        "--output",
+        "outputs/cluster3/p_smoke_l4_n1.jsonl",
+        "--overwrite",
+    ]
+
+
+def test_run_cluster3_modal_entrypoint_rejects_two_write_modes() -> None:
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        runner_mod.modal_entrypoint(
+            condition="P",
+            kernel_class="elementwise",
+            scale_tier="smoke",
+            n=1,
+            output="outputs/cluster3/p_smoke_l4_n1.jsonl",
+            overwrite=True,
+            resume=True,
+        )
+
+
+def test_runner_accepts_diagnostic_seed_source_for_p_smoke(tmp_path: Path) -> None:
+    config = _config(
+        tmp_path,
+        "G+P",
+        diagnostic_seed_source=F1_DIAGNOSTIC_FIXTURE,
+        diagnostic_expected_initial_failure="F1_COMPILE",
+    )
+
+    assert config.diagnostic_seed_source == F1_DIAGNOSTIC_FIXTURE
+    assert config.diagnostic_expected_initial_failure == "F1_COMPILE"
+
+
+def test_runner_rejects_diagnostic_seed_source_for_n_gt_2(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="n <= 2"):
+        _config(
+            tmp_path,
+            "G+P",
+            n=3,
+            diagnostic_seed_source=F1_DIAGNOSTIC_FIXTURE,
+            diagnostic_expected_initial_failure="F1_COMPILE",
+        )
+
+
+def test_runner_rejects_diagnostic_seed_source_for_non_p_conditions(tmp_path: Path) -> None:
+    for condition in ("C+P", "G+C+P", "all"):
+        with pytest.raises(ValueError, match="condition P or G\\+P"):
+            _config(
+                tmp_path,
+                condition,
+                diagnostic_seed_source=F1_DIAGNOSTIC_FIXTURE,
+                diagnostic_expected_initial_failure="F1_COMPILE",
+            )
+
+
+def test_diagnostic_seed_accepts_expected_f2_for_gc_plus_p_smoke(tmp_path: Path) -> None:
+    config = _config(
+        tmp_path,
+        "G+C+P",
+        diagnostic_seed_source=F2_DIAGNOSTIC_FIXTURE,
+        diagnostic_expected_initial_failure="F2_NUMERIC_LARGE",
+    )
+
+    assert config.diagnostic_seed_source == F2_DIAGNOSTIC_FIXTURE
+    assert config.diagnostic_expected_initial_failure == "F2_NUMERIC_LARGE"
+
+
+def test_diagnostic_seed_rejects_expected_f2_for_n_gt_1(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="n <= 1"):
+        _config(
+            tmp_path,
+            "G+C+P",
+            n=2,
+            diagnostic_seed_source=F2_DIAGNOSTIC_FIXTURE,
+            diagnostic_expected_initial_failure="F2_NUMERIC_LARGE",
+        )
+
+
+def test_diagnostic_seed_rejects_expected_f2_for_p_only(tmp_path: Path) -> None:
+    for condition in ("P", "G+P", "all"):
+        with pytest.raises(ValueError, match="condition C\\+P or G\\+C\\+P"):
+            _config(
+                tmp_path,
+                condition,
+                diagnostic_seed_source=F2_DIAGNOSTIC_FIXTURE,
+                diagnostic_expected_initial_failure="F2_NUMERIC_LARGE",
+            )
+
+
+def test_runner_diagnostic_seed_still_uses_correctness_adapter(tmp_path: Path) -> None:
+    fixture_source = (REPO_ROOT / F1_DIAGNOSTIC_FIXTURE).read_text(encoding="utf-8")
+    run, generation, correctness, _ = _run_with_results(
+        tmp_path,
+        "G+P",
+        _f1_result(),
+        _result(None),
+        diagnostic_seed_source=F1_DIAGNOSTIC_FIXTURE,
+        diagnostic_expected_initial_failure="F1_COMPILE",
+    )
+
+    assert correctness.calls[0].source == fixture_source
+    assert len(correctness.calls) == 2
+    assert len(generation.calls) == 1
+    assert generation.calls[0]["identity"].attempt_index == 1
+    assert run.rows[0].p_repair_attempted is True
+    assert run.rows[0].p_initial_failure_code == "F1_COMPILE"
+
+
+def test_runner_diagnostic_seed_does_not_fabricate_f1(tmp_path: Path) -> None:
+    fixture_source = (REPO_ROOT / F1_DIAGNOSTIC_FIXTURE).read_text(encoding="utf-8")
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(
+        _result("F0_PARSE", level_reached=0, compile_success=False)
+    )
+
+    with pytest.raises(RuntimeError, match="expected initial failure F1_COMPILE"):
+        run_cluster3(
+            _config(
+                tmp_path,
+                "G+P",
+                diagnostic_seed_source=F1_DIAGNOSTIC_FIXTURE,
+                diagnostic_expected_initial_failure="F1_COMPILE",
+            ),
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+            ),
+        )
+
+    assert correctness.calls[0].source == fixture_source
+    assert generation.calls == []
+
+
+def test_runner_diagnostic_seed_dispatches_f1_compile_to_p(tmp_path: Path) -> None:
+    run, _, _, c_loop = _run_with_results(
+        tmp_path,
+        "G+P",
+        _f1_result(),
+        _result(None),
+        diagnostic_seed_source=F1_DIAGNOSTIC_FIXTURE,
+        diagnostic_expected_initial_failure="F1_COMPILE",
+    )
+
+    assert run.rows[0].p_repair_attempted is True
+    assert run.rows[0].p_repair_stop_reason != "p_not_applicable"
+    assert c_loop.calls == []
+
+
+def test_diagnostic_seed_does_not_fabricate_f2(tmp_path: Path) -> None:
+    fixture_source = (REPO_ROOT / F2_DIAGNOSTIC_FIXTURE).read_text(encoding="utf-8")
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(
+        _result("F1_COMPILE", level_reached=1, compile_success=False)
+    )
+
+    with pytest.raises(RuntimeError, match="expected initial failure F2_NUMERIC_LARGE"):
+        run_cluster3(
+            _config(
+                tmp_path,
+                "G+C+P",
+                diagnostic_seed_source=F2_DIAGNOSTIC_FIXTURE,
+                diagnostic_expected_initial_failure="F2_NUMERIC_LARGE",
+            ),
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+            ),
+        )
+
+    assert correctness.calls[0].source == fixture_source
+    assert generation.calls == []
+
+
+def test_initial_f2_diagnostic_routes_to_c_not_p_under_g_c_p(tmp_path: Path) -> None:
+    fixture_source = (REPO_ROOT / F2_DIAGNOSTIC_FIXTURE).read_text(encoding="utf-8")
+    run, generation, correctness, c_loop = _run_with_results(
+        tmp_path,
+        "G+C+P",
+        _f2_result(),
+        diagnostic_seed_source=F2_DIAGNOSTIC_FIXTURE,
+        diagnostic_expected_initial_failure="F2_NUMERIC_LARGE",
+    )
+    row = run.rows[0]
+
+    assert correctness.calls[0].source == fixture_source
+    assert generation.calls == []
+    assert row.p_repair_attempted is False
+    assert row.p_repair_stop_reason == "p_not_applicable"
+    assert row.c_loop_fired is True
+    assert row.c_loop_source == "initial_f2"
+    assert c_loop.calls[0]["seed_candidate_evaluation"]["failure_code"] == "F2_NUMERIC_LARGE"
 
 
 def test_cluster3_validate_pair_identity_for_p_vs_none() -> None:
@@ -966,3 +1212,33 @@ def test_run_cluster3_cli_parses_args(tmp_path: Path) -> None:
     )
     assert config.condition == "C+P"
     assert config.c_repair_budget == 3
+
+
+def test_run_cluster3_cli_parses_diagnostic_seed_source(tmp_path: Path) -> None:
+    config = parse_args(
+        [
+            "--condition",
+            "G+P",
+            "--scale-tier",
+            "smoke",
+            "--n",
+            "1",
+            "--dtypes",
+            "fp32",
+            "--diagnostic-seed-source",
+            F1_DIAGNOSTIC_FIXTURE,
+            "--diagnostic-expected-initial-failure",
+            "F1_COMPILE",
+            "--output",
+            str(tmp_path / "diagnostic.jsonl"),
+            "--model-revision",
+            REV_A,
+            "--tokenizer-revision",
+            REV_B,
+            "--overwrite",
+        ]
+    )
+
+    assert config.condition == "G+P"
+    assert config.diagnostic_seed_source == F1_DIAGNOSTIC_FIXTURE
+    assert config.diagnostic_expected_initial_failure == "F1_COMPILE"

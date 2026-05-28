@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import inspect
 import json
+import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -82,6 +83,12 @@ CONDITION_SELECTOR_CHOICES: tuple[str, ...] = (*CLUSTER3_CONDITIONS, "all")
 KERNEL_CLASS_SELECTOR_CHOICES: tuple[str, ...] = (*LOCKED_KERNEL_CLASSES, "all")
 SCALE_TIER_CHOICES: tuple[str, ...] = ("smoke", "development", "paper")
 REPO_ROOT = Path(__file__).resolve().parents[2]
+DIAGNOSTIC_F1_SEED_CONDITIONS: tuple[str, ...] = ("P", "G+P")
+DIAGNOSTIC_F2_SEED_CONDITIONS: tuple[str, ...] = ("C+P", "G+C+P")
+DIAGNOSTIC_EXPECTED_INITIAL_FAILURES: tuple[str, ...] = (
+    "F1_COMPILE",
+    "F2_NUMERIC_LARGE",
+)
 
 GenerationAdapter = Callable[..., Any]
 CorrectnessAdapter = Callable[[Cluster3CorrectnessRequest], Any]
@@ -113,6 +120,8 @@ class Cluster3RunnerConfig:
     dtypes: tuple[str, ...] = ("fp32",)
     grammar_variant: str = GRAMMAR_VARIANT_TASK_AGNOSTIC
     write_mode: str = "overwrite"
+    diagnostic_seed_source: str | None = None
+    diagnostic_expected_initial_failure: str | None = None
 
     def __post_init__(self) -> None:
         _require_member(self.condition, CONDITION_SELECTOR_CHOICES, "condition")
@@ -155,6 +164,7 @@ class Cluster3RunnerConfig:
         _require_non_empty_str(self.output, "output")
         _reject_cluster1_cluster2_output(self.output)
         _require_member(self.write_mode, ("overwrite", "resume"), "write_mode")
+        _validate_diagnostic_seed_config(self)
 
     @property
     def conditions(self) -> tuple[str, ...]:
@@ -184,6 +194,10 @@ class Cluster3RunnerConfig:
             dtypes=parse_dtypes(namespace.dtypes),
             grammar_variant=namespace.grammar_variant,
             write_mode="resume" if namespace.resume else "overwrite",
+            diagnostic_seed_source=namespace.diagnostic_seed_source or None,
+            diagnostic_expected_initial_failure=(
+                namespace.diagnostic_expected_initial_failure or None
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -272,6 +286,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--c-repair-budget", default=DEFAULT_REPAIR_BUDGET, type=int)
     parser.add_argument("--modal-generation-gpu", default=DEFAULT_C2_MODAL_GENERATION_GPU)
     parser.add_argument("--modal-eval-gpu", default=DEFAULT_C2_MODAL_EVAL_GPU)
+    parser.add_argument("--diagnostic-seed-source", default=None)
+    parser.add_argument(
+        "--diagnostic-expected-initial-failure",
+        default=None,
+        choices=DIAGNOSTIC_EXPECTED_INITIAL_FAILURES,
+    )
     parser.add_argument("--output", required=True)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--overwrite", action="store_true")
@@ -299,6 +319,146 @@ def main(argv: Sequence[str] | None = None) -> Cluster3RunResult:
         )
     )
     return result
+
+
+def _modal_entrypoint_argv(
+    *,
+    condition: str,
+    kernel_class: str,
+    scale_tier: str,
+    n: int,
+    model_id: str,
+    model_revision: str,
+    tokenizer_revision: str,
+    grammar_variant: str,
+    dtypes: str,
+    temperature: float,
+    max_new_tokens: int,
+    p_repair_budget: int,
+    c_repair_budget: int,
+    modal_generation_gpu: str,
+    modal_eval_gpu: str,
+    diagnostic_seed_source: str | None,
+    diagnostic_expected_initial_failure: str | None,
+    output: str,
+    overwrite: bool,
+    resume: bool,
+) -> list[str]:
+    if overwrite and resume:
+        raise ValueError("overwrite and resume are mutually exclusive")
+    args = [
+        "--condition",
+        condition,
+        "--kernel-class",
+        kernel_class,
+        "--scale-tier",
+        scale_tier,
+        "--n",
+        str(n),
+        "--model-id",
+        model_id,
+        "--model-revision",
+        model_revision,
+        "--tokenizer-revision",
+        tokenizer_revision,
+        "--grammar-variant",
+        grammar_variant,
+        "--dtypes",
+        dtypes,
+        "--temperature",
+        str(temperature),
+        "--max-new-tokens",
+        str(max_new_tokens),
+        "--p-repair-budget",
+        str(p_repair_budget),
+        "--c-repair-budget",
+        str(c_repair_budget),
+        "--modal-generation-gpu",
+        modal_generation_gpu,
+        "--modal-eval-gpu",
+        modal_eval_gpu,
+    ]
+    if diagnostic_seed_source:
+        args.extend(["--diagnostic-seed-source", diagnostic_seed_source])
+    if diagnostic_expected_initial_failure:
+        args.extend(
+            [
+                "--diagnostic-expected-initial-failure",
+                diagnostic_expected_initial_failure,
+            ]
+        )
+    args.extend(["--output", output, "--overwrite" if overwrite else "--resume"])
+    return args
+
+
+def modal_entrypoint(
+    condition: str,
+    kernel_class: str,
+    scale_tier: str,
+    n: int,
+    output: str,
+    model_id: str = MODEL_ID_DEFAULT,
+    model_revision: str = MODEL_REVISION_DEFAULT,
+    tokenizer_revision: str = TOKENIZER_REVISION_DEFAULT,
+    grammar_variant: str = GRAMMAR_VARIANT_TASK_AGNOSTIC,
+    dtypes: str = ",".join(DTYPE_NAMES),
+    temperature: float = 0.2,
+    max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS,
+    p_repair_budget: int = DEFAULT_P_REPAIR_BUDGET,
+    c_repair_budget: int = DEFAULT_REPAIR_BUDGET,
+    modal_generation_gpu: str = DEFAULT_C2_MODAL_GENERATION_GPU,
+    modal_eval_gpu: str = DEFAULT_C2_MODAL_EVAL_GPU,
+    diagnostic_seed_source: str = "",
+    diagnostic_expected_initial_failure: str = "",
+    overwrite: bool = False,
+    resume: bool = False,
+) -> None:
+    """Modal local entrypoint for running the ordinary Cluster 3 CLI."""
+
+    main(
+        _modal_entrypoint_argv(
+            condition=condition,
+            kernel_class=kernel_class,
+            scale_tier=scale_tier,
+            n=n,
+            model_id=model_id,
+            model_revision=model_revision,
+            tokenizer_revision=tokenizer_revision,
+            grammar_variant=grammar_variant,
+            dtypes=dtypes,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+            p_repair_budget=p_repair_budget,
+            c_repair_budget=c_repair_budget,
+            modal_generation_gpu=modal_generation_gpu,
+            modal_eval_gpu=modal_eval_gpu,
+            diagnostic_seed_source=diagnostic_seed_source or None,
+            diagnostic_expected_initial_failure=(
+                diagnostic_expected_initial_failure or None
+            ),
+            output=output,
+            overwrite=overwrite,
+            resume=resume,
+        )
+    )
+
+
+def _register_modal_local_entrypoint_if_needed() -> None:
+    """Expose ``modal run -m`` while preserving cheap normal imports."""
+
+    if "modal" not in sys.modules:
+        return
+
+    from shared.modal_harness.app import app as _modal_app
+    import cluster2.modal.correctness  # noqa: F401
+    import cluster2.modal.generation  # noqa: F401
+
+    globals()["cluster3_modal_entrypoint"] = _modal_app.local_entrypoint(
+        name="cluster3_modal_entrypoint"
+    )(modal_entrypoint)
+
+
+_register_modal_local_entrypoint_if_needed()
 
 
 def run_cluster3(
@@ -422,31 +582,39 @@ def _run_generated_cell(
     base_prompt = _build_base_prompt(kernel_class, dtype)
     prompt_hash = _sha256(base_prompt)
     initial_seed = base_seed
-    generation_payload = generation(
-        identity=_c2_generation_identity(
-            run_id=run_id,
-            condition=c2_generation_condition,
-            kernel_class=kernel_class,
-            kernel_name=kernel_name,
-            dtype=dtype,
-            base_seed=base_seed,
-            sample_index=base_seed,
-            attempt_index=0,
-        ),
-        prompt=base_prompt,
-        model_id=config.model_id,
-        model_revision=config.model_revision,
-        tokenizer_revision=config.tokenizer_revision,
-        generation_seed=initial_seed,
-        temperature=config.temperature,
-        max_new_tokens=config.max_new_tokens,
-        grammar_variant=(
-            config.grammar_variant if c2_generation_condition == "G+C" else None
-        ),
-        modal_generation_gpu=config.modal_generation_gpu,
-    )
-    stats.generation_calls += 1
-    initial_source = _extract_generated_source(generation_payload)
+    diagnostic_source = _read_diagnostic_seed_source(config)
+    if diagnostic_source is None:
+        generation_payload = generation(
+            identity=_c2_generation_identity(
+                run_id=run_id,
+                condition=c2_generation_condition,
+                kernel_class=kernel_class,
+                kernel_name=kernel_name,
+                dtype=dtype,
+                base_seed=base_seed,
+                sample_index=base_seed,
+                attempt_index=0,
+            ),
+            prompt=base_prompt,
+            model_id=config.model_id,
+            model_revision=config.model_revision,
+            tokenizer_revision=config.tokenizer_revision,
+            generation_seed=initial_seed,
+            temperature=config.temperature,
+            max_new_tokens=config.max_new_tokens,
+            grammar_variant=(
+                config.grammar_variant if c2_generation_condition == "G+C" else None
+            ),
+            modal_generation_gpu=config.modal_generation_gpu,
+        )
+        stats.generation_calls += 1
+        initial_source = _extract_generated_source(generation_payload)
+    else:
+        generation_payload = {
+            "source": diagnostic_source,
+            "generation_identity": {"grammar_variant": config.grammar_variant},
+        }
+        initial_source = diagnostic_source
     initial_identity = _cluster3_identity(
         run_id=run_id,
         condition=condition,
@@ -472,6 +640,7 @@ def _run_generated_cell(
         source_hash=_sha256(initial_source),
         prompt_hash=prompt_hash,
     )
+    _validate_diagnostic_initial_failure(config, initial_result)
     decision = _dispatch(dispatcher, condition, initial_result)
     p_runtime = _PRuntime()
     p_result: PRepairLoopResult | None = None
@@ -1418,6 +1587,93 @@ def _stable_run_id(config: Cluster3RunnerConfig) -> str:
     return "cluster3-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
+def _read_diagnostic_seed_source(config: Cluster3RunnerConfig) -> str | None:
+    if config.diagnostic_seed_source is None:
+        return None
+    return (REPO_ROOT / config.diagnostic_seed_source).read_text(encoding="utf-8")
+
+
+def _validate_diagnostic_initial_failure(
+    config: Cluster3RunnerConfig,
+    result: Mapping[str, Any],
+) -> None:
+    expected = config.diagnostic_expected_initial_failure
+    if expected is None:
+        return
+    actual = _optional_failure_code(result.get("failure_code"))
+    if actual != expected:
+        rendered = actual or "success"
+        raise RuntimeError(
+            "diagnostic seed expected initial failure "
+            f"{expected}; got {rendered}"
+        )
+
+
+def _validate_diagnostic_seed_config(config: Cluster3RunnerConfig) -> None:
+    seed_source = config.diagnostic_seed_source
+    expected = config.diagnostic_expected_initial_failure
+    if seed_source is None and expected is None:
+        return
+    if seed_source is None or expected is None:
+        raise ValueError(
+            "diagnostic_seed_source and diagnostic_expected_initial_failure "
+            "must be provided together"
+        )
+    _require_member(
+        expected,
+        DIAGNOSTIC_EXPECTED_INITIAL_FAILURES,
+        "diagnostic_expected_initial_failure",
+    )
+    if expected == "F1_COMPILE":
+        allowed_conditions = DIAGNOSTIC_F1_SEED_CONDITIONS
+        max_n = 2
+        condition_message = (
+            "diagnostic_seed_source for F1_COMPILE is allowed only for condition P or G+P"
+        )
+    else:
+        allowed_conditions = DIAGNOSTIC_F2_SEED_CONDITIONS
+        max_n = 1
+        condition_message = (
+            "diagnostic_seed_source for F2_NUMERIC_LARGE is allowed only for condition "
+            "C+P or G+C+P"
+        )
+    if config.condition not in allowed_conditions:
+        raise ValueError(condition_message)
+    if config.scale_tier != "smoke":
+        raise ValueError("diagnostic_seed_source is allowed only for smoke scale_tier")
+    if config.n > max_n:
+        raise ValueError(
+            f"diagnostic_seed_source for {expected} requires n <= {max_n}"
+        )
+    if config.kernel_class == "all":
+        raise ValueError("diagnostic_seed_source requires one kernel_class")
+    if len(config.dtypes) != 1:
+        raise ValueError("diagnostic_seed_source requires exactly one dtype")
+    relative_source = _resolve_repo_relative_file(seed_source, "diagnostic_seed_source")
+    object.__setattr__(
+        config,
+        "diagnostic_seed_source",
+        relative_source.as_posix(),
+    )
+
+
+def _resolve_repo_relative_file(value: str, field_name: str) -> Path:
+    _require_non_empty_str(value, field_name)
+    candidate = Path(value)
+    resolved = (
+        candidate.resolve()
+        if candidate.is_absolute()
+        else (REPO_ROOT / candidate).resolve()
+    )
+    try:
+        relative = resolved.relative_to(REPO_ROOT)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must resolve under the repository root") from exc
+    if not resolved.is_file():
+        raise ValueError(f"{field_name} must point to an existing file")
+    return relative
+
+
 def _normalize_required_hub_revision(value: str | None, field_name: str) -> str:
     revision = normalize_immutable_hub_revision(value, field_name=field_name)
     if revision is None:
@@ -1494,6 +1750,7 @@ __all__ = [
     "RunnerDependencies",
     "build_arg_parser",
     "main",
+    "modal_entrypoint",
     "parse_args",
     "run_cluster3",
 ]

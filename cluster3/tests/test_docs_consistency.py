@@ -89,7 +89,7 @@ def test_registry_mentions_no_p_pair_manifest() -> None:
     assert "`cluster3/contracts/no_p_pair_manifest.json`" in text
 
 
-def test_registry_does_not_claim_completed_cluster3_outputs() -> None:
+def test_registry_tracks_cluster3_smoke_without_claiming_scale_outputs() -> None:
     text = _read(REGISTRY)
     cluster3_section = _section(
         text,
@@ -97,8 +97,16 @@ def test_registry_does_not_claim_completed_cluster3_outputs() -> None:
         "## 3. Current Authoritative Artifacts",
     ).lower()
 
+    assert "outputs/cluster3/p_smoke_l4_n1.jsonl" in cluster3_section
+    assert "n=1 smoke" in cluster3_section
+    assert "row count | schema | status" in cluster3_section
+    assert "generated / validated / smoke only / not paper-scale" in cluster3_section
+    assert "no p-lift claim" in cluster3_section
+    assert "outputs/cluster3/blocked/p_smoke_l4_n1.blocked_attempt_001.jsonl" in cluster3_section
+    assert "row count | hash / sidecar | caveats" in cluster3_section
+    assert "not valid smoke evidence" in cluster3_section
+
     planned_paths = (
-        "outputs/cluster3/p_smoke_l4_n1.jsonl",
         "outputs/cluster3/p_dev_l4_n5.jsonl",
         "outputs/cluster3/g_plus_p_dev_l4_n5.jsonl",
         "outputs/cluster3/c_plus_p_dev_l4_n5.jsonl",
@@ -107,8 +115,9 @@ def test_registry_does_not_claim_completed_cluster3_outputs() -> None:
     for path in planned_paths:
         assert path in cluster3_section
     assert cluster3_section.count("planned / not generated yet") == len(planned_paths)
-    assert "no phase 11 or phase 12 cluster 3 rows are registered" in cluster3_section
-    assert "rows |" not in cluster3_section
+    assert "no phase 12 cluster 3 rows are registered" in cluster3_section
+    assert "no paper-scale p artifacts exist" in cluster3_section
+    assert "no performance/speedup/profiler artifacts exist" in cluster3_section
 
 
 def test_cluster3_readme_status_updated() -> None:
