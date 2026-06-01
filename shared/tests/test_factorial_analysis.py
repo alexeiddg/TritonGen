@@ -13,6 +13,7 @@ import pytest
 from shared.analysis.factorial import (
     _expected_prompt_sha256,
     analyze_factorial,
+    load_result_paths,
     normalize_result_rows,
     validate_paired_replay_dataframe,
 )
@@ -31,6 +32,8 @@ def test_factorial_cli_runs_when_invoked_by_file_path() -> None:
 
     assert result.returncode == 0
     assert "--response-variable" in result.stdout
+    assert "--scale-tier" in result.stdout
+    assert "--none" in result.stdout
 
 
 def test_analyze_factorial_accepts_eval_result_sample_index_identity() -> None:
@@ -185,6 +188,112 @@ def test_primary_analysis_is_reportable_only_for_paper_scale(scale_tier: str) ->
     result = analyze_factorial(rows, bootstrap_samples=100)
 
     assert result["metadata"]["scale_tiers"] == [scale_tier]
+    assert result["metadata"]["reportable"] is False
+
+
+def test_missing_scale_tier_defaults_unspecified_and_non_reportable() -> None:
+    rows = _four_cell_rows()
+    for row in rows:
+        row.pop("scale_tier", None)
+
+    result = analyze_factorial(rows, bootstrap_samples=100)
+    metadata = result["metadata"]
+
+    assert metadata["scale_tiers"] == ["unspecified"]
+    assert metadata["normalized_scale_tiers"] == ["unspecified"]
+    assert metadata["raw_scale_tiers_before_annotation"] == ["unspecified"]
+    assert metadata["scale_tier_source"] == "raw_missing_default_unspecified"
+    assert metadata["requested_scale_tier"] is None
+    assert metadata["reportable"] is False
+
+
+def test_analysis_scale_tier_annotation_sets_missing_rows_to_paper() -> None:
+    rows = _four_cell_rows()
+    for row in rows:
+        row.pop("scale_tier", None)
+
+    result = analyze_factorial(
+        rows,
+        scale_tier_annotation="paper",
+        bootstrap_samples=100,
+    )
+    metadata = result["metadata"]
+
+    assert metadata["scale_tiers"] == ["paper"]
+    assert metadata["normalized_scale_tiers"] == ["paper"]
+    assert metadata["raw_scale_tiers_before_annotation"] == ["unspecified"]
+    assert metadata["scale_tier_source"] == "analysis_cli_annotation"
+    assert metadata["requested_scale_tier"] == "paper"
+    assert metadata["reportable"] is True
+
+
+def test_explicit_raw_paper_scale_tier_is_preserved() -> None:
+    result = analyze_factorial(_four_cell_rows(), bootstrap_samples=100)
+    metadata = result["metadata"]
+
+    assert metadata["scale_tiers"] == ["paper"]
+    assert metadata["normalized_scale_tiers"] == ["paper"]
+    assert metadata["raw_scale_tiers_before_annotation"] == ["paper"]
+    assert metadata["scale_tier_source"] == "raw_row"
+    assert metadata["requested_scale_tier"] is None
+    assert metadata["reportable"] is True
+
+
+def test_scale_tier_annotation_rejects_conflicting_explicit_raw_tier() -> None:
+    rows = _four_cell_rows()
+    for row in rows:
+        row["scale_tier"] = "development"
+
+    with pytest.raises(ValueError, match="conflicts with explicit raw scale_tier"):
+        analyze_factorial(
+            rows,
+            scale_tier_annotation="paper",
+            bootstrap_samples=100,
+        )
+
+
+def test_scale_tier_annotation_rejects_conflicting_replay_metadata_tier() -> None:
+    rows = _four_cell_rows()
+    for row in rows:
+        row.pop("scale_tier", None)
+    rows[0]["replay_metadata"]["scale_tier"] = "development"
+
+    with pytest.raises(ValueError, match="conflicts with explicit raw scale_tier"):
+        analyze_factorial(
+            rows,
+            scale_tier_annotation="paper",
+            bootstrap_samples=100,
+        )
+
+
+def test_dataframe_scale_tier_annotation_rejects_conflicting_replay_metadata_tier() -> None:
+    rows = _four_cell_rows()
+    for row in rows:
+        row["dtype_original"] = row["dtype"]
+    rows[0]["replay_metadata"]["scale_tier"] = "development"
+
+    with pytest.raises(ValueError, match="conflicting raw scale_tier values"):
+        analyze_factorial(
+            pd.DataFrame(rows),
+            scale_tier_annotation="paper",
+            bootstrap_samples=100,
+        )
+
+
+def test_mixed_scale_tiers_remain_non_reportable_when_diagnostic_override_is_used() -> None:
+    rows = _four_cell_rows()
+    rows[0]["scale_tier"] = "development"
+
+    with pytest.raises(ValueError, match="mixed scale_tier"):
+        analyze_factorial(rows, bootstrap_samples=100)
+
+    result = analyze_factorial(
+        rows,
+        allow_mixed_scale=True,
+        bootstrap_samples=100,
+    )
+
+    assert result["metadata"]["scale_tiers"] == ["development", "paper"]
     assert result["metadata"]["reportable"] is False
 
 
@@ -635,6 +744,36 @@ def test_cluster1_real_artifact_samples_normalize_functional_success_false() -> 
 
         assert set(normalized["condition"]) == {condition}
         assert normalized["functional_success"].eq(False).all()
+
+
+def test_real_artifacts_accept_explicit_paper_scale_annotation() -> None:
+    paths = [
+        Path("outputs/cluster1/baseline_repaired_l4_n20.jsonl"),
+        Path("outputs/cluster1/task_agnostic_g_aligned_pipeline_n20_l4.jsonl"),
+        Path("outputs/cluster2/c_paper_n20_l4.jsonl"),
+        Path("outputs/cluster2/g_plus_c_paper_n20_l4.jsonl"),
+    ]
+    for path in paths:
+        if not path.exists():
+            pytest.skip(f"missing artifact sample: {path}")
+
+    df = load_result_paths(
+        paths,
+        input_roles=["none", "g", "c", "gc"],
+        scale_tier_annotation="paper",
+    )
+    result = analyze_factorial(
+        df,
+        scale_tier_annotation="paper",
+        bootstrap_samples=10,
+    )
+
+    assert result["diagnostics"]["rows_loaded"] == 714
+    assert result["metadata"]["scale_tiers"] == ["paper"]
+    assert result["metadata"]["raw_scale_tiers_before_annotation"] == ["unspecified"]
+    assert result["metadata"]["scale_tier_source"] == "analysis_cli_annotation"
+    assert result["metadata"]["requested_scale_tier"] == "paper"
+    assert result["metadata"]["reportable"] is True
 
 
 def test_primary_analysis_rejects_missing_functional_success() -> None:

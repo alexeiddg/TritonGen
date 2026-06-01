@@ -864,6 +864,8 @@ def _run_generated_cell(
         replay_control_condition=replay_control_condition,
         replay_base_seed=pairing_entry.base_seed,
         replay_generation_seed=pairing_entry.generation_seed,
+        cluster1_artifact_id=pairing_entry.artifact_id,
+        replay_source=pairing_entry.artifact_id,
         prompt_sha256=pairing_entry.prompt_sha256,
         model_id=config.model_id,
         model_revision=grammar_metadata["model_revision"],

@@ -52,13 +52,21 @@ is `false`.
 - `G` and `G+C` are 177/180 artifacts, not complete 180/180 artifacts.
 - Missing `G` and `G+C` rows are `matmul/fp32` seed 5 and `matmul/bf16` seeds
   0 and 18.
-- `outputs/analysis/factorial_2x2_preliminary.json` exists and loads 714 rows,
-  but `metadata.reportable=false`; it is inspectable evidence, not an official
-  final statistical result.
+- `outputs/analysis/factorial_2x2_preliminary.json` exists, loads 714 rows, and
+  has `metadata.reportable=true` under explicit `analysis_cli_annotation`
+  paper-scale policy. The raw JSONL artifacts were not rewritten and still do
+  not serialize row-level `scale_tier`.
 - Cluster 1 is compile-only. It does not run Level 2 numerical correctness and
   does not claim functional correctness.
 - Template G and `template_upper_bound` artifacts are diagnostic/reference only.
   Current primary G is task-agnostic.
+- The current-pipeline template upper-bound G diagnostic artifact is
+  `outputs/cluster1/template_upper_bound_g_current_pipeline_n20_l4.jsonl`.
+  It is compile-only, non-primary, and excluded from the primary analyzer.
+- The old template artifact `outputs/cluster1/final_g_l4_n20.jsonl` is legacy
+  compile-only diagnostic evidence only. It must not fill missing task-agnostic
+  G rows, pair with current task-agnostic G+C, or enter the current primary
+  2^2 analyzer.
 - Old n=5, template, smoke, failed, and partial artifacts are non-authoritative
   unless promoted into `docs/05_artifacts_and_results_registry.md`.
 - No performance, timing, profiling, or speedup result is currently claimed.
