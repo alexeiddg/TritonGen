@@ -1,0 +1,2 @@
+# INVALIDO: expresión incompleta (operando derecho faltante)
+@triton.jit def add(x, y): { z = x + ; }

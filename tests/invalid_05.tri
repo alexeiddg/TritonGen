@@ -1,0 +1,2 @@
+# INVALIDO: argumento con nombre (keyword arg) en llamada
+@triton.jit def g(x): { tl.load(x, mask=1); }

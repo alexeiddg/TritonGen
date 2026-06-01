@@ -1,0 +1,9 @@
+# Full kernel B — pid / offsets / tl.store example
+@triton.jit
+def kernel_b(x_ptr, y_ptr, n, BS: tl.constexpr): {
+    pid  = tl.program_id(0);
+    offs = pid * BS + tl.arange(0, BS);
+    x    = tl.load(x_ptr + offs);
+    y    = x * x;
+    tl.store(y_ptr + offs, y);
+}

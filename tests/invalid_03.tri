@@ -1,0 +1,2 @@
+# INVALIDO: falta el ; al final de la instrucción
+@triton.jit def add(x, y): { z = x + y }
