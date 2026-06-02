@@ -1049,6 +1049,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             render_factorial_markdown_report(result) + "\n",
             encoding="utf-8",
         )
+    # Seam D: optionally mirror analyzer aggregates into MLflow (post-hoc,
+    # opt-in). The analyzer output written above is the source of truth; this
+    # never changes it. Imported locally so the analyzer stays
+    # infrastructure-agnostic and the pure functions never touch tracking.
+    from shared import tracking
+
+    with tracking.run_context(backend="local"):
+        meta = result.get("metadata", {})
+        tags = {"kind": "factorial_analysis"}
+        for field in ("response_variable", "analysis_scope", "analyzer_version"):
+            value = meta.get(field)
+            if value:
+                tags[field] = str(value)
+        tracking.set_tags(tags)
+        tracking.log_factorial_summary(result)
     return 0
 
 

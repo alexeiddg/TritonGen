@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import functools
 import logging
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from typing import Any, Callable
 
@@ -134,24 +134,32 @@ def log_generation_result(result: Any) -> None:
 
 @_never_raises
 def log_factorial_summary(
-    cell_summaries: Iterable[Any],
+    analysis_result: Any,
     *,
     reportable: bool | None = None,
+    summary_level: str = "condition",
 ) -> None:
-    """Log ``CellSummary`` aggregates and an optional ``reportable`` tag.
+    """Log analyzer factorial aggregates (Seam D), post-hoc and opt-in.
 
-    Intended to be called post-hoc by the analyzer (Seam D). No-op if disabled
-    or if there is no active run.
+    Accepts the ``analyze_factorial`` result dict (or a bare list of its
+    ``cell_summaries``). Logs condition-level ``cell.*`` success-rate metrics and
+    sets the ``reportable`` tag (read from ``metadata.reportable`` unless given
+    explicitly). No-op if disabled or if there is no active run.
     """
 
     if not _should_log():
         return
-    if reportable is not None:
-        _safe(lambda: _mlflow.set_tag("reportable", "true" if reportable else "false"))
-    for summary in cell_summaries:
-        metrics = mapping.cell_summary_to_metrics(summary)
-        if metrics:
-            _safe(lambda payload=metrics: _mlflow.log_metrics(payload))
+    resolved_reportable = reportable
+    if resolved_reportable is None and isinstance(analysis_result, Mapping):
+        metadata = analysis_result.get("metadata")
+        if isinstance(metadata, Mapping):
+            resolved_reportable = metadata.get("reportable")
+    if resolved_reportable is not None:
+        flag = "true" if resolved_reportable else "false"
+        _safe(lambda: _mlflow.set_tag("reportable", flag))
+    metrics = mapping.factorial_result_to_metrics(analysis_result, summary_level=summary_level)
+    if metrics:
+        _safe(lambda: _mlflow.log_metrics(metrics))
 
 
 @_never_raises

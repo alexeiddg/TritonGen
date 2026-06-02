@@ -177,9 +177,54 @@ def generation_result_to_metrics(result: Any) -> dict[str, float]:
 
 
 def cell_summary_to_metrics(summary: Any) -> dict[str, float]:
-    """Map a ``CellSummary`` to ``cell.*`` aggregate metrics."""
+    """Map a ``shared.eval.schema.CellSummary`` to ``cell.*`` aggregate metrics."""
 
     return _collect_metrics(summary, CELL_SUMMARY_METRIC_FIELDS, prefix="cell")
+
+
+def factorial_result_to_metrics(
+    analysis_result: Any,
+    *,
+    summary_level: str = "condition",
+) -> dict[str, float]:
+    """Map analyzer factorial output to ``cell.*`` success-rate metrics.
+
+    Accepts the full ``analyze_factorial`` result dict or a bare list of its
+    ``cell_summaries``. Emits one metric per ``(response_variable, condition)``
+    at the requested ``summary_level`` (default the coarse per-condition level),
+    keyed as ``cell.<response>.<condition>`` (success rate) plus
+    ``cell.<response>.<condition>.n`` (cell size). Condition labels are
+    sanitized for MLflow (``+`` -> ``_``), so ``G+C`` becomes ``G_C``.
+    """
+
+    if isinstance(analysis_result, Mapping):
+        summaries = analysis_result.get("cell_summaries") or []
+    else:
+        summaries = analysis_result or []
+    metrics: dict[str, float] = {}
+    for summary in summaries:
+        if not isinstance(summary, Mapping):
+            continue
+        if summary.get("summary_level") != summary_level:
+            continue
+        response = str(summary.get("response_variable", "")).strip()
+        condition = str(summary.get("condition", "")).strip()
+        if not response or not condition:
+            continue
+        rate = _as_metric(summary.get("success_rate"))
+        if rate is None:
+            continue
+        key = f"cell.{response}.{_sanitize_metric_label(condition)}"
+        metrics[key] = rate
+        size = _as_metric(summary.get("n_cells"))
+        if size is not None:
+            metrics[f"{key}.n"] = size
+    return metrics
+
+
+def _sanitize_metric_label(label: str) -> str:
+    # MLflow metric names allow [A-Za-z0-9_.\-/ :]; condition labels use "+".
+    return label.replace("+", "_")
 
 
 def _collect_metrics(
