@@ -34,7 +34,7 @@ can ignore MLflow entirely and nothing breaks.
 | Run | One execution of a launcher | One `run_cluster1.py` or Modal invocation |
 | Params | Fixed settings for that run | `condition`, `scale_tier`, `model_id`, CLI args as `arg.*` |
 | Metrics | Numbers measured during the run | `compile_success`, `functional_success`, `max_abs_diff`, etc. |
-| Tags | Labels used for filtering | `cluster`, `condition`, `scale_tier`, `backend`, `reportable` |
+| Tags | Labels used for filtering | `cluster`, `condition`, `scale_tier`, `backend`, `reportable`, plus provenance `git_commit` + `output_path` (auto) |
 
 One thing to internalize: one MLflow run means one launch of a script. The
 per-kernel results live inside that run as metrics. Do not confuse the MLflow

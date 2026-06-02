@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import functools
 import logging
+import subprocess
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, Callable
 
 from shared.tracking import mapping
@@ -62,6 +64,50 @@ def _never_raises(fn: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _resolve_git_commit() -> str | None:
+    """Return the current ``HEAD`` commit, or ``None`` outside a git checkout."""
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    commit = result.stdout.strip()
+    return commit or None
+
+
+def _provenance_tags(cli_args: Any | None) -> dict[str, str]:
+    """Tags linking a run to its evidence: source commit and output path.
+
+    Per the tracking policy (provenance), every run is traceable back to the
+    code (``git_commit``) and the JSONL artifact it mirrors (``output_path``,
+    read from ``cli_args.output`` when present).
+    """
+
+    tags: dict[str, str] = {}
+    commit = _resolve_git_commit()
+    if commit:
+        tags["git_commit"] = commit
+    output: Any = None
+    if isinstance(cli_args, Mapping):
+        output = cli_args.get("output")
+    elif cli_args is not None:
+        output = getattr(cli_args, "output", None)
+    if output:
+        tags["output_path"] = str(output)
+    return tags
+
+
 @contextmanager
 def run_context(
     *,
@@ -93,17 +139,21 @@ def run_context(
         return
 
     try:
+        provenance = _provenance_tags(cli_args)
         if run_config is not None:
             _safe(lambda: _mlflow.log_params(mapping.run_config_to_params(run_config, cli_args)))
-            _safe(
-                lambda: _mlflow.set_tags(
-                    {**cfg.run_tags, **mapping.run_config_to_tags(
-                        run_config, backend=backend, cluster=cluster
-                    )}
-                )
-            )
-        elif cfg.run_tags:
-            _safe(lambda: _mlflow.set_tags(dict(cfg.run_tags)))
+            tags = {
+                **cfg.run_tags,
+                **provenance,
+                **mapping.run_config_to_tags(run_config, backend=backend, cluster=cluster),
+            }
+            _safe(lambda: _mlflow.set_tags(tags))
+        else:
+            tags = {**cfg.run_tags, **provenance, "backend": str(backend)}
+            if cluster is not None:
+                tags["cluster"] = str(cluster)
+            if tags:
+                _safe(lambda: _mlflow.set_tags(tags))
         yield None
     finally:
         _safe(_mlflow.end_run)
