@@ -1,6 +1,6 @@
 # Experiment Change Orchestration State
 
-- Version: 1.4.9
+- Version: 1.4.10
 - Date: 2026-06-02
 - Status: active live state record
 - Owner: current orchestration agent
@@ -372,10 +372,10 @@ reason. Do not backfill missing provenance silently after execution.
 | Field | Value |
 |---|---|
 | Git baseline commit | `aa4d20f1f5c64932e72b488d131244542e44459f` |
-| Git branch | `codex-track-handoff-context` as temporary trunk; `codex/integrate-mlflow-into-handoff` is the active MLflow integration branch |
-| Git status at latest reconciliation | clean before MLflow integration; integration branch carries only the tracked merge/docs changes and no output mutation |
+| Git branch | `codex-track-handoff-context` as temporary trunk; MLflow integration promoted at `28c52f2` |
+| Git status at latest reconciliation | clean after MLflow integration promotion; no Modal, output mutation, or MLflow runtime artifact committed |
 | Orchestration contract version | `docs/15_experiment_change_orchestration_contract.md` v1.0.11 |
-| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.38.0 |
+| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.38.1 |
 | Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 |
 | Structural/task analyzer metadata spec version | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 |
 | MLflow tracking policy version | `.contracts/research/mlflow_tracking_policy.md` v1.0.0 |
@@ -391,7 +391,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Worktree | Branch | Commit | State ownership |
 |---|---|---|---|
-| `/Users/alexeidelgado/Desktop/TritonGen` | `codex/integrate-mlflow-into-handoff` | merge in progress from `aa4d20f` plus `origin/ml_migration` | MLflow integration workspace; no Modal or output mutation |
+| `/Users/alexeidelgado/Desktop/TritonGen` | `codex-track-handoff-context` | `28c52f2` plus promotion-state update | temporary trunk with MLflow integration promoted; no Modal or output mutation |
 | `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `368a3c8` | A1 prompt core committed and clean; awaiting trunk update after MLflow integration |
 | `/Users/alexeidelgado/Desktop/TritonGen/.claude/worktrees/intelligent-pasteur-72d92f` | `claude/intelligent-pasteur-72d92f` | `b0085c1` | external/unknown to this orchestration state; reconcile before relying on it |
 
@@ -400,7 +400,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 | Branch | Stream/package | Worktree | Status | Notes |
 |---|---|---|---|---|
 | `codex-track-handoff-context` | temporary trunk | `/Users/alexeidelgado/Desktop/TritonGen` when not on integration branch | active baseline | Treat as the working main branch for repair/handoff work until final branch repair is complete. |
-| `codex/integrate-mlflow-into-handoff` | MLflow tracking harness integration | `/Users/alexeidelgado/Desktop/TritonGen` | active integration | Merge `origin/ml_migration`, preserve handoff doc/audit tracking policy, validate optional/no-op tracking tests, then promote to the temporary trunk. |
+| `codex/integrate-mlflow-into-handoff` | MLflow tracking harness integration | none after promotion | promoted | Merged `origin/ml_migration`, preserved handoff doc/audit tracking policy, validated optional/no-op tracking tests, and fast-forwarded into the temporary trunk at `28c52f2`. |
 | `codex/llm-repair-memory-agentic-transcript-v1` | agentic repair memory | `/private/tmp/tritongen-llm-repair-memory` | A1 committed | A1 prompt core is committed at `368a3c8`; update from the MLflow-integrated trunk before A2/A3 integration work. |
 
 ## Active Serialized-Surface Leases
@@ -462,7 +462,7 @@ Historical context:
 | operating-control addendum | complete | State record, lease, decision authority, run packet, merge protocol, and trust boundary added to the contract. |
 | observability sidecar implementation spec | complete | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 created and routed; code implementation not started. |
 | structural/task analyzer metadata implementation spec | complete | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 created and routed; analyzer/report code implementation not started. |
-| MLflow tracking harness integration | in progress | `origin/ml_migration` is being merged into `codex-track-handoff-context` via `codex/integrate-mlflow-into-handoff`; tracking must remain optional/no-op unless `TRITONGEN_MLFLOW` and `mlflow` are present, and JSONL remains the source of truth. |
+| MLflow tracking harness integration | complete | `origin/ml_migration` was merged into `codex-track-handoff-context` via `codex/integrate-mlflow-into-handoff` and promoted at `28c52f2`; tracking remains optional/no-op unless `TRITONGEN_MLFLOW` and `mlflow` are present, and JSONL remains the source of truth. |
 
 ## Abandoned Packages
 
@@ -492,18 +492,16 @@ Historical context:
 
 Allowed without run approval:
 
-1. Promote the validated MLflow integration branch into `codex-track-handoff-context`
-   after tests and conflict checks pass.
-2. Update `codex/llm-repair-memory-agentic-transcript-v1` from the
+1. Update `codex/llm-repair-memory-agentic-transcript-v1` from the
    MLflow-integrated handoff trunk before A2/A3 work.
-3. Create remaining component implementation specs for:
+2. Create remaining component implementation specs for:
    - agentic repair-memory implementation;
    - paper-scale readiness or future Cluster 3 run packet/spec, if explicitly
      requested.
-4. Start safe parallel branches after adding package cards below:
+3. Start safe parallel branches after adding package cards below:
    - S0 docs terminology;
    - O0 sidecar core;
-5. Create serialized-surface leases before touching analyzer, runner, repair
+4. Create serialized-surface leases before touching analyzer, runner, repair
    loop, result schema, raw output, or report-data-builder surfaces.
 
 Not allowed without explicit approval:
