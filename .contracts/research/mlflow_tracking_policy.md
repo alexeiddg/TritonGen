@@ -1,6 +1,7 @@
 # MLflow Tracking Policy
 
 **Status:** Current tracking policy for TritonGen.
+**Last revised:** 2026-06-02.
 **Audience:** Research-facing methodology and reproducibility notes.
 
 This contract defines how MLflow tracking may be used in TritonGen without
@@ -92,7 +93,50 @@ The default Modal policy is local-orchestrator logging:
 Under this default, MLflow is not required inside Modal containers, and no
 tracking credentials are shipped to remote GPU workers.
 
-## 8. Documentation Boundary
+## 8. Run Provenance and Traceability
+
+Every MLflow run must be traceable back to the evidence it mirrors. Runs should
+carry tags that link them to their artifacts and code:
+
+- the source commit (`git_commit`) the run was produced from;
+- the output artifact path(s) — the JSONL file(s) the run mirrors;
+- `cluster`, `condition`, `scale_tier`, and `backend` (already required by the
+  scale-tier policy).
+
+An MLflow run identifies one launcher invocation (a batch of cells). It is not
+the same as the per-record `run_id` field on `EvalResult` / `GenerationResult`,
+which identifies a single experiment cell. The two must not be conflated.
+
+If files are attached as MLflow artifacts, they are attached as copies or
+pointers. A frozen output artifact is never moved, renamed, or rewritten to
+satisfy tracking.
+
+## 9. Permitted and Prohibited Content
+
+MLflow params, metrics, tags, and artifacts may only carry configuration and
+measurements already produced by the pipeline.
+
+The following must never be logged to MLflow:
+
+- secrets or credentials of any kind (tokens, keys, authenticated remote URIs);
+- raw generated kernel source code or full model outputs;
+- model weights or tokenizer/model binaries;
+- datasets or raw dataset rows.
+
+Logging must not introduce success criteria, thresholds, or derived claims that
+are not already defined by the pipeline and its contracts.
+
+## 10. Backfill Policy
+
+Tracking applies to new runs only. Frozen JSONL artifacts are not retroactively
+imported into MLflow as part of the normal workflow.
+
+If historical backfill is ever required (for example, a dashboard of past paper
+runs), it must be performed by a separate, read-only script that reads the
+frozen JSONL and creates MLflow runs without modifying, renaming, or deleting
+any file under `outputs/`.
+
+## 11. Documentation Boundary
 
 Operational onboarding belongs in `docs/tracking/README.md`.
 
