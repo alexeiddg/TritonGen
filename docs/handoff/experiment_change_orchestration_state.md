@@ -1,6 +1,6 @@
 # Experiment Change Orchestration State
 
-- Version: 1.5.7
+- Version: 1.5.8
 - Date: 2026-06-02
 - Status: active live state record
 - Owner: current orchestration agent
@@ -375,11 +375,13 @@ reason. Do not backfill missing provenance silently after execution.
 | Git branch | `codex-track-handoff-context` |
 | Git status at latest reconciliation | `clean` by `git status --short --branch` before creating the A-spec worktree; ignored docs/audits/outputs still require direct inspection |
 | Orchestration contract version | `docs/15_experiment_change_orchestration_contract.md` v1.0.12 |
-| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.45.0 |
+| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.46.0 |
 | Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 |
 | Structural/task analyzer metadata spec version | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 |
 | Agentic transcript implementation spec version | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5 |
 | Agentic transcript docs-only checkpoint | `audits/agentic_transcript_v1_spec_checkpoint_report.md` v1.0.0 |
+| Agentic transcript A0 policy constants | commit `1e3f44468c5ae91e6467b42b7f93a068fa6acf5f` |
+| Agentic transcript A0.5 preflight | `audits/agentic_transcript_v1_a0_5_preflight_report.md` v1.0.0 |
 | Current Cluster 3 gate | Phase 14e four-cell n=5 development matrix frozen with warnings; no broader run without explicit approval packet |
 | Paper-scale status | blocked; no Cluster 3 `n=20` until Gate G8 |
 
@@ -392,7 +394,7 @@ project-owned operational documents or artifacts are unchanged.
 | Worktree | Branch | Commit | State ownership |
 |---|---|---|---|
 | `/Users/alexeidelgado/Desktop/TritonGen` | `codex-track-handoff-context` | `aa4d20f1f5c64932e72b488d131244542e44459f` | canonical docs/workflow baseline branch |
-| `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `3131986` | A-spec checkpoint worktree |
+| `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `1e3f444` | A0 constants committed; A0.5 preflight complete and ready to preserve before A1 |
 | `/Users/alexeidelgado/Desktop/TritonGen/.claude/worktrees/intelligent-pasteur-72d92f` | `claude/intelligent-pasteur-72d92f` | `b0085c1` | external/unknown to this orchestration state; reconcile before relying on it |
 
 ## Active Branches
@@ -400,7 +402,7 @@ project-owned operational documents or artifacts are unchanged.
 | Branch | Stream/package | Worktree | Status | Notes |
 |---|---|---|---|---|
 | `codex-track-handoff-context` | baseline | `/Users/alexeidelgado/Desktop/TritonGen` | active baseline | Treat as the current docs/workflow baseline branch; do not use for high-blast-radius implementation work. |
-| `codex/llm-repair-memory-agentic-transcript-v1` | A-spec / agentic transcript prep | `/private/tmp/tritongen-llm-repair-memory` | ready for A0 | Created from `codex-track-handoff-context` for `agentic_transcript_v1` implementation-spec routing; docs-only checkpoint report is recorded. |
+| `codex/llm-repair-memory-agentic-transcript-v1` | A-stream / agentic transcript implementation | `/private/tmp/tritongen-llm-repair-memory` | A0.5 preflight complete; ready to preserve checkpoint before A1 | Created from `codex-track-handoff-context`; A-spec checkpoint, A0 constants commit, and A0.5 constants preflight are recorded. |
 
 ## Active Serialized-Surface Leases
 
@@ -417,7 +419,7 @@ project-owned operational documents or artifacts are unchanged.
 | G2 reporting terminology stable | not started | Requires S0 acceptance. |
 | G3 observability sidecar contract stable | spec drafted / code not started | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 defines O0-O4 plus hardening guardrails; G3 still requires implementation and tests. |
 | G4 analyzer compatibility stable | spec drafted / code not started | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 defines S0-S3 metadata and report-label work; G4 still requires S1 implementation and compatibility tests. |
-| G5 agentic prompt core stable | spec drafted / code not started | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5 defines A0-A6, resolves D-AGENT-01, D-AGENT-02, and D-AGENT-04, hardens edge cases, adds explicit policy-config validation and precedence, canonical prompt grammar, public-evidence-only anchor ranking, active repair eligibility, fixture acceptance manifest, legacy byte-invariance snapshots, prompt-core import isolation, metadata nullability matrix, CLI/API/default tests, mixed-policy analyzer fixture, commit/package slicing, rollback independence, no-opportunistic-cleanup policy, and the spec-only checkpoint, A0.5 preflight, fixture-first A1 gate, migration classification plan, stop triggers, and A1 review checkpoint; G5 still requires A1 prompt core and golden tests. |
+| G5 agentic prompt core stable | spec drafted / A0 and A0.5 passed / A1 not started | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5 defines A0-A6, resolves D-AGENT-01, D-AGENT-02, and D-AGENT-04, hardens edge cases, adds explicit policy-config validation and precedence, canonical prompt grammar, public-evidence-only anchor ranking, active repair eligibility, fixture acceptance manifest, legacy byte-invariance snapshots, prompt-core import isolation, metadata nullability matrix, CLI/API/default tests, mixed-policy analyzer fixture, commit/package slicing, rollback independence, no-opportunistic-cleanup policy, and the spec-only checkpoint, A0.5 preflight, fixture-first A1 gate, migration classification plan, stop triggers, and A1 review checkpoint; G5 still requires A1 prompt core and golden tests. |
 | G6 agentic integration stable | not started | Requires opt-in C/P integration and analyzer grouping. |
 | G7 development run readiness | blocked pending fresh approval packet | Phase 14e matrix is frozen; any broader development-scale, all-condition, diagnostic, or paper-readiness run needs a new approval packet. |
 | G8 paper-scale readiness | blocked | No `n=20` or paper-scale work. |
@@ -463,6 +465,8 @@ Historical context:
 | structural/task analyzer metadata implementation spec | complete | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 created and routed; analyzer/report code implementation not started. |
 | agentic transcript implementation spec | complete | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5 created, routed, edge-case hardened, research cross-checked, and expanded with implementation checkpoint gates plus canonical rendering, public-evidence-only ranking, fixture manifest, byte-invariance, import-isolation, metadata-nullability, CLI/API/default, mixed-policy analyzer, commit-slicing, rollback, and no-cleanup gates; C/P prompt-core and loop code implementation not started. |
 | agentic transcript docs-only checkpoint | complete | `audits/agentic_transcript_v1_spec_checkpoint_report.md` v1.0.0 confirms source-doc inspection, readiness-audit reconciliation as `aligned_with_spec`, A0 readiness, no-code/no-output mutation, worktree caveats, and required local docs/import sanity tests. |
+| agentic transcript A0 policy constants | complete | Commit `1e3f44468c5ae91e6467b42b7f93a068fa6acf5f` adds policy-name constants, keeps `DEFAULT_REPAIR_HISTORY_POLICY_V1` as `last_attempt_only_v1`, keeps Cluster 3 `P_HISTORY_POLICY_V1` as `last_attempt_only_v1`, and changes only the four allowed constants/test files. |
+| agentic transcript A0.5 constants preflight | complete | `audits/agentic_transcript_v1_a0_5_preflight_report.md` v1.0.0 confirms A0 scope, default invariance, Cluster 3 compatibility, cheap imports, focused tests, optional prompt/loop import sanity, no forbidden-surface changes, no code/output mutation in A0.5, and baseline-venv caveat. |
 
 ## Abandoned Packages
 
@@ -482,7 +486,9 @@ Historical context:
 - Phase 14e is frozen development-scale condition coverage only with zero P
   attempts and zero C fires.
 - No paper-scale Cluster 3 results exist.
-- No agentic-memory code implementation is active yet.
+- Agentic-memory A0 constants only is complete; no prompt-core, loop
+  integration, runner, schema, analyzer, Modal, or output implementation is
+  active yet.
 - No observability sidecar implementation is active yet.
 - No analyzer metric-registry implementation is active yet.
 
@@ -495,9 +501,7 @@ Allowed without run approval:
 2. Start safe parallel branches after adding package cards below:
    - S0 docs terminology;
    - O0 sidecar core;
-   - A0 policy constants;
-   - A0.5 preflight after A0;
-   - A1 pure prompt core.
+   - A1 pure prompt core after preserving the A0.5 checkpoint.
 3. Create serialized-surface leases before touching analyzer, runner, repair
    loop, result schema, raw output, or report-data-builder surfaces.
 
@@ -509,10 +513,11 @@ Not allowed without explicit approval:
 - output overwrite or mutation;
 - performance, profiler, timing, speedup, or benchmark work.
 
-## Ready To Implement Kickoff
+## A1 Kickoff State
 
-The `agentic_transcript_v1` feature branch is ready for the first implementation
-package after preserving the docs-only checkpoint.
+The `agentic_transcript_v1` feature branch has completed A0 policy constants
+and A0.5 constants preflight. A1 prompt core is the next implementation package
+after preserving the A0.5 checkpoint.
 
 Current checkout:
 
@@ -520,27 +525,37 @@ Current checkout:
 branch: codex/llm-repair-memory-agentic-transcript-v1
 worktree: /private/tmp/tritongen-llm-repair-memory
 spec: docs/18_agentic_transcript_v1_implementation_spec.md v0.1.5
-state: docs/handoff/experiment_change_orchestration_state.md v1.5.7
-registry: docs/handoff/document_version_registry.md v1.45.0
-checkpoint: audits/agentic_transcript_v1_spec_checkpoint_report.md v1.0.0
-first implementation package: A0 policy constants
+state: docs/handoff/experiment_change_orchestration_state.md v1.5.8
+registry: docs/handoff/document_version_registry.md v1.46.0
+spec checkpoint: audits/agentic_transcript_v1_spec_checkpoint_report.md v1.0.0
+A0 commit: 1e3f44468c5ae91e6467b42b7f93a068fa6acf5f
+A0.5 preflight: audits/agentic_transcript_v1_a0_5_preflight_report.md v1.0.0
+next implementation package: A1 prompt core
 ```
 
-A0 allowed files:
+A1 allowed files:
 
 ```text
-cluster2/constants.py
-cluster3/constants.py
-cluster2/tests/test_cluster2_boundary.py
-cluster3/tests/test_cluster3_imports.py
+shared/repair_history/__init__.py
+shared/repair_history/policies.py
+shared/repair_history/errors.py
+shared/repair_history/evidence.py
+shared/repair_history/ranking.py
+shared/repair_history/rendering.py
+shared/tests/test_repair_history_policies.py
+shared/tests/test_repair_history_errors.py
+shared/tests/test_repair_history_evidence.py
+shared/tests/test_repair_history_ranking.py
+shared/tests/test_repair_history_rendering.py
+shared/tests/fixtures/repair_history/
 ```
 
-A0 forbidden actions:
+A1 forbidden actions:
 
 ```text
-no prompt-builder edits
-no repair-loop edits
+no C/P repair-loop edits
 no runner edits
+no runner CLI edits
 no result-schema edits
 no analyzer edits
 no output mutation
@@ -549,24 +564,27 @@ no dependency or lockfile changes
 no opportunistic cleanup
 ```
 
-A0 required proof:
+A1 required proof:
 
 ```text
-policy constants import cheaply
-DEFAULT_REPAIR_HISTORY_POLICY_V1 remains last_attempt_only_v1
-agentic_transcript_v1 is recognized but non-default
-cluster3.constants.P_HISTORY_POLICY_V1 remains last_attempt_only_v1
+fixture-first golden prompts
+fixture acceptance manifest
+legacy C/P byte-invariance snapshots
+pure prompt-core import isolation
+attempt evidence, anchor ranking, rendering, budget, injection, and hash tests
+rollback independence from A2/A3 integration
 ```
 
-Current targeted validation command:
+Last successful A0.5 validation commands:
 
 ```bash
-/Users/alexeidelgado/miniconda3/bin/python -c "import sys, types, pytest; sys.modules['readline'] = types.ModuleType('readline'); sys.exit(pytest.main(['cluster2/tests/test_feedback_prompts.py','cluster2/tests/test_repair_loop.py','cluster3/tests/test_p_repair_loop.py','cluster3/tests/test_condition_adapters.py','cluster3/tests/test_cluster3_imports.py','cluster3/tests/test_docs_consistency.py']))"
+/Users/alexeidelgado/Desktop/TritonGen/.venv/bin/python -m pytest cluster2/tests/test_cluster2_boundary.py -v
+/Users/alexeidelgado/Desktop/TritonGen/.venv/bin/python -m pytest cluster3/tests/test_cluster3_imports.py -v
 ```
 
-This command is the current local C/P prompt-loop and docs-consistency slice. It
-does not replace package-specific A0 tests; A0 should add and run its focused
-constants/default-invariance tests.
+These commands do not replace package-specific A1 tests. A1 must add and run
+its focused prompt-core and golden-fixture tests using
+`/Users/alexeidelgado/Desktop/TritonGen/.venv/bin/python`.
 
 ## Work Package Cards
 
@@ -648,9 +666,9 @@ status:
 | S-spec structural/task analyzer metadata implementation spec | none | complete | G1 | spec routed | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2; code implementation not started. |
 | A-spec agentic transcript implementation spec | none | complete | G1 | spec routed | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5; code implementation not started. |
 | O0 sidecar core | `codex/observability-sidecar-core` | not started | G1 plus O-spec | G3 partial | New `shared/observability/*` schema/logger/redaction and tests only. |
-| A0 policy constants | `codex/agentic-memory-policy-constants` | not started | G1 plus A-spec | no behavior change | Add policy-name constants and default-invariance tests only. |
-| A0.5 preflight | `codex/agentic-memory-policy-preflight` | blocked | A0 complete | A1 entry readiness | Validation/checkpoint only; prove default invariance, cheap imports, and no prompt/runner/schema changes before A1. |
-| A1 prompt core | `codex/agentic-memory-core` | blocked | A0.5 complete plus A-spec | G5 partial | Pure attempt evidence, anchor selector, transcript renderer, fixture-first golden tests, fixture acceptance manifest, legacy byte-invariance snapshots, prompt-core import isolation, and A1 review checkpoint. |
+| A0 policy constants | `codex/llm-repair-memory-agentic-transcript-v1` | complete | G1 plus A-spec | no behavior change | Commit `1e3f44468c5ae91e6467b42b7f93a068fa6acf5f`; policy-name constants and default-invariance tests only. |
+| A0.5 preflight | `codex/llm-repair-memory-agentic-transcript-v1` | complete | A0 complete | A1 entry readiness | `audits/agentic_transcript_v1_a0_5_preflight_report.md` v1.0.0; default invariance, cheap imports, focused tests, and no forbidden-surface changes verified. |
+| A1 prompt core | `codex/llm-repair-memory-agentic-transcript-v1` | ready after A0.5 checkpoint preservation | A0.5 complete plus A-spec | G5 partial | Pure attempt evidence, anchor selector, transcript renderer, fixture-first golden tests, fixture acceptance manifest, legacy byte-invariance snapshots, prompt-core import isolation, and A1 review checkpoint. |
 | S1 analyzer metadata | `codex/analyzer-metric-registry` | blocked | G2 plus S-spec plus lease | G4 partial | Requires `docs/17_structural_task_analyzer_metadata_implementation_spec.md` and `analyzer_metric_registry` lease. |
 | O1 runner wall-clock | `codex/observability-runner-instrumentation` | blocked | O0 plus runner lease | G3 | One runner owner at a time. |
 | A2 C-loop integration | `codex/agentic-memory-c2-integration` | blocked | A1 plus lease | G6 partial | Requires C-loop and Cluster 2 runner leases. |
