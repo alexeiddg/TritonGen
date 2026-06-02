@@ -33,6 +33,7 @@ Use these docs as the current report-facing navigation layer:
 | Artifact and result registry | `docs/05_artifacts_and_results_registry.md` |
 | Failure taxonomy and evaluation ladder | `docs/06_failure_taxonomy_and_eval_ladder.md` |
 | Analysis and statistics semantics | `docs/07_analysis_and_statistics.md` |
+| MLflow tracking onboarding | `docs/tracking/README.md` |
 | Decision log | `docs/08_decision_log.md` |
 | Preliminary report outline | `docs/09_preliminary_report_outline.md` |
 | Cluster 3 drift-prevention plan | `docs/10_cluster3_drift_prevention_plan.md` |

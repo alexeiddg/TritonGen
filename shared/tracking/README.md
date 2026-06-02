@@ -5,6 +5,10 @@ analyzer call into this package; they never touch MLflow directly. Tracking is
 **additive and optional** — with it disabled, every existing run and test
 behaves exactly as before.
 
+Team-facing onboarding lives at
+[`docs/tracking/README.md`](../../docs/tracking/README.md). This file is the
+technical reference for the tracking package implementation.
+
 ---
 
 ## 1. What each piece is for
@@ -127,22 +131,22 @@ If this prints `False`, logging stays a no-op until you install it (by design).
 
 ```powershell
 $env:TRITONGEN_MLFLOW = "1"                         # gate 1: turn tracking on
-python cluster1/experiments/run_cluster1.py ...     # Seam A is wired here (Phase 1)
+python cluster1/experiments/run_cluster1.py ...
 ```
 
 This opens one run under `mlruns/` with the run's params/tags
 (`condition`, `scale_tier`, `model_id`, `backend=local`, `cluster=cluster1`,
 `reportable`). With the flag unset, the same command runs identically with no
-MLflow writes. (Per-record metrics are added by later phases via the JSONL
-writers; Phase 1 logs only the run boundary + params/tags.)
+MLflow writes. Per-record metrics are logged by the JSONL writers when they run
+inside an active tracking context.
 
 ### b) Open the dashboard at http://127.0.0.1:5000
 
 Pick **one** (both read the same local store):
 
 ```powershell
-mlflow ui --backend-store-uri "file:./mlruns" --port 5000        # if mlflow is installed
-uvx mlflow ui --backend-store-uri "file:./mlruns" --port 5000    # ephemeral, no install
+mlflow ui --backend-store-uri "file:./mlruns" --port 5000
+uvx --python 3.12 --from "mlflow>=2.10,<3.0" mlflow ui --backend-store-uri "file:./mlruns" --port 5000
 ```
 
 The UI is just a reader — it does **not** need to be running while you log.
@@ -152,7 +156,7 @@ The UI is just a reader — it does **not** need to be running while you log.
 Only if you later want HTTP logging / a central backend:
 
 ```powershell
-uvx mlflow server --backend-store-uri "file:./mlruns" --port 5000
+uvx --python 3.12 --from "mlflow>=2.10,<3.0" mlflow server --backend-store-uri "file:./mlruns" --port 5000
 $env:MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"   # now logging goes over HTTP
 ```
 

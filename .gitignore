@@ -44,5 +44,7 @@ mlruns/
 !.contracts/agentic/cluster2_contract.md
 .contracts/agentic/reference/*
 _legacy
-docs
+docs/*
+!docs/tracking/
+!docs/tracking/**
 audits
