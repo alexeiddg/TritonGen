@@ -194,6 +194,21 @@ def test_reportable_tag_true_only_for_paper() -> None:
     assert paper["reportable"] == "true"
 
 
+def test_tags_omit_absent_routing_fields() -> None:
+    # Cluster 1 style: has condition/scale_tier/source_class but no
+    # generation_mode. Absent routing fields must not appear as empty strings.
+    tags = mapping.run_config_to_tags(
+        {"condition": "baseline", "scale_tier": "smoke", "source_class": "generated_row"},
+        backend="local",
+        cluster="cluster1",
+    )
+    assert tags["source_class"] == "generated_row"
+    assert "generation_mode" not in tags
+    assert "" not in tags.values()
+    assert tags["condition"] == "baseline"
+    assert tags["cluster"] == "cluster1"
+
+
 def test_eval_result_metrics_skip_none_and_cast_bools() -> None:
     metrics = mapping.eval_result_to_metrics(make_eval_result())
     assert metrics["eval.compile_success"] == 1.0

@@ -142,11 +142,15 @@ def run_config_to_tags(
     tags = {
         "condition": str(data.get("condition", "")),
         "scale_tier": str(data.get("scale_tier", "")),
-        "source_class": str(data.get("source_class", "")),
-        "generation_mode": str(data.get("generation_mode", "")),
         "backend": str(backend),
         "reportable": "true" if data.get("scale_tier") == "paper" else "false",
     }
+    # Routing fields exist only for the Cluster 2 RunConfig. Emit them only when
+    # present so simpler callers (e.g. Cluster 1) never produce empty-string tags.
+    for optional in ("source_class", "generation_mode"):
+        value = data.get(optional)
+        if value:
+            tags[optional] = str(value)
     if cluster is not None:
         tags["cluster"] = str(cluster)
     return tags

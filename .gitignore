@@ -17,6 +17,9 @@ runs/
 experiments/results/
 outputs/
 
+# MLflow local tracking store (optional experiment tracking)
+mlruns/
+
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb_checkpoints/

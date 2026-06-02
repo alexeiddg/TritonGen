@@ -27,6 +27,12 @@ dependencies = [
     "jupyter>=1.0",
 ]
 
+[project.optional-dependencies]
+# Optional experiment tracking. Install with:  pip install "tritongen[tracking]"
+# Not required for any existing run or test; tracking stays a no-op unless this
+# is installed AND the TRITONGEN_MLFLOW flag is set. See shared/tracking/README.md.
+tracking = ["mlflow>=2.10,<3.0"]
+
 [tool.setuptools.packages.find]
 include = ["cluster1*", "cluster2*", "cluster3*", "shared*"]
 exclude = ["_legacy*", "outputs*"]
