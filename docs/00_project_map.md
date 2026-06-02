@@ -27,6 +27,10 @@ README and the three core `.contracts/research/` files were aligned in Phase 8:
 - `.contracts/research/eval_metrics.md`
 - `.contracts/research/scale_policy.md`
 
+Optional MLflow experiment tracking is governed by
+`.contracts/research/mlflow_tracking_policy.md`; team onboarding lives at
+`docs/tracking/README.md`.
+
 ## Current Report Scope
 
 The current preliminary scope is the 2^2 subset over grammar guidance and correctness feedback:
@@ -58,6 +62,7 @@ Current documentation locations:
 | Cluster 3 drift-prevention plan | `docs/10_cluster3_drift_prevention_plan.md` | Current guardrails; no P implementation or results |
 | Frontier feedback-loop ablation plan | `docs/11_frontier_feedback_loop_ablation.md` | Proposal only; no API, Modal, artifact, or result claims |
 | Experiment observability plan | `docs/12_experiment_observability_plan.md` | Planning doc for sidecar-first cost, token, Modal context, and duration observability |
+| MLflow tracking onboarding | `docs/tracking/README.md` | Current operational onboarding for optional MLflow dashboard tracking; JSONL artifacts remain the source of truth |
 | Agentic repair memory strategy | `docs/13_agentic_repair_memory_strategy.md` | Strategy doc for future opt-in repair-history policy changes |
 | Structural vs task outcome reporting plan | `docs/14_structural_vs_task_outcome_reporting_plan.md` | Planning doc for separating structural/code-surface metrics from task/functional metrics |
 | Experiment change orchestration contract | `docs/15_experiment_change_orchestration_contract.md` | Active control-plane contract for docs 12-14 implementation sequencing, parallel work, and run gates |

@@ -27,6 +27,7 @@ Current research-facing docs:
 - `.contracts/research/scale_policy.md`
 - `.contracts/research/eval_metrics.md`
 - `.contracts/research/cluster1_generated_surface.md`
+- `.contracts/research/mlflow_tracking_policy.md`
 
 ## Agentic/Internal Docs
 
@@ -35,10 +36,11 @@ Codex, Claude Code, or future engineering agents. They may include local Modal
 setup notes, execution order, scratch plans, stale drafts, or operational
 details that are not part of the research paper narrative.
 
-`.contracts/agentic/` is intentionally ignored by git through the root
-`.gitignore`. Do not cite these files in the paper. If an internal note contains
-a research decision worth preserving, promote the sanitized decision into
-`.contracts/research/` instead of committing the operational note.
+`.contracts/agentic/` may be tracked on handoff and orchestration branches to
+preserve agent context. Do not cite these files in the paper. If an internal
+note contains a research decision worth preserving, promote the sanitized
+decision into `.contracts/research/` instead of treating the operational note as
+methodology.
 
 Typical internal examples in this workspace:
 
@@ -58,5 +60,6 @@ For a normal research commit, include:
 - `.contracts/research/**`;
 - code or config changes needed to make the docs true.
 
-Do not include `.contracts/agentic/**` unless the explicit goal is to version
-internal implementation instructions.
+For handoff, repair, or orchestration commits, include `.contracts/agentic/**`
+when the explicit goal is to version internal implementation instructions or
+preserve cross-agent context.

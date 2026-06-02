@@ -1,6 +1,6 @@
 # Experiment Change Orchestration State
 
-- Version: 1.5.9
+- Version: 1.5.10
 - Date: 2026-06-02
 - Status: active live state record
 - Owner: current orchestration agent
@@ -372,12 +372,13 @@ reason. Do not backfill missing provenance silently after execution.
 | Field | Value |
 |---|---|
 | Git baseline commit | `aa4d20f1f5c64932e72b488d131244542e44459f` |
-| Git branch | `codex-track-handoff-context` |
-| Git status at latest reconciliation | `clean` by `git status --short --branch` before creating the A-spec worktree; ignored docs/audits/outputs still require direct inspection |
+| Git branch | `codex/llm-repair-memory-agentic-transcript-v1` merged with MLflow-integrated `codex-track-handoff-context` |
+| Git status at latest reconciliation | A1 branch clean before trunk merge; MLflow integration promoted on trunk at `28c52f2` plus state update; no Modal, output mutation, or MLflow runtime artifact committed |
 | Orchestration contract version | `docs/15_experiment_change_orchestration_contract.md` v1.0.12 |
-| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.47.0 |
+| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.48.0 |
 | Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 |
 | Structural/task analyzer metadata spec version | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 |
+| MLflow tracking policy version | `.contracts/research/mlflow_tracking_policy.md` v1.0.0 |
 | Agentic transcript implementation spec version | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5 |
 | Agentic transcript docs-only checkpoint | `audits/agentic_transcript_v1_spec_checkpoint_report.md` v1.0.0 |
 | Agentic transcript A0 policy constants | commit `1e3f44468c5ae91e6467b42b7f93a068fa6acf5f` |
@@ -386,24 +387,26 @@ reason. Do not backfill missing provenance silently after execution.
 | Current Cluster 3 gate | Phase 14e four-cell n=5 development matrix frozen with warnings; no broader run without explicit approval packet |
 | Paper-scale status | blocked; no Cluster 3 `n=20` until Gate G8 |
 
-Important repository note: `docs/`, `audits/`, and `outputs/` are ignored by
-`.gitignore` in this workspace. A clean `git status` does not prove those
-project-owned operational documents or artifacts are unchanged.
+Important repository note: on the handoff trunk, `docs/`, `audits/`, and
+`.contracts/agentic/**` are intentionally trackable. Raw outputs and MLflow
+runtime state remain ignored. A clean `git status` still does not prove raw
+output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 ## Active Worktrees
 
 | Worktree | Branch | Commit | State ownership |
 |---|---|---|---|
-| `/Users/alexeidelgado/Desktop/TritonGen` | `codex-track-handoff-context` | `aa4d20f1f5c64932e72b488d131244542e44459f` | canonical docs/workflow baseline branch |
-| `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `8d441a2` | A1 prompt core complete with baseline-venv caveat; preserve A1 checkpoint before A2/A3 |
+| `/Users/alexeidelgado/Desktop/TritonGen` | `codex-track-handoff-context` | `28c52f2` plus promotion-state update | temporary trunk with MLflow integration promoted; no Modal or output mutation |
+| `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `368a3c8` plus this MLflow trunk merge | A1 prompt core complete with baseline-venv caveat; trunk MLflow integration merged for A2/A3 readiness |
 | `/Users/alexeidelgado/Desktop/TritonGen/.claude/worktrees/intelligent-pasteur-72d92f` | `claude/intelligent-pasteur-72d92f` | `b0085c1` | external/unknown to this orchestration state; reconcile before relying on it |
 
 ## Active Branches
 
 | Branch | Stream/package | Worktree | Status | Notes |
 |---|---|---|---|---|
-| `codex-track-handoff-context` | baseline | `/Users/alexeidelgado/Desktop/TritonGen` | active baseline | Treat as the current docs/workflow baseline branch; do not use for high-blast-radius implementation work. |
-| `codex/llm-repair-memory-agentic-transcript-v1` | A-stream / agentic transcript implementation | `/private/tmp/tritongen-llm-repair-memory` | A1 prompt core complete; ready to preserve checkpoint before A2/A3 | Created from `codex-track-handoff-context`; A-spec checkpoint, A0 constants, A0.5 constants preflight, and A1 prompt core are recorded. |
+| `codex-track-handoff-context` | temporary trunk | `/Users/alexeidelgado/Desktop/TritonGen` when not on integration branch | active baseline | Treat as the working main branch for repair/handoff work until final branch repair is complete. |
+| `codex/integrate-mlflow-into-handoff` | MLflow tracking harness integration | none after promotion | promoted | Merged `origin/ml_migration`, preserved handoff doc/audit tracking policy, validated optional/no-op tracking tests, and fast-forwarded into the temporary trunk at `28c52f2`. |
+| `codex/llm-repair-memory-agentic-transcript-v1` | A-stream / agentic transcript implementation | `/private/tmp/tritongen-llm-repair-memory` | A1 prompt core plus MLflow trunk update complete | Created from `codex-track-handoff-context`; A-spec checkpoint, A0 constants, A0.5 constants preflight, A1 prompt core, and MLflow trunk merge are recorded. |
 
 ## Active Serialized-Surface Leases
 
@@ -469,6 +472,7 @@ Historical context:
 | agentic transcript A0 policy constants | complete | Commit `1e3f44468c5ae91e6467b42b7f93a068fa6acf5f` adds policy-name constants, keeps `DEFAULT_REPAIR_HISTORY_POLICY_V1` as `last_attempt_only_v1`, keeps Cluster 3 `P_HISTORY_POLICY_V1` as `last_attempt_only_v1`, and changes only the four allowed constants/test files. |
 | agentic transcript A0.5 constants preflight | complete | `audits/agentic_transcript_v1_a0_5_preflight_report.md` v1.0.0 confirms A0 scope, default invariance, Cluster 3 compatibility, cheap imports, focused tests, optional prompt/loop import sanity, no forbidden-surface changes, no code/output mutation in A0.5, and baseline-venv caveat. |
 | agentic transcript A1 prompt core | complete | `audits/agentic_transcript_v1_a1_prompt_core_report.md` v1.0.0 confirms pure prompt-core implementation, deterministic fixtures, config/evidence/ranking/rendering tests, legacy C/P byte-invariance snapshots, import isolation, no loop/runner/schema/analyzer/output changes, and baseline-venv caveat. |
+| MLflow tracking harness integration | complete | `origin/ml_migration` was merged into `codex-track-handoff-context` via `codex/integrate-mlflow-into-handoff` and promoted at `28c52f2`; tracking remains optional/no-op unless `TRITONGEN_MLFLOW` and `mlflow` are present, and JSONL remains the source of truth. |
 
 ## Abandoned Packages
 
@@ -478,7 +482,8 @@ Historical context:
 
 ## Known Caveats
 
-- `docs/`, `audits/`, and `outputs/` are ignored by git status.
+- Raw `outputs/` and MLflow `mlruns/` runtime state are ignored; docs, audits,
+  and `.contracts/agentic/**` are intentionally trackable on the handoff trunk.
 - Known full-regression caveat remains:
   `cluster1/tests/test_documentation_language_lock.py::test_committed_docs_lock_primary_and_reference_grammar_roles`.
 - Phase 14a is development-scale diagnostic only and insufficient F1/P-loop
@@ -530,8 +535,8 @@ Current checkout:
 branch: codex/llm-repair-memory-agentic-transcript-v1
 worktree: /private/tmp/tritongen-llm-repair-memory
 spec: docs/18_agentic_transcript_v1_implementation_spec.md v0.1.5
-state: docs/handoff/experiment_change_orchestration_state.md v1.5.9
-registry: docs/handoff/document_version_registry.md v1.47.0
+state: docs/handoff/experiment_change_orchestration_state.md v1.5.10
+registry: docs/handoff/document_version_registry.md v1.48.0
 spec checkpoint: audits/agentic_transcript_v1_spec_checkpoint_report.md v1.0.0
 A0 commit: 1e3f44468c5ae91e6467b42b7f93a068fa6acf5f
 A0.5 preflight: audits/agentic_transcript_v1_a0_5_preflight_report.md v1.0.0

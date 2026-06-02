@@ -38,6 +38,7 @@ from cluster1.results.dataclass import (
 )
 from cluster1.results.logger import append_result_jsonl
 from cluster1.validation.compile_check import CompileResult, check_compiles_all_dtypes
+from shared import tracking
 from shared.eval.failure_taxonomy import canonical_failure_code_from_compile_error
 
 
@@ -266,24 +267,43 @@ def main(argv: list[str] | None = None) -> int:
         else None
     )
 
-    for spec, grammar_active, dtype, seed in iter_experiment_cells(
-        kernel_classes,
-        args.condition,
-        args.n,
+    # Seam A: open an optional MLflow run around the cell loop. When tracking is
+    # disabled (default) this is a transparent no-op and the loop body runs
+    # exactly as before. Per-record metric logging is wired separately in the
+    # JSONL writer (a later phase), not here.
+    # Cluster 1 always generates fresh kernels (never replays), so source_class
+    # is a run-level constant. generation_mode is intentionally omitted: with
+    # --condition both it varies per cell, so there is no single run-level value.
+    tracking_run_config = {
+        "condition": args.condition,
+        "scale_tier": args.scale_tier,
+        "model_id": args.model_id,
+        "source_class": "generated_row",
+    }
+    with tracking.run_context(
+        run_config=tracking_run_config,
+        cli_args=args,
+        backend="local",
+        cluster="cluster1",
     ):
-        result = run_one_generation(
-            spec=spec,
-            dtype=dtype,
-            seed=seed,
-            grammar_active=grammar_active,
-            model=model,
-            tokenizer=tokenizer,
-            compiled_grammar=compiled_grammar,
-            args=args,
-        )
-        if args.scale_tier == "paper":
-            validate_paper_scale_metadata(result)
-        append_result_jsonl(args.output, result)
+        for spec, grammar_active, dtype, seed in iter_experiment_cells(
+            kernel_classes,
+            args.condition,
+            args.n,
+        ):
+            result = run_one_generation(
+                spec=spec,
+                dtype=dtype,
+                seed=seed,
+                grammar_active=grammar_active,
+                model=model,
+                tokenizer=tokenizer,
+                compiled_grammar=compiled_grammar,
+                args=args,
+            )
+            if args.scale_tier == "paper":
+                validate_paper_scale_metadata(result)
+            append_result_jsonl(args.output, result)
     return 0
 
 

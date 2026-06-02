@@ -1,0 +1,28 @@
+# MLflow tracking configuration — NON-SECRET defaults only.
+#
+# Secrets (remote tracking URIs, credentials) must come ONLY from environment
+# variables or modal.Secret — never from this committed file. See .env.example.
+#
+# Tracking activates only when BOTH gates are on:
+#   1) env  TRITONGEN_MLFLOW=1
+#   2) the optional `mlflow` package is installed
+#        (pip install "tritongen[tracking]")
+# Otherwise every tracking call is a silent no-op.
+
+# Local file store by default. Override at runtime with MLFLOW_TRACKING_URI.
+# Browse with:  mlflow ui
+tracking_uri: "file:./mlruns"
+
+# One experiment per cluster keeps dashboards readable. Cross-cluster
+# comparison is still possible via the `cluster`/`condition` run tags.
+experiments:
+  default: "tritongen"
+  by_cluster:
+    cluster1: "tritongen_cluster1"
+    cluster2: "tritongen_cluster2"
+    cluster3: "tritongen_cluster3"
+
+# Tags applied to every run for filtering. (Per-run tags such as condition,
+# scale_tier and reportable are added automatically from the RunConfig.)
+tags:
+  project: "tritongen"
