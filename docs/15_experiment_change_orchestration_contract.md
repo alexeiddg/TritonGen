@@ -1,10 +1,12 @@
 # Experiment Change Orchestration Contract
 
-- Version: 1.0.11
+- Version: 1.0.12
 - Status: orchestration contract / no code changes authorized by itself
 - Scope: sequencing, branch ownership, parallel-work boundaries, gates, and run
   controls for the planned changes in docs 12 through 14
-- Component implementation specs: deferred to later documents
+- Component implementation specs: `docs/16_observability_sidecar_implementation_spec.md`,
+  `docs/17_structural_task_analyzer_metadata_implementation_spec.md`, and
+  `docs/18_agentic_transcript_v1_implementation_spec.md`
 - Modal status: no Modal command, GPU run, n=5 run, n=20 run, paper-scale run,
   output mutation, profiler, timing, speedup, or benchmark is authorized by this
   contract
@@ -33,6 +35,9 @@ This contract coordinates the following planning documents:
 | `docs/12_experiment_observability_plan.md` | Observability design source. This contract controls rollout order and integration gates. |
 | `docs/13_agentic_repair_memory_strategy.md` | Repair-memory policy source. This contract controls default policy, branch isolation, and rerun gates. |
 | `docs/14_structural_vs_task_outcome_reporting_plan.md` | Reporting terminology and analyzer-labeling source. This contract controls when analyzer/report changes may land. |
+| `docs/16_observability_sidecar_implementation_spec.md` | Observability implementation contract for O0-O4. |
+| `docs/17_structural_task_analyzer_metadata_implementation_spec.md` | Structural/task analyzer metadata implementation contract for S0-S3. |
+| `docs/18_agentic_transcript_v1_implementation_spec.md` | Agentic repair-memory implementation contract for A0-A6. |
 | `audits/cluster3_phase14_n5_condition_matrix_plan.md` | Current optional Cluster 3 n=5 planning source. This contract preserves its one-cell-at-a-time approval rule. |
 
 When this contract and a component plan disagree:

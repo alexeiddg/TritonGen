@@ -1,7 +1,7 @@
 # Experiment Change Orchestration State
 
-- Version: 1.4.8
-- Date: 2026-05-28
+- Version: 1.5.6
+- Date: 2026-06-01
 - Status: active live state record
 - Owner: current orchestration agent
 - Contract: `docs/15_experiment_change_orchestration_contract.md`
@@ -371,13 +371,14 @@ reason. Do not backfill missing provenance silently after execution.
 
 | Field | Value |
 |---|---|
-| Git baseline commit | `0578bd2c87f8fec0e6181ae00c2d23268ff6df73` |
-| Git branch | `main` |
-| Git status at latest reconciliation | `clean` by `git status --short --branch`; ignored docs/audits/outputs still require direct inspection |
-| Orchestration contract version | `docs/15_experiment_change_orchestration_contract.md` v1.0.11 |
-| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.37.0 |
+| Git baseline commit | `aa4d20f1f5c64932e72b488d131244542e44459f` |
+| Git branch | `codex-track-handoff-context` |
+| Git status at latest reconciliation | `clean` by `git status --short --branch` before creating the A-spec worktree; ignored docs/audits/outputs still require direct inspection |
+| Orchestration contract version | `docs/15_experiment_change_orchestration_contract.md` v1.0.12 |
+| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.44.0 |
 | Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 |
 | Structural/task analyzer metadata spec version | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 |
+| Agentic transcript implementation spec version | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5 |
 | Current Cluster 3 gate | Phase 14e four-cell n=5 development matrix frozen with warnings; no broader run without explicit approval packet |
 | Paper-scale status | blocked; no Cluster 3 `n=20` until Gate G8 |
 
@@ -389,16 +390,16 @@ project-owned operational documents or artifacts are unchanged.
 
 | Worktree | Branch | Commit | State ownership |
 |---|---|---|---|
-| `/Users/alexeidelgado/Desktop/TritonGen` | `main` | `0578bd2c87f8fec0e6181ae00c2d23268ff6df73` | canonical workspace |
+| `/Users/alexeidelgado/Desktop/TritonGen` | `codex-track-handoff-context` | `aa4d20f1f5c64932e72b488d131244542e44459f` | canonical docs/workflow baseline branch |
+| `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `aa4d20f1f5c64932e72b488d131244542e44459f` | A-spec preparation worktree |
 | `/Users/alexeidelgado/Desktop/TritonGen/.claude/worktrees/intelligent-pasteur-72d92f` | `claude/intelligent-pasteur-72d92f` | `b0085c1` | external/unknown to this orchestration state; reconcile before relying on it |
 
 ## Active Branches
 
 | Branch | Stream/package | Worktree | Status | Notes |
 |---|---|---|---|---|
-| `main` | baseline | `/Users/alexeidelgado/Desktop/TritonGen` | active baseline | Do not use for high-blast-radius implementation work. |
-
-No docs 12-14 implementation branch is active under this state record yet.
+| `codex-track-handoff-context` | baseline | `/Users/alexeidelgado/Desktop/TritonGen` | active baseline | Treat as the current docs/workflow baseline branch; do not use for high-blast-radius implementation work. |
+| `codex/llm-repair-memory-agentic-transcript-v1` | A-spec / agentic transcript prep | `/private/tmp/tritongen-llm-repair-memory` | active prep branch | Created from `codex-track-handoff-context` for `agentic_transcript_v1` implementation-spec routing. |
 
 ## Active Serialized-Surface Leases
 
@@ -415,7 +416,7 @@ No docs 12-14 implementation branch is active under this state record yet.
 | G2 reporting terminology stable | not started | Requires S0 acceptance. |
 | G3 observability sidecar contract stable | spec drafted / code not started | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 defines O0-O4 plus hardening guardrails; G3 still requires implementation and tests. |
 | G4 analyzer compatibility stable | spec drafted / code not started | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 defines S0-S3 metadata and report-label work; G4 still requires S1 implementation and compatibility tests. |
-| G5 agentic prompt core stable | not started | Requires A1 prompt core and golden tests. |
+| G5 agentic prompt core stable | spec drafted / code not started | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5 defines A0-A6, resolves D-AGENT-01, D-AGENT-02, and D-AGENT-04, hardens edge cases, adds explicit policy-config validation and precedence, canonical prompt grammar, public-evidence-only anchor ranking, active repair eligibility, fixture acceptance manifest, legacy byte-invariance snapshots, prompt-core import isolation, metadata nullability matrix, CLI/API/default tests, mixed-policy analyzer fixture, commit/package slicing, rollback independence, no-opportunistic-cleanup policy, and the spec-only checkpoint, A0.5 preflight, fixture-first A1 gate, migration classification plan, stop triggers, and A1 review checkpoint; G5 still requires A1 prompt core and golden tests. |
 | G6 agentic integration stable | not started | Requires opt-in C/P integration and analyzer grouping. |
 | G7 development run readiness | blocked pending fresh approval packet | Phase 14e matrix is frozen; any broader development-scale, all-condition, diagnostic, or paper-readiness run needs a new approval packet. |
 | G8 paper-scale readiness | blocked | No `n=20` or paper-scale work. |
@@ -459,6 +460,7 @@ Historical context:
 | operating-control addendum | complete | State record, lease, decision authority, run packet, merge protocol, and trust boundary added to the contract. |
 | observability sidecar implementation spec | complete | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 created and routed; code implementation not started. |
 | structural/task analyzer metadata implementation spec | complete | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 created and routed; analyzer/report code implementation not started. |
+| agentic transcript implementation spec | complete | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5 created, routed, edge-case hardened, research cross-checked, and expanded with implementation checkpoint gates plus canonical rendering, public-evidence-only ranking, fixture manifest, byte-invariance, import-isolation, metadata-nullability, CLI/API/default, mixed-policy analyzer, commit-slicing, rollback, and no-cleanup gates; C/P prompt-core and loop code implementation not started. |
 
 ## Abandoned Packages
 
@@ -478,7 +480,7 @@ Historical context:
 - Phase 14e is frozen development-scale condition coverage only with zero P
   attempts and zero C fires.
 - No paper-scale Cluster 3 results exist.
-- No agentic-memory implementation is active yet.
+- No agentic-memory code implementation is active yet.
 - No observability sidecar implementation is active yet.
 - No analyzer metric-registry implementation is active yet.
 
@@ -486,13 +488,13 @@ Historical context:
 
 Allowed without run approval:
 
-1. Create remaining component implementation specs for:
-   - agentic repair-memory implementation;
-   - paper-scale readiness or future Cluster 3 run packet/spec, if explicitly
-     requested.
+1. Create remaining component implementation specs for paper-scale readiness or
+   future Cluster 3 run packet/spec, if explicitly requested.
 2. Start safe parallel branches after adding package cards below:
    - S0 docs terminology;
    - O0 sidecar core;
+   - A0 policy constants;
+   - A0.5 preflight after A0;
    - A1 pure prompt core.
 3. Create serialized-surface leases before touching analyzer, runner, repair
    loop, result schema, raw output, or report-data-builder surfaces.
@@ -504,6 +506,64 @@ Not allowed without explicit approval:
 - n=20 or paper-scale work;
 - output overwrite or mutation;
 - performance, profiler, timing, speedup, or benchmark work.
+
+## Ready To Implement Kickoff
+
+The `agentic_transcript_v1` feature branch is ready for the first implementation
+package after preserving the docs-only checkpoint.
+
+Current checkout:
+
+```text
+branch: codex/llm-repair-memory-agentic-transcript-v1
+worktree: /private/tmp/tritongen-llm-repair-memory
+spec: docs/18_agentic_transcript_v1_implementation_spec.md v0.1.5
+state: docs/handoff/experiment_change_orchestration_state.md v1.5.6
+registry: docs/handoff/document_version_registry.md v1.44.0
+first implementation package: A0 policy constants
+```
+
+A0 allowed files:
+
+```text
+cluster2/constants.py
+cluster3/constants.py
+cluster2/tests/test_cluster2_boundary.py
+cluster3/tests/test_cluster3_imports.py
+```
+
+A0 forbidden actions:
+
+```text
+no prompt-builder edits
+no repair-loop edits
+no runner edits
+no result-schema edits
+no analyzer edits
+no output mutation
+no Modal/generation work
+no dependency or lockfile changes
+no opportunistic cleanup
+```
+
+A0 required proof:
+
+```text
+policy constants import cheaply
+DEFAULT_REPAIR_HISTORY_POLICY_V1 remains last_attempt_only_v1
+agentic_transcript_v1 is recognized but non-default
+cluster3.constants.P_HISTORY_POLICY_V1 remains last_attempt_only_v1
+```
+
+Current targeted validation command:
+
+```bash
+/Users/alexeidelgado/miniconda3/bin/python -c "import sys, types, pytest; sys.modules['readline'] = types.ModuleType('readline'); sys.exit(pytest.main(['cluster2/tests/test_feedback_prompts.py','cluster2/tests/test_repair_loop.py','cluster3/tests/test_p_repair_loop.py','cluster3/tests/test_condition_adapters.py','cluster3/tests/test_cluster3_imports.py','cluster3/tests/test_docs_consistency.py']))"
+```
+
+This command is the current local C/P prompt-loop and docs-consistency slice. It
+does not replace package-specific A0 tests; A0 should add and run its focused
+constants/default-invariance tests.
 
 ## Work Package Cards
 
@@ -525,6 +585,9 @@ tests required:
 default-invariance proof required: yes/no
 fixture-first proof required: yes/no
 independent review required: yes/no
+commit/package slice:
+rollback independence proof required: yes/no
+opportunistic cleanup included: no unless explicitly scoped
 negative tests required:
 dependency/lockfile changes allowed: no unless explicitly listed
 network/dependency-download/API calls allowed: no unless explicitly listed
@@ -558,6 +621,9 @@ required tests/checks:
 default-invariance proof required: yes/no
 fixture-first proof required: yes/no
 independent review required: yes/no
+commit/package slice:
+rollback independence proof required: yes/no
+opportunistic cleanup included: no unless explicitly scoped
 negative tests required:
 dependency/lockfile changes allowed: no unless explicitly listed
 network/dependency-download/API calls allowed: no unless explicitly listed
@@ -577,8 +643,11 @@ status:
 | S0 docs terminology | `codex/outcome-taxonomy-docs` | not started | G1 | G2 | Docs-only structural/task terminology alignment. |
 | O-spec observability sidecar implementation spec | none | complete | G1 | spec routed | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0. |
 | S-spec structural/task analyzer metadata implementation spec | none | complete | G1 | spec routed | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2; code implementation not started. |
+| A-spec agentic transcript implementation spec | none | complete | G1 | spec routed | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5; code implementation not started. |
 | O0 sidecar core | `codex/observability-sidecar-core` | not started | G1 plus O-spec | G3 partial | New `shared/observability/*` schema/logger/redaction and tests only. |
-| A1 prompt core | `codex/agentic-memory-core` | not started | G1 | G5 partial | Pure attempt evidence, anchor selector, transcript renderer, golden tests. |
+| A0 policy constants | `codex/agentic-memory-policy-constants` | not started | G1 plus A-spec | no behavior change | Add policy-name constants and default-invariance tests only. |
+| A0.5 preflight | `codex/agentic-memory-policy-preflight` | blocked | A0 complete | A1 entry readiness | Validation/checkpoint only; prove default invariance, cheap imports, and no prompt/runner/schema changes before A1. |
+| A1 prompt core | `codex/agentic-memory-core` | blocked | A0.5 complete plus A-spec | G5 partial | Pure attempt evidence, anchor selector, transcript renderer, fixture-first golden tests, fixture acceptance manifest, legacy byte-invariance snapshots, prompt-core import isolation, and A1 review checkpoint. |
 | S1 analyzer metadata | `codex/analyzer-metric-registry` | blocked | G2 plus S-spec plus lease | G4 partial | Requires `docs/17_structural_task_analyzer_metadata_implementation_spec.md` and `analyzer_metric_registry` lease. |
 | O1 runner wall-clock | `codex/observability-runner-instrumentation` | blocked | O0 plus runner lease | G3 | One runner owner at a time. |
 | A2 C-loop integration | `codex/agentic-memory-c2-integration` | blocked | A1 plus lease | G6 partial | Requires C-loop and Cluster 2 runner leases. |
@@ -609,6 +678,13 @@ and name the replacement check.
 - For any package touching runner code, include a no-unauthorized-run check.
 - For any component implementation package, map requirement IDs to changed files
   and tests or manual checks before claiming the exit gate.
+- For A-stream work, keep commits/packages sliced according to the active
+  A-spec: docs-only checkpoint, A0 constants, A0.5 validation, A1 prompt core,
+  A2 C integration, A3 P integration, A4 isolation, A5 analyzer grouping, and
+  A6 gate planning remain independently reviewable.
+- Every package handoff must include changed files, tests/checks run,
+  default-invariance proof, forbidden-files check, no Modal/output mutation
+  statement, unresolved risks, and the next blocked package or gate.
 - For any high-blast-radius package, include a default-invariance proof showing
   legacy behavior is unchanged when new flags are absent, `off`, or legacy.
 - For any new behavior used by a run packet, include fixture-first proof from a
@@ -621,6 +697,10 @@ and name the replacement check.
   record an independent review before promotion.
 - Keep branch scope to one work package unless the launch packet is updated
   before adjacent fixes, refactors, or extra cleanup begin.
+- Do not include opportunistic cleanup unless the cleanup is required by the
+  current package and explicitly listed in scope.
+- For A-stream work, record rollback independence: later integration packages
+  must be revertible without invalidating earlier accepted packages.
 - Record secrets/credentials and unapproved-path boundary checks for branches
   that touch telemetry, logging, sidecars, Modal, billing, generation, or run
   packets.
@@ -647,11 +727,11 @@ and name the replacement check.
 | O4 estimated cost | Pricing snapshot validation; formula unit tests; summary status tests separating estimated cost from actual billing. | No billing claim. |
 | O5 billing reconciliation | CLI argument tests; attribution-confidence tests; dry-run or mocked billing API tests. | Real billing query requires approval if network/credentials are involved. |
 | A0 policy constants | Import/constants tests; default-policy test proving behavior remains `last_attempt_only_v1` or current default. | No prompt behavior change. |
-| A1 prompt core | Attempt evidence tests; anchor selector ranking/tie-break tests; golden prompt tests; prompt-injection guard tests; truncation/fail-closed tests; prompt-hash exactness tests. | No runner behavior change. |
-| A2 C-loop integration | Cluster 2 repair-loop tests; F2-only boundary tests; policy flag parsing/default tests; prompt hash and anchor metadata tests; mixed-policy artifact rejection/quarantine tests where applicable. | Requires C-loop and likely Cluster 2 runner leases. |
-| A3 P-loop integration | Cluster 3 P-loop tests; F1_COMPILE-only boundary tests; sanitizer leakage tests; policy flag parsing/default tests; prompt hash and anchor metadata tests. | Requires P-loop and likely Cluster 3 runner leases. |
+| A1 prompt core | Attempt evidence tests; anchor selector ranking/tie-break tests; golden prompt tests; fixture acceptance manifest validation; legacy C/P byte-invariance snapshots; prompt-core import-isolation scan; prompt-injection guard tests; truncation/fail-closed tests; prompt-hash exactness tests. | No runner behavior change. |
+| A2 C-loop integration | Cluster 2 repair-loop tests; F2-only boundary tests; omitted/legacy/agentic/invalid policy flag parsing and default tests; invalid budget and latest-source setting tests; metadata nullability matrix tests; prompt hash and anchor metadata tests; mixed-policy artifact rejection/quarantine tests where applicable. | Requires C-loop and likely Cluster 2 runner leases. |
+| A3 P-loop integration | Cluster 3 P-loop tests; F1_COMPILE-only boundary tests; sanitizer leakage tests; omitted/legacy/agentic/invalid policy flag parsing and default tests; invalid budget and latest-source setting tests; metadata nullability matrix tests; prompt hash and anchor metadata tests. | Requires P-loop and likely Cluster 3 runner leases. |
 | A4 P-to-C isolation | History isolation tests; no P compile logs in C prompt tests; C seed provenance tests; post-P F2 handoff tests. | C and P histories remain separate in v1. |
-| A5 analyzer policy grouping | Analyzer tests for legacy/unknown/new policy grouping; mixed-policy quarantine tests; report metadata review. | Must land before agentic paid runs. |
+| A5 analyzer policy grouping | Analyzer tests for legacy/unknown/new policy grouping; mixed-policy quarantine tests; one fixture containing both `last_attempt_only_v1` and `agentic_transcript_v1` rows proving headline metrics are quarantined by default; report metadata review. | Must land before agentic paid runs. |
 | A6 A/B gates | Local fixture smoke commands; paired-seed matrix definition; failure movement table; prompt/cost summary; no private-eval leakage scan. | Modal requires run approval packet. |
 | Future Cluster 3 run spec | Complete run approval packet; target output path nonexistence check; pre-spend command list; exact Modal command; stop conditions; post-run validation plan; claim boundaries; observability policy. | Spec only until user approves. |
 | Any future run execution | Approved run packet; pre-spend tests; exact command transcript; row-count validation; schema validation; hash sidecar validation; P/C route invariants where applicable; private-eval scan; performance/profiler/timing/speedup scan; post-run registry/audit update. | One run scope per approval. |
@@ -711,10 +791,10 @@ deferred: intentionally postponed; default behavior applies until reopened
 | D-MET-01 | Should metric registry live only in analyzer metadata or also in a shared Python registry module? | resolved | S1 analyzer metadata; S2 report builder | Analyzer/report spec owner | Resolved by S-spec v0.1.2 | Analyzer metadata first; no shared module until justified | S1 implements analyzer-output metadata only; a shared Python registry module is deferred unless a later spec or launch packet justifies extraction. | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` |
 | D-MET-02 | What exact formula defines `syntax_valid_rate` across mixed Cluster 1/2/3 schemas? | resolved | S1 metadata; S2 reports; paper-facing syntax claims | Analyzer/report spec owner | Resolved by S-spec v0.1.2 | Do not report mixed-cluster syntax rate; report cluster-local diagnostics only | `syntax_valid_rate` is unavailable for mixed current schemas unless every row has compatible explicit syntax evidence and the same `syntax_valid_definition_id`; S1 should emit availability metadata instead of a mixed aggregate. | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` |
 | D-MET-03 | Should current report HTML refresh happen immediately or after analyzer metadata extension? | resolved | S2 report builder/dashboard | Report owner | Resolved by S-spec v0.1.2 | Wait for S1 unless docs-prose-only | S2 report HTML/data refresh waits for S1 metadata unless the change is docs-prose-only. | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` |
-| D-AGENT-01 | What is the maximum rendered prompt length and truncation budget for `agentic_transcript_v1`? | open | A1 prompt renderer; A2/A3 loop integration | Agentic memory spec owner | Before A1 golden fixtures freeze | Fail closed if over budget; do not guess production budget in runner code | unresolved | `docs/13_agentic_repair_memory_strategy.md` |
-| D-AGENT-02 | Should latest full source be included by default when it differs from best anchor? | open | A1 renderer; A2/A3 integration | Agentic memory spec owner | Before A1 golden fixtures freeze | Include only if explicitly enabled and within budget | unresolved | `docs/13_agentic_repair_memory_strategy.md` |
+| D-AGENT-01 | What is the maximum rendered prompt length and truncation budget for `agentic_transcript_v1`? | resolved | A1 prompt renderer; A2/A3 loop integration | Agentic memory spec owner | Resolved by A-spec v0.1.5 | Default local/development budget is 24000 UTF-8 characters; explicit positive overrides allowed; fail closed if required sections do not fit | Renderer uses a deterministic character budget in v1; tokenizer-derived budgets require later token/observability integration. | `docs/18_agentic_transcript_v1_implementation_spec.md` |
+| D-AGENT-02 | Should latest full source be included by default when it differs from best anchor? | resolved | A1 renderer; A2/A3 integration | Agentic memory spec owner | Resolved by A-spec v0.1.5 | Exclude latest full source by default; include only if explicitly enabled and within budget | Default agentic prompts include the full best-anchor source plus latest failure details, not every full prior source. | `docs/18_agentic_transcript_v1_implementation_spec.md` |
 | D-AGENT-03 | Does `agentic_transcript_v1` remain opt-in through all development runs? | resolved | A2/A3 integration; A6 A/B gates; run specs | Orchestration contract owner | Resolved before implementation | Opt-in | `agentic_transcript_v1` remains opt-in until paired A/B review and explicit contract/spec update. | `docs/15_experiment_change_orchestration_contract.md` |
-| D-AGENT-04 | Should P-to-C handoff include a one-line P provenance note in C history? | open | A4 P-to-C isolation | Agentic memory spec owner | Before A4 | No P compile logs in C prompts; no provenance note unless spec approves exact wording | unresolved | `docs/13_agentic_repair_memory_strategy.md` |
+| D-AGENT-04 | Should P-to-C handoff include a one-line P provenance note in C history? | resolved | A4 P-to-C isolation | Agentic memory spec owner | Resolved by A-spec v0.1.5 | No P compile logs and no P provenance note in C prompt text for v1 | C may record metadata that the seed source came from post-P F2, but C prompt-visible history starts from the C seed and public C evidence only. | `docs/18_agentic_transcript_v1_implementation_spec.md` |
 | D-RUN-01 | What exact threshold promotes n=5 diagnostics toward paper-scale readiness? | open | R5 paper-scale decision; any n=20 proposal | Orchestration owner plus user | Before Gate G8 | No promotion; n=5 diagnostics do not imply paper readiness | unresolved | `docs/15_experiment_change_orchestration_contract.md` |
 | D-RUN-02 | Should Phase 14d reuse the existing Phase 12 `G+P` n=5 artifact or rerun fresh? | resolved | R4 G+P matrix completion | Run spec owner | Resolved by Phase 14d | Existing Phase 12 `G+P` n=5 artifact reused after validation. | Reuse approved and registered as the Phase 14 `G+P` matrix cell. | `audits/cluster3_phase14d_g_plus_p_reuse_vs_rerun_decision.md` |
 | D-RUN-03 | Should future diagnostic runs continue after repeated all-F0 n=5 cells? | resolved | Future run specs and paper-scale readiness | Orchestration owner plus user | Resolved by Phase 14e freeze | Do not broaden from Phase 14e directly to paper-scale; require paper-scale readiness/go-no-go or sample-selection plan. | Phase 14e froze the development matrix as condition coverage only; broader runs need a fresh approval packet. | `audits/cluster3_phase14e_four_cell_n5_matrix_freeze_report.md` |

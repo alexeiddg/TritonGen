@@ -63,6 +63,7 @@ Current documentation locations:
 | Experiment change orchestration contract | `docs/15_experiment_change_orchestration_contract.md` | Active control-plane contract for docs 12-14 implementation sequencing, parallel work, and run gates |
 | Observability sidecar implementation spec | `docs/16_observability_sidecar_implementation_spec.md` | Implementation contract for O0-O4 sidecar schema, logger, privacy, token, Modal context, and estimated cost work |
 | Structural/task analyzer metadata implementation spec | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` | Implementation contract for S0-S3 outcome-family metadata, metric registry, feedback activation diagnostics, report labels, and analyzer-output compatibility |
+| Agentic transcript implementation spec | `docs/18_agentic_transcript_v1_implementation_spec.md` | Implementation contract for opt-in `agentic_transcript_v1` C/P repair-history prompts, best-anchor selection, policy labels, and rollout gates |
 | Experiment change orchestration state | `docs/handoff/experiment_change_orchestration_state.md` | Live operational state for docs 12-14 parallel branches, leases, gates, and run packets |
 | Agentic document hub | `docs/handoff/agentic_document_hub.md` | Current agent routing index |
 | Document version registry | `docs/handoff/document_version_registry.md` | Current markdown version registry |
