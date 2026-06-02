@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -25,49 +24,8 @@ if str(REPO_ROOT) not in sys.path:
 import shared.tracking.client as client  # noqa: E402
 from shared import tracking  # noqa: E402
 from shared.eval.schema import EvalResult, append_result  # noqa: E402
+from shared.tests._fake_mlflow import FakeMlflow  # noqa: E402
 from shared.tracking import config  # noqa: E402
-
-
-class FakeMlflow:
-    """Records calls and tracks active-run state, like a tiny mlflow stub."""
-
-    def __init__(self) -> None:
-        self.calls: list = []
-        self._active = False
-
-    def set_tracking_uri(self, uri) -> None:
-        self.calls.append(("set_tracking_uri", uri))
-
-    def set_experiment(self, name) -> None:
-        self.calls.append(("set_experiment", name))
-
-    def start_run(self):
-        self._active = True
-        self.calls.append(("start_run",))
-        return SimpleNamespace(info=SimpleNamespace(run_id="fake"))
-
-    def active_run(self):
-        return SimpleNamespace() if self._active else None
-
-    def log_params(self, params) -> None:
-        self.calls.append(("log_params", dict(params)))
-
-    def set_tags(self, tags) -> None:
-        self.calls.append(("set_tags", dict(tags)))
-
-    def set_tag(self, key, value) -> None:
-        self.calls.append(("set_tag", key, value))
-
-    def log_metrics(self, metrics, step=None) -> None:
-        self.calls.append(("log_metrics", dict(metrics), step))
-
-    def end_run(self) -> None:
-        self._active = False
-        self.calls.append(("end_run",))
-
-    @property
-    def metric_calls(self) -> list:
-        return [call for call in self.calls if call[0] == "log_metrics"]
 
 
 @pytest.fixture
