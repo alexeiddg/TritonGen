@@ -8,7 +8,12 @@ from __future__ import annotations
 
 from typing import Literal, TypeAlias, cast
 
-from cluster2.constants import GENERATED_SOURCE_CLASS, generation_mode_for_condition
+from cluster2.constants import (
+    GENERATED_SOURCE_CLASS,
+    LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1,
+    REPAIR_HISTORY_POLICIES_V1,
+    generation_mode_for_condition,
+)
 
 
 Cluster3Condition: TypeAlias = Literal["P", "G+P", "C+P", "G+C+P"]
@@ -19,7 +24,9 @@ P_GENERATION_CONDITIONS: tuple[str, ...] = CLUSTER3_CONDITIONS
 DEFAULT_P_REPAIR_BUDGET: int = 5
 P_ELIGIBLE_FAILURE_CODES: frozenset[str] = frozenset({"F1_COMPILE"})
 P_FEEDBACK_FORMAT_V1: str = "compile_error_template_v1"
-P_HISTORY_POLICY_V1: str = "last_attempt_only_v1"
+P_HISTORY_POLICY_V1: str = LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1
+if P_HISTORY_POLICY_V1 not in REPAIR_HISTORY_POLICIES_V1:
+    raise ValueError("P_HISTORY_POLICY_V1 must be a known repair history policy")
 P_REPAIR_STOP_REASONS: frozenset[str] = frozenset(
     {
         "p_compile_repaired_then_success",

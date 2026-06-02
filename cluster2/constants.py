@@ -18,6 +18,10 @@ Cluster2GenerationMode: TypeAlias = Literal[
     "new_c2_generation",
     "new_c2_generation_with_G_adapter",
 ]
+RepairHistoryPolicyV1: TypeAlias = Literal[
+    "last_attempt_only_v1",
+    "agentic_transcript_v1",
+]
 
 CLUSTER2_CONDITIONS: tuple[Cluster2Condition, ...] = ("none", "G", "C", "G+C")
 REPLAY_CONTROL_CONDITIONS: tuple[Cluster2ReplayCondition, ...] = ("none", "G")
@@ -32,6 +36,22 @@ G_PLUS_C_GENERATION_MODE: Cluster2GenerationMode = "new_c2_generation_with_G_ada
 
 DEFAULT_REPAIR_BUDGET = 5
 DEFAULT_EQUAL_ATTEMPTS_N = DEFAULT_REPAIR_BUDGET + 1
+LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1: RepairHistoryPolicyV1 = (
+    "last_attempt_only_v1"
+)
+AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1: RepairHistoryPolicyV1 = (
+    "agentic_transcript_v1"
+)
+REPAIR_HISTORY_POLICIES_V1: frozenset[RepairHistoryPolicyV1] = frozenset(
+    {
+        LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1,
+        AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1,
+    }
+)
+DEFAULT_REPAIR_HISTORY_POLICY_V1: RepairHistoryPolicyV1 = (
+    LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1
+)
+AGENTIC_TRANSCRIPT_MAX_PROMPT_CHARS_V1: int = 24000
 
 # Raised to avoid budget-exhaustion confound for full launcher + kernel generations.
 DEFAULT_MAX_NEW_TOKENS = 1536

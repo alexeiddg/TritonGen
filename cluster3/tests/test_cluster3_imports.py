@@ -74,6 +74,11 @@ def test_cluster3_package_imports_cheap() -> None:
 
 
 def test_cluster3_constants_contract() -> None:
+    from cluster2.constants import (
+        AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1,
+        LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1,
+        REPAIR_HISTORY_POLICIES_V1,
+    )
     from cluster3 import constants
 
     assert constants.CLUSTER3_CONDITIONS == ("P", "G+P", "C+P", "G+C+P")
@@ -81,7 +86,11 @@ def test_cluster3_constants_contract() -> None:
     assert constants.DEFAULT_P_REPAIR_BUDGET == 5
     assert constants.P_ELIGIBLE_FAILURE_CODES == frozenset({"F1_COMPILE"})
     assert constants.P_FEEDBACK_FORMAT_V1 == "compile_error_template_v1"
+    assert constants.P_HISTORY_POLICY_V1 == LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1
     assert constants.P_HISTORY_POLICY_V1 == "last_attempt_only_v1"
+    assert constants.P_HISTORY_POLICY_V1 in REPAIR_HISTORY_POLICIES_V1
+    assert AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1 in REPAIR_HISTORY_POLICIES_V1
+    assert constants.P_HISTORY_POLICY_V1 != AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1
     assert constants.P_REPAIR_STOP_REASONS == frozenset(
         {
             "p_compile_repaired_then_success",
