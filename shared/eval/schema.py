@@ -8,11 +8,14 @@ leave Level 2-4 fields as ``None`` and must not execute future-level logic.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any
 
 from shared.eval.constants import TIMING_ITERS, WARMUP_ITERS
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -205,6 +208,16 @@ def append_result(path: str | Path, result: EvalResult) -> None:
     with output_path.open("a", encoding="utf-8") as f:
         f.write(result.to_json())
         f.write("\n")
+    # Seam B: mirror the record into the active MLflow run as stepped eval.*
+    # metrics. Imported locally to keep schema.py decoupled from tracking, and
+    # wrapped so tracking can never break a run — the JSONL write above is the
+    # source of truth and is already committed by this point.
+    try:
+        from shared import tracking
+
+        tracking.log_eval_result(result)
+    except Exception:  # noqa: BLE001 - tracking must never break a run
+        logger.warning("MLflow eval-result logging failed; ignored", exc_info=True)
 
 
 LEVEL_2_TO_4_FIELDS: tuple[str, ...] = (

@@ -13,6 +13,7 @@ never break an experiment run.
 
 from __future__ import annotations
 
+import functools
 import logging
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
@@ -40,6 +41,25 @@ def is_enabled(config: TrackingConfig | None = None) -> bool:
 
     cfg = config if config is not None else load_tracking_config()
     return cfg.enabled and mlflow_available()
+
+
+def _never_raises(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap a public logging function so a tracking error can never break a run.
+
+    This is the centralized contract guarantee: every per-record/aggregate
+    logging entry point below is wrapped, so a failure anywhere in mapping or
+    the mlflow call (not just the inner ``_safe`` site) is logged and swallowed.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return fn(*args, **kwargs)
+        except Exception:  # noqa: BLE001 - tracking must never break a run
+            logger.warning("MLflow %s failed; ignored", fn.__name__, exc_info=True)
+            return None
+
+    return wrapper
 
 
 @contextmanager
@@ -89,6 +109,7 @@ def run_context(
         _safe(_mlflow.end_run)
 
 
+@_never_raises
 def log_eval_result(result: Any) -> None:
     """Log one ``EvalResult`` as stepped ``eval.*`` metrics (no-op if disabled)."""
 
@@ -100,6 +121,7 @@ def log_eval_result(result: Any) -> None:
         _safe(lambda: _mlflow.log_metrics(metrics, step=step))
 
 
+@_never_raises
 def log_generation_result(result: Any) -> None:
     """Log one Cluster 1 ``GenerationResult`` as ``gen.*`` metrics (no-op if disabled)."""
 
@@ -110,6 +132,7 @@ def log_generation_result(result: Any) -> None:
         _safe(lambda: _mlflow.log_metrics(metrics))
 
 
+@_never_raises
 def log_factorial_summary(
     cell_summaries: Iterable[Any],
     *,
@@ -131,6 +154,7 @@ def log_factorial_summary(
             _safe(lambda payload=metrics: _mlflow.log_metrics(payload))
 
 
+@_never_raises
 def log_params(params: Mapping[str, Any]) -> None:
     """Log arbitrary params (no-op if disabled)."""
 
@@ -139,6 +163,7 @@ def log_params(params: Mapping[str, Any]) -> None:
     _safe(lambda: _mlflow.log_params(dict(params)))
 
 
+@_never_raises
 def log_metrics(metrics: Mapping[str, float], step: int | None = None) -> None:
     """Log arbitrary metrics (no-op if disabled)."""
 
@@ -147,6 +172,7 @@ def log_metrics(metrics: Mapping[str, float], step: int | None = None) -> None:
     _safe(lambda: _mlflow.log_metrics(dict(metrics), step=step))
 
 
+@_never_raises
 def set_tags(tags: Mapping[str, str]) -> None:
     """Set arbitrary tags (no-op if disabled)."""
 
