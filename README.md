@@ -33,23 +33,20 @@ Use these docs as the current report-facing navigation layer:
 | Artifact and result registry | `docs/05_artifacts_and_results_registry.md` |
 | Failure taxonomy and evaluation ladder | `docs/06_failure_taxonomy_and_eval_ladder.md` |
 | Analysis and statistics semantics | `docs/07_analysis_and_statistics.md` |
+| MLflow tracking onboarding | `docs/tracking/README.md` |
 | Decision log | `docs/08_decision_log.md` |
 | Preliminary report outline | `docs/09_preliminary_report_outline.md` |
 | Cluster 3 drift-prevention plan | `docs/10_cluster3_drift_prevention_plan.md` |
-| Frontier feedback-loop ablation proposal | `docs/11_frontier_feedback_loop_ablation.md` |
-| Agentic document hub | `docs/handoff/agentic_document_hub.md` |
-| Document version registry | `docs/handoff/document_version_registry.md` |
-| Code update documentation policy | `docs/handoff/code_update_documentation_policy.md` |
 | Codebase handoff guide | `docs/handoff/codebase_handoff_guide.md` |
 | Stale-doc inventory | `docs/handoff/stale_docs_inventory.md` |
 
 The artifact registry is the source of truth for current artifact identities,
 row counts, schema caveats, and analyzer status.
 
-Post-Phase-11 status: the handoff-readiness documentation pipeline is complete.
-Preliminary result prose may now be drafted only from the verified reportable
-analyzer output and only with the coverage, F3, P-deferred, model-fit, and
-provenance caveats preserved.
+Post-Phase-11 status: the handoff-readiness documentation pipeline is complete
+and preliminary report drafting is ready with a results placeholder. Official
+statistical-result prose remains blocked while analyzer `metadata.reportable`
+is `false`.
 
 ## Important Caveats
 

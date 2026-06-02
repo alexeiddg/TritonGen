@@ -306,7 +306,21 @@ def parse_args(argv: Sequence[str] | None = None) -> Cluster3RunnerConfig:
 
 def main(argv: Sequence[str] | None = None) -> Cluster3RunResult:
     config = parse_args(argv)
-    result = run_cluster3(config)
+    # Seam A (Modal path): open an optional MLflow run around the local
+    # orchestration. Modal returns records; the Cluster 3 JSONL writer's seam
+    # logs c3.* metrics inside this run. No-op when tracking is disabled.
+    from shared import tracking
+
+    with tracking.run_context(
+        run_config={
+            "scale_tier": getattr(config, "scale_tier", None),
+            "model_id": getattr(config, "model_id", None),
+        },
+        cli_args=config,
+        backend="modal",
+        cluster="cluster3",
+    ):
+        result = run_cluster3(config)
     print(
         json.dumps(
             {

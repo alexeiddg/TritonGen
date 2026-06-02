@@ -1,7 +1,7 @@
 # Experiment Change Orchestration State
 
-- Version: 1.4.8
-- Date: 2026-05-28
+- Version: 1.4.9
+- Date: 2026-06-02
 - Status: active live state record
 - Owner: current orchestration agent
 - Contract: `docs/15_experiment_change_orchestration_contract.md`
@@ -371,34 +371,37 @@ reason. Do not backfill missing provenance silently after execution.
 
 | Field | Value |
 |---|---|
-| Git baseline commit | `0578bd2c87f8fec0e6181ae00c2d23268ff6df73` |
-| Git branch | `main` |
-| Git status at latest reconciliation | `clean` by `git status --short --branch`; ignored docs/audits/outputs still require direct inspection |
+| Git baseline commit | `aa4d20f1f5c64932e72b488d131244542e44459f` |
+| Git branch | `codex-track-handoff-context` as temporary trunk; `codex/integrate-mlflow-into-handoff` is the active MLflow integration branch |
+| Git status at latest reconciliation | clean before MLflow integration; integration branch carries only the tracked merge/docs changes and no output mutation |
 | Orchestration contract version | `docs/15_experiment_change_orchestration_contract.md` v1.0.11 |
-| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.37.0 |
+| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.38.0 |
 | Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 |
 | Structural/task analyzer metadata spec version | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 |
+| MLflow tracking policy version | `.contracts/research/mlflow_tracking_policy.md` v1.0.0 |
 | Current Cluster 3 gate | Phase 14e four-cell n=5 development matrix frozen with warnings; no broader run without explicit approval packet |
 | Paper-scale status | blocked; no Cluster 3 `n=20` until Gate G8 |
 
-Important repository note: `docs/`, `audits/`, and `outputs/` are ignored by
-`.gitignore` in this workspace. A clean `git status` does not prove those
-project-owned operational documents or artifacts are unchanged.
+Important repository note: on the handoff trunk, `docs/`, `audits/`, and
+`.contracts/agentic/**` are intentionally trackable. Raw outputs and MLflow
+runtime state remain ignored. A clean `git status` still does not prove raw
+output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 ## Active Worktrees
 
 | Worktree | Branch | Commit | State ownership |
 |---|---|---|---|
-| `/Users/alexeidelgado/Desktop/TritonGen` | `main` | `0578bd2c87f8fec0e6181ae00c2d23268ff6df73` | canonical workspace |
+| `/Users/alexeidelgado/Desktop/TritonGen` | `codex/integrate-mlflow-into-handoff` | merge in progress from `aa4d20f` plus `origin/ml_migration` | MLflow integration workspace; no Modal or output mutation |
+| `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `368a3c8` | A1 prompt core committed and clean; awaiting trunk update after MLflow integration |
 | `/Users/alexeidelgado/Desktop/TritonGen/.claude/worktrees/intelligent-pasteur-72d92f` | `claude/intelligent-pasteur-72d92f` | `b0085c1` | external/unknown to this orchestration state; reconcile before relying on it |
 
 ## Active Branches
 
 | Branch | Stream/package | Worktree | Status | Notes |
 |---|---|---|---|---|
-| `main` | baseline | `/Users/alexeidelgado/Desktop/TritonGen` | active baseline | Do not use for high-blast-radius implementation work. |
-
-No docs 12-14 implementation branch is active under this state record yet.
+| `codex-track-handoff-context` | temporary trunk | `/Users/alexeidelgado/Desktop/TritonGen` when not on integration branch | active baseline | Treat as the working main branch for repair/handoff work until final branch repair is complete. |
+| `codex/integrate-mlflow-into-handoff` | MLflow tracking harness integration | `/Users/alexeidelgado/Desktop/TritonGen` | active integration | Merge `origin/ml_migration`, preserve handoff doc/audit tracking policy, validate optional/no-op tracking tests, then promote to the temporary trunk. |
+| `codex/llm-repair-memory-agentic-transcript-v1` | agentic repair memory | `/private/tmp/tritongen-llm-repair-memory` | A1 committed | A1 prompt core is committed at `368a3c8`; update from the MLflow-integrated trunk before A2/A3 integration work. |
 
 ## Active Serialized-Surface Leases
 
@@ -415,7 +418,7 @@ No docs 12-14 implementation branch is active under this state record yet.
 | G2 reporting terminology stable | not started | Requires S0 acceptance. |
 | G3 observability sidecar contract stable | spec drafted / code not started | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 defines O0-O4 plus hardening guardrails; G3 still requires implementation and tests. |
 | G4 analyzer compatibility stable | spec drafted / code not started | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 defines S0-S3 metadata and report-label work; G4 still requires S1 implementation and compatibility tests. |
-| G5 agentic prompt core stable | not started | Requires A1 prompt core and golden tests. |
+| G5 agentic prompt core stable | partially satisfied / pending promotion | A1 prompt core committed on `codex/llm-repair-memory-agentic-transcript-v1` at `368a3c8` with targeted prompt-core, boundary, import, diff-check, and forbidden-path validation; merge/review against the MLflow-integrated trunk is still required before treating it as trunk-stable. |
 | G6 agentic integration stable | not started | Requires opt-in C/P integration and analyzer grouping. |
 | G7 development run readiness | blocked pending fresh approval packet | Phase 14e matrix is frozen; any broader development-scale, all-condition, diagnostic, or paper-readiness run needs a new approval packet. |
 | G8 paper-scale readiness | blocked | No `n=20` or paper-scale work. |
@@ -459,6 +462,7 @@ Historical context:
 | operating-control addendum | complete | State record, lease, decision authority, run packet, merge protocol, and trust boundary added to the contract. |
 | observability sidecar implementation spec | complete | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 created and routed; code implementation not started. |
 | structural/task analyzer metadata implementation spec | complete | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 created and routed; analyzer/report code implementation not started. |
+| MLflow tracking harness integration | in progress | `origin/ml_migration` is being merged into `codex-track-handoff-context` via `codex/integrate-mlflow-into-handoff`; tracking must remain optional/no-op unless `TRITONGEN_MLFLOW` and `mlflow` are present, and JSONL remains the source of truth. |
 
 ## Abandoned Packages
 
@@ -468,7 +472,8 @@ Historical context:
 
 ## Known Caveats
 
-- `docs/`, `audits/`, and `outputs/` are ignored by git status.
+- Raw `outputs/` and MLflow `mlruns/` runtime state are ignored; docs, audits,
+  and `.contracts/agentic/**` are intentionally trackable on the handoff trunk.
 - Known full-regression caveat remains:
   `cluster1/tests/test_documentation_language_lock.py::test_committed_docs_lock_primary_and_reference_grammar_roles`.
 - Phase 14a is development-scale diagnostic only and insufficient F1/P-loop
@@ -478,7 +483,8 @@ Historical context:
 - Phase 14e is frozen development-scale condition coverage only with zero P
   attempts and zero C fires.
 - No paper-scale Cluster 3 results exist.
-- No agentic-memory implementation is active yet.
+- A1 agentic-memory prompt core is committed on the memory worktree branch, but
+  not yet promoted to the handoff trunk.
 - No observability sidecar implementation is active yet.
 - No analyzer metric-registry implementation is active yet.
 
@@ -486,15 +492,18 @@ Historical context:
 
 Allowed without run approval:
 
-1. Create remaining component implementation specs for:
+1. Promote the validated MLflow integration branch into `codex-track-handoff-context`
+   after tests and conflict checks pass.
+2. Update `codex/llm-repair-memory-agentic-transcript-v1` from the
+   MLflow-integrated handoff trunk before A2/A3 work.
+3. Create remaining component implementation specs for:
    - agentic repair-memory implementation;
    - paper-scale readiness or future Cluster 3 run packet/spec, if explicitly
      requested.
-2. Start safe parallel branches after adding package cards below:
+4. Start safe parallel branches after adding package cards below:
    - S0 docs terminology;
    - O0 sidecar core;
-   - A1 pure prompt core.
-3. Create serialized-surface leases before touching analyzer, runner, repair
+5. Create serialized-surface leases before touching analyzer, runner, repair
    loop, result schema, raw output, or report-data-builder surfaces.
 
 Not allowed without explicit approval:
@@ -578,7 +587,7 @@ status:
 | O-spec observability sidecar implementation spec | none | complete | G1 | spec routed | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0. |
 | S-spec structural/task analyzer metadata implementation spec | none | complete | G1 | spec routed | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2; code implementation not started. |
 | O0 sidecar core | `codex/observability-sidecar-core` | not started | G1 plus O-spec | G3 partial | New `shared/observability/*` schema/logger/redaction and tests only. |
-| A1 prompt core | `codex/agentic-memory-core` | not started | G1 | G5 partial | Pure attempt evidence, anchor selector, transcript renderer, golden tests. |
+| A1 prompt core | `codex/llm-repair-memory-agentic-transcript-v1` | committed / pending trunk promotion | G1 | G5 partial | Pure attempt evidence, anchor selector, transcript renderer, golden tests; committed at `368a3c8`, update from MLflow-integrated trunk before A2/A3. |
 | S1 analyzer metadata | `codex/analyzer-metric-registry` | blocked | G2 plus S-spec plus lease | G4 partial | Requires `docs/17_structural_task_analyzer_metadata_implementation_spec.md` and `analyzer_metric_registry` lease. |
 | O1 runner wall-clock | `codex/observability-runner-instrumentation` | blocked | O0 plus runner lease | G3 | One runner owner at a time. |
 | A2 C-loop integration | `codex/agentic-memory-c2-integration` | blocked | A1 plus lease | G6 partial | Requires C-loop and Cluster 2 runner leases. |
