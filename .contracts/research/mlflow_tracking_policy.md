@@ -76,6 +76,8 @@ Metric names must remain namespaced by record type to avoid collisions:
 | Record source | Metric namespace |
 | --- | --- |
 | Cluster 1 generation records | `gen.*` |
+| Cluster 2 eval rows | `c2.*` |
+| Cluster 3 eval rows | `c3.*` |
 | Shared evaluation records | `eval.*` |
 | Factorial/analyzer summaries | `cell.*` |
 

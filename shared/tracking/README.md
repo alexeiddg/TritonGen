@@ -29,12 +29,14 @@ MLflow.
 
 ### Metric namespaces (disjoint by record type)
 
-So the two write seams never collide inside one run:
+So records from different writers never collide inside one run:
 
 | Record | Prefix |
 |---|---|
-| `EvalResult` | `eval.*` |
+| `EvalResult` (shared writer, Seam B) | `eval.*` |
 | `GenerationResult` (Cluster 1) | `gen.*` |
+| `Cluster2EvalRow` (Cluster 2) | `c2.*` |
+| `Cluster3EvalRow` (Cluster 3) | `c3.*` |
 | Analyzer factorial summary (dict) | `cell.*` (e.g. `cell.functional_success.G_C`) |
 
 ---
