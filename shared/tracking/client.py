@@ -133,6 +133,28 @@ def log_generation_result(result: Any) -> None:
 
 
 @_never_raises
+def log_cluster2_eval_row(row: Any) -> None:
+    """Log one Cluster 2 ``Cluster2EvalRow`` as ``c2.*`` metrics (no-op if disabled)."""
+
+    if not _should_log():
+        return
+    metrics = mapping.cluster2_eval_row_to_metrics(row)
+    if metrics:
+        _safe(lambda: _mlflow.log_metrics(metrics))
+
+
+@_never_raises
+def log_cluster3_eval_row(row: Any) -> None:
+    """Log one Cluster 3 ``Cluster3EvalRow`` as ``c3.*`` metrics (no-op if disabled)."""
+
+    if not _should_log():
+        return
+    metrics = mapping.cluster3_eval_row_to_metrics(row)
+    if metrics:
+        _safe(lambda: _mlflow.log_metrics(metrics))
+
+
+@_never_raises
 def log_factorial_summary(
     analysis_result: Any,
     *,

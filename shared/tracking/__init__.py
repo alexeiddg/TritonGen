@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from shared.tracking.client import (
     is_enabled,
+    log_cluster2_eval_row,
+    log_cluster3_eval_row,
     log_eval_result,
     log_factorial_summary,
     log_generation_result,
@@ -34,6 +36,8 @@ __all__ = [
     "flag_enabled",
     "is_enabled",
     "load_tracking_config",
+    "log_cluster2_eval_row",
+    "log_cluster3_eval_row",
     "log_eval_result",
     "log_factorial_summary",
     "log_generation_result",

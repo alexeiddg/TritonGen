@@ -91,6 +91,30 @@ CELL_SUMMARY_METRIC_FIELDS: tuple[str, ...] = (
     "pass1_ci_upper",
 )
 
+CLUSTER2_EVAL_ROW_METRIC_FIELDS: tuple[str, ...] = (
+    "grammar_active",
+    "compile_success",
+    "functional_success",
+    "repair_set_success",
+    "eval_set_success",
+)
+
+CLUSTER3_EVAL_ROW_METRIC_FIELDS: tuple[str, ...] = (
+    "grammar_active",
+    "compile_success",
+    "functional_success",
+    "repair_set_success",
+    "eval_set_success",
+    "p_repair_attempted",
+    "p_compile_repair_succeeded",
+    "p_repair_changed_terminal_class",
+    "p_repair_budget",
+    "p_repair_attempt_count",
+    "c_loop_fired",
+    "c_terminal_level_reached",
+    "terminal_source_matches_row_source",
+)
+
 RUN_CONFIG_PARAM_FIELDS: tuple[str, ...] = (
     "condition",
     "source_class",
@@ -140,14 +164,13 @@ def run_config_to_tags(
 
     data = _as_mapping(run_config)
     tags = {
-        "condition": str(data.get("condition", "")),
-        "scale_tier": str(data.get("scale_tier", "")),
         "backend": str(backend),
         "reportable": "true" if data.get("scale_tier") == "paper" else "false",
     }
-    # Routing fields exist only for the Cluster 2 RunConfig. Emit them only when
-    # present so simpler callers (e.g. Cluster 1) never produce empty-string tags.
-    for optional in ("source_class", "generation_mode"):
+    # Emit each label only when present, so callers without a single run-level
+    # value never produce empty-string tags: Cluster 1 has no routing fields, and
+    # multi-condition Cluster 2/3 runs have no single `condition`.
+    for optional in ("condition", "scale_tier", "source_class", "generation_mode"):
         value = data.get(optional)
         if value:
             tags[optional] = str(value)
@@ -174,6 +197,18 @@ def generation_result_to_metrics(result: Any) -> dict[str, float]:
     """Map a Cluster 1 ``GenerationResult`` to ``gen.*`` numeric metrics."""
 
     return _collect_metrics(result, GENERATION_RESULT_METRIC_FIELDS, prefix="gen")
+
+
+def cluster2_eval_row_to_metrics(row: Any) -> dict[str, float]:
+    """Map a Cluster 2 ``Cluster2EvalRow`` to ``c2.*`` numeric metrics."""
+
+    return _collect_metrics(row, CLUSTER2_EVAL_ROW_METRIC_FIELDS, prefix="c2")
+
+
+def cluster3_eval_row_to_metrics(row: Any) -> dict[str, float]:
+    """Map a Cluster 3 ``Cluster3EvalRow`` to ``c3.*`` numeric metrics."""
+
+    return _collect_metrics(row, CLUSTER3_EVAL_ROW_METRIC_FIELDS, prefix="c3")
 
 
 def cell_summary_to_metrics(summary: Any) -> dict[str, float]:

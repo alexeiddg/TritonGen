@@ -185,6 +185,12 @@ class Cluster2JsonlAppendLogger:
         if self.fsync:
             os.fsync(self._file.fileno())
         self._resume_index += 1
+        # Seam: mirror this newly-written row into the active MLflow run as c2.*
+        # metrics. Local import keeps this logger decoupled; the tracking client
+        # is the single safety boundary (no-op when disabled, never raises).
+        from shared import tracking
+
+        tracking.log_cluster2_eval_row(row)
         return True
 
 
