@@ -27,6 +27,7 @@ Current research-facing docs:
 - `.contracts/research/scale_policy.md`
 - `.contracts/research/eval_metrics.md`
 - `.contracts/research/cluster1_generated_surface.md`
+- `.contracts/research/mlflow_tracking_policy.md`
 
 ## Agentic/Internal Docs
 
