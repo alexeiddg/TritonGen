@@ -1,0 +1,24 @@
+Base task:
+Implement the relu kernel as a complete Triton Python module.
+
+Repair objective:
+Repair the latest failed attempt using public attempt history and the best previous source anchor.
+
+Attempt history:
+Attempt 0: seed=300; source_sha256=258ae91aedc1e12fea90cdfe514993147c05c14d9a0ce48b4e883d644a54c708; prompt_sha256=0000000000000000000000000000000000000000000000000000000000000001; outcome=F2_NUMERIC_LARGE; level=2; anchor=yes; latest=no; summary=Repair shape (2,) failed Level 2: max_abs_diff=0.25; c_repair_shapes=3/4
+Attempt 1: seed=301; source_sha256=2cee39d314ef6c39caf69bb561e8aedda11a2a190355aee6f99dd2c442505f78; prompt_sha256=0000000000000000000000000000000000000000000000000000000000000002; outcome=F2_NUMERIC_LARGE; level=2; anchor=no; latest=yes; summary=Repair shape (2,) failed Level 2: max_abs_diff=3.0; c_repair_shapes=1/4
+
+Best previous source to repair from:
+BEGIN BEST PREVIOUS SOURCE
+def relu_kernel(x):
+    return x
+
+END BEST PREVIOUS SOURCE
+
+Latest failure details:
+BEGIN LATEST FAILURE DETAILS
+Latest repair shape failed with max_abs_diff=3.0.
+END LATEST FAILURE DETAILS
+
+Instruction:
+Produce a corrected complete Triton Python module. Do not explain. Do not concatenate prior attempts. Use the history only to avoid repeated mistakes.

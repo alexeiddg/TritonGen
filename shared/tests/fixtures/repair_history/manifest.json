@@ -1,0 +1,110 @@
+[
+  {
+    "fixture_id": "normal_c_transcript",
+    "loop_kind": "C",
+    "history_policy": "agentic_transcript_v1",
+    "expected_anchor_attempt_index": 0,
+    "expected_latest_attempt_index": 1,
+    "expected_prompt_sha256": "4a3671f73149b7782ae2f7f7a5aa8557c3ada9dee321cc37e52ac30866eb3492",
+    "expected_history_summary_sha256": "47958e7a34202f4eb3738c933e51e43da0e448ab5d293c4f9785753c86d0645b",
+    "include_latest_source": false,
+    "expected_render_error_code": null,
+    "legacy_prompt_byte_invariance_expected": false
+  },
+  {
+    "fixture_id": "c_later_regression",
+    "loop_kind": "C",
+    "history_policy": "agentic_transcript_v1",
+    "expected_anchor_attempt_index": 0,
+    "expected_latest_attempt_index": 2,
+    "expected_prompt_sha256": "78abd055fb872cf666f93756e0b4e4d99a24d3be45205f4a097b769a49539f4b",
+    "expected_history_summary_sha256": "96a880525af13575d3e66c2c13c3232fe198351a5d2f764a83b03b215d0b9684",
+    "include_latest_source": false,
+    "expected_render_error_code": null,
+    "legacy_prompt_byte_invariance_expected": false
+  },
+  {
+    "fixture_id": "repeated_source_hash",
+    "loop_kind": "C",
+    "history_policy": "agentic_transcript_v1",
+    "expected_anchor_attempt_index": 1,
+    "expected_latest_attempt_index": 2,
+    "expected_prompt_sha256": "1db451cb04180b05a0771f8b6be2b8d313e21cdf6b3b317289e6e7afda40f2d6",
+    "expected_history_summary_sha256": "5d4c15985de247e2f8eaccfaa794603946f867b0cbeb2a8286f4c12aa44b8cfc",
+    "include_latest_source": false,
+    "expected_render_error_code": null,
+    "legacy_prompt_byte_invariance_expected": false
+  },
+  {
+    "fixture_id": "p_repeated_f1_compile",
+    "loop_kind": "P",
+    "history_policy": "agentic_transcript_v1",
+    "expected_anchor_attempt_index": 2,
+    "expected_latest_attempt_index": 2,
+    "expected_prompt_sha256": "b64dec266c9ec02584513711823d963637b18da37c9821c7f5f6b2c95357aa3f",
+    "expected_history_summary_sha256": "aea55a173572e66a2f449b28b2148100b914b3ee1e19d669a919aab5e390fc5d",
+    "include_latest_source": false,
+    "expected_render_error_code": null,
+    "legacy_prompt_byte_invariance_expected": false
+  },
+  {
+    "fixture_id": "prompt_injection_source_text",
+    "loop_kind": "C",
+    "history_policy": "agentic_transcript_v1",
+    "expected_anchor_attempt_index": 0,
+    "expected_latest_attempt_index": 1,
+    "expected_prompt_sha256": "fc4a04e34f488d9a4a02879826dfd87b65893371ea1ad6d3c53eeef3fdfa9a21",
+    "expected_history_summary_sha256": "f2222a80f9c9770fd5ce262d0fc10606639aecb138b04564dcf4df4848f228d5",
+    "include_latest_source": false,
+    "expected_render_error_code": null,
+    "legacy_prompt_byte_invariance_expected": false
+  },
+  {
+    "fixture_id": "include_latest_source",
+    "loop_kind": "C",
+    "history_policy": "agentic_transcript_v1",
+    "expected_anchor_attempt_index": 0,
+    "expected_latest_attempt_index": 1,
+    "expected_prompt_sha256": "e04230943c9e83ccff24e0acc7b06307d6c60eac7e2e6010d2546fb23ab6a806",
+    "expected_history_summary_sha256": "47958e7a34202f4eb3738c933e51e43da0e448ab5d293c4f9785753c86d0645b",
+    "include_latest_source": true,
+    "expected_render_error_code": null,
+    "legacy_prompt_byte_invariance_expected": false
+  },
+  {
+    "fixture_id": "over_budget_fail_closed",
+    "loop_kind": "C",
+    "history_policy": "agentic_transcript_v1",
+    "expected_anchor_attempt_index": null,
+    "expected_latest_attempt_index": null,
+    "expected_prompt_sha256": null,
+    "expected_history_summary_sha256": null,
+    "include_latest_source": false,
+    "expected_render_error_code": "prompt_budget_exceeded",
+    "legacy_prompt_byte_invariance_expected": false
+  },
+  {
+    "fixture_id": "legacy_c_last_attempt_only_v1",
+    "loop_kind": "C",
+    "history_policy": "last_attempt_only_v1",
+    "expected_anchor_attempt_index": null,
+    "expected_latest_attempt_index": null,
+    "expected_prompt_sha256": "7a76f125b522ae0494101c4460ae67ab6bceb1bad0f8863df6e0ee4db3ac050a",
+    "expected_history_summary_sha256": null,
+    "include_latest_source": false,
+    "expected_render_error_code": null,
+    "legacy_prompt_byte_invariance_expected": true
+  },
+  {
+    "fixture_id": "legacy_p_last_attempt_only_v1",
+    "loop_kind": "P",
+    "history_policy": "last_attempt_only_v1",
+    "expected_anchor_attempt_index": null,
+    "expected_latest_attempt_index": null,
+    "expected_prompt_sha256": "1b90c50c3ed99ad9279737fbd495869905b19afd3f6d88dcad728cd98855d9ef",
+    "expected_history_summary_sha256": null,
+    "include_latest_source": false,
+    "expected_render_error_code": null,
+    "legacy_prompt_byte_invariance_expected": true
+  }
+]
