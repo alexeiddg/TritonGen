@@ -53,7 +53,79 @@ We use separate metric namespaces so result types do not collide:
 
 ---
 
-## 3. Browse Results
+## 3. First Run From Zero
+
+Use this path the first time you touch MLflow in this repo. It avoids GPU,
+Triton, model downloads, and cluster-specific setup.
+
+### Step 1: Start in the repo root
+
+Open a PowerShell terminal in the `TritonGen/` folder, then set `PYTHONPATH` so
+the demo can import the local `shared` package:
+
+```powershell
+$env:PYTHONPATH = (Get-Location)
+```
+
+### Step 2: Write one demo MLflow run
+
+Tracking turns on only when both gates are open:
+
+1. `TRITONGEN_MLFLOW=1` is set.
+2. The `mlflow` package is available to the Python process that is running the
+   script.
+
+This command uses `uv` to run the demo in a temporary Python 3.12 environment
+with MLflow installed:
+
+```powershell
+$env:TRITONGEN_MLFLOW = "1"
+$env:MLFLOW_TRACKING_URI = "file:./mlruns"
+uv run --no-project --python 3.12 --with "mlflow>=2.10,<3.0" python _mlflow_demo.py
+```
+
+Expected terminal output:
+
+```text
+Demo MLflow run written if TRITONGEN_MLFLOW=1 and mlflow is installed.
+```
+
+Expected filesystem result:
+
+```text
+mlruns/
+```
+
+That folder is local, generated, and gitignored. It is where MLflow stores the
+runs that the dashboard reads.
+
+### Step 3: Open the dashboard
+
+In a second terminal, from the same `TritonGen/` folder:
+
+```powershell
+uvx --python 3.12 --from "mlflow>=2.10,<3.0" mlflow ui --backend-store-uri "file:./mlruns" --port 5000
+```
+
+Then open:
+
+```text
+http://127.0.0.1:5000
+```
+
+Expected UI result:
+
+1. The left sidebar shows an experiment such as `tritongen_cluster1`.
+2. The run table has a row for the demo launch.
+3. The run detail page shows params such as `condition=demo`, tags such as
+   `cluster=cluster1`, and metrics such as `gen.compile_success`.
+
+Important: the dashboard is only a viewer. It does not need to be running while
+an experiment logs results.
+
+---
+
+## 4. Browse Results
 
 Open the dashboard at:
 
@@ -83,29 +155,12 @@ log an experiment.
 
 ---
 
-## 4. Run It Yourself
+## 5. Run Real Experiments
 
-### Option A: Demo run without GPU or Triton
+### Option A: Real Cluster 1 smoke run with tracking
 
-This uses synthetic records but exercises the same tracking code as a real run:
-
-```powershell
-# from TritonGen/
-$env:PYTHONPATH = (Get-Location)
-$env:TRITONGEN_MLFLOW = "1"
-$env:MLFLOW_TRACKING_URI = "file:./mlruns"
-uv run --no-project --python 3.12 --with "mlflow>=2.10,<3.0" python _mlflow_demo.py
-```
-
-Then open the dashboard from section 3.
-
-### Option B: Real Cluster 1 smoke run with tracking
-
-Tracking turns on only when both gates are open:
-
-1. `TRITONGEN_MLFLOW=1` is set.
-2. The `mlflow` package is installed in the Python environment running the
-   experiment.
+Use this after the demo works. Unlike `_mlflow_demo.py`, this enters the real
+Cluster 1 pipeline and may depend on the normal project/runtime requirements.
 
 ```powershell
 # from TritonGen/
@@ -113,8 +168,17 @@ $env:TRITONGEN_MLFLOW = "1"
 python cluster1/experiments/run_cluster1.py --condition baseline --kernel-class elementwise --n 2 --output outputs/cluster1/smoke.jsonl
 ```
 
+Expected result:
+
+```text
+outputs/cluster1/smoke.jsonl
+mlruns/
+```
+
 With `TRITONGEN_MLFLOW` unset, the same command writes the same JSONL but does
 not log to MLflow.
+
+### Option B: Install MLflow into a reusable environment
 
 Install note: use a Python 3.12 environment for MLflow. On Python 3.14, the
 current `mlflow>=2.10,<3.0` pin fails because it depends on older PyArrow builds
@@ -126,9 +190,15 @@ uv venv --python 3.12 .venv-mlflow
 uv pip install "mlflow>=2.10,<3.0"
 ```
 
+If you install the project package itself, the tracking extra is also available:
+
+```powershell
+uv pip install -e ".[tracking]"
+```
+
 ---
 
-## 5. How It Works Internally
+## 6. How It Works Internally
 
 All MLflow integration code lives in `shared/tracking/`. Cluster code calls the
 tracking package; it does not import `mlflow` directly.
@@ -146,7 +216,7 @@ tracking becomes a no-op and the experiment still runs.
 
 ---
 
-## 6. Modal
+## 7. Modal
 
 Modal runs the GPU work; your local process does the logging.
 
@@ -157,12 +227,12 @@ machine. The local process then writes JSONL and logs to MLflow, so:
 - No MLflow credentials are shipped to the cloud.
 - The local `file:./mlruns` store stays on your machine.
 
-Wiring `run_context` into all Modal launchers is still a remaining implementation
-step, but the shared per-result logging path is already designed for it.
+The Modal launchers wrap their local orchestration in `tracking.run_context`.
+Per-result logging still happens locally when rows are written.
 
 ---
 
-## 7. FAQ
+## 8. FAQ
 
 **I ran something but nothing appeared in the UI.**
 
@@ -174,6 +244,21 @@ python -c "import importlib.util; print(importlib.util.find_spec('mlflow') is no
 ```
 
 The env var should be `1`, and the Python check should print `True`.
+
+Also check that the dashboard is reading the same store you wrote to:
+
+```powershell
+echo $env:MLFLOW_TRACKING_URI
+```
+
+For the default local setup, use `file:./mlruns` or leave it unset and start the
+UI with `--backend-store-uri "file:./mlruns"` from the repo root.
+
+**The demo worked but the real Cluster 1 command failed.**
+
+That means MLflow is probably fine. The demo only tests tracking. The real
+launcher still needs the normal Cluster 1 runtime requirements, model access,
+and any compute setup required by that command.
 
 **Do I need to keep the dashboard running while the experiment runs?**
 
