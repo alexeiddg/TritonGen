@@ -47,7 +47,7 @@ We use separate metric namespaces so result types do not collide:
 | --- | --- | --- |
 | Cluster 1 generation results | `gen.*` | `gen.compile_success` |
 | Cluster 2+ evaluation results | `eval.*` | `eval.functional_success`, `eval.max_abs_diff` |
-| Analyzer cell summaries | `cell.*` | `cell.pass_at_1` |
+| Analyzer cell summaries | `cell.*` | `cell.functional_success.G_C` |
 
 ---
 

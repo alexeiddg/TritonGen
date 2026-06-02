@@ -17,7 +17,7 @@ technical reference for the tracking package implementation.
 |---|---|---|
 | **MLflow** | An experiment-tracking library. It records each run's *params* (config), *metrics* (numbers), *tags* (labels) and *artifacts* (files), and ships a web dashboard to compare runs. | Gives us a searchable, visual history of experiments on top of the raw JSONL — without changing how the pipeline produces results. |
 | **`config.py`** | Reads the env vars + `shared/configs/tracking.yaml` into a frozen `TrackingConfig`. No `mlflow` import. | Decides **where** to log (tracking URI) and **which experiment** a run belongs to. One place for the "where". |
-| **`mapping.py`** | Pure functions turning `RunConfig` / `EvalResult` / `GenerationResult` / `CellSummary` into params/metrics/tags. No `mlflow` import. | Holds **what** we track. Pure = trivially testable, and reusable from any caller. |
+| **`mapping.py`** | Pure functions turning `RunConfig` / `EvalResult` / `GenerationResult` and the analyzer's factorial result dict into params/metrics/tags. No `mlflow` import. | Holds **what** we track. Pure = trivially testable, and reusable from any caller. |
 | **`client.py`** | The only `import mlflow` site. No-op-safe `run_context` + `log_*`. | The single integration point. If `mlflow` is missing or the flag is off, everything here is a silent no-op; logging errors are swallowed (warn, never raise) so tracking can never break a run. |
 | **`__init__.py`** | Re-exports the public API. | One import surface: `from shared import tracking`. |
 | **`shared/configs/tracking.yaml`** | Non-secret defaults (tracking URI, experiment names). | Config you can read/edit without touching code. **No secrets here** — those come from env vars only. |
@@ -35,7 +35,7 @@ So the two write seams never collide inside one run:
 |---|---|
 | `EvalResult` | `eval.*` |
 | `GenerationResult` (Cluster 1) | `gen.*` |
-| `CellSummary` (analyzer) | `cell.*` |
+| Analyzer factorial summary (dict) | `cell.*` (e.g. `cell.functional_success.G_C`) |
 
 ---
 
