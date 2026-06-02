@@ -1,7 +1,7 @@
 # Experiment Change Orchestration State
 
-- Version: 1.5.6
-- Date: 2026-06-01
+- Version: 1.5.7
+- Date: 2026-06-02
 - Status: active live state record
 - Owner: current orchestration agent
 - Contract: `docs/15_experiment_change_orchestration_contract.md`
@@ -375,10 +375,11 @@ reason. Do not backfill missing provenance silently after execution.
 | Git branch | `codex-track-handoff-context` |
 | Git status at latest reconciliation | `clean` by `git status --short --branch` before creating the A-spec worktree; ignored docs/audits/outputs still require direct inspection |
 | Orchestration contract version | `docs/15_experiment_change_orchestration_contract.md` v1.0.12 |
-| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.44.0 |
+| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.45.0 |
 | Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 |
 | Structural/task analyzer metadata spec version | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 |
 | Agentic transcript implementation spec version | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5 |
+| Agentic transcript docs-only checkpoint | `audits/agentic_transcript_v1_spec_checkpoint_report.md` v1.0.0 |
 | Current Cluster 3 gate | Phase 14e four-cell n=5 development matrix frozen with warnings; no broader run without explicit approval packet |
 | Paper-scale status | blocked; no Cluster 3 `n=20` until Gate G8 |
 
@@ -391,7 +392,7 @@ project-owned operational documents or artifacts are unchanged.
 | Worktree | Branch | Commit | State ownership |
 |---|---|---|---|
 | `/Users/alexeidelgado/Desktop/TritonGen` | `codex-track-handoff-context` | `aa4d20f1f5c64932e72b488d131244542e44459f` | canonical docs/workflow baseline branch |
-| `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `aa4d20f1f5c64932e72b488d131244542e44459f` | A-spec preparation worktree |
+| `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `3131986` | A-spec checkpoint worktree |
 | `/Users/alexeidelgado/Desktop/TritonGen/.claude/worktrees/intelligent-pasteur-72d92f` | `claude/intelligent-pasteur-72d92f` | `b0085c1` | external/unknown to this orchestration state; reconcile before relying on it |
 
 ## Active Branches
@@ -399,7 +400,7 @@ project-owned operational documents or artifacts are unchanged.
 | Branch | Stream/package | Worktree | Status | Notes |
 |---|---|---|---|---|
 | `codex-track-handoff-context` | baseline | `/Users/alexeidelgado/Desktop/TritonGen` | active baseline | Treat as the current docs/workflow baseline branch; do not use for high-blast-radius implementation work. |
-| `codex/llm-repair-memory-agentic-transcript-v1` | A-spec / agentic transcript prep | `/private/tmp/tritongen-llm-repair-memory` | active prep branch | Created from `codex-track-handoff-context` for `agentic_transcript_v1` implementation-spec routing. |
+| `codex/llm-repair-memory-agentic-transcript-v1` | A-spec / agentic transcript prep | `/private/tmp/tritongen-llm-repair-memory` | ready for A0 | Created from `codex-track-handoff-context` for `agentic_transcript_v1` implementation-spec routing; docs-only checkpoint report is recorded. |
 
 ## Active Serialized-Surface Leases
 
@@ -461,6 +462,7 @@ Historical context:
 | observability sidecar implementation spec | complete | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 created and routed; code implementation not started. |
 | structural/task analyzer metadata implementation spec | complete | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 created and routed; analyzer/report code implementation not started. |
 | agentic transcript implementation spec | complete | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5 created, routed, edge-case hardened, research cross-checked, and expanded with implementation checkpoint gates plus canonical rendering, public-evidence-only ranking, fixture manifest, byte-invariance, import-isolation, metadata-nullability, CLI/API/default, mixed-policy analyzer, commit-slicing, rollback, and no-cleanup gates; C/P prompt-core and loop code implementation not started. |
+| agentic transcript docs-only checkpoint | complete | `audits/agentic_transcript_v1_spec_checkpoint_report.md` v1.0.0 confirms source-doc inspection, readiness-audit reconciliation as `aligned_with_spec`, A0 readiness, no-code/no-output mutation, worktree caveats, and required local docs/import sanity tests. |
 
 ## Abandoned Packages
 
@@ -518,8 +520,9 @@ Current checkout:
 branch: codex/llm-repair-memory-agentic-transcript-v1
 worktree: /private/tmp/tritongen-llm-repair-memory
 spec: docs/18_agentic_transcript_v1_implementation_spec.md v0.1.5
-state: docs/handoff/experiment_change_orchestration_state.md v1.5.6
-registry: docs/handoff/document_version_registry.md v1.44.0
+state: docs/handoff/experiment_change_orchestration_state.md v1.5.7
+registry: docs/handoff/document_version_registry.md v1.45.0
+checkpoint: audits/agentic_transcript_v1_spec_checkpoint_report.md v1.0.0
 first implementation package: A0 policy constants
 ```
 
