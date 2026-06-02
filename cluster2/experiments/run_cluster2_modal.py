@@ -24,10 +24,13 @@ from cluster2.constants import (
     DEFAULT_C2_MODAL_GENERATION_GPU,
     DEFAULT_FROZEN_CLUSTER1_MANIFEST,
     DEFAULT_MAX_NEW_TOKENS,
+    DEFAULT_REPAIR_HISTORY_POLICY_V1,
     DEFAULT_REPAIR_BUDGET,
     DTYPE_NAMES,
     NEW_GENERATION_CONDITIONS,
     REPLAY_CONTROL_CONDITIONS,
+    REPAIR_HISTORY_POLICIES_V1,
+    AGENTIC_TRANSCRIPT_MAX_PROMPT_CHARS_V1,
     generation_mode_for_condition,
     normalize_cluster2_condition,
     source_class_for_condition,
@@ -69,6 +72,7 @@ from cluster2.results.logger import (
 from shared.eval.content_hashes import collect_c2_generation_hashes
 from shared.eval.correctness_shapes import LOCKED_KERNEL_CLASSES, get_shape_metadata
 from shared.generation_metadata import normalize_immutable_hub_revision
+from shared.repair_history.policies import RepairHistoryConfig
 
 
 MODEL_ID_DEFAULT = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
@@ -115,6 +119,9 @@ class Cluster2RunnerConfig:
     modal_eval_gpu: str
     output: str
     write_mode: str
+    repair_history_policy: str = DEFAULT_REPAIR_HISTORY_POLICY_V1
+    repair_max_prompt_chars: int = AGENTIC_TRANSCRIPT_MAX_PROMPT_CHARS_V1
+    repair_include_latest_source: bool = False
 
     def __post_init__(self) -> None:
         _require_member(self.condition, CONDITION_SELECTOR_CHOICES, "condition")
@@ -150,6 +157,7 @@ class Cluster2RunnerConfig:
             raise ValueError("modal_eval_gpu must be L4 for Cluster 2")
         _require_non_empty_str(self.output, "output")
         _require_member(self.write_mode, ("overwrite", "resume"), "write_mode")
+        self.repair_history_config
 
     @property
     def conditions(self) -> tuple[str, ...]:
@@ -180,10 +188,21 @@ class Cluster2RunnerConfig:
             modal_eval_gpu=namespace.modal_eval_gpu,
             output=namespace.output,
             write_mode=write_mode,
+            repair_history_policy=namespace.repair_history_policy,
+            repair_max_prompt_chars=namespace.repair_max_prompt_chars,
+            repair_include_latest_source=namespace.repair_include_latest_source,
         )
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    @property
+    def repair_history_config(self) -> RepairHistoryConfig:
+        return RepairHistoryConfig(
+            repair_history_policy=self.repair_history_policy,
+            max_prompt_chars=self.repair_max_prompt_chars,
+            include_latest_source=self.repair_include_latest_source,
+        )
 
 
 @dataclass(frozen=True)
@@ -271,6 +290,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--temperature", default=0.2, type=float)
     parser.add_argument("--max-new-tokens", default=MAX_NEW_TOKENS_DEFAULT, type=int)
     parser.add_argument("--repair-budget", default=DEFAULT_REPAIR_BUDGET, type=int)
+    parser.add_argument(
+        "--repair-history-policy",
+        default=DEFAULT_REPAIR_HISTORY_POLICY_V1,
+        choices=tuple(sorted(REPAIR_HISTORY_POLICIES_V1)),
+    )
+    parser.add_argument(
+        "--repair-max-prompt-chars",
+        default=AGENTIC_TRANSCRIPT_MAX_PROMPT_CHARS_V1,
+        type=int,
+    )
+    parser.add_argument(
+        "--repair-include-latest-source",
+        action="store_true",
+    )
     parser.add_argument("--modal-generation-gpu", default=DEFAULT_C2_MODAL_GENERATION_GPU)
     parser.add_argument("--modal-eval-gpu", default=DEFAULT_C2_MODAL_EVAL_GPU)
     parser.add_argument("--output", required=True)
@@ -337,6 +370,9 @@ def _modal_entrypoint_argv(
     temperature: float,
     max_new_tokens: int,
     repair_budget: int,
+    repair_history_policy: str,
+    repair_max_prompt_chars: int,
+    repair_include_latest_source: bool,
     modal_generation_gpu: str,
     modal_eval_gpu: str,
     output: str,
@@ -369,6 +405,10 @@ def _modal_entrypoint_argv(
         str(max_new_tokens),
         "--repair-budget",
         str(repair_budget),
+        "--repair-history-policy",
+        repair_history_policy,
+        "--repair-max-prompt-chars",
+        str(repair_max_prompt_chars),
         "--modal-generation-gpu",
         modal_generation_gpu,
         "--modal-eval-gpu",
@@ -381,6 +421,8 @@ def _modal_entrypoint_argv(
         argv.extend(["--model-revision", model_revision])
     if tokenizer_revision is not None:
         argv.extend(["--tokenizer-revision", tokenizer_revision])
+    if repair_include_latest_source:
+        argv.append("--repair-include-latest-source")
     return argv
 
 
@@ -399,6 +441,9 @@ def modal_entrypoint(
     temperature: float = 0.2,
     max_new_tokens: int = MAX_NEW_TOKENS_DEFAULT,
     repair_budget: int = DEFAULT_REPAIR_BUDGET,
+    repair_history_policy: str = DEFAULT_REPAIR_HISTORY_POLICY_V1,
+    repair_max_prompt_chars: int = AGENTIC_TRANSCRIPT_MAX_PROMPT_CHARS_V1,
+    repair_include_latest_source: bool = False,
     modal_generation_gpu: str = DEFAULT_C2_MODAL_GENERATION_GPU,
     modal_eval_gpu: str = DEFAULT_C2_MODAL_EVAL_GPU,
     overwrite: bool = False,
@@ -419,6 +464,9 @@ def modal_entrypoint(
             temperature=temperature,
             max_new_tokens=max_new_tokens,
             repair_budget=repair_budget,
+            repair_history_policy=repair_history_policy,
+            repair_max_prompt_chars=repair_max_prompt_chars,
+            repair_include_latest_source=repair_include_latest_source,
             modal_generation_gpu=modal_generation_gpu,
             modal_eval_gpu=modal_eval_gpu,
             output=output,
@@ -815,7 +863,9 @@ def _run_generated_cell(
         generation=generation_call,
         evaluation=evaluation_call,
         repair_budget=config.repair_budget,
+        repair_history_config=config.repair_history_config,
     )
+    repair_prompt_metadata = repair_result.terminal_prompt_metadata
     trace_by_attempt = {
         trace.attempt_index: trace for trace in repair_result.trace_summaries
     }
@@ -886,6 +936,38 @@ def _run_generated_cell(
         tokenizer_revision=grammar_metadata["tokenizer_revision"],
         temperature=config.temperature,
         max_new_tokens=config.max_new_tokens,
+        repair_history_policy=repair_prompt_metadata.repair_history_policy,
+        repair_prompt_template_version=(
+            repair_prompt_metadata.repair_prompt_template_version
+        ),
+        repair_prompt_renderer_version=(
+            repair_prompt_metadata.repair_prompt_renderer_version
+        ),
+        repair_anchor_attempt_index=(
+            repair_prompt_metadata.repair_anchor_attempt_index
+        ),
+        repair_latest_attempt_index=(
+            repair_prompt_metadata.repair_latest_attempt_index
+        ),
+        repair_history_attempt_count=(
+            repair_prompt_metadata.repair_history_attempt_count
+        ),
+        repair_prompt_sha256=repair_prompt_metadata.repair_prompt_sha256,
+        repair_prompt_char_count=repair_prompt_metadata.repair_prompt_char_count,
+        repair_max_prompt_chars=repair_prompt_metadata.repair_max_prompt_chars,
+        repair_include_latest_source=(
+            repair_prompt_metadata.repair_include_latest_source
+        ),
+        repair_anchor_source_hash=(
+            repair_prompt_metadata.repair_anchor_source_hash
+        ),
+        repair_latest_source_hash=(
+            repair_prompt_metadata.repair_latest_source_hash
+        ),
+        repair_history_summary_sha256=(
+            repair_prompt_metadata.repair_history_summary_sha256
+        ),
+        repair_history_error_code=repair_prompt_metadata.repair_history_error_code,
     )
 
 

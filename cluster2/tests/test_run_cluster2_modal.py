@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -64,6 +65,10 @@ def _fallback_modal_image_components() -> dict[str, object]:
 
 def _fallback_modal_image_sha256() -> str:
     return modal_image_provenance_digest(_fallback_modal_image_components())
+
+
+def _sha256(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def test_runner_routes_none_to_replay_adapter(tmp_path: Path) -> None:
@@ -422,6 +427,74 @@ def test_runner_repair_attempts_preserve_repair_loop_seed_schedule(
         for row in result.rows
         if row.generated_metadata is not None
     ] == [1]
+
+
+def test_runner_agentic_repair_history_is_opt_in_and_records_metadata(
+    tmp_path: Path,
+) -> None:
+    generation_calls: list[dict[str, Any]] = []
+
+    def first_attempt_fails_then_succeeds(request: Any) -> dict[str, Any]:
+        success = request.identity.attempt_index == 1
+        return {
+            "correctness_result": {
+                "identity": request.identity.model_dump(),
+                "functional_success": success,
+                "repair_set_success": success,
+                "eval_set_success": success,
+                "level_reached": 2,
+                "failure_code": None if success else "F2_NUMERIC_LARGE",
+                "correctness_error": None if success else "numeric mismatch",
+            }
+        }
+
+    result = run_cluster2(
+        _config(
+            tmp_path,
+            condition="C",
+            repair_budget=1,
+            n=1,
+            repair_history_policy="agentic_transcript_v1",
+        ),
+        dependencies=RunnerDependencies(
+            generation=_fake_generation(generation_calls),
+            correctness=first_attempt_fails_then_succeeds,
+        ),
+    )
+
+    assert "Attempt history:\nAttempt 0:" in generation_calls[1]["prompt"]
+    assert "BEGIN BEST PREVIOUS SOURCE" in generation_calls[1]["prompt"]
+    row = result.rows[0]
+    assert row.attempt_index == 1
+    assert row.repair_trace is not None
+    assert row.generated_metadata is not None
+    metadata = row.generated_metadata
+    assert metadata.repair_history_policy == "agentic_transcript_v1"
+    assert metadata.repair_anchor_attempt_index == 0
+    assert metadata.repair_latest_attempt_index == 0
+    assert metadata.repair_history_attempt_count == 1
+    assert metadata.repair_prompt_sha256 == _sha256(generation_calls[1]["prompt"])
+    assert metadata.repair_history_summary_sha256 is not None
+    assert metadata.repair_anchor_source_hash == row.repair_trace[0].source_hash
+    assert metadata.repair_latest_source_hash == row.repair_trace[0].source_hash
+
+
+def test_runner_default_repair_history_policy_records_legacy_label(
+    tmp_path: Path,
+) -> None:
+    result = run_cluster2(
+        _config(tmp_path, condition="C", repair_budget=0, n=1),
+        dependencies=RunnerDependencies(
+            generation=_fake_generation([]),
+            correctness=_success_correctness([]),
+        ),
+    )
+
+    metadata = result.rows[0].generated_metadata
+    assert metadata is not None
+    assert metadata.repair_history_policy == "last_attempt_only_v1"
+    assert metadata.repair_anchor_attempt_index is None
+    assert metadata.repair_prompt_sha256 is None
 
 
 def test_runner_routes_gc_to_c2_generation_with_g_adapter(tmp_path: Path) -> None:
@@ -1324,6 +1397,84 @@ def test_cli_defaults_gc_grammar_variant_to_task_agnostic(tmp_path: Path) -> Non
     assert config.grammar_variant == "task_agnostic"
     assert config.max_new_tokens == DEFAULT_MAX_NEW_TOKENS
     assert config.max_new_tokens >= 1024
+    assert config.repair_history_policy == "last_attempt_only_v1"
+    assert config.repair_max_prompt_chars == 24000
+    assert config.repair_include_latest_source is False
+
+
+def test_cli_accepts_explicit_agentic_repair_history_policy(
+    tmp_path: Path,
+) -> None:
+    config = parse_args(
+        [
+            "--condition",
+            "C",
+            "--kernel-class",
+            "elementwise",
+            "--scale-tier",
+            "smoke",
+            "--n",
+            "1",
+            "--model-revision",
+            TEST_MODEL_REVISION,
+            "--tokenizer-revision",
+            TEST_TOKENIZER_REVISION,
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--repair-max-prompt-chars",
+            "12000",
+            "--repair-include-latest-source",
+            "--output",
+            str(tmp_path / "out.jsonl"),
+            "--overwrite",
+        ]
+    )
+
+    assert config.repair_history_config.repair_history_policy == (
+        "agentic_transcript_v1"
+    )
+    assert config.repair_history_config.max_prompt_chars == 12000
+    assert config.repair_history_config.include_latest_source is True
+
+
+def test_cli_rejects_unknown_repair_history_policy(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "--condition",
+                "C",
+                "--kernel-class",
+                "elementwise",
+                "--scale-tier",
+                "smoke",
+                "--n",
+                "1",
+                "--model-revision",
+                TEST_MODEL_REVISION,
+                "--tokenizer-revision",
+                TEST_TOKENIZER_REVISION,
+                "--repair-history-policy",
+                "unknown_policy",
+                "--output",
+                str(tmp_path / "out.jsonl"),
+                "--overwrite",
+            ]
+        )
+
+
+def test_config_rejects_invalid_repair_prompt_settings(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="max_prompt_chars must be a positive int"):
+        _config(
+            tmp_path,
+            condition="C",
+            repair_max_prompt_chars=0,
+        )
+    with pytest.raises(ValueError, match="include_latest_source must be a bool"):
+        _config(
+            tmp_path,
+            condition="C",
+            repair_include_latest_source="yes",  # type: ignore[arg-type]
+        )
 
 
 def test_cli_accepts_explicit_template_upper_bound_diagnostic(
@@ -1459,6 +1610,9 @@ def _config(
     grammar_variant: str = "task_agnostic",
     dtypes: tuple[str, ...] = ("fp32",),
     max_new_tokens: int = 64,
+    repair_history_policy: str = "last_attempt_only_v1",
+    repair_max_prompt_chars: int = 24000,
+    repair_include_latest_source: bool = False,
 ) -> Cluster2RunnerConfig:
     tmp_path.mkdir(parents=True, exist_ok=True)
     if manifest is None and condition in {"C", "G+C"}:
@@ -1489,6 +1643,9 @@ def _config(
         modal_eval_gpu="L4",
         output=str(tmp_path / "cluster2.jsonl"),
         write_mode=write_mode,
+        repair_history_policy=repair_history_policy,
+        repair_max_prompt_chars=repair_max_prompt_chars,
+        repair_include_latest_source=repair_include_latest_source,
     )
 
 

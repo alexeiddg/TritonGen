@@ -14,11 +14,14 @@ from dataclasses import asdict, dataclass, fields
 from typing import Any
 
 from cluster2.constants import (
+    AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1,
     DTYPE_NAMES,
+    DEFAULT_REPAIR_HISTORY_POLICY_V1,
     GENERATED_SOURCE_CLASS,
     NEW_GENERATION_CONDITIONS,
     REPLAY_CONTROL_CONDITIONS,
     REPLAY_CONTROL_SOURCE_CLASS,
+    REPAIR_HISTORY_POLICIES_V1,
     generation_mode_for_condition,
     normalize_cluster2_condition,
     source_class_for_condition,
@@ -329,6 +332,20 @@ class Cluster2GeneratedRowMetadata:
     tokenizer_revision: str | None = None
     temperature: float | None = None
     max_new_tokens: int | None = None
+    repair_history_policy: str = DEFAULT_REPAIR_HISTORY_POLICY_V1
+    repair_prompt_template_version: str | None = None
+    repair_prompt_renderer_version: str | None = None
+    repair_anchor_attempt_index: int | None = None
+    repair_latest_attempt_index: int | None = None
+    repair_history_attempt_count: int | None = None
+    repair_prompt_sha256: str | None = None
+    repair_prompt_char_count: int | None = None
+    repair_max_prompt_chars: int | None = None
+    repair_include_latest_source: bool | None = None
+    repair_anchor_source_hash: str | None = None
+    repair_latest_source_hash: str | None = None
+    repair_history_summary_sha256: str | None = None
+    repair_history_error_code: str | None = None
 
     def __post_init__(self) -> None:
         _validate_hash_mapping(
@@ -381,6 +398,22 @@ class Cluster2GeneratedRowMetadata:
             tokenizer_revision=self.tokenizer_revision,
             temperature=self.temperature,
             max_new_tokens=self.max_new_tokens,
+        )
+        _validate_repair_history_metadata(
+            repair_history_policy=self.repair_history_policy,
+            repair_prompt_template_version=self.repair_prompt_template_version,
+            repair_prompt_renderer_version=self.repair_prompt_renderer_version,
+            repair_anchor_attempt_index=self.repair_anchor_attempt_index,
+            repair_latest_attempt_index=self.repair_latest_attempt_index,
+            repair_history_attempt_count=self.repair_history_attempt_count,
+            repair_prompt_sha256=self.repair_prompt_sha256,
+            repair_prompt_char_count=self.repair_prompt_char_count,
+            repair_max_prompt_chars=self.repair_max_prompt_chars,
+            repair_include_latest_source=self.repair_include_latest_source,
+            repair_anchor_source_hash=self.repair_anchor_source_hash,
+            repair_latest_source_hash=self.repair_latest_source_hash,
+            repair_history_summary_sha256=self.repair_history_summary_sha256,
+            repair_history_error_code=self.repair_history_error_code,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -564,6 +597,11 @@ class Cluster2EvalRow:
                 raise TypeError("generated rows require a compact trace_summary")
             if self.repair_trace is not None and len(self.repair_trace) == 0:
                 raise ValueError("generated repair_trace must not be empty when present")
+            _validate_agentic_repair_trace_metadata(
+                metadata=self.generated_metadata,
+                repair_trace=self.repair_trace,
+                row_attempt_index=self.attempt_index,
+            )
             return
 
         raise ValueError(f"unsupported condition {self.condition!r}")
@@ -926,6 +964,20 @@ def generated_row(
     tokenizer_revision: str | None = None,
     temperature: float | None = None,
     max_new_tokens: int | None = None,
+    repair_history_policy: str = DEFAULT_REPAIR_HISTORY_POLICY_V1,
+    repair_prompt_template_version: str | None = None,
+    repair_prompt_renderer_version: str | None = None,
+    repair_anchor_attempt_index: int | None = None,
+    repair_latest_attempt_index: int | None = None,
+    repair_history_attempt_count: int | None = None,
+    repair_prompt_sha256: str | None = None,
+    repair_prompt_char_count: int | None = None,
+    repair_max_prompt_chars: int | None = None,
+    repair_include_latest_source: bool | None = None,
+    repair_anchor_source_hash: str | None = None,
+    repair_latest_source_hash: str | None = None,
+    repair_history_summary_sha256: str | None = None,
+    repair_history_error_code: str | None = None,
 ) -> Cluster2EvalRow:
     """Build a generated row with C2 generation provenance."""
 
@@ -993,6 +1045,20 @@ def generated_row(
             tokenizer_revision=tokenizer_revision,
             temperature=temperature,
             max_new_tokens=max_new_tokens,
+            repair_history_policy=repair_history_policy,
+            repair_prompt_template_version=repair_prompt_template_version,
+            repair_prompt_renderer_version=repair_prompt_renderer_version,
+            repair_anchor_attempt_index=repair_anchor_attempt_index,
+            repair_latest_attempt_index=repair_latest_attempt_index,
+            repair_history_attempt_count=repair_history_attempt_count,
+            repair_prompt_sha256=repair_prompt_sha256,
+            repair_prompt_char_count=repair_prompt_char_count,
+            repair_max_prompt_chars=repair_max_prompt_chars,
+            repair_include_latest_source=repair_include_latest_source,
+            repair_anchor_source_hash=repair_anchor_source_hash,
+            repair_latest_source_hash=repair_latest_source_hash,
+            repair_history_summary_sha256=repair_history_summary_sha256,
+            repair_history_error_code=repair_history_error_code,
         ),
         repair_trace=resolved_repair_trace,
     )
@@ -1520,6 +1586,213 @@ def _validate_pairing_metadata(
             raise ValueError("temperature must be non-negative")
     if max_new_tokens is not None:
         _require_positive_int(max_new_tokens, "max_new_tokens")
+
+
+def _validate_repair_history_metadata(
+    *,
+    repair_history_policy: str,
+    repair_prompt_template_version: str | None,
+    repair_prompt_renderer_version: str | None,
+    repair_anchor_attempt_index: int | None,
+    repair_latest_attempt_index: int | None,
+    repair_history_attempt_count: int | None,
+    repair_prompt_sha256: str | None,
+    repair_prompt_char_count: int | None,
+    repair_max_prompt_chars: int | None,
+    repair_include_latest_source: bool | None,
+    repair_anchor_source_hash: str | None,
+    repair_latest_source_hash: str | None,
+    repair_history_summary_sha256: str | None,
+    repair_history_error_code: str | None,
+) -> None:
+    if not isinstance(repair_history_policy, str):
+        raise TypeError("repair_history_policy must be a string")
+    if repair_history_policy not in REPAIR_HISTORY_POLICIES_V1:
+        raise ValueError(
+            f"unsupported repair_history_policy {repair_history_policy!r}"
+        )
+    _require_optional_non_empty_str(
+        repair_prompt_template_version,
+        "repair_prompt_template_version",
+    )
+    _require_optional_non_empty_str(
+        repair_prompt_renderer_version,
+        "repair_prompt_renderer_version",
+    )
+    _require_optional_non_empty_str(
+        repair_history_error_code,
+        "repair_history_error_code",
+    )
+    for field_name, value in (
+        ("repair_anchor_attempt_index", repair_anchor_attempt_index),
+        ("repair_latest_attempt_index", repair_latest_attempt_index),
+        ("repair_history_attempt_count", repair_history_attempt_count),
+    ):
+        if value is not None:
+            _require_non_negative_int(value, field_name)
+    for field_name, value in (
+        ("repair_prompt_char_count", repair_prompt_char_count),
+        ("repair_max_prompt_chars", repair_max_prompt_chars),
+    ):
+        if value is not None:
+            _require_positive_int(value, field_name)
+    if repair_include_latest_source is not None:
+        _require_bool(repair_include_latest_source, "repair_include_latest_source")
+    for field_name, value in (
+        ("repair_prompt_sha256", repair_prompt_sha256),
+        ("repair_anchor_source_hash", repair_anchor_source_hash),
+        ("repair_latest_source_hash", repair_latest_source_hash),
+        ("repair_history_summary_sha256", repair_history_summary_sha256),
+    ):
+        _validate_optional_sha256(value, field_name)
+    _validate_agentic_transcript_rendered_metadata(
+        repair_history_policy=repair_history_policy,
+        repair_prompt_template_version=repair_prompt_template_version,
+        repair_prompt_renderer_version=repair_prompt_renderer_version,
+        repair_anchor_attempt_index=repair_anchor_attempt_index,
+        repair_latest_attempt_index=repair_latest_attempt_index,
+        repair_history_attempt_count=repair_history_attempt_count,
+        repair_prompt_sha256=repair_prompt_sha256,
+        repair_prompt_char_count=repair_prompt_char_count,
+        repair_max_prompt_chars=repair_max_prompt_chars,
+        repair_include_latest_source=repair_include_latest_source,
+        repair_anchor_source_hash=repair_anchor_source_hash,
+        repair_latest_source_hash=repair_latest_source_hash,
+        repair_history_summary_sha256=repair_history_summary_sha256,
+    )
+
+
+def _validate_agentic_transcript_rendered_metadata(
+    *,
+    repair_history_policy: str,
+    repair_prompt_template_version: str | None,
+    repair_prompt_renderer_version: str | None,
+    repair_anchor_attempt_index: int | None,
+    repair_latest_attempt_index: int | None,
+    repair_history_attempt_count: int | None,
+    repair_prompt_sha256: str | None,
+    repair_prompt_char_count: int | None,
+    repair_max_prompt_chars: int | None,
+    repair_include_latest_source: bool | None,
+    repair_anchor_source_hash: str | None,
+    repair_latest_source_hash: str | None,
+    repair_history_summary_sha256: str | None,
+) -> None:
+    if repair_history_policy != AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1:
+        return
+    required_fields = {
+        "repair_prompt_template_version": repair_prompt_template_version,
+        "repair_prompt_renderer_version": repair_prompt_renderer_version,
+        "repair_anchor_attempt_index": repair_anchor_attempt_index,
+        "repair_latest_attempt_index": repair_latest_attempt_index,
+        "repair_history_attempt_count": repair_history_attempt_count,
+        "repair_prompt_sha256": repair_prompt_sha256,
+        "repair_prompt_char_count": repair_prompt_char_count,
+        "repair_max_prompt_chars": repair_max_prompt_chars,
+        "repair_include_latest_source": repair_include_latest_source,
+        "repair_anchor_source_hash": repair_anchor_source_hash,
+        "repair_latest_source_hash": repair_latest_source_hash,
+        "repair_history_summary_sha256": repair_history_summary_sha256,
+    }
+    if all(value is None for value in required_fields.values()):
+        return
+    missing = sorted(
+        field_name
+        for field_name, value in required_fields.items()
+        if value is None
+    )
+    if missing:
+        raise ValueError(
+            "agentic_transcript_v1 metadata requires rendered prompt fields: "
+            + ", ".join(missing)
+        )
+    if repair_history_attempt_count is not None and repair_history_attempt_count <= 0:
+        raise ValueError(
+            "repair_history_attempt_count must be positive for "
+            "agentic_transcript_v1 rendered metadata"
+        )
+    if (
+        repair_latest_attempt_index is not None
+        and repair_history_attempt_count is not None
+        and repair_latest_attempt_index != repair_history_attempt_count - 1
+    ):
+        raise ValueError(
+            "repair_latest_attempt_index must equal "
+            "repair_history_attempt_count - 1 for "
+            "agentic_transcript_v1 rendered metadata"
+        )
+    if (
+        repair_anchor_attempt_index is not None
+        and repair_history_attempt_count is not None
+        and repair_anchor_attempt_index >= repair_history_attempt_count
+    ):
+        raise ValueError(
+            "repair_anchor_attempt_index must be less than "
+            "repair_history_attempt_count for "
+            "agentic_transcript_v1 rendered metadata"
+        )
+
+
+def _validate_agentic_repair_trace_metadata(
+    *,
+    metadata: Cluster2GeneratedRowMetadata,
+    repair_trace: tuple[TraceSummary, ...] | None,
+    row_attempt_index: int,
+) -> None:
+    if metadata.repair_history_policy != AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1:
+        return
+    if metadata.repair_history_attempt_count is None:
+        if row_attempt_index > 0:
+            raise ValueError(
+                "agentic_transcript_v1 repair rows require rendered prompt metadata"
+            )
+        if repair_trace is not None and len(repair_trace) > 1:
+            raise ValueError(
+                "agentic_transcript_v1 multi-attempt repair_trace requires "
+                "rendered prompt metadata"
+            )
+        return
+    if repair_trace is None:
+        return
+
+    history_count = metadata.repair_history_attempt_count
+    if row_attempt_index != history_count:
+        raise ValueError(
+            "row attempt_index must equal repair_history_attempt_count for "
+            "agentic_transcript_v1 rendered metadata"
+        )
+    expected_trace_length = history_count + 1
+    if len(repair_trace) != expected_trace_length:
+        raise ValueError(
+            "repair_trace length must equal repair_history_attempt_count + 1 "
+            "for agentic_transcript_v1 rendered metadata"
+        )
+    traces_by_attempt: dict[int, TraceSummary] = {}
+    for trace in repair_trace:
+        if trace.attempt_index in traces_by_attempt:
+            raise ValueError(
+                "repair_trace attempt indexes must be unique for "
+                "agentic_transcript_v1 rendered metadata"
+            )
+        traces_by_attempt[trace.attempt_index] = trace
+    expected_attempt_indexes = set(range(expected_trace_length))
+    if set(traces_by_attempt) != expected_attempt_indexes:
+        raise ValueError(
+            "repair_trace attempt indexes must be contiguous and zero-based for "
+            "agentic_transcript_v1 rendered metadata"
+        )
+    assert metadata.repair_anchor_attempt_index is not None
+    assert metadata.repair_latest_attempt_index is not None
+    anchor_trace = traces_by_attempt[metadata.repair_anchor_attempt_index]
+    latest_trace = traces_by_attempt[metadata.repair_latest_attempt_index]
+    if anchor_trace.source_hash != metadata.repair_anchor_source_hash:
+        raise ValueError(
+            "repair_anchor_source_hash must match repair_trace anchor source_hash"
+        )
+    if latest_trace.source_hash != metadata.repair_latest_source_hash:
+        raise ValueError(
+            "repair_latest_source_hash must match repair_trace latest source_hash"
+        )
 
 
 def _validate_condition_hash_mapping(
