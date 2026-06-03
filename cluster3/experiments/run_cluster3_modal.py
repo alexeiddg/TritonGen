@@ -18,11 +18,13 @@ from pathlib import Path
 from typing import Any
 
 from cluster2.constants import (
+    AGENTIC_TRANSCRIPT_MAX_PROMPT_CHARS_V1,
     DEFAULT_C2_MODAL_EVAL_GPU,
     DEFAULT_C2_MODAL_GENERATION_GPU,
     DEFAULT_MAX_NEW_TOKENS,
     DEFAULT_REPAIR_BUDGET,
     DTYPE_NAMES,
+    REPAIR_HISTORY_POLICIES_V1,
     generation_mode_for_condition,
     source_class_for_condition,
 )
@@ -73,6 +75,7 @@ from shared.generation_metadata import (
     UNKNOWN,
     normalize_immutable_hub_revision,
 )
+from shared.repair_history.policies import RepairHistoryConfig
 
 
 MODEL_ID_DEFAULT = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
@@ -106,6 +109,9 @@ class Cluster3RunnerConfig:
     condition: str
     p_repair_budget: int = DEFAULT_P_REPAIR_BUDGET
     c_repair_budget: int = DEFAULT_REPAIR_BUDGET
+    repair_history_policy: str = P_HISTORY_POLICY_V1
+    repair_max_prompt_chars: int = AGENTIC_TRANSCRIPT_MAX_PROMPT_CHARS_V1
+    repair_include_latest_source: bool = False
     modal_generation_gpu: str = DEFAULT_C2_MODAL_GENERATION_GPU
     modal_eval_gpu: str = DEFAULT_C2_MODAL_EVAL_GPU
     model_id: str = MODEL_ID_DEFAULT
@@ -152,6 +158,7 @@ class Cluster3RunnerConfig:
             DEFAULT_REPAIR_BUDGET,
             "c_repair_budget",
         )
+        self.repair_history_config
         if self.modal_generation_gpu != DEFAULT_C2_MODAL_GENERATION_GPU:
             raise ValueError("modal_generation_gpu must match Cluster 2 default L4")
         if self.modal_eval_gpu != DEFAULT_C2_MODAL_EVAL_GPU:
@@ -174,12 +181,23 @@ class Cluster3RunnerConfig:
     def kernel_classes(self) -> tuple[str, ...]:
         return expand_kernel_class_selector(self.kernel_class)
 
+    @property
+    def repair_history_config(self) -> RepairHistoryConfig:
+        return RepairHistoryConfig(
+            repair_history_policy=self.repair_history_policy,
+            max_prompt_chars=self.repair_max_prompt_chars,
+            include_latest_source=self.repair_include_latest_source,
+        )
+
     @classmethod
     def from_namespace(cls, namespace: argparse.Namespace) -> "Cluster3RunnerConfig":
         return cls(
             condition=namespace.condition,
             p_repair_budget=namespace.p_repair_budget,
             c_repair_budget=namespace.c_repair_budget,
+            repair_history_policy=namespace.repair_history_policy,
+            repair_max_prompt_chars=namespace.repair_max_prompt_chars,
+            repair_include_latest_source=namespace.repair_include_latest_source,
             modal_generation_gpu=namespace.modal_generation_gpu,
             modal_eval_gpu=namespace.modal_eval_gpu,
             model_id=namespace.model_id,
@@ -284,6 +302,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=int,
     )
     parser.add_argument("--c-repair-budget", default=DEFAULT_REPAIR_BUDGET, type=int)
+    parser.add_argument(
+        "--repair-history-policy",
+        default=P_HISTORY_POLICY_V1,
+        choices=tuple(sorted(REPAIR_HISTORY_POLICIES_V1)),
+    )
+    parser.add_argument(
+        "--repair-max-prompt-chars",
+        default=AGENTIC_TRANSCRIPT_MAX_PROMPT_CHARS_V1,
+        type=int,
+    )
+    parser.add_argument("--repair-include-latest-source", action="store_true")
     parser.add_argument("--modal-generation-gpu", default=DEFAULT_C2_MODAL_GENERATION_GPU)
     parser.add_argument("--modal-eval-gpu", default=DEFAULT_C2_MODAL_EVAL_GPU)
     parser.add_argument("--diagnostic-seed-source", default=None)
@@ -350,6 +379,9 @@ def _modal_entrypoint_argv(
     max_new_tokens: int,
     p_repair_budget: int,
     c_repair_budget: int,
+    repair_history_policy: str,
+    repair_max_prompt_chars: int,
+    repair_include_latest_source: bool,
     modal_generation_gpu: str,
     modal_eval_gpu: str,
     diagnostic_seed_source: str | None,
@@ -387,11 +419,17 @@ def _modal_entrypoint_argv(
         str(p_repair_budget),
         "--c-repair-budget",
         str(c_repair_budget),
+        "--repair-history-policy",
+        repair_history_policy,
+        "--repair-max-prompt-chars",
+        str(repair_max_prompt_chars),
         "--modal-generation-gpu",
         modal_generation_gpu,
         "--modal-eval-gpu",
         modal_eval_gpu,
     ]
+    if repair_include_latest_source:
+        args.append("--repair-include-latest-source")
     if diagnostic_seed_source:
         args.extend(["--diagnostic-seed-source", diagnostic_seed_source])
     if diagnostic_expected_initial_failure:
@@ -420,6 +458,9 @@ def modal_entrypoint(
     max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS,
     p_repair_budget: int = DEFAULT_P_REPAIR_BUDGET,
     c_repair_budget: int = DEFAULT_REPAIR_BUDGET,
+    repair_history_policy: str = P_HISTORY_POLICY_V1,
+    repair_max_prompt_chars: int = AGENTIC_TRANSCRIPT_MAX_PROMPT_CHARS_V1,
+    repair_include_latest_source: bool = False,
     modal_generation_gpu: str = DEFAULT_C2_MODAL_GENERATION_GPU,
     modal_eval_gpu: str = DEFAULT_C2_MODAL_EVAL_GPU,
     diagnostic_seed_source: str = "",
@@ -444,6 +485,9 @@ def modal_entrypoint(
             max_new_tokens=max_new_tokens,
             p_repair_budget=p_repair_budget,
             c_repair_budget=c_repair_budget,
+            repair_history_policy=repair_history_policy,
+            repair_max_prompt_chars=repair_max_prompt_chars,
+            repair_include_latest_source=repair_include_latest_source,
             modal_generation_gpu=modal_generation_gpu,
             modal_eval_gpu=modal_eval_gpu,
             diagnostic_seed_source=diagnostic_seed_source or None,
@@ -878,6 +922,7 @@ def _run_p_loop(
         evaluation=evaluation_call,
         seed_attempt=seed_attempt,
         repair_budget=config.p_repair_budget,
+        repair_history_config=config.repair_history_config,
     )
 
 
@@ -949,6 +994,16 @@ def _build_row(
         p_compile_repair_succeeded_from_result(p_result) if p_result else False
     )
     p_terminal_failure = p_result.final_failure_code if p_result else None
+    p_prompt_metadata = (
+        p_result.terminal_prompt_metadata
+        if p_result is not None and p_result.terminal_prompt_metadata is not None
+        else None
+    )
+    p_history_policy = (
+        p_prompt_metadata.p_history_policy
+        if p_prompt_metadata is not None
+        else config.repair_history_config.repair_history_policy
+    )
     p_changed = (
         _p_changed_terminal_class("F1_COMPILE", p_terminal_failure)
         if p_result
@@ -1099,7 +1154,72 @@ def _build_row(
         else None,
         p_repair_stop_reason=p_result.stop_reason if p_result else "p_not_applicable",
         p_feedback_format=P_FEEDBACK_FORMAT_V1,
-        p_history_policy=P_HISTORY_POLICY_V1,
+        p_history_policy=p_history_policy,
+        p_repair_prompt_template_version=(
+            p_prompt_metadata.p_repair_prompt_template_version
+            if p_prompt_metadata is not None
+            else None
+        ),
+        p_repair_prompt_renderer_version=(
+            p_prompt_metadata.p_repair_prompt_renderer_version
+            if p_prompt_metadata is not None
+            else None
+        ),
+        p_repair_anchor_attempt_index=(
+            p_prompt_metadata.p_repair_anchor_attempt_index
+            if p_prompt_metadata is not None
+            else None
+        ),
+        p_repair_latest_attempt_index=(
+            p_prompt_metadata.p_repair_latest_attempt_index
+            if p_prompt_metadata is not None
+            else None
+        ),
+        p_repair_history_attempt_count=(
+            p_prompt_metadata.p_repair_history_attempt_count
+            if p_prompt_metadata is not None
+            else None
+        ),
+        p_repair_prompt_sha256=(
+            p_prompt_metadata.p_repair_prompt_sha256
+            if p_prompt_metadata is not None
+            else None
+        ),
+        p_repair_prompt_char_count=(
+            p_prompt_metadata.p_repair_prompt_char_count
+            if p_prompt_metadata is not None
+            else None
+        ),
+        p_repair_max_prompt_chars=(
+            p_prompt_metadata.p_repair_max_prompt_chars
+            if p_prompt_metadata is not None
+            else None
+        ),
+        p_repair_include_latest_source=(
+            p_prompt_metadata.p_repair_include_latest_source
+            if p_prompt_metadata is not None
+            else None
+        ),
+        p_repair_anchor_source_hash=(
+            p_prompt_metadata.p_repair_anchor_source_hash
+            if p_prompt_metadata is not None
+            else None
+        ),
+        p_repair_latest_source_hash=(
+            p_prompt_metadata.p_repair_latest_source_hash
+            if p_prompt_metadata is not None
+            else None
+        ),
+        p_repair_history_summary_sha256=(
+            p_prompt_metadata.p_repair_history_summary_sha256
+            if p_prompt_metadata is not None
+            else None
+        ),
+        p_repair_history_error_code=(
+            p_prompt_metadata.p_repair_history_error_code
+            if p_prompt_metadata is not None
+            else None
+        ),
         p_repair_trace=p_result.attempts if p_result else None,
         terminal_source_stage=terminal_source_stage,
         terminal_generation_seed=terminal_generation_seed,

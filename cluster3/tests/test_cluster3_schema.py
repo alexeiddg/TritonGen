@@ -49,6 +49,20 @@ def _generated_metadata(
     p_repair_attempted: bool = False,
     p_compile_repair_succeeded: bool = False,
     p_repair_attempt_count: int = 0,
+    p_history_policy: str = P_HISTORY_POLICY_V1,
+    p_repair_prompt_template_version: str | None = None,
+    p_repair_prompt_renderer_version: str | None = None,
+    p_repair_anchor_attempt_index: int | None = None,
+    p_repair_latest_attempt_index: int | None = None,
+    p_repair_history_attempt_count: int | None = None,
+    p_repair_prompt_sha256: str | None = None,
+    p_repair_prompt_char_count: int | None = None,
+    p_repair_max_prompt_chars: int | None = None,
+    p_repair_include_latest_source: bool | None = None,
+    p_repair_anchor_source_hash: str | None = None,
+    p_repair_latest_source_hash: str | None = None,
+    p_repair_history_summary_sha256: str | None = None,
+    p_repair_history_error_code: str | None = None,
     c_loop_fired: bool = False,
     c_loop_source: str = "none",
 ) -> Cluster3GeneratedRowMetadata:
@@ -70,6 +84,20 @@ def _generated_metadata(
         p_repair_attempted=p_repair_attempted,
         p_compile_repair_succeeded=p_compile_repair_succeeded,
         p_repair_attempt_count=p_repair_attempt_count,
+        p_history_policy=p_history_policy,
+        p_repair_prompt_template_version=p_repair_prompt_template_version,
+        p_repair_prompt_renderer_version=p_repair_prompt_renderer_version,
+        p_repair_anchor_attempt_index=p_repair_anchor_attempt_index,
+        p_repair_latest_attempt_index=p_repair_latest_attempt_index,
+        p_repair_history_attempt_count=p_repair_history_attempt_count,
+        p_repair_prompt_sha256=p_repair_prompt_sha256,
+        p_repair_prompt_char_count=p_repair_prompt_char_count,
+        p_repair_max_prompt_chars=p_repair_max_prompt_chars,
+        p_repair_include_latest_source=p_repair_include_latest_source,
+        p_repair_anchor_source_hash=p_repair_anchor_source_hash,
+        p_repair_latest_source_hash=p_repair_latest_source_hash,
+        p_repair_history_summary_sha256=p_repair_history_summary_sha256,
+        p_repair_history_error_code=p_repair_history_error_code,
         c_loop_fired=c_loop_fired,
         c_loop_source=c_loop_source,  # type: ignore[arg-type]
         **grammar_fields,
@@ -121,6 +149,24 @@ def _p_trace(
             )
         )
     return tuple(attempts)
+
+
+def _agentic_p_metadata_for_attempt_1() -> dict[str, object]:
+    return {
+        "p_history_policy": "agentic_transcript_v1",
+        "p_repair_prompt_template_version": "agentic_transcript_v1",
+        "p_repair_prompt_renderer_version": "agentic_transcript_v1",
+        "p_repair_anchor_attempt_index": 0,
+        "p_repair_latest_attempt_index": 0,
+        "p_repair_history_attempt_count": 1,
+        "p_repair_prompt_sha256": P_PROMPT_HASH,
+        "p_repair_prompt_char_count": 512,
+        "p_repair_max_prompt_chars": 24000,
+        "p_repair_include_latest_source": False,
+        "p_repair_anchor_source_hash": HASH_A,
+        "p_repair_latest_source_hash": HASH_A,
+        "p_repair_history_summary_sha256": HASH_C,
+    }
 
 
 def _c_trace(
@@ -227,6 +273,19 @@ def _row(**overrides: object) -> Cluster3EvalRow:
         "p_repair_stop_reason": "p_not_applicable",
         "p_feedback_format": P_FEEDBACK_FORMAT_V1,
         "p_history_policy": P_HISTORY_POLICY_V1,
+        "p_repair_prompt_template_version": None,
+        "p_repair_prompt_renderer_version": None,
+        "p_repair_anchor_attempt_index": None,
+        "p_repair_latest_attempt_index": None,
+        "p_repair_history_attempt_count": None,
+        "p_repair_prompt_sha256": None,
+        "p_repair_prompt_char_count": None,
+        "p_repair_max_prompt_chars": None,
+        "p_repair_include_latest_source": None,
+        "p_repair_anchor_source_hash": None,
+        "p_repair_latest_source_hash": None,
+        "p_repair_history_summary_sha256": None,
+        "p_repair_history_error_code": None,
         "p_repair_trace": None,
         "terminal_source_stage": "initial",
         "terminal_generation_seed": 110,
@@ -266,9 +325,65 @@ def _row(**overrides: object) -> Cluster3EvalRow:
             p_repair_attempted=bool(values["p_repair_attempted"]),
             p_compile_repair_succeeded=bool(values["p_compile_repair_succeeded"]),
             p_repair_attempt_count=int(values["p_repair_attempt_count"]),
+            p_history_policy=str(values["p_history_policy"]),
+            p_repair_prompt_template_version=values[
+                "p_repair_prompt_template_version"
+            ],  # type: ignore[arg-type]
+            p_repair_prompt_renderer_version=values[
+                "p_repair_prompt_renderer_version"
+            ],  # type: ignore[arg-type]
+            p_repair_anchor_attempt_index=values[
+                "p_repair_anchor_attempt_index"
+            ],  # type: ignore[arg-type]
+            p_repair_latest_attempt_index=values[
+                "p_repair_latest_attempt_index"
+            ],  # type: ignore[arg-type]
+            p_repair_history_attempt_count=values[
+                "p_repair_history_attempt_count"
+            ],  # type: ignore[arg-type]
+            p_repair_prompt_sha256=values[
+                "p_repair_prompt_sha256"
+            ],  # type: ignore[arg-type]
+            p_repair_prompt_char_count=values[
+                "p_repair_prompt_char_count"
+            ],  # type: ignore[arg-type]
+            p_repair_max_prompt_chars=values[
+                "p_repair_max_prompt_chars"
+            ],  # type: ignore[arg-type]
+            p_repair_include_latest_source=values[
+                "p_repair_include_latest_source"
+            ],  # type: ignore[arg-type]
+            p_repair_anchor_source_hash=values[
+                "p_repair_anchor_source_hash"
+            ],  # type: ignore[arg-type]
+            p_repair_latest_source_hash=values[
+                "p_repair_latest_source_hash"
+            ],  # type: ignore[arg-type]
+            p_repair_history_summary_sha256=values[
+                "p_repair_history_summary_sha256"
+            ],  # type: ignore[arg-type]
+            p_repair_history_error_code=values[
+                "p_repair_history_error_code"
+            ],  # type: ignore[arg-type]
             c_loop_fired=bool(values["c_loop_fired"]),
             c_loop_source=str(values["c_loop_source"]),
         )
+    for metadata_only_field in (
+        "p_repair_prompt_template_version",
+        "p_repair_prompt_renderer_version",
+        "p_repair_anchor_attempt_index",
+        "p_repair_latest_attempt_index",
+        "p_repair_history_attempt_count",
+        "p_repair_prompt_sha256",
+        "p_repair_prompt_char_count",
+        "p_repair_max_prompt_chars",
+        "p_repair_include_latest_source",
+        "p_repair_anchor_source_hash",
+        "p_repair_latest_source_hash",
+        "p_repair_history_summary_sha256",
+        "p_repair_history_error_code",
+    ):
+        values.pop(metadata_only_field, None)
     values.setdefault("replay_metadata", None)
     return Cluster3EvalRow(**values)  # type: ignore[arg-type]
 
@@ -783,6 +898,90 @@ def test_cluster3_row_p_seed_trace_requires_compile_error_metadata(
 ) -> None:
     with pytest.raises(ValueError, match="P seed|p_compile_error_class|p_raw"):
         _p_row(**override)
+
+
+def test_cluster3_row_round_trips_agentic_p_repair_metadata() -> None:
+    row = _p_row(**_agentic_p_metadata_for_attempt_1())
+
+    payload = json.loads(row.to_json())
+    round_trip = Cluster3EvalRow.from_dict(payload)
+
+    assert payload["generated_metadata"]["p_history_policy"] == (
+        "agentic_transcript_v1"
+    )
+    assert payload["generated_metadata"]["p_repair_prompt_sha256"] == P_PROMPT_HASH
+    assert round_trip == row
+
+
+def test_cluster3_row_agentic_policy_only_metadata_allowed_when_p_inactive() -> None:
+    row = _row(p_history_policy="agentic_transcript_v1")
+
+    assert row.p_repair_attempted is False
+    assert row.generated_metadata is not None
+    assert row.generated_metadata.p_history_policy == "agentic_transcript_v1"
+    assert row.generated_metadata.p_repair_prompt_sha256 is None
+
+
+def test_cluster3_row_rejects_agentic_p_repair_without_prompt_metadata() -> None:
+    with pytest.raises(ValueError, match="require rendered prompt metadata"):
+        _p_row(p_history_policy="agentic_transcript_v1")
+
+
+def test_cluster3_row_rejects_incomplete_agentic_p_repair_metadata() -> None:
+    with pytest.raises(ValueError, match="agentic_transcript_v1 P metadata requires"):
+        _p_row(
+            p_history_policy="agentic_transcript_v1",
+            p_repair_history_attempt_count=1,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value", "match"),
+    (
+        (
+            "p_repair_latest_attempt_index",
+            1,
+            "p_repair_latest_attempt_index must equal",
+        ),
+        (
+            "p_repair_anchor_attempt_index",
+            1,
+            "p_repair_anchor_attempt_index must be less than",
+        ),
+        (
+            "p_repair_anchor_source_hash",
+            HASH_B,
+            "p_repair_anchor_source_hash must match",
+        ),
+    ),
+)
+def test_cluster3_row_rejects_inconsistent_agentic_p_repair_metadata(
+    field_name: str,
+    value: object,
+    match: str,
+) -> None:
+    metadata = _agentic_p_metadata_for_attempt_1()
+    metadata[field_name] = value
+
+    with pytest.raises(ValueError, match=match):
+        _p_row(**metadata)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value", "match"),
+    (
+        ("p_history_policy", "unknown_policy", "unsupported p_history_policy"),
+        ("p_repair_prompt_sha256", "not-a-sha", "p_repair_prompt_sha256"),
+        ("p_repair_prompt_char_count", 0, "p_repair_prompt_char_count"),
+    ),
+)
+def test_cluster3_generated_metadata_rejects_invalid_p_repair_history_metadata(
+    field_name: str,
+    value: object,
+    match: str,
+) -> None:
+    with pytest.raises((TypeError, ValueError), match=match):
+        _generated_metadata(**{field_name: value})
 
 
 def test_cluster3_row_p_compile_repair_succeeded_matches_p_trace_compile() -> None:

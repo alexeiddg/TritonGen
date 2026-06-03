@@ -348,6 +348,89 @@ def test_runner_config_repair_budget_bounds(tmp_path: Path) -> None:
         _config(tmp_path, c_repair_budget=DEFAULT_REPAIR_BUDGET + 1)
 
 
+def test_runner_config_repair_history_defaults_are_legacy(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+
+    assert config.repair_history_policy == "last_attempt_only_v1"
+    assert config.repair_max_prompt_chars == 24000
+    assert config.repair_include_latest_source is False
+    assert config.repair_history_config.repair_history_policy == (
+        "last_attempt_only_v1"
+    )
+
+
+def test_cli_accepts_explicit_agentic_repair_history_policy(
+    tmp_path: Path,
+) -> None:
+    config = parse_args(
+        [
+            "--condition",
+            "P",
+            "--kernel-class",
+            "elementwise",
+            "--scale-tier",
+            "smoke",
+            "--n",
+            "1",
+            "--model-revision",
+            REV_A,
+            "--tokenizer-revision",
+            REV_B,
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--repair-max-prompt-chars",
+            "12000",
+            "--repair-include-latest-source",
+            "--output",
+            str(tmp_path / "out.jsonl"),
+            "--overwrite",
+        ]
+    )
+
+    assert config.repair_history_config.repair_history_policy == (
+        "agentic_transcript_v1"
+    )
+    assert config.repair_history_config.max_prompt_chars == 12000
+    assert config.repair_history_config.include_latest_source is True
+
+
+def test_cli_rejects_unknown_repair_history_policy(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "--condition",
+                "P",
+                "--kernel-class",
+                "elementwise",
+                "--scale-tier",
+                "smoke",
+                "--n",
+                "1",
+                "--model-revision",
+                REV_A,
+                "--tokenizer-revision",
+                REV_B,
+                "--repair-history-policy",
+                "unknown_policy",
+                "--output",
+                str(tmp_path / "out.jsonl"),
+                "--overwrite",
+            ]
+        )
+
+
+def test_config_rejects_invalid_repair_prompt_settings(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="max_prompt_chars must be a positive int"):
+        _config(tmp_path, repair_max_prompt_chars=0)
+    with pytest.raises(ValueError, match="max_prompt_chars must be a positive int"):
+        _config(tmp_path, repair_max_prompt_chars=True)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="include_latest_source must be a bool"):
+        _config(
+            tmp_path,
+            repair_include_latest_source="yes",  # type: ignore[arg-type]
+        )
+
+
 def test_runner_config_modal_gpus_match_cluster2_defaults(tmp_path: Path) -> None:
     assert _config(tmp_path, modal_generation_gpu="L4", modal_eval_gpu="L4")
     with pytest.raises(ValueError):
@@ -452,6 +535,10 @@ def test_run_cluster3_modal_entrypoint_delegates_to_cli(monkeypatch: pytest.Monk
         "5",
         "--c-repair-budget",
         "0",
+        "--repair-history-policy",
+        "last_attempt_only_v1",
+        "--repair-max-prompt-chars",
+        "24000",
         "--modal-generation-gpu",
         runner_mod.DEFAULT_C2_MODAL_GENERATION_GPU,
         "--modal-eval-gpu",
@@ -781,6 +868,128 @@ def test_run_cluster3_dispatches_f1_compile_to_p_loop_with_seed_attempt(tmp_path
     assert row.p_initial_failure_code == "F1_COMPILE"
     assert len(generation.calls) == 2
     assert len(correctness.calls) == 2
+
+
+def test_run_cluster3_agentic_p_metadata_records_rendered_prompt(
+    tmp_path: Path,
+) -> None:
+    run, generation, _, _ = _run_with_results(
+        tmp_path,
+        "P",
+        _f1_result(),
+        _result(None),
+        repair_history_policy="agentic_transcript_v1",
+    )
+
+    row = run.rows[0]
+    metadata = row.generated_metadata
+    assert metadata is not None
+    assert row.p_history_policy == "agentic_transcript_v1"
+    assert metadata.p_history_policy == "agentic_transcript_v1"
+    assert metadata.p_repair_anchor_attempt_index == 0
+    assert metadata.p_repair_latest_attempt_index == 0
+    assert metadata.p_repair_history_attempt_count == 1
+    assert metadata.p_repair_prompt_sha256 == _sha(generation.calls[1]["prompt"])
+    assert metadata.p_repair_max_prompt_chars == 24000
+    assert metadata.p_repair_include_latest_source is False
+    assert row.p_repair_trace is not None
+    assert metadata.p_repair_anchor_source_hash == row.p_repair_trace[0].source_hash
+    assert metadata.p_repair_latest_source_hash == row.p_repair_trace[0].source_hash
+    assert row.terminal_prompt_hash == metadata.p_repair_prompt_sha256
+
+
+def test_run_cluster3_default_p_metadata_records_legacy_policy(
+    tmp_path: Path,
+) -> None:
+    run, _, _, _ = _run_with_results(tmp_path, "P", _result(None))
+
+    metadata = run.rows[0].generated_metadata
+    assert metadata is not None
+    assert run.rows[0].p_history_policy == "last_attempt_only_v1"
+    assert metadata.p_history_policy == "last_attempt_only_v1"
+    assert metadata.p_repair_prompt_sha256 is None
+    assert metadata.p_repair_anchor_attempt_index is None
+
+
+def test_run_cluster3_agentic_initial_success_records_policy_only_metadata(
+    tmp_path: Path,
+) -> None:
+    run, generation, correctness, _ = _run_with_results(
+        tmp_path,
+        "P",
+        _result(None),
+        repair_history_policy="agentic_transcript_v1",
+    )
+
+    row = run.rows[0]
+    metadata = row.generated_metadata
+    assert metadata is not None
+    assert row.p_repair_attempted is False
+    assert row.p_history_policy == "agentic_transcript_v1"
+    assert metadata.p_history_policy == "agentic_transcript_v1"
+    assert metadata.p_repair_prompt_sha256 is None
+    assert metadata.p_repair_history_attempt_count is None
+    assert len(generation.calls) == 1
+    assert len(correctness.calls) == 1
+
+
+def test_run_cluster3_initial_f1_runtime_is_terminal_without_p_loop(
+    tmp_path: Path,
+) -> None:
+    run, generation, correctness, c_loop = _run_with_results(
+        tmp_path,
+        "P",
+        _result("F1_RUNTIME", level_reached=1, compile_success=False),
+        repair_history_policy="agentic_transcript_v1",
+    )
+
+    row = run.rows[0]
+    assert row.failure_code == "F1_RUNTIME"
+    assert row.p_repair_attempted is False
+    assert row.p_repair_stop_reason == "p_not_applicable"
+    assert len(generation.calls) == 1
+    assert len(correctness.calls) == 1
+    assert c_loop.calls == []
+
+
+def test_run_cluster3_initial_f2_is_not_p_repaired_under_p_only(
+    tmp_path: Path,
+) -> None:
+    run, generation, correctness, c_loop = _run_with_results(
+        tmp_path,
+        "P",
+        _f2_result(),
+        repair_history_policy="agentic_transcript_v1",
+    )
+
+    row = run.rows[0]
+    assert row.failure_code == "F2_NUMERIC_LARGE"
+    assert row.p_repair_attempted is False
+    assert len(generation.calls) == 1
+    assert len(correctness.calls) == 1
+    assert c_loop.calls == []
+
+
+def test_run_cluster3_does_not_pass_p_transcript_to_c_loop(
+    tmp_path: Path,
+) -> None:
+    run, _, _, c_loop = _run_with_results(
+        tmp_path,
+        "C+P",
+        _f1_result(),
+        _f2_result(),
+        repair_history_policy="agentic_transcript_v1",
+    )
+
+    assert run.rows[0].p_repair_attempted is True
+    assert run.rows[0].c_loop_fired is True
+    assert len(c_loop.calls) == 1
+    c_call = c_loop.calls[0]
+    assert "repair_history_config" not in c_call
+    assert "p_repair_trace" not in c_call
+    assert "p_repair_prompt" not in c_call
+    assert c_call["seed_candidate_evaluation"]["failure_code"] == "F2_NUMERIC_LARGE"
+    assert c_call["seed_candidate_prompt_hash_source"] == "p_repair_prompt"
 
 
 def test_run_cluster3_terminates_on_f0_parse(tmp_path: Path) -> None:
