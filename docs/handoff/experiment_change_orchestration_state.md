@@ -1,6 +1,6 @@
 # Experiment Change Orchestration State
 
-- Version: 1.5.16
+- Version: 1.5.17
 - Date: 2026-06-03
 - Status: active live state record
 - Owner: current orchestration agent
@@ -373,9 +373,9 @@ reason. Do not backfill missing provenance silently after execution.
 |---|---|
 | Git baseline commit | `6c859b3317a41ad4adbc2cb4e9a4fc8cc1c6a198` |
 | Git branch | `codex/llm-repair-memory-agentic-transcript-v1` merged with MLflow-integrated `codex-track-handoff-context` |
-| Git status at latest reconciliation | A5 analyzer grouping/quarantine complete pending independent review; changed files are confined to `shared/analysis/factorial.py`, factorial tests/fixtures, the A5 checkpoint audit, and handoff registry/state docs; MLflow integration promoted on temporary trunk at `93b1a08`; no Modal execution, output mutation, generation, experiment artifact, or MLflow runtime artifact committed |
+| Git status at latest reconciliation | A6 run-packet gate planning complete pending independent review; changed files are confined to A6 packet docs, the A6 checkpoint audit, and handoff registry/state/hub docs; MLflow integration promoted on temporary trunk at `93b1a08`; no Modal execution, output mutation, generation, experiment artifact, or MLflow runtime artifact committed |
 | Orchestration contract version | `docs/15_experiment_change_orchestration_contract.md` v1.0.12 |
-| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.53.0 |
+| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.54.0 |
 | Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 |
 | Structural/task analyzer metadata spec version | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 |
 | MLflow tracking policy version | `.contracts/research/mlflow_tracking_policy.md` v1.0.0 |
@@ -388,6 +388,7 @@ reason. Do not backfill missing provenance silently after execution.
 | Agentic transcript A3 P-loop integration | `audits/agentic_transcript_v1_a3_p_loop_integration_report.md` v1.0.0 pending independent review; no Modal/output/generation work performed |
 | Agentic transcript A4 P-to-C isolation proof | `audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md` v1.0.0 pending independent review; no Modal/output/generation work performed |
 | Agentic transcript A5 analyzer grouping/quarantine | `audits/agentic_transcript_v1_a5_analyzer_grouping_report.md` v1.0.0 pending independent review; no Modal/output/generation work performed |
+| Agentic transcript A6 run-packet gate planning | `audits/agentic_transcript_v1_a6_run_packet_gate_report.md` v1.0.0 pending independent review; `docs/handoff/agentic_transcript_v1_next_run_packet.md` is `DRAFT_NOT_APPROVED` and authorizes no Modal/output/generation/n=5/n=20/paper-scale work |
 | Current Cluster 3 gate | Phase 14e four-cell n=5 development matrix frozen with warnings; no broader run without explicit approval packet |
 | Paper-scale status | blocked; no Cluster 3 `n=20` until Gate G8 |
 
@@ -401,7 +402,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 | Worktree | Branch | Commit | State ownership |
 |---|---|---|---|
 | `/Users/alexeidelgado/Desktop/TritonGen` | `codex-track-handoff-context` | `93b1a08` | temporary trunk with MLflow integration promoted; no Modal or output mutation |
-| `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `d1c8196` plus A5 analyzer grouping checkpoint | A2 C-loop integration, A3 P-loop integration, and A4 P-to-C isolation committed pending independent review; A5 analyzer grouping/quarantine complete pending independent review; A1 prompt core complete with baseline-venv caveat; trunk MLflow integration merged for A2/A3/A4/A5 readiness |
+| `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `59021f2` plus A6 run-packet gate planning checkpoint | A2 C-loop integration, A3 P-loop integration, A4 P-to-C isolation, A5 analyzer grouping/quarantine, and A6 run-packet gate planning complete pending independent review; A1 prompt core complete with baseline-venv caveat; trunk MLflow integration merged for A2/A3/A4/A5/A6 readiness |
 | `/Users/alexeidelgado/Desktop/TritonGen/.claude/worktrees/intelligent-pasteur-72d92f` | `claude/intelligent-pasteur-72d92f` | `b0085c1` | external/unknown to this orchestration state; reconcile before relying on it |
 
 ## Active Branches
@@ -410,7 +411,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 |---|---|---|---|---|
 | `codex-track-handoff-context` | temporary trunk | `/Users/alexeidelgado/Desktop/TritonGen` when not on integration branch | active baseline | Treat as the working main branch for repair/handoff work until final branch repair is complete. |
 | `codex/integrate-mlflow-into-handoff` | MLflow tracking harness integration | none after promotion | promoted | Merged `origin/ml_migration`, preserved handoff doc/audit tracking policy, validated optional/no-op tracking tests, and promoted into the temporary trunk now at `93b1a08`. |
-| `codex/llm-repair-memory-agentic-transcript-v1` | A-stream / agentic transcript implementation | `/private/tmp/tritongen-llm-repair-memory` | A5 analyzer grouping/quarantine complete pending independent review | Created from `codex-track-handoff-context`; A-spec checkpoint, A0 constants, A0.5 constants preflight, A1 prompt core, MLflow trunk merge, A2 C-loop commit, A3 P-loop commit, A4 isolation proof, and A5 analyzer grouping/quarantine are recorded; A2/A3/A4/A5 remain pending independent review. |
+| `codex/llm-repair-memory-agentic-transcript-v1` | A-stream / agentic transcript implementation | `/private/tmp/tritongen-llm-repair-memory` | A6 run-packet gate planning complete pending independent review | Created from `codex-track-handoff-context`; A-spec checkpoint, A0 constants, A0.5 constants preflight, A1 prompt core, MLflow trunk merge, A2 C-loop commit, A3 P-loop commit, A4 isolation proof, A5 analyzer grouping/quarantine, and A6 run-packet gate planning are recorded; A2/A3/A4/A5/A6 remain pending independent review. |
 
 ## Active Serialized-Surface Leases
 
@@ -421,6 +422,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 | P-loop repair policy integration | `codex/llm-repair-memory-agentic-transcript-v1` | `/private/tmp/tritongen-llm-repair-memory` | A3 opt-in `agentic_transcript_v1` plumbing for Cluster 3 P repair loop; preserve `last_attempt_only_v1` default and F1_COMPILE-only eligibility; keep F1_RUNTIME terminal | `6c859b3317a41ad4adbc2cb4e9a4fc8cc1c6a198` | `cluster3/feedback/prompts.py`; `cluster3/feedback/compile_error_repair.py`; `cluster3/feedback/trace.py`; `cluster3/tests/test_p_prompts.py`; `cluster3/tests/test_p_repair_loop.py`; `cluster3/tests/test_cluster3_imports.py` | Cluster 3 P prompt/repair-loop tests; F1_COMPILE-only/default-invariance tests; invalid policy/budget/latest-source negative tests; prompt hash and anchor metadata tests; P sanitizer leakage tests | A3 independent review before promotion | active pending review |
 | Cluster 3 runner/schema policy plumbing | `codex/llm-repair-memory-agentic-transcript-v1` | `/private/tmp/tritongen-llm-repair-memory` | A3 opt-in Cluster 3 runner/config/result metadata plumbing only; no Modal execution, generation run, experiment run, or output mutation | `6c859b3317a41ad4adbc2cb4e9a4fc8cc1c6a198` | `cluster3/experiments/run_cluster3_modal.py`; `cluster3/results/dataclass.py`; `cluster3/tests/test_cluster3_schema.py`; `cluster3/tests/test_run_cluster3_modal_cli.py` | runner CLI/default tests; metadata nullability matrix tests; no-unauthorized-run check; forbidden-output check | A3 independent review before promotion | active pending review |
 | Repair-history analyzer grouping/quarantine | `codex/llm-repair-memory-agentic-transcript-v1` | `/private/tmp/tritongen-llm-repair-memory` | A5 analyzer-only classification, grouping, and mixed-policy quarantine for repair-history metadata; preserve legacy analyzer compatibility and existing metric formulas; no runner, loop, Modal, output, or prompt-builder changes | `d1c8196` | `shared/analysis/factorial.py`; `shared/tests/test_factorial_analysis.py`; `shared/tests/fixtures/factorial/`; `audits/agentic_transcript_v1_a5_analyzer_grouping_report.md`; handoff registry/state docs | `shared/tests/test_factorial_analysis.py`; A1 prompt-core regression; A2 Cluster 2 regression; A3/A4 Cluster 3 regression; import smoke; forbidden-scope diff | A5 independent review before promotion or A6 run gates | active pending review |
+| Agentic run-packet gate planning | `codex/llm-repair-memory-agentic-transcript-v1` | `/private/tmp/tritongen-llm-repair-memory` | A6 docs-only run-packet gate planning; define non-authorizing template and next-run draft with explicit policy labels, analyzer quarantine preconditions, stop/no-go conditions, and post-run validation plan; no runner, loop, analyzer, Modal, output, prompt-builder, or repair-history core changes | `59021f2` | `docs/handoff/agentic_transcript_v1_run_packet_template.md`; `docs/handoff/agentic_transcript_v1_next_run_packet.md`; `audits/agentic_transcript_v1_a6_run_packet_gate_report.md`; handoff registry/state/hub docs | Markdown/direct-review checks; A6 authorization-flag scan; forbidden-scope diff; `git diff --check` | A6 independent review before any future agentic run approval | active pending review |
 
 ## Gate Status
 
@@ -432,13 +434,25 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 | G3 observability sidecar contract stable | spec drafted / code not started | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 defines O0-O4 plus hardening guardrails; G3 still requires implementation and tests. |
 | G4 analyzer compatibility stable | spec drafted / code not started | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 defines S0-S3 metadata and report-label work; G4 still requires S1 implementation and compatibility tests. |
 | G5 agentic prompt core stable | satisfied with baseline-venv caveat | `audits/agentic_transcript_v1_a1_prompt_core_report.md` v1.0.0 records pure prompt-core implementation, typed local errors, policy config validation, public evidence/source models, deterministic anchor ranking, canonical renderer, prompt/history hashes, budget behavior, fixture manifest, prompt-injection fixture, legacy C/P byte-invariance snapshots, import isolation, focused tests, and no forbidden-surface changes. |
-| G6 agentic integration stable | partial / pending A2-A5 review | A2 C-loop integration and A3 P-loop integration are committed pending independent review; A4 P-to-C isolation proof and A5 analyzer grouping/quarantine are complete pending independent review; A6 run-packet gates remain not started. |
-| G7 development run readiness | blocked pending fresh approval packet | Phase 14e matrix is frozen; any broader development-scale, all-condition, diagnostic, or paper-readiness run needs a new approval packet. |
+| G6 agentic integration stable | partial / pending A2-A6 review | A2 C-loop integration and A3 P-loop integration are committed pending independent review; A4 P-to-C isolation proof, A5 analyzer grouping/quarantine, and A6 run-packet gate planning are complete pending independent review. |
+| G7 development run readiness | blocked pending fresh signed approval packet | Phase 14e matrix is frozen; A6 provides the template and one `DRAFT_NOT_APPROVED` next-run packet, but no active run packet is approved. Any broader development-scale, all-condition, diagnostic, or paper-readiness run needs a signed approval packet. |
 | G8 paper-scale readiness | blocked | No `n=20` or paper-scale work. |
 
 ## Approved Run Packets
 
 No active run packet is approved by this state record.
+
+Current draft packet:
+
+- `docs/handoff/agentic_transcript_v1_next_run_packet.md`
+- Status: `DRAFT_NOT_APPROVED`
+- `AUTHORIZES_EXECUTION: NO`
+- `MODAL_AUTHORIZED: NO`
+- `GENERATION_AUTHORIZED: NO`
+- `OUTPUT_MUTATION_AUTHORIZED: NO`
+- `N5_AUTHORIZED: NO`
+- `N20_AUTHORIZED: NO`
+- `PAPER_SCALE_AUTHORIZED: NO`
 
 Historical context:
 
@@ -484,6 +498,7 @@ Historical context:
 | agentic transcript A3 P-loop integration | complete pending independent review | `audits/agentic_transcript_v1_a3_p_loop_integration_report.md` v1.0.0 confirms opt-in Cluster 3 P-loop plumbing, preserved legacy defaults, runner policy flags, nullable/defaultable generated-row P repair-history metadata, F1_COMPILE-only eligibility, F1_RUNTIME terminal behavior, no P-to-C transcript leakage, focused validation, and no Modal/output/generation mutation. |
 | agentic transcript A4 P-to-C isolation proof | complete pending independent review | `audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md` v1.0.0 confirms integrated post-P F2 and initial-F2 agentic C prompt isolation, P compile-history/hash exclusion, C seed/public-evidence proof, adapter fail-closed coverage, legacy prompt byte-invariance, and no Modal/output/generation mutation. |
 | agentic transcript A5 analyzer grouping/quarantine | complete pending independent review | `audits/agentic_transcript_v1_a5_analyzer_grouping_report.md` v1.0.0 confirms analyzer-side repair-history policy classification, grouping keys, mixed-policy/mixed-analysis quarantine, unknown-policy and incomplete-agentic quarantine, focused fixtures/tests, A1-A4 regression validation, and no Modal/output/generation mutation. |
+| agentic transcript A6 run-packet gate planning | complete pending independent review | `docs/handoff/agentic_transcript_v1_run_packet_template.md` v1.0.0 and `docs/handoff/agentic_transcript_v1_next_run_packet.md` v0.1.0 define the future run approval gate; the next-run draft is `DRAFT_NOT_APPROVED`, all execution authorization flags are `NO`, analyzer quarantine and metadata checks are required before approval, and no Modal/output/generation/n=5/n=20/paper-scale mutation occurred. |
 | MLflow tracking harness integration | complete | `origin/ml_migration` was merged into `codex-track-handoff-context` via `codex/integrate-mlflow-into-handoff` and promoted at `28c52f2`; tracking remains optional/no-op unless `TRITONGEN_MLFLOW` and `mlflow` are present, and JSONL remains the source of truth. |
 
 ## Abandoned Packages
@@ -513,6 +528,9 @@ Historical context:
 - Agentic-memory A5 analyzer grouping/quarantine is complete pending independent
   review; no Modal execution, generation, experiment artifact, or output
   implementation is active.
+- Agentic-memory A6 run-packet gate planning is complete pending independent
+  review; the next-run packet is `DRAFT_NOT_APPROVED` and authorizes no
+  execution.
 - No observability sidecar implementation is active yet.
 - No analyzer metric-registry implementation is active yet.
 
@@ -534,10 +552,14 @@ Allowed without run approval:
    - A4 P-to-C isolation proof is complete pending independent review in
      `/private/tmp/tritongen-llm-repair-memory`;
    - A5 analyzer grouping/quarantine is complete pending independent review in
+     `/private/tmp/tritongen-llm-repair-memory`;
+   - A6 run-packet gate planning is complete pending independent review in
      `/private/tmp/tritongen-llm-repair-memory`.
-3. Start A6 run-packet gate planning only after A5 independent review accepts
-   the analyzer grouping/quarantine checkpoint; A6 planning does not authorize
-   Modal execution or output mutation.
+3. Review A6 run-packet gate planning or prepare a future signed approval
+   packet from `docs/handoff/agentic_transcript_v1_run_packet_template.md`.
+   The current next-run packet is `DRAFT_NOT_APPROVED` and does not authorize
+   Modal execution, generation, n=5, n=20, paper-scale work, or output
+   mutation.
 4. Create serialized-surface leases before touching analyzer, runner, repair
    loop, result schema, raw output, or report-data-builder surfaces.
 
@@ -554,8 +576,8 @@ Not allowed without explicit approval:
 The `agentic_transcript_v1` feature branch has completed A0 policy constants,
 A0.5 constants preflight, and A1 prompt core. The A1 checkpoint remains
 preserved while A2 C-loop integration, A3 P-loop integration, A4 P-to-C
-isolation proof, and A5 analyzer grouping/quarantine are complete pending
-independent review.
+isolation proof, A5 analyzer grouping/quarantine, and A6 run-packet gate
+planning are complete pending independent review.
 
 Current checkout:
 
@@ -563,8 +585,8 @@ Current checkout:
 branch: codex/llm-repair-memory-agentic-transcript-v1
 worktree: /private/tmp/tritongen-llm-repair-memory
 spec: docs/18_agentic_transcript_v1_implementation_spec.md v0.1.5
-state: docs/handoff/experiment_change_orchestration_state.md v1.5.16
-registry: docs/handoff/document_version_registry.md v1.53.0
+state: docs/handoff/experiment_change_orchestration_state.md v1.5.17
+registry: docs/handoff/document_version_registry.md v1.54.0
 spec checkpoint: audits/agentic_transcript_v1_spec_checkpoint_report.md v1.0.0
 A0 commit: 1e3f44468c5ae91e6467b42b7f93a068fa6acf5f
 A0.5 preflight: audits/agentic_transcript_v1_a0_5_preflight_report.md v1.0.0
@@ -573,7 +595,8 @@ A2 C-loop integration: commit 6c859b3317a41ad4adbc2cb4e9a4fc8cc1c6a198 plus audi
 A3 P-loop integration: audits/agentic_transcript_v1_a3_p_loop_integration_report.md v1.0.0 pending independent review
 A4 P-to-C isolation proof: audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md v1.0.0 pending independent review
 A5 analyzer grouping/quarantine: audits/agentic_transcript_v1_a5_analyzer_grouping_report.md v1.0.0 pending independent review
-next implementation package: A2/A3/A4/A5 review patches if required; otherwise A6 run-packet gate planning only
+A6 run-packet gate planning: audits/agentic_transcript_v1_a6_run_packet_gate_report.md v1.0.0 pending independent review; docs/handoff/agentic_transcript_v1_next_run_packet.md is DRAFT_NOT_APPROVED
+next implementation package: A2/A3/A4/A5/A6 review patches if required; otherwise future signed run approval packet only
 ```
 
 A1 allowed files:
@@ -849,7 +872,7 @@ status: implementation complete pending independent review
 | S0 docs terminology | `codex/outcome-taxonomy-docs` | not started | G1 | G2 | Docs-only structural/task terminology alignment. |
 | O-spec observability sidecar implementation spec | none | complete | G1 | spec routed | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0. |
 | S-spec structural/task analyzer metadata implementation spec | none | complete | G1 | spec routed | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2; code implementation not started. |
-| A-spec agentic transcript implementation spec | none | complete | G1 | spec routed | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5; A0/A0.5/A1 are complete; A2/A3 integration, A4 isolation proof, and A5 analyzer grouping/quarantine are complete pending independent review. |
+| A-spec agentic transcript implementation spec | none | complete | G1 | spec routed | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5; A0/A0.5/A1 are complete; A2/A3 integration, A4 isolation proof, A5 analyzer grouping/quarantine, and A6 run-packet gate planning are complete pending independent review. |
 | O0 sidecar core | `codex/observability-sidecar-core` | not started | G1 plus O-spec | G3 partial | New `shared/observability/*` schema/logger/redaction and tests only. |
 | A0 policy constants | `codex/llm-repair-memory-agentic-transcript-v1` | complete | G1 plus A-spec | no behavior change | Commit `1e3f44468c5ae91e6467b42b7f93a068fa6acf5f`; policy-name constants and default-invariance tests only. |
 | A0.5 preflight | `codex/llm-repair-memory-agentic-transcript-v1` | complete | A0 complete | A1 entry readiness | `audits/agentic_transcript_v1_a0_5_preflight_report.md` v1.0.0; default invariance, cheap imports, focused tests, and no forbidden-surface changes verified. |
@@ -860,6 +883,7 @@ status: implementation complete pending independent review
 | A3 P-loop integration | `codex/llm-repair-memory-agentic-transcript-v1` | complete pending independent review | A1/A2 plus active P-loop / Cluster 3 runner-schema leases | G6 partial | `audits/agentic_transcript_v1_a3_p_loop_integration_report.md` v1.0.0; default `last_attempt_only_v1` preserved, `agentic_transcript_v1` opt-in, F1_COMPILE-only P eligibility preserved, no Modal/output/generation mutation. |
 | A4 P-to-C isolation | `codex/llm-repair-memory-agentic-transcript-v1` | complete pending independent review | A2/A3 complete | G6 partial | `audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md` v1.0.0; narrow Cluster 3 runner/adapter C-loop repair-history config bridge plus post-P F2 and initial-F2 integrated agentic C prompt isolation tests prove no P compile-history or P transcript leakage into C prompts; no Modal/output/generation mutation. |
 | A5 analyzer grouping/quarantine | `codex/llm-repair-memory-agentic-transcript-v1` | complete pending independent review | A2/A3/A4 complete | G6 partial | `audits/agentic_transcript_v1_a5_analyzer_grouping_report.md` v1.0.0; analyzer classifies repair-history policies, groups summaries by policy/template/renderer/budget/latest-source keys, quarantines mixed artifacts and mixed headline analysis groups, preserves legacy missing-policy compatibility, and performs no Modal/output/generation mutation. |
+| A6 run-packet gate planning | `codex/llm-repair-memory-agentic-transcript-v1` | complete pending independent review | A2/A3/A4/A5 complete | G7 remains blocked pending signed packet | `docs/handoff/agentic_transcript_v1_run_packet_template.md` v1.0.0 and `docs/handoff/agentic_transcript_v1_next_run_packet.md` v0.1.0 define the future approval packet; the draft is `DRAFT_NOT_APPROVED`, all execution flags are `NO`, and no Modal/output/generation/n=5/n=20/paper-scale mutation occurred. |
 | S2 report builder | `codex/report-builder-outcome-families` | blocked | S1 | report labels stable | Requires report-data-builder lease if code is touched. |
 | R2 Phase 14b run | `codex/cluster3-phase14b-c-plus-p-n5` | complete | G7 plus approval | registered diagnostic artifact | Completed elsewhere; insufficient repair signal. |
 | R3 Phase 14c run | `codex/cluster3-phase14c-g-plus-c-plus-p-n5` | complete | G7 plus approval | registered diagnostic artifact | Completed elsewhere; insufficient repair signal. |
@@ -889,7 +913,7 @@ and name the replacement check.
 - For A-stream work, keep commits/packages sliced according to the active
   A-spec: docs-only checkpoint, A0 constants, A0.5 validation, A1 prompt core,
   A2 C integration, A3 P integration, A4 isolation, A5 analyzer grouping, and
-  A6 gate planning remain independently reviewable.
+  A6 run-packet gate planning remain independently reviewable.
 - Every package handoff must include changed files, tests/checks run,
   default-invariance proof, forbidden-files check, no Modal/output mutation
   statement, unresolved risks, and the next blocked package or gate.
@@ -940,7 +964,7 @@ and name the replacement check.
 | A3 P-loop integration | Cluster 3 P-loop tests; F1_COMPILE-only boundary tests; sanitizer leakage tests; omitted/legacy/agentic/invalid policy flag parsing and default tests; invalid budget and latest-source setting tests; metadata nullability matrix tests; prompt hash and anchor metadata tests. | Requires P-loop and likely Cluster 3 runner leases. |
 | A4 P-to-C isolation | History isolation tests; no P compile logs in integrated agentic C prompt tests; C seed provenance tests; post-P F2 handoff tests. | C and P histories remain separate in v1 while the Cluster 3 runner and C adapter forward explicit repair-history config without forwarding P trace objects. |
 | A5 analyzer policy grouping | Analyzer tests for legacy/unknown/new policy grouping; mixed-policy quarantine tests; one fixture containing both `last_attempt_only_v1` and `agentic_transcript_v1` rows proving headline metrics are quarantined by default; report metadata review. | Must land before agentic paid runs. |
-| A6 A/B gates | Local fixture smoke commands; paired-seed matrix definition; failure movement table; prompt/cost summary; no private-eval leakage scan. | Modal requires run approval packet. |
+| A6 run-packet gates | Non-authorizing run-packet template; concrete next-run draft with `DRAFT_NOT_APPROVED`; explicit repair-history policy, condition, model/config, kernel class, scale, authorization flags, expected paths, metadata checklist, analyzer quarantine preconditions, stop/no-go conditions, and post-run validation plan; forbidden-scope and no-execution checks. | Modal, generation, output mutation, n=5, n=20, and paper-scale work still require a future signed approval packet. |
 | Future Cluster 3 run spec | Complete run approval packet; target output path nonexistence check; pre-spend command list; exact Modal command; stop conditions; post-run validation plan; claim boundaries; observability policy. | Spec only until user approves. |
 | Any future run execution | Approved run packet; pre-spend tests; exact command transcript; row-count validation; schema validation; hash sidecar validation; P/C route invariants where applicable; private-eval scan; performance/profiler/timing/speedup scan; post-run registry/audit update. | One run scope per approval. |
 | Any result schema change | Schema round-trip tests; old-row load tests; nullable/defaultable field tests; artifact compatibility note. | Requires result-schema lease. |
@@ -1001,7 +1025,7 @@ deferred: intentionally postponed; default behavior applies until reopened
 | D-MET-03 | Should current report HTML refresh happen immediately or after analyzer metadata extension? | resolved | S2 report builder/dashboard | Report owner | Resolved by S-spec v0.1.2 | Wait for S1 unless docs-prose-only | S2 report HTML/data refresh waits for S1 metadata unless the change is docs-prose-only. | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` |
 | D-AGENT-01 | What is the maximum rendered prompt length and truncation budget for `agentic_transcript_v1`? | resolved | A1 prompt renderer; A2/A3 loop integration | Agentic memory spec owner | Resolved by A-spec v0.1.5 | Default local/development budget is 24000 UTF-8 characters; explicit positive overrides allowed; fail closed if required sections do not fit | Renderer uses a deterministic character budget in v1; tokenizer-derived budgets require later token/observability integration. | `docs/18_agentic_transcript_v1_implementation_spec.md` |
 | D-AGENT-02 | Should latest full source be included by default when it differs from best anchor? | resolved | A1 renderer; A2/A3 integration | Agentic memory spec owner | Resolved by A-spec v0.1.5 | Exclude latest full source by default; include only if explicitly enabled and within budget | Default agentic prompts include the full best-anchor source plus latest failure details, not every full prior source. | `docs/18_agentic_transcript_v1_implementation_spec.md` |
-| D-AGENT-03 | Does `agentic_transcript_v1` remain opt-in through all development runs? | resolved | A2/A3 integration; A6 A/B gates; run specs | Orchestration contract owner | Resolved before implementation | Opt-in | `agentic_transcript_v1` remains opt-in until paired A/B review and explicit contract/spec update. | `docs/15_experiment_change_orchestration_contract.md` |
+| D-AGENT-03 | Does `agentic_transcript_v1` remain opt-in through all development runs? | resolved | A2/A3 integration; A6 run-packet gates; run specs | Orchestration contract owner | Resolved before implementation | Opt-in | `agentic_transcript_v1` remains opt-in until paired A/B review and explicit contract/spec update. | `docs/15_experiment_change_orchestration_contract.md` |
 | D-AGENT-04 | Should P-to-C handoff include a one-line P provenance note in C history? | resolved | A4 P-to-C isolation | Agentic memory spec owner | Resolved by A-spec v0.1.5 | No P compile logs and no P provenance note in C prompt text for v1 | C may record metadata that the seed source came from post-P F2, but C prompt-visible history starts from the C seed and public C evidence only. | `docs/18_agentic_transcript_v1_implementation_spec.md` |
 | D-RUN-01 | What exact threshold promotes n=5 diagnostics toward paper-scale readiness? | open | R5 paper-scale decision; any n=20 proposal | Orchestration owner plus user | Before Gate G8 | No promotion; n=5 diagnostics do not imply paper readiness | unresolved | `docs/15_experiment_change_orchestration_contract.md` |
 | D-RUN-02 | Should Phase 14d reuse the existing Phase 12 `G+P` n=5 artifact or rerun fresh? | resolved | R4 G+P matrix completion | Run spec owner | Resolved by Phase 14d | Existing Phase 12 `G+P` n=5 artifact reused after validation. | Reuse approved and registered as the Phase 14 `G+P` matrix cell. | `audits/cluster3_phase14d_g_plus_p_reuse_vs_rerun_decision.md` |

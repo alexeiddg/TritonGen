@@ -1,7 +1,7 @@
 # Agentic Documentation Hub
 
-Version: 1.23.0
-Date: 2026-06-02
+Version: 1.24.0
+Date: 2026-06-03
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
 Citation status: routing document only; do not cite as methodology
@@ -56,6 +56,8 @@ treated as report-facing.
 | MLflow tracking onboarding | `docs/tracking/README.md` |
 | Structural/task analyzer metadata implementation spec | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` |
 | Agentic transcript implementation spec | `docs/18_agentic_transcript_v1_implementation_spec.md` |
+| Agentic transcript run-packet template | `docs/handoff/agentic_transcript_v1_run_packet_template.md` |
+| Agentic transcript next-run packet draft | `docs/handoff/agentic_transcript_v1_next_run_packet.md` |
 | Experiment change orchestration state | `docs/handoff/experiment_change_orchestration_state.md` |
 | Current artifact identities and caveats | `docs/05_artifacts_and_results_registry.md` |
 | Current Cluster 3/P methodology | `docs/04_methodology_cluster3.md` |
@@ -96,7 +98,12 @@ work. Structural/task analyzer and report-metadata agents must also read
 `docs/17_structural_task_analyzer_metadata_implementation_spec.md` before
 starting S0-S3 work. Agentic repair-memory implementation agents must also read
 `docs/18_agentic_transcript_v1_implementation_spec.md` before starting A0-A6
-work.
+work. Before any future `agentic_transcript_v1` Modal, generation, n=5, n=20,
+paper-scale, or output-mutating work, agents must also read
+`docs/handoff/agentic_transcript_v1_run_packet_template.md` and the current
+draft or approved packet. The current draft is
+`docs/handoff/agentic_transcript_v1_next_run_packet.md`, has status
+`DRAFT_NOT_APPROVED`, and authorizes no execution.
 
 Do not run Modal, n=5, n=20, paper-scale work, generation, experiments, or
 output mutation from this freeze state without separate explicit approval. Any
