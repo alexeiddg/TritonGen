@@ -1,6 +1,6 @@
 # Experiment Change Orchestration State
 
-- Version: 1.5.17
+- Version: 1.5.19
 - Date: 2026-06-03
 - Status: active live state record
 - Owner: current orchestration agent
@@ -371,12 +371,12 @@ reason. Do not backfill missing provenance silently after execution.
 
 | Field | Value |
 |---|---|
-| Git baseline commit | `6c859b3317a41ad4adbc2cb4e9a4fc8cc1c6a198` |
-| Git branch | `codex/llm-repair-memory-agentic-transcript-v1` merged with MLflow-integrated `codex-track-handoff-context` |
-| Git status at latest reconciliation | A6 run-packet gate planning complete pending independent review; changed files are confined to A6 packet docs, the A6 checkpoint audit, and handoff registry/state/hub docs; MLflow integration promoted on temporary trunk at `93b1a08`; no Modal execution, output mutation, generation, experiment artifact, or MLflow runtime artifact committed |
+| Git baseline commit | `4a8460081aa35a647901ea5fa120a76e0f7ef0e7` |
+| Git branch | `codex/observability-sidecar-core` created from promoted `codex-track-handoff-context` |
+| Git status at latest reconciliation | `codex-track-handoff-context`, `origin/codex-track-handoff-context`, `codex/llm-repair-memory-agentic-transcript-v1`, and `origin/codex/llm-repair-memory-agentic-transcript-v1` all point at A6 commit `4a84600`; O0 docs reconciliation/spec tightening and pure shared sidecar-core implementation are active on `codex/observability-sidecar-core`; no runner, result-row schema, analyzer, raw output, Modal execution, generation, experiment artifact, billing, dependency, lockfile, or MLflow runtime artifact changes are present |
 | Orchestration contract version | `docs/15_experiment_change_orchestration_contract.md` v1.0.12 |
-| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.54.0 |
-| Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 |
+| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.56.0 |
+| Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.1 |
 | Structural/task analyzer metadata spec version | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 |
 | MLflow tracking policy version | `.contracts/research/mlflow_tracking_policy.md` v1.0.0 |
 | Agentic transcript implementation spec version | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5 |
@@ -384,11 +384,11 @@ reason. Do not backfill missing provenance silently after execution.
 | Agentic transcript A0 policy constants | commit `1e3f44468c5ae91e6467b42b7f93a068fa6acf5f` |
 | Agentic transcript A0.5 preflight | `audits/agentic_transcript_v1_a0_5_preflight_report.md` v1.0.0 |
 | Agentic transcript A1 prompt core | `audits/agentic_transcript_v1_a1_prompt_core_report.md` v1.0.0 |
-| Agentic transcript A2 C-loop integration | commit `6c859b3317a41ad4adbc2cb4e9a4fc8cc1c6a198`; `audits/agentic_transcript_v1_a2_c_loop_integration_report.md` v1.0.0 pending independent review |
-| Agentic transcript A3 P-loop integration | `audits/agentic_transcript_v1_a3_p_loop_integration_report.md` v1.0.0 pending independent review; no Modal/output/generation work performed |
-| Agentic transcript A4 P-to-C isolation proof | `audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md` v1.0.0 pending independent review; no Modal/output/generation work performed |
-| Agentic transcript A5 analyzer grouping/quarantine | `audits/agentic_transcript_v1_a5_analyzer_grouping_report.md` v1.0.0 pending independent review; no Modal/output/generation work performed |
-| Agentic transcript A6 run-packet gate planning | `audits/agentic_transcript_v1_a6_run_packet_gate_report.md` v1.0.0 pending independent review; `docs/handoff/agentic_transcript_v1_next_run_packet.md` is `DRAFT_NOT_APPROVED` and authorizes no Modal/output/generation/n=5/n=20/paper-scale work |
+| Agentic transcript A2 C-loop integration | promoted into A6 handoff trunk by commit `4a84600`; `audits/agentic_transcript_v1_a2_c_loop_integration_report.md` v1.0.0 remains the evidence snapshot |
+| Agentic transcript A3 P-loop integration | promoted into A6 handoff trunk by commit `4a84600`; `audits/agentic_transcript_v1_a3_p_loop_integration_report.md` v1.0.0 remains the evidence snapshot; no Modal/output/generation work performed |
+| Agentic transcript A4 P-to-C isolation proof | promoted into A6 handoff trunk by commit `4a84600`; `audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md` v1.0.0 remains the evidence snapshot; no Modal/output/generation work performed |
+| Agentic transcript A5 analyzer grouping/quarantine | promoted into A6 handoff trunk by commit `4a84600`; `audits/agentic_transcript_v1_a5_analyzer_grouping_report.md` v1.0.0 remains the evidence snapshot; no Modal/output/generation work performed |
+| Agentic transcript A6 run-packet gate planning | promoted into handoff trunk at commit `4a84600`; `audits/agentic_transcript_v1_a6_run_packet_gate_report.md` v1.0.0 remains the evidence snapshot; `docs/handoff/agentic_transcript_v1_next_run_packet.md` is `DRAFT_NOT_APPROVED` and authorizes no Modal/output/generation/n=5/n=20/paper-scale work |
 | Current Cluster 3 gate | Phase 14e four-cell n=5 development matrix frozen with warnings; no broader run without explicit approval packet |
 | Paper-scale status | blocked; no Cluster 3 `n=20` until Gate G8 |
 
@@ -401,28 +401,24 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Worktree | Branch | Commit | State ownership |
 |---|---|---|---|
-| `/Users/alexeidelgado/Desktop/TritonGen` | `codex-track-handoff-context` | `93b1a08` | temporary trunk with MLflow integration promoted; no Modal or output mutation |
-| `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `59021f2` plus A6 run-packet gate planning checkpoint | A2 C-loop integration, A3 P-loop integration, A4 P-to-C isolation, A5 analyzer grouping/quarantine, and A6 run-packet gate planning complete pending independent review; A1 prompt core complete with baseline-venv caveat; trunk MLflow integration merged for A2/A3/A4/A5/A6 readiness |
+| `/Users/alexeidelgado/Desktop/TritonGen` | `codex/observability-sidecar-core` | `4a84600` plus O0 docs reconciliation/spec-tightening and sidecar-core implementation edits | active O0 sidecar-core branch; pure `shared/observability` implementation and focused tests only; no Modal or output mutation |
+| `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `4a84600` | reference/history worktree only; same A6 commit as the promoted handoff trunk and not the place for observability work |
 | `/Users/alexeidelgado/Desktop/TritonGen/.claude/worktrees/intelligent-pasteur-72d92f` | `claude/intelligent-pasteur-72d92f` | `b0085c1` | external/unknown to this orchestration state; reconcile before relying on it |
 
 ## Active Branches
 
 | Branch | Stream/package | Worktree | Status | Notes |
 |---|---|---|---|---|
-| `codex-track-handoff-context` | temporary trunk | `/Users/alexeidelgado/Desktop/TritonGen` when not on integration branch | active baseline | Treat as the working main branch for repair/handoff work until final branch repair is complete. |
-| `codex/integrate-mlflow-into-handoff` | MLflow tracking harness integration | none after promotion | promoted | Merged `origin/ml_migration`, preserved handoff doc/audit tracking policy, validated optional/no-op tracking tests, and promoted into the temporary trunk now at `93b1a08`. |
-| `codex/llm-repair-memory-agentic-transcript-v1` | A-stream / agentic transcript implementation | `/private/tmp/tritongen-llm-repair-memory` | A6 run-packet gate planning complete pending independent review | Created from `codex-track-handoff-context`; A-spec checkpoint, A0 constants, A0.5 constants preflight, A1 prompt core, MLflow trunk merge, A2 C-loop commit, A3 P-loop commit, A4 isolation proof, A5 analyzer grouping/quarantine, and A6 run-packet gate planning are recorded; A2/A3/A4/A5/A6 remain pending independent review. |
+| `codex-track-handoff-context` | promoted handoff trunk | none while this worktree is on O0 | active baseline | Current promoted trunk is A6 at `4a84600`; use this as the baseline for O0 and future handoff work, not `main`, `ml_migration`, or stale worktrees. |
+| `codex/observability-sidecar-core` | O0 sidecar core | `/Users/alexeidelgado/Desktop/TritonGen` | implementation complete locally; review pending | Created from `codex-track-handoff-context` at `4a84600`; contains state reconciliation, O-spec v0.2.1 tightening, and pure `shared/observability/*` core plus focused tests only. |
+| `codex/integrate-mlflow-into-handoff` | MLflow tracking harness integration | none after promotion | promoted/reference | Merged `origin/ml_migration`, preserved handoff doc/audit tracking policy, validated optional/no-op tracking tests, and was absorbed into the promoted handoff trunk before A6. |
+| `codex/llm-repair-memory-agentic-transcript-v1` | A-stream / agentic transcript implementation | `/private/tmp/tritongen-llm-repair-memory` | promoted/reference | Same commit as the promoted handoff trunk at `4a84600`; keep as reference/history, not as an active implementation branch for observability. |
 
 ## Active Serialized-Surface Leases
 
 | Surface | Owner branch | Owner worktree | Scope | Start commit | Expected files | Expected tests | Review checkpoint | Status |
 |---|---|---|---|---|---|---|---|---|
-| C-loop repair policy integration | `codex/llm-repair-memory-agentic-transcript-v1` | `/private/tmp/tritongen-llm-repair-memory` | A2 opt-in `agentic_transcript_v1` plumbing for Cluster 2 C repair loop; preserve `last_attempt_only_v1` default and F2-only eligibility | `e3ea1e795951e6844775ef007112fdf4865735f3` | `cluster2/feedback/prompts.py`; `cluster2/feedback/repair_loop.py`; `cluster2/feedback/trace.py`; `cluster2/tests/test_feedback_prompts.py`; `cluster2/tests/test_repair_loop.py` | Cluster 2 repair-loop tests; F2-only/default-invariance tests; invalid policy/budget/latest-source negative tests; prompt hash and anchor metadata tests | A2 independent review before promotion | active pending review |
-| Cluster 2 runner policy plumbing | `codex/llm-repair-memory-agentic-transcript-v1` | `/private/tmp/tritongen-llm-repair-memory` | A2 opt-in Cluster 2 runner/config/result metadata plumbing only; no Modal execution and no output mutation | `e3ea1e795951e6844775ef007112fdf4865735f3` | `cluster2/experiments/run_cluster2_modal.py`; `cluster2/results/dataclass.py`; `cluster2/tests/test_results_logger.py`; `cluster2/tests/test_run_cluster2_modal.py` | runner CLI/default tests; metadata nullability matrix tests; no-unauthorized-run check; forbidden-output check | A2 independent review before promotion | active pending review |
-| P-loop repair policy integration | `codex/llm-repair-memory-agentic-transcript-v1` | `/private/tmp/tritongen-llm-repair-memory` | A3 opt-in `agentic_transcript_v1` plumbing for Cluster 3 P repair loop; preserve `last_attempt_only_v1` default and F1_COMPILE-only eligibility; keep F1_RUNTIME terminal | `6c859b3317a41ad4adbc2cb4e9a4fc8cc1c6a198` | `cluster3/feedback/prompts.py`; `cluster3/feedback/compile_error_repair.py`; `cluster3/feedback/trace.py`; `cluster3/tests/test_p_prompts.py`; `cluster3/tests/test_p_repair_loop.py`; `cluster3/tests/test_cluster3_imports.py` | Cluster 3 P prompt/repair-loop tests; F1_COMPILE-only/default-invariance tests; invalid policy/budget/latest-source negative tests; prompt hash and anchor metadata tests; P sanitizer leakage tests | A3 independent review before promotion | active pending review |
-| Cluster 3 runner/schema policy plumbing | `codex/llm-repair-memory-agentic-transcript-v1` | `/private/tmp/tritongen-llm-repair-memory` | A3 opt-in Cluster 3 runner/config/result metadata plumbing only; no Modal execution, generation run, experiment run, or output mutation | `6c859b3317a41ad4adbc2cb4e9a4fc8cc1c6a198` | `cluster3/experiments/run_cluster3_modal.py`; `cluster3/results/dataclass.py`; `cluster3/tests/test_cluster3_schema.py`; `cluster3/tests/test_run_cluster3_modal_cli.py` | runner CLI/default tests; metadata nullability matrix tests; no-unauthorized-run check; forbidden-output check | A3 independent review before promotion | active pending review |
-| Repair-history analyzer grouping/quarantine | `codex/llm-repair-memory-agentic-transcript-v1` | `/private/tmp/tritongen-llm-repair-memory` | A5 analyzer-only classification, grouping, and mixed-policy quarantine for repair-history metadata; preserve legacy analyzer compatibility and existing metric formulas; no runner, loop, Modal, output, or prompt-builder changes | `d1c8196` | `shared/analysis/factorial.py`; `shared/tests/test_factorial_analysis.py`; `shared/tests/fixtures/factorial/`; `audits/agentic_transcript_v1_a5_analyzer_grouping_report.md`; handoff registry/state docs | `shared/tests/test_factorial_analysis.py`; A1 prompt-core regression; A2 Cluster 2 regression; A3/A4 Cluster 3 regression; import smoke; forbidden-scope diff | A5 independent review before promotion or A6 run gates | active pending review |
-| Agentic run-packet gate planning | `codex/llm-repair-memory-agentic-transcript-v1` | `/private/tmp/tritongen-llm-repair-memory` | A6 docs-only run-packet gate planning; define non-authorizing template and next-run draft with explicit policy labels, analyzer quarantine preconditions, stop/no-go conditions, and post-run validation plan; no runner, loop, analyzer, Modal, output, prompt-builder, or repair-history core changes | `59021f2` | `docs/handoff/agentic_transcript_v1_run_packet_template.md`; `docs/handoff/agentic_transcript_v1_next_run_packet.md`; `audits/agentic_transcript_v1_a6_run_packet_gate_report.md`; handoff registry/state/hub docs | Markdown/direct-review checks; A6 authorization-flag scan; forbidden-scope diff; `git diff --check` | A6 independent review before any future agentic run approval | active pending review |
+| O0 observability sidecar core | `codex/observability-sidecar-core` | `/Users/alexeidelgado/Desktop/TritonGen` | Reconciled handoff state, tightened O-spec v0.2.1, and implemented `shared/observability` schema/logger/path/redaction core plus focused tests only; no runners, result row schemas, analyzers, raw outputs, Modal calls, billing APIs, MLflow runtime state, dependencies, or lockfiles | `4a8460081aa35a647901ea5fa120a76e0f7ef0e7` | `docs/16_observability_sidecar_implementation_spec.md`; `docs/handoff/experiment_change_orchestration_state.md`; `docs/handoff/document_version_registry.md`; `shared/observability/*`; `shared/tests/test_observability_*` files | O0 focused tests passed; forbidden telemetry scans reviewed; `git diff --check` clean; `git status --short --branch` reviewed; no Modal/output mutation statement | Independent review before promotion because this touches sidecar contracts | active / implementation complete locally; review pending |
 
 ## Gate Status
 
@@ -431,10 +427,10 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 | G0 baseline freeze | satisfied with caveat | Git status is clean, but ignored docs/audits/outputs must be checked directly when relevant. |
 | G1 orchestration contract accepted | satisfied | Contract exists and is routed through project map, hub, and registry. |
 | G2 reporting terminology stable | not started | Requires S0 acceptance. |
-| G3 observability sidecar contract stable | spec drafted / code not started | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 defines O0-O4 plus hardening guardrails; G3 still requires implementation and tests. |
+| G3 observability sidecar contract stable | O0 implemented locally / review pending | `docs/16_observability_sidecar_implementation_spec.md` v0.2.1 defines O0-O4 plus hardening guardrails and O0 clarifications for event identity, sequences, duration fields, row hashes, summary provenance, and hash-sidecar status. O0 now has pure shared schema/logger/path/redaction implementation and focused tests on `codex/observability-sidecar-core`; G3 still requires independent review/promotion and later O1 runner instrumentation before run coverage claims. |
 | G4 analyzer compatibility stable | spec drafted / code not started | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 defines S0-S3 metadata and report-label work; G4 still requires S1 implementation and compatibility tests. |
 | G5 agentic prompt core stable | satisfied with baseline-venv caveat | `audits/agentic_transcript_v1_a1_prompt_core_report.md` v1.0.0 records pure prompt-core implementation, typed local errors, policy config validation, public evidence/source models, deterministic anchor ranking, canonical renderer, prompt/history hashes, budget behavior, fixture manifest, prompt-injection fixture, legacy C/P byte-invariance snapshots, import isolation, focused tests, and no forbidden-surface changes. |
-| G6 agentic integration stable | partial / pending A2-A6 review | A2 C-loop integration and A3 P-loop integration are committed pending independent review; A4 P-to-C isolation proof, A5 analyzer grouping/quarantine, and A6 run-packet gate planning are complete pending independent review. |
+| G6 agentic integration stable | promoted to handoff trunk with run gate caveat | A2 C-loop integration, A3 P-loop integration, A4 P-to-C isolation proof, A5 analyzer grouping/quarantine, and A6 run-packet gate planning are present in promoted A6 commit `4a84600`; future agentic execution remains blocked pending signed run approval and required pre-run checks. |
 | G7 development run readiness | blocked pending fresh signed approval packet | Phase 14e matrix is frozen; A6 provides the template and one `DRAFT_NOT_APPROVED` next-run packet, but no active run packet is approved. Any broader development-scale, all-condition, diagnostic, or paper-readiness run needs a signed approval packet. |
 | G8 paper-scale readiness | blocked | No `n=20` or paper-scale work. |
 
@@ -487,18 +483,18 @@ Historical context:
 |---|---|---|
 | orchestration contract | complete | `docs/15_experiment_change_orchestration_contract.md` created and routed. |
 | operating-control addendum | complete | State record, lease, decision authority, run packet, merge protocol, and trust boundary added to the contract. |
-| observability sidecar implementation spec | complete | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0 created and routed; code implementation not started. |
+| observability sidecar implementation spec | complete / tightened | `docs/16_observability_sidecar_implementation_spec.md` v0.2.1 created, routed, and clarified for O0 implementation; O0 sidecar-core code is tracked as the active review-pending package below. |
 | structural/task analyzer metadata implementation spec | complete | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 created and routed; analyzer/report code implementation not started. |
-| agentic transcript implementation spec | complete | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5 created, routed, edge-case hardened, research cross-checked, and expanded with implementation checkpoint gates plus canonical rendering, public-evidence-only ranking, fixture manifest, byte-invariance, import-isolation, metadata-nullability, CLI/API/default, mixed-policy analyzer, commit-slicing, rollback, and no-cleanup gates; A2 C-loop and A3 P-loop integration are complete pending independent review. |
+| agentic transcript implementation spec | complete | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5 created, routed, edge-case hardened, research cross-checked, and expanded with implementation checkpoint gates plus canonical rendering, public-evidence-only ranking, fixture manifest, byte-invariance, import-isolation, metadata-nullability, CLI/API/default, mixed-policy analyzer, commit-slicing, rollback, and no-cleanup gates; A0-A6 are promoted into the A6 handoff trunk at `4a84600`. |
 | agentic transcript docs-only checkpoint | complete | `audits/agentic_transcript_v1_spec_checkpoint_report.md` v1.0.0 confirms source-doc inspection, readiness-audit reconciliation as `aligned_with_spec`, A0 readiness, no-code/no-output mutation, worktree caveats, and required local docs/import sanity tests. |
 | agentic transcript A0 policy constants | complete | Commit `1e3f44468c5ae91e6467b42b7f93a068fa6acf5f` adds policy-name constants, keeps `DEFAULT_REPAIR_HISTORY_POLICY_V1` as `last_attempt_only_v1`, keeps Cluster 3 `P_HISTORY_POLICY_V1` as `last_attempt_only_v1`, and changes only the four allowed constants/test files. |
 | agentic transcript A0.5 constants preflight | complete | `audits/agentic_transcript_v1_a0_5_preflight_report.md` v1.0.0 confirms A0 scope, default invariance, Cluster 3 compatibility, cheap imports, focused tests, optional prompt/loop import sanity, no forbidden-surface changes, no code/output mutation in A0.5, and baseline-venv caveat. |
 | agentic transcript A1 prompt core | complete | `audits/agentic_transcript_v1_a1_prompt_core_report.md` v1.0.0 confirms pure prompt-core implementation, deterministic fixtures, config/evidence/ranking/rendering tests, legacy C/P byte-invariance snapshots, import isolation, no loop/runner/schema/analyzer/output changes, and baseline-venv caveat. |
-| agentic transcript A2 C-loop integration | complete pending independent review | Commit `6c859b3317a41ad4adbc2cb4e9a4fc8cc1c6a198` and `audits/agentic_transcript_v1_a2_c_loop_integration_report.md` v1.0.0 confirm opt-in Cluster 2 C-loop plumbing, preserved legacy defaults, runner policy flags, nullable/defaultable generated-row repair-history metadata, focused validation, and no Modal/output mutation. |
-| agentic transcript A3 P-loop integration | complete pending independent review | `audits/agentic_transcript_v1_a3_p_loop_integration_report.md` v1.0.0 confirms opt-in Cluster 3 P-loop plumbing, preserved legacy defaults, runner policy flags, nullable/defaultable generated-row P repair-history metadata, F1_COMPILE-only eligibility, F1_RUNTIME terminal behavior, no P-to-C transcript leakage, focused validation, and no Modal/output/generation mutation. |
-| agentic transcript A4 P-to-C isolation proof | complete pending independent review | `audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md` v1.0.0 confirms integrated post-P F2 and initial-F2 agentic C prompt isolation, P compile-history/hash exclusion, C seed/public-evidence proof, adapter fail-closed coverage, legacy prompt byte-invariance, and no Modal/output/generation mutation. |
-| agentic transcript A5 analyzer grouping/quarantine | complete pending independent review | `audits/agentic_transcript_v1_a5_analyzer_grouping_report.md` v1.0.0 confirms analyzer-side repair-history policy classification, grouping keys, mixed-policy/mixed-analysis quarantine, unknown-policy and incomplete-agentic quarantine, focused fixtures/tests, A1-A4 regression validation, and no Modal/output/generation mutation. |
-| agentic transcript A6 run-packet gate planning | complete pending independent review | `docs/handoff/agentic_transcript_v1_run_packet_template.md` v1.0.0 and `docs/handoff/agentic_transcript_v1_next_run_packet.md` v0.1.0 define the future run approval gate; the next-run draft is `DRAFT_NOT_APPROVED`, all execution authorization flags are `NO`, analyzer quarantine and metadata checks are required before approval, and no Modal/output/generation/n=5/n=20/paper-scale mutation occurred. |
+| agentic transcript A2 C-loop integration | promoted/reference | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a2_c_loop_integration_report.md` v1.0.0 confirms opt-in Cluster 2 C-loop plumbing, preserved legacy defaults, runner policy flags, nullable/defaultable generated-row repair-history metadata, focused validation, and no Modal/output mutation. |
+| agentic transcript A3 P-loop integration | promoted/reference | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a3_p_loop_integration_report.md` v1.0.0 confirms opt-in Cluster 3 P-loop plumbing, preserved legacy defaults, runner policy flags, nullable/defaultable generated-row P repair-history metadata, F1_COMPILE-only eligibility, F1_RUNTIME terminal behavior, no P-to-C transcript leakage, focused validation, and no Modal/output/generation mutation. |
+| agentic transcript A4 P-to-C isolation proof | promoted/reference | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md` v1.0.0 confirms integrated post-P F2 and initial-F2 agentic C prompt isolation, P compile-history/hash exclusion, C seed/public-evidence proof, adapter fail-closed coverage, legacy prompt byte-invariance, and no Modal/output/generation mutation. |
+| agentic transcript A5 analyzer grouping/quarantine | promoted/reference | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a5_analyzer_grouping_report.md` v1.0.0 confirms analyzer-side repair-history policy classification, grouping keys, mixed-policy/mixed-analysis quarantine, unknown-policy and incomplete-agentic quarantine, focused fixtures/tests, A1-A4 regression validation, and no Modal/output/generation mutation. |
+| agentic transcript A6 run-packet gate planning | promoted/reference | Promoted into handoff trunk at `4a84600`; `docs/handoff/agentic_transcript_v1_run_packet_template.md` v1.0.0 and `docs/handoff/agentic_transcript_v1_next_run_packet.md` v0.1.0 define the future run approval gate; the next-run draft is `DRAFT_NOT_APPROVED`, all execution authorization flags are `NO`, analyzer quarantine and metadata checks are required before approval, and no Modal/output/generation/n=5/n=20/paper-scale mutation occurred. |
 | MLflow tracking harness integration | complete | `origin/ml_migration` was merged into `codex-track-handoff-context` via `codex/integrate-mlflow-into-handoff` and promoted at `28c52f2`; tracking remains optional/no-op unless `TRITONGEN_MLFLOW` and `mlflow` are present, and JSONL remains the source of truth. |
 
 ## Abandoned Packages
@@ -521,17 +517,14 @@ Historical context:
   attempts and zero C fires.
 - No paper-scale Cluster 3 results exist.
 - Agentic-memory A1 prompt core is complete with baseline-venv caveat.
-- Agentic-memory A2 C-loop integration is committed pending independent review.
-- Agentic-memory A3 P-loop integration is complete pending independent review.
-- Agentic-memory A4 P-to-C isolation proof is complete pending independent
-  review.
-- Agentic-memory A5 analyzer grouping/quarantine is complete pending independent
-  review; no Modal execution, generation, experiment artifact, or output
-  implementation is active.
-- Agentic-memory A6 run-packet gate planning is complete pending independent
-  review; the next-run packet is `DRAFT_NOT_APPROVED` and authorizes no
+- Agentic-memory A2 through A6 are promoted into the handoff trunk at `4a84600`
+  and preserved as evidence snapshots/reference history; future agentic
+  execution still requires a signed run packet.
+- The agentic next-run packet is `DRAFT_NOT_APPROVED` and authorizes no
   execution.
-- No observability sidecar implementation is active yet.
+- O0 observability sidecar core branch has local implementation for the pure
+  `shared/observability` schema/logger/path/redaction library and focused
+  tests; independent review/promotion is still pending before O1.
 - No analyzer metric-registry implementation is active yet.
 
 ## Next Allowed Actions
@@ -540,27 +533,18 @@ Allowed without run approval:
 
 1. Create remaining component implementation specs for paper-scale readiness or
    future Cluster 3 run packet/spec, if explicitly requested.
-2. Start safe parallel branches after adding package cards below:
+2. Review and promote O0 sidecar core on `codex/observability-sidecar-core`,
+   limited to the active O0 lease and O-spec v0.2.1.
+3. Start other safe parallel branches only after adding package cards below:
    - S0 docs terminology;
-   - O0 sidecar core;
-   - A2 C-loop integration is committed pending independent review in
-     `/private/tmp/tritongen-llm-repair-memory` under the C-loop / Cluster 2
-     runner leases;
-   - A3 P-loop integration is complete pending independent review in
-     `/private/tmp/tritongen-llm-repair-memory` under the P-loop / Cluster 3
-     runner-schema leases;
-   - A4 P-to-C isolation proof is complete pending independent review in
-     `/private/tmp/tritongen-llm-repair-memory`;
-   - A5 analyzer grouping/quarantine is complete pending independent review in
-     `/private/tmp/tritongen-llm-repair-memory`;
-   - A6 run-packet gate planning is complete pending independent review in
-     `/private/tmp/tritongen-llm-repair-memory`.
-3. Review A6 run-packet gate planning or prepare a future signed approval
+   - future analyzer/report branches after their serialized-surface leases are
+     created.
+4. Review A6 run-packet gate planning or prepare a future signed approval
    packet from `docs/handoff/agentic_transcript_v1_run_packet_template.md`.
    The current next-run packet is `DRAFT_NOT_APPROVED` and does not authorize
    Modal execution, generation, n=5, n=20, paper-scale work, or output
    mutation.
-4. Create serialized-surface leases before touching analyzer, runner, repair
+5. Create serialized-surface leases before touching analyzer, runner, repair
    loop, result schema, raw output, or report-data-builder surfaces.
 
 Not allowed without explicit approval:
@@ -574,10 +558,11 @@ Not allowed without explicit approval:
 ## A1 Prompt Core Checkpoint State
 
 The `agentic_transcript_v1` feature branch has completed A0 policy constants,
-A0.5 constants preflight, and A1 prompt core. The A1 checkpoint remains
-preserved while A2 C-loop integration, A3 P-loop integration, A4 P-to-C
-isolation proof, A5 analyzer grouping/quarantine, and A6 run-packet gate
-planning are complete pending independent review.
+A0.5 constants preflight, A1 prompt core, A2 C-loop integration, A3 P-loop
+integration, A4 P-to-C isolation proof, A5 analyzer grouping/quarantine, and A6
+run-packet gate planning. The branch is now the same A6 commit as the promoted
+handoff trunk and is preserved as reference/history rather than active
+observability work.
 
 Current checkout:
 
@@ -585,18 +570,18 @@ Current checkout:
 branch: codex/llm-repair-memory-agentic-transcript-v1
 worktree: /private/tmp/tritongen-llm-repair-memory
 spec: docs/18_agentic_transcript_v1_implementation_spec.md v0.1.5
-state: docs/handoff/experiment_change_orchestration_state.md v1.5.17
-registry: docs/handoff/document_version_registry.md v1.54.0
+state: docs/handoff/experiment_change_orchestration_state.md v1.5.19
+registry: docs/handoff/document_version_registry.md v1.56.0
 spec checkpoint: audits/agentic_transcript_v1_spec_checkpoint_report.md v1.0.0
 A0 commit: 1e3f44468c5ae91e6467b42b7f93a068fa6acf5f
 A0.5 preflight: audits/agentic_transcript_v1_a0_5_preflight_report.md v1.0.0
 A1 prompt core report: audits/agentic_transcript_v1_a1_prompt_core_report.md v1.0.0
-A2 C-loop integration: commit 6c859b3317a41ad4adbc2cb4e9a4fc8cc1c6a198 plus audits/agentic_transcript_v1_a2_c_loop_integration_report.md v1.0.0 pending independent review
-A3 P-loop integration: audits/agentic_transcript_v1_a3_p_loop_integration_report.md v1.0.0 pending independent review
-A4 P-to-C isolation proof: audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md v1.0.0 pending independent review
-A5 analyzer grouping/quarantine: audits/agentic_transcript_v1_a5_analyzer_grouping_report.md v1.0.0 pending independent review
-A6 run-packet gate planning: audits/agentic_transcript_v1_a6_run_packet_gate_report.md v1.0.0 pending independent review; docs/handoff/agentic_transcript_v1_next_run_packet.md is DRAFT_NOT_APPROVED
-next implementation package: A2/A3/A4/A5/A6 review patches if required; otherwise future signed run approval packet only
+A2 C-loop integration: promoted into A6 trunk at 4a84600; audits/agentic_transcript_v1_a2_c_loop_integration_report.md v1.0.0
+A3 P-loop integration: promoted into A6 trunk at 4a84600; audits/agentic_transcript_v1_a3_p_loop_integration_report.md v1.0.0
+A4 P-to-C isolation proof: promoted into A6 trunk at 4a84600; audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md v1.0.0
+A5 analyzer grouping/quarantine: promoted into A6 trunk at 4a84600; audits/agentic_transcript_v1_a5_analyzer_grouping_report.md v1.0.0
+A6 run-packet gate planning: promoted into handoff trunk at 4a84600; audits/agentic_transcript_v1_a6_run_packet_gate_report.md v1.0.0; docs/handoff/agentic_transcript_v1_next_run_packet.md is DRAFT_NOT_APPROVED
+next implementation package: O0 sidecar core on codex/observability-sidecar-core; future agentic runs still require a signed run approval packet
 ```
 
 A1 allowed files:
@@ -662,7 +647,38 @@ isolation reported `forbidden_imports []`.
 
 ## Work Package Cards
 
-### Active Work Package: A2 C-loop Integration
+### Active Work Package: O0 Sidecar Core
+
+```text
+package: O0 sidecar core
+launch packet id: O0-SIDECAR-CORE-2026-06-03
+branch: codex/observability-sidecar-core
+owner: current orchestration agent
+scope: reconcile handoff state, tighten O-spec v0.2.1, then implement shared observability schema/logger/path/redaction core and tests only
+requirement ids: O0-SCHEMA-STRICT; O0-EVENT-IDENTITY; O0-LOGGER-DURABLE; O0-PATH-COLLISION; O0-REDACTION; O0-IMPORT-BOUNDARY; O0-NO-RUNNER; O0-NO-OUTPUT
+allowed files: docs/16_observability_sidecar_implementation_spec.md; docs/handoff/experiment_change_orchestration_state.md; docs/handoff/document_version_registry.md; shared/observability/__init__.py; shared/observability/schema.py; shared/observability/logger.py; shared/observability/paths.py; shared/observability/redaction.py; shared/tests/test_observability_schema.py; shared/tests/test_observability_logger.py; shared/tests/test_observability_redaction.py; shared/tests/test_observability_imports.py
+forbidden files: cluster1/experiments/**; cluster2/experiments/**; cluster3/experiments/**; cluster1/results/**; cluster2/results/**; cluster3/results/**; shared/analysis/**; outputs/**; audits/**; dependency or lock files; Modal image definitions; MLflow runtime state
+serialized surfaces: O0 observability sidecar core
+entry gate: branch created from promoted handoff trunk at 4a8460081aa35a647901ea5fa120a76e0f7ef0e7; state reconciled; O-spec tightened to v0.2.1
+exit gate: O0 focused tests pass; forbidden telemetry scans reviewed; git diff --check clean; no runner/result-schema/analyzer/raw-output/Modal/billing/MLflow-runtime/dependency changes
+tests required: shared/tests/test_observability_schema.py; shared/tests/test_observability_logger.py; shared/tests/test_observability_redaction.py; shared/tests/test_observability_imports.py; forbidden privacy and performance telemetry scans; git diff --check; git status --short --branch
+default-invariance proof required: yes, by absence of runner/result-schema/analyzer changes and import-boundary tests
+fixture-first proof required: yes, local tmp_path sidecar write/resume fixtures only
+independent review required: yes before promotion
+commit/package slice: O0 sidecar core only
+rollback independence proof required: yes
+opportunistic cleanup included: no
+negative tests required: strict schema unknown fields; invalid event sequence; path collision; incompatible resume metadata; forbidden private-eval/source/prompt/raw-log/secrets payloads; import-boundary leakage
+dependency/lockfile changes allowed: no
+network/dependency-download/API calls allowed: no
+secrets/credentials access allowed: no
+run/output mutation allowed: no
+escalation thresholds: stop on any need for runner instrumentation, result row schema changes, analyzer/report changes, raw output mutation, Modal/generation/billing/MLflow runtime access, dependency/network access, private-eval leakage, performance/profiler/timing/speedup telemetry, or branch scope growth beyond O0
+handoff due: O0 checkpoint before O1 runner instrumentation
+status: implementation complete locally; O0 focused tests and required boundary scans passed; independent review/promotion pending before O1
+```
+
+### Reference Work Package: A2 C-loop Integration
 
 ```text
 package: A2 C-loop integration
@@ -674,7 +690,7 @@ requirement ids: A2-C-DEFAULT-INVARIANCE; A2-C-OPT-IN-AGENTIC; A2-C-F2-ONLY; A2-
 allowed files: cluster2/feedback/prompts.py; cluster2/feedback/repair_loop.py; cluster2/feedback/trace.py; cluster2/experiments/run_cluster2_modal.py; cluster2/results/dataclass.py; cluster2/tests/test_feedback_prompts.py; cluster2/tests/test_repair_loop.py; cluster2/tests/test_results_logger.py; cluster2/tests/test_run_cluster2_modal.py
 forbidden files: cluster1/**; cluster3/**; shared/analysis/**; outputs/**; result analyzers; dependency or lock files; Modal image definitions beyond allowed runner plumbing
 serialized surfaces: C-loop repair policy integration; Cluster 2 runner policy plumbing
-entry gate: A1 prompt core complete; active C-loop and Cluster 2 runner leases recorded
+entry gate: historical A2 entry gate was A1 prompt core complete plus C-loop and Cluster 2 runner leases; current promoted trunk is 4a84600
 exit gate: focused Cluster 2 tests pass; default prompt bytes unchanged for omitted and last_attempt_only_v1 policy; agentic prompt path opt-in only; invalid config fails closed; metadata fields nullable/defaultable for legacy rows; no Modal/output mutation
 tests required: cluster2 feedback prompt tests; cluster2 repair loop tests; Cluster 2 runner CLI/default tests if runner touched; Cluster 2 result dataclass/logger tests if result metadata touched; A1 shared prompt-core suite for regression; forbidden-path and git diff checks
 default-invariance proof required: yes
@@ -691,10 +707,10 @@ docs required: update this state and registry at launch and closeout; create A2 
 run/output mutation allowed: no
 escalation thresholds: stop on default behavior drift, F2 eligibility drift, hidden fallback need, result-schema migration beyond nullable/defaultable metadata, private-eval leakage, Modal/output mutation need, dependency/network need, or branch scope growth beyond A2
 handoff due: A2 review checkpoint before A3/A4/A5
-status: implementation complete pending independent review
+status: promoted into A6 handoff trunk at 4a84600; reference/history only
 ```
 
-### Active Work Package: A3 P-loop Integration
+### Reference Work Package: A3 P-loop Integration
 
 ```text
 package: A3 P-loop integration
@@ -706,7 +722,7 @@ requirement ids: A3-P-DEFAULT-INVARIANCE; A3-P-OPT-IN-AGENTIC; A3-P-F1-COMPILE-O
 allowed files: cluster3/feedback/prompts.py; cluster3/feedback/compile_error_repair.py; cluster3/feedback/trace.py; cluster3/experiments/run_cluster3_modal.py; cluster3/results/dataclass.py; cluster3/tests/test_p_prompts.py; cluster3/tests/test_p_repair_loop.py; cluster3/tests/test_cluster3_schema.py; cluster3/tests/test_run_cluster3_modal_cli.py; cluster3/tests/test_cluster3_imports.py
 forbidden files: cluster1/**; cluster2/feedback/**; cluster2/results/**; cluster2/experiments/**; shared/analysis/**; outputs/**; analyzers; dependency or lock files; Modal image definitions beyond allowed runner plumbing; prompt-core files unless a blocking A1 bug is separately scoped
 serialized surfaces: P-loop repair policy integration; Cluster 3 runner/schema policy plumbing
-entry gate: A1 prompt core complete and A2 committed; P-loop and Cluster 3 runner/schema leases active in this state file
+entry gate: historical A3 entry gate was A1 prompt core complete, A2 committed, and P-loop / Cluster 3 runner-schema leases; current promoted trunk is 4a84600
 exit gate: focused Cluster 3 tests pass; default P prompt bytes unchanged for omitted and last_attempt_only_v1 policy; agentic prompt path opt-in only; invalid config fails closed before generation; metadata fields nullable/defaultable for legacy rows; F1_COMPILE-only P eligibility preserved; F1_RUNTIME remains terminal; no C correctness transcript or P-to-C prompt leakage; no Modal/output/generation mutation
 tests required: Cluster 3 P prompt tests; Cluster 3 P repair loop tests; Cluster 3 runner CLI/default tests; Cluster 3 result schema/logger tests if result metadata touched; A1 shared prompt-core suite; A2 focused Cluster 2 suite for regression; Cluster 3 import tests; forbidden-path and git diff checks
 default-invariance proof required: yes
@@ -723,7 +739,7 @@ docs required: update this state and registry at launch and closeout; create A3 
 run/output mutation allowed: no
 escalation thresholds: stop on default P behavior drift, F1_COMPILE eligibility drift, F1_RUNTIME terminal drift, hidden fallback need, result-schema migration beyond nullable/defaultable metadata, private-eval/C correctness/P-to-C leakage, Modal/output/generation need, dependency/network need, or branch scope growth beyond A3
 handoff due: A3 review checkpoint before A4/A5/A6
-status: implementation complete pending independent review
+status: promoted into A6 handoff trunk at 4a84600; reference/history only
 ```
 
 Use this template for every package before work begins:
@@ -795,21 +811,56 @@ state update owner: orchestrator
 status:
 ```
 
-### Active Launch Packet: A2-C-LOOP-2026-06-02
+### Active Launch Packet: O0-SIDECAR-CORE-2026-06-03
+
+```text
+launch packet id: O0-SIDECAR-CORE-2026-06-03
+agent role: implementation agent
+branch: codex/observability-sidecar-core
+worktree: /Users/alexeidelgado/Desktop/TritonGen
+baseline commit: 4a8460081aa35a647901ea5fa120a76e0f7ef0e7
+required read set: docs/handoff/experiment_change_orchestration_state.md; docs/handoff/document_version_registry.md; docs/handoff/agentic_document_hub.md; docs/16_observability_sidecar_implementation_spec.md
+package: O0 sidecar core
+requirement ids in scope: O0-SCHEMA-STRICT; O0-EVENT-IDENTITY; O0-LOGGER-DURABLE; O0-PATH-COLLISION; O0-REDACTION; O0-IMPORT-BOUNDARY; O0-NO-RUNNER; O0-NO-OUTPUT
+allowed files: docs/16_observability_sidecar_implementation_spec.md; docs/handoff/experiment_change_orchestration_state.md; docs/handoff/document_version_registry.md; shared/observability/__init__.py; shared/observability/schema.py; shared/observability/logger.py; shared/observability/paths.py; shared/observability/redaction.py; shared/tests/test_observability_schema.py; shared/tests/test_observability_logger.py; shared/tests/test_observability_redaction.py; shared/tests/test_observability_imports.py
+forbidden files: cluster1/experiments/**; cluster2/experiments/**; cluster3/experiments/**; cluster1/results/**; cluster2/results/**; cluster3/results/**; shared/analysis/**; outputs/**; audits/**; dependency or lock files; Modal image definitions; MLflow runtime state
+serialized surfaces: O0 observability sidecar core
+entry gate: clean promoted handoff trunk at 4a84600; O0 branch created; state/spec/registry reconciliation completed before O0 code
+exit gate: O0 handoff records files changed, tests/checks run, import-boundary proof, forbidden-files check, no Modal/output/billing/dependency mutation, unresolved risks, and next blocked package or gate
+required tests/checks: .venv/bin/python -m pytest shared/tests/test_observability_schema.py shared/tests/test_observability_logger.py shared/tests/test_observability_redaction.py shared/tests/test_observability_imports.py -q; forbidden privacy scan; forbidden performance/profiler/timing scan; git diff --check; git status --short --branch
+default-invariance proof required: yes
+fixture-first proof required: yes
+independent review required: yes before promotion
+commit/package slice: O0 sidecar core only
+rollback independence proof required: yes
+opportunistic cleanup included: no
+negative tests required: strict schema unknown fields; invalid event sequence; path collision; incompatible resume metadata; forbidden private-eval/source/prompt/raw-log/secrets payloads; import-boundary leakage
+dependency/lockfile changes allowed: no
+network/dependency-download/API calls allowed: no
+secrets/credentials access allowed: no
+Modal/output mutation allowed: no
+escalation thresholds: stop on any need for runner instrumentation, result row schema changes, analyzer/report changes, raw output mutation, Modal/generation/billing/MLflow runtime access, dependency/network access, private-eval leakage, performance/profiler/timing/speedup telemetry, or branch scope growth beyond O0
+stop triggers: O-spec v0.2.1 stop boundaries plus orchestration escalation thresholds
+handoff destination: O0 checkpoint and this state file
+state update owner: orchestrator
+status: implementation complete locally; review/promotion pending
+```
+
+### Reference Launch Packet: A2-C-LOOP-2026-06-02
 
 ```text
 launch packet id: A2-C-LOOP-2026-06-02
 agent role: implementation agent
 branch: codex/llm-repair-memory-agentic-transcript-v1
 worktree: /private/tmp/tritongen-llm-repair-memory
-baseline commit: e3ea1e795951e6844775ef007112fdf4865735f3
+baseline commit: historical A2 package baseline; promoted trunk commit 4a8460081aa35a647901ea5fa120a76e0f7ef0e7
 required read set: docs/handoff/experiment_change_orchestration_state.md; docs/handoff/document_version_registry.md; docs/handoff/agentic_document_hub.md; docs/18_agentic_transcript_v1_implementation_spec.md; audits/agentic_transcript_v1_a1_prompt_core_report.md
 package: A2 C-loop integration
 requirement ids in scope: A2-C-DEFAULT-INVARIANCE; A2-C-OPT-IN-AGENTIC; A2-C-F2-ONLY; A2-C-FAIL-CLOSED-CONFIG; A2-C-METADATA; A2-C-NO-RUN
 allowed files: cluster2/feedback/prompts.py; cluster2/feedback/repair_loop.py; cluster2/feedback/trace.py; cluster2/experiments/run_cluster2_modal.py; cluster2/results/dataclass.py; cluster2/tests/test_feedback_prompts.py; cluster2/tests/test_repair_loop.py; cluster2/tests/test_results_logger.py; cluster2/tests/test_run_cluster2_modal.py; docs/handoff/experiment_change_orchestration_state.md; docs/handoff/document_version_registry.md; audits/agentic_transcript_v1_a2_c_loop_integration_report.md
 forbidden files: cluster1/**; cluster3/**; shared/analysis/**; outputs/**; raw artifacts; analyzers; dependency or lock files; prompt-core files unless a blocking A1 bug is separately scoped
 serialized surfaces: C-loop repair policy integration; Cluster 2 runner policy plumbing
-entry gate: A1 prompt core complete and preserved; C-loop and Cluster 2 runner leases active in this state file
+entry gate: historical A2 entry gate was A1 prompt core complete and preserved plus C-loop and Cluster 2 runner leases; current promoted trunk is 4a84600
 exit gate: A2 checkpoint report records files changed, tests/checks run, default-invariance proof, forbidden-files check, no Modal/output mutation, unresolved risks, and next blocked package or gate
 required tests/checks: focused Cluster 2 prompt/repair-loop/runner/result tests touched by implementation; A1 shared prompt-core suite; Cluster 2 boundary tests; git diff --name-only; forbidden implementation diff check; git diff --check; git status --short --branch
 default-invariance proof required: yes
@@ -827,24 +878,24 @@ escalation thresholds: stop on any need for Modal, generation, n=5, n=20, paper-
 stop triggers: implementation stop triggers from docs/18_agentic_transcript_v1_implementation_spec.md plus orchestration escalation thresholds
 handoff destination: A2 checkpoint report and this state file
 state update owner: orchestrator
-status: implementation complete pending independent review
+status: promoted into A6 handoff trunk at 4a84600; reference/history only
 ```
 
-### Active Launch Packet: A3-P-LOOP-2026-06-02
+### Reference Launch Packet: A3-P-LOOP-2026-06-02
 
 ```text
 launch packet id: A3-P-LOOP-2026-06-02
 agent role: implementation agent
 branch: codex/llm-repair-memory-agentic-transcript-v1
 worktree: /private/tmp/tritongen-llm-repair-memory
-baseline commit: 6c859b3317a41ad4adbc2cb4e9a4fc8cc1c6a198
+baseline commit: historical A3 package baseline; promoted trunk commit 4a8460081aa35a647901ea5fa120a76e0f7ef0e7
 required read set: docs/handoff/experiment_change_orchestration_state.md; docs/handoff/document_version_registry.md; docs/handoff/agentic_document_hub.md; docs/18_agentic_transcript_v1_implementation_spec.md; audits/agentic_transcript_v1_a1_prompt_core_report.md; audits/agentic_transcript_v1_a2_c_loop_integration_report.md
 package: A3 P-loop integration
 requirement ids in scope: A3-P-DEFAULT-INVARIANCE; A3-P-OPT-IN-AGENTIC; A3-P-F1-COMPILE-ONLY; A3-P-F1-RUNTIME-TERMINAL; A3-P-FAIL-CLOSED-CONFIG; A3-P-METADATA; A3-P-NO-C-LEAKAGE; A3-P-NO-RUN
 allowed files: cluster3/feedback/prompts.py; cluster3/feedback/compile_error_repair.py; cluster3/feedback/trace.py; cluster3/experiments/run_cluster3_modal.py; cluster3/results/dataclass.py; cluster3/tests/test_p_prompts.py; cluster3/tests/test_p_repair_loop.py; cluster3/tests/test_cluster3_schema.py; cluster3/tests/test_run_cluster3_modal_cli.py; cluster3/tests/test_cluster3_imports.py; docs/handoff/experiment_change_orchestration_state.md; docs/handoff/document_version_registry.md; audits/agentic_transcript_v1_a3_p_loop_integration_report.md
 forbidden files: cluster1/**; cluster2/feedback/**; cluster2/results/**; cluster2/experiments/**; shared/analysis/**; outputs/**; raw artifacts; analyzers; dependency or lock files; prompt-core files unless a blocking A1 bug is separately scoped
 serialized surfaces: P-loop repair policy integration; Cluster 3 runner/schema policy plumbing
-entry gate: A1 prompt core complete, A2 committed, and P-loop / Cluster 3 runner-schema leases active in this state file
+entry gate: historical A3 entry gate was A1 prompt core complete, A2 committed, and P-loop / Cluster 3 runner-schema leases; current promoted trunk is 4a84600
 exit gate: A3 checkpoint report records files changed, tests/checks run, default-invariance proof, forbidden-files check, no Modal/output/generation mutation, unresolved risks, and next blocked package or gate
 required tests/checks: focused Cluster 3 prompt/repair-loop/runner/schema tests touched by implementation; A1 shared prompt-core suite; A2 focused Cluster 2 suite; Cluster 3 import tests; import smoke; git diff --name-only; forbidden implementation diff check; git diff --check; git status --short --branch
 default-invariance proof required: yes
@@ -862,7 +913,7 @@ escalation thresholds: stop on any need for Modal, generation, n=5, n=20, paper-
 stop triggers: implementation stop triggers from docs/18_agentic_transcript_v1_implementation_spec.md plus orchestration escalation thresholds
 handoff destination: A3 checkpoint report and this state file
 state update owner: orchestrator
-status: implementation complete pending independent review
+status: promoted into A6 handoff trunk at 4a84600; reference/history only
 ```
 
 ### Package Backlog
@@ -870,20 +921,20 @@ status: implementation complete pending independent review
 | Package | Suggested branch | Status | Entry gate | Exit gate | Notes |
 |---|---|---|---|---|---|
 | S0 docs terminology | `codex/outcome-taxonomy-docs` | not started | G1 | G2 | Docs-only structural/task terminology alignment. |
-| O-spec observability sidecar implementation spec | none | complete | G1 | spec routed | `docs/16_observability_sidecar_implementation_spec.md` v0.2.0. |
+| O-spec observability sidecar implementation spec | none | complete / tightened | G1 | spec routed | `docs/16_observability_sidecar_implementation_spec.md` v0.2.1. |
 | S-spec structural/task analyzer metadata implementation spec | none | complete | G1 | spec routed | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2; code implementation not started. |
-| A-spec agentic transcript implementation spec | none | complete | G1 | spec routed | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5; A0/A0.5/A1 are complete; A2/A3 integration, A4 isolation proof, A5 analyzer grouping/quarantine, and A6 run-packet gate planning are complete pending independent review. |
-| O0 sidecar core | `codex/observability-sidecar-core` | not started | G1 plus O-spec | G3 partial | New `shared/observability/*` schema/logger/redaction and tests only. |
+| A-spec agentic transcript implementation spec | none | complete | G1 | spec routed | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5; A0-A6 are promoted into the A6 handoff trunk at `4a84600`; the repair-memory branch is reference/history. |
+| O0 sidecar core | `codex/observability-sidecar-core` | implementation complete locally; review pending | G1 plus O-spec | G3 partial | Pure `shared/observability/*` schema/logger/path/redaction core and focused tests only; no runner/result-row/analyzer/output/Modal/billing/MLflow-runtime/dependency changes. |
 | A0 policy constants | `codex/llm-repair-memory-agentic-transcript-v1` | complete | G1 plus A-spec | no behavior change | Commit `1e3f44468c5ae91e6467b42b7f93a068fa6acf5f`; policy-name constants and default-invariance tests only. |
 | A0.5 preflight | `codex/llm-repair-memory-agentic-transcript-v1` | complete | A0 complete | A1 entry readiness | `audits/agentic_transcript_v1_a0_5_preflight_report.md` v1.0.0; default invariance, cheap imports, focused tests, and no forbidden-surface changes verified. |
 | A1 prompt core | `codex/llm-repair-memory-agentic-transcript-v1` | complete with baseline-venv caveat | A0.5 complete plus A-spec | G5 satisfied | Pure attempt evidence, anchor selector, transcript renderer, fixture-first golden tests, fixture acceptance manifest, legacy byte-invariance snapshots, prompt-core import isolation, and A1 review checkpoint are recorded in `audits/agentic_transcript_v1_a1_prompt_core_report.md`. |
 | S1 analyzer metadata | `codex/analyzer-metric-registry` | blocked | G2 plus S-spec plus lease | G4 partial | Requires `docs/17_structural_task_analyzer_metadata_implementation_spec.md` and `analyzer_metric_registry` lease. |
 | O1 runner wall-clock | `codex/observability-runner-instrumentation` | blocked | O0 plus runner lease | G3 | One runner owner at a time. |
-| A2 C-loop integration | `codex/llm-repair-memory-agentic-transcript-v1` | complete pending independent review | A1 plus active C-loop / Cluster 2 runner leases | G6 partial | Commit `6c859b3317a41ad4adbc2cb4e9a4fc8cc1c6a198`; `audits/agentic_transcript_v1_a2_c_loop_integration_report.md` v1.0.0; default `last_attempt_only_v1` preserved, `agentic_transcript_v1` opt-in, no Modal/output mutation. |
-| A3 P-loop integration | `codex/llm-repair-memory-agentic-transcript-v1` | complete pending independent review | A1/A2 plus active P-loop / Cluster 3 runner-schema leases | G6 partial | `audits/agentic_transcript_v1_a3_p_loop_integration_report.md` v1.0.0; default `last_attempt_only_v1` preserved, `agentic_transcript_v1` opt-in, F1_COMPILE-only P eligibility preserved, no Modal/output/generation mutation. |
-| A4 P-to-C isolation | `codex/llm-repair-memory-agentic-transcript-v1` | complete pending independent review | A2/A3 complete | G6 partial | `audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md` v1.0.0; narrow Cluster 3 runner/adapter C-loop repair-history config bridge plus post-P F2 and initial-F2 integrated agentic C prompt isolation tests prove no P compile-history or P transcript leakage into C prompts; no Modal/output/generation mutation. |
-| A5 analyzer grouping/quarantine | `codex/llm-repair-memory-agentic-transcript-v1` | complete pending independent review | A2/A3/A4 complete | G6 partial | `audits/agentic_transcript_v1_a5_analyzer_grouping_report.md` v1.0.0; analyzer classifies repair-history policies, groups summaries by policy/template/renderer/budget/latest-source keys, quarantines mixed artifacts and mixed headline analysis groups, preserves legacy missing-policy compatibility, and performs no Modal/output/generation mutation. |
-| A6 run-packet gate planning | `codex/llm-repair-memory-agentic-transcript-v1` | complete pending independent review | A2/A3/A4/A5 complete | G7 remains blocked pending signed packet | `docs/handoff/agentic_transcript_v1_run_packet_template.md` v1.0.0 and `docs/handoff/agentic_transcript_v1_next_run_packet.md` v0.1.0 define the future approval packet; the draft is `DRAFT_NOT_APPROVED`, all execution flags are `NO`, and no Modal/output/generation/n=5/n=20/paper-scale mutation occurred. |
+| A2 C-loop integration | `codex/llm-repair-memory-agentic-transcript-v1` | promoted/reference | A1 | G6 partial | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a2_c_loop_integration_report.md` v1.0.0 records default `last_attempt_only_v1` preserved, `agentic_transcript_v1` opt-in, and no Modal/output mutation. |
+| A3 P-loop integration | `codex/llm-repair-memory-agentic-transcript-v1` | promoted/reference | A1/A2 | G6 partial | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a3_p_loop_integration_report.md` v1.0.0 records default `last_attempt_only_v1` preserved, `agentic_transcript_v1` opt-in, F1_COMPILE-only P eligibility preserved, and no Modal/output/generation mutation. |
+| A4 P-to-C isolation | `codex/llm-repair-memory-agentic-transcript-v1` | promoted/reference | A2/A3 complete | G6 partial | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md` v1.0.0 remains the isolation evidence snapshot. |
+| A5 analyzer grouping/quarantine | `codex/llm-repair-memory-agentic-transcript-v1` | promoted/reference | A2/A3/A4 complete | G6 partial | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a5_analyzer_grouping_report.md` v1.0.0 remains the analyzer grouping/quarantine evidence snapshot. |
+| A6 run-packet gate planning | `codex/llm-repair-memory-agentic-transcript-v1` | promoted/reference | A2/A3/A4/A5 complete | G7 remains blocked pending signed packet | Promoted into handoff trunk at `4a84600`; `docs/handoff/agentic_transcript_v1_run_packet_template.md` v1.0.0 and `docs/handoff/agentic_transcript_v1_next_run_packet.md` v0.1.0 define the future approval packet; the draft is `DRAFT_NOT_APPROVED`, all execution flags are `NO`, and no Modal/output/generation/n=5/n=20/paper-scale mutation occurred. |
 | S2 report builder | `codex/report-builder-outcome-families` | blocked | S1 | report labels stable | Requires report-data-builder lease if code is touched. |
 | R2 Phase 14b run | `codex/cluster3-phase14b-c-plus-p-n5` | complete | G7 plus approval | registered diagnostic artifact | Completed elsewhere; insufficient repair signal. |
 | R3 Phase 14c run | `codex/cluster3-phase14c-g-plus-c-plus-p-n5` | complete | G7 plus approval | registered diagnostic artifact | Completed elsewhere; insufficient repair signal. |
@@ -1016,8 +1067,8 @@ deferred: intentionally postponed; default behavior applies until reopened
 
 | ID | Decision | Status | Blocks | Owner | Deadline / gate | Current default | Resolution | Source doc |
 |---|---|---|---|---|---|---|---|---|
-| D-OBS-01 | Should observability sidecars be required by default or opt-in during initial rollout? | resolved | O1 runner instrumentation; any run that wants observability evidence | Observability spec owner | Resolved by O-spec v0.2.0 | Existing and development runners default to opt-in/off; final-design or paper-scale runs should use `required` after O0/O1/O3/O4 acceptance. | Initial rollout uses explicit `off`, `best_effort`, or `required` modes; no implicit sidecar writes. | `docs/16_observability_sidecar_implementation_spec.md` |
-| D-OBS-02 | What is the canonical `experiment_id` / `run_id` format? | resolved | O0/O1 sidecar schema; run approval packets; analyzer joins | Observability spec owner | Resolved by O-spec v0.2.0 | Explicit human-readable `experiment_id` and `run_id`; output path remains a join key but is not the sole ID. | Both IDs are required whenever observability is enabled. | `docs/16_observability_sidecar_implementation_spec.md` |
+| D-OBS-01 | Should observability sidecars be required by default or opt-in during initial rollout? | resolved | O1 runner instrumentation; any run that wants observability evidence | Observability spec owner | Resolved by O-spec v0.2.1 | Existing and development runners default to opt-in/off; final-design or paper-scale runs should use `required` after O0/O1/O3/O4 acceptance. | Initial rollout uses explicit `off`, `best_effort`, or `required` modes; no implicit sidecar writes. | `docs/16_observability_sidecar_implementation_spec.md` |
+| D-OBS-02 | What is the canonical `experiment_id` / `run_id` format? | resolved | O0/O1 sidecar schema; run approval packets; analyzer joins | Observability spec owner | Resolved by O-spec v0.2.1 | Explicit human-readable `experiment_id` and `run_id`; output path remains a join key but is not the sole ID. | Both IDs are required whenever observability is enabled; O0 event IDs are UUID strings and event sequences start at `0` without gaps. | `docs/16_observability_sidecar_implementation_spec.md` |
 | D-OBS-03 | Should actual Modal cost attribution use app tags, isolated windows, or both? | resolved | O5 billing reconciliation; cost-per-success claims | Observability/billing owner | Resolved for O0-O5 planning | No actual-cost claim in O0-O4; O5 should prefer App tags plus non-overlapping time windows where possible. | Actual billing remains unavailable until a future approved O5 reconciliation. | `docs/16_observability_sidecar_implementation_spec.md` |
 | D-OBS-04 | Should Phase 14c wait for observability sidecars? | resolved | Future final-design or paper-scale run packets | Run spec owner plus user approval | Resolved after Phase 14e state reconciliation | Phase 14c already ran as diagnostic before sidecars; future final-design/paper runs should wait for O0/O1/O3/O4 or explicitly mark observability unavailable. | No retroactive sidecar is fabricated for Phase 14a-14e artifacts. | `docs/16_observability_sidecar_implementation_spec.md`; `audits/cluster3_phase14e_four_cell_n5_matrix_freeze_report.md` |
 | D-MET-01 | Should metric registry live only in analyzer metadata or also in a shared Python registry module? | resolved | S1 analyzer metadata; S2 report builder | Analyzer/report spec owner | Resolved by S-spec v0.1.2 | Analyzer metadata first; no shared module until justified | S1 implements analyzer-output metadata only; a shared Python registry module is deferred unless a later spec or launch packet justifies extraction. | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` |

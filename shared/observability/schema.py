@@ -1,0 +1,618 @@
+"""Strict schemas for TritonGen observability sidecars."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import uuid
+from datetime import datetime
+from pathlib import PurePath
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from shared.observability.redaction import (
+    AttributeValue,
+    reject_forbidden_observability_payload,
+    sanitize_attributes,
+    sanitize_error_summary,
+)
+
+SCHEMA_VERSION = "tritongen.observability.v1"
+
+Severity = Literal["debug", "info", "warning", "error", "critical"]
+EventType = Literal[
+    "run_started",
+    "run_completed",
+    "run_failed",
+    "run_aborted",
+    "resume_validated",
+    "stage_started",
+    "stage_completed",
+    "stage_failed",
+    "row_started",
+    "row_completed",
+    "row_skipped",
+    "remote_call_started",
+    "remote_call_completed",
+    "remote_call_failed",
+    "summary_written",
+    "partial_artifact_detected",
+    "cost_estimate_written",
+]
+StageName = Literal[
+    "preflight",
+    "generation",
+    "compile_eval",
+    "correctness_eval",
+    "p_repair",
+    "c_repair",
+    "row_append",
+    "hash_validation",
+    "summary",
+    "analysis",
+    "billing_reconciliation",
+]
+Status = Literal[
+    "started",
+    "succeeded",
+    "failed",
+    "skipped",
+    "unavailable",
+    "blocked",
+    "partial",
+    "not_applicable",
+]
+DurationSource = Literal[
+    "local_monotonic",
+    "remote_monotonic",
+    "caller_observed_remote_call",
+    "unavailable",
+    "not_applicable",
+]
+TokenCountSource = Literal[
+    "tokenizer_encode",
+    "generation_sequence_length_delta",
+    "existing_generation_result",
+    "existing_remote_payload",
+    "unavailable",
+    "not_applicable",
+]
+ModalContextSource = Literal[
+    "shared_modal_runtime_helper",
+    "modal_environment_allowlist",
+    "runner_config",
+    "unavailable",
+]
+CostEstimateStatus = Literal["not_implemented", "not_requested", "unavailable", "estimated"]
+CostBasis = Literal[
+    "caller_observed_remote_call_wall_time",
+    "remote_container_stage_wall_time",
+    "configured_resource_request_time",
+    "billing_report_interval",
+    "unavailable",
+]
+EstimationConfidence = Literal["low", "medium", "high", "unavailable"]
+ActualBillingStatus = Literal[
+    "not_implemented",
+    "not_requested",
+    "unavailable",
+    "pending",
+    "reconciled",
+    "ambiguous",
+    "failed",
+]
+CompletenessStatus = Literal["complete", "partial", "unavailable", "failed"]
+HashSummaryStatus = Literal["not_written", "written", "unavailable", "failed"]
+
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_UTC_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
+_GIT_RE = re.compile(r"^[0-9a-f]{7,64}$")
+
+
+class _StrictModel(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        allow_inf_nan=False,
+        strict=True,
+    )
+
+
+class ObservabilityRunIdentity(_StrictModel):
+    experiment_id: str
+    run_id: str
+
+    @field_validator("experiment_id", "run_id")
+    @classmethod
+    def _non_empty(cls, value: str) -> str:
+        return _require_non_empty(value)
+
+
+class ObservabilityArtifactIdentity(_StrictModel):
+    result_path: str
+    observability_event_path: str | None = None
+    observability_summary_path: str | None = None
+    git_commit: str | None = None
+
+    @field_validator("result_path", "observability_event_path", "observability_summary_path")
+    @classmethod
+    def _path_label(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _require_non_empty(value)
+
+    @field_validator("git_commit")
+    @classmethod
+    def _git_commit(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.lower()
+        if not _GIT_RE.fullmatch(value):
+            raise ValueError("git_commit must be a hex commit prefix or full digest")
+        return value
+
+
+class ObservabilityRowIdentity(_StrictModel):
+    cluster: str | None = None
+    condition: str | None = None
+    kernel_class: str | None = None
+    kernel_name: str | None = None
+    dtype: str | None = None
+    base_seed: int | None = Field(default=None, ge=0)
+    generation_seed: int | None = Field(default=None, ge=0)
+    attempt_index: int | None = Field(default=None, ge=0)
+    terminal_attempt_index: int | None = Field(default=None, ge=0)
+    source_hash: str | None = None
+    row_sha256: str | None = None
+
+    @field_validator("cluster", "condition", "kernel_class", "kernel_name", "dtype")
+    @classmethod
+    def _optional_non_empty(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _require_non_empty(value)
+
+    @field_validator("source_hash", "row_sha256")
+    @classmethod
+    def _sha256(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _validate_sha256(value)
+
+
+class ObservabilityAttemptIdentity(_StrictModel):
+    attempt_index: int | None = Field(default=None, ge=0)
+    terminal_attempt_index: int | None = Field(default=None, ge=0)
+    repair_attempt_index: int | None = Field(default=None, ge=0)
+    condition: str | None = None
+
+    @field_validator("condition")
+    @classmethod
+    def _condition(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _require_non_empty(value)
+
+
+class ObservabilityTokenCounts(_StrictModel):
+    prompt_tokens: int | None = Field(default=None, ge=0)
+    generated_tokens: int | None = Field(default=None, ge=0)
+    total_tokens: int | None = Field(default=None, ge=0)
+    max_new_tokens: int | None = Field(default=None, ge=0)
+    tokenizer_id: str | None = None
+    tokenizer_revision: str | None = None
+    count_source: TokenCountSource
+    truncation_applied: bool | None = None
+    token_counts_available: bool
+
+    @field_validator("tokenizer_id", "tokenizer_revision")
+    @classmethod
+    def _optional_non_empty(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _require_non_empty(value)
+
+    @model_validator(mode="after")
+    def _validate_totals(self) -> "ObservabilityTokenCounts":
+        if (
+            self.prompt_tokens is not None
+            and self.generated_tokens is not None
+            and self.total_tokens is not None
+            and self.prompt_tokens + self.generated_tokens != self.total_tokens
+        ):
+            raise ValueError("total_tokens must equal prompt_tokens + generated_tokens")
+        if not self.token_counts_available and self.count_source not in {
+            "unavailable",
+            "not_applicable",
+        }:
+            raise ValueError("unavailable token counts require an unavailable source")
+        return self
+
+
+class ObservabilityModalContext(_StrictModel):
+    is_remote: bool | None = None
+    function_call_id: str | None = None
+    input_id: str | None = None
+    task_id: str | None = None
+    image_id: str | None = None
+    region: str | None = None
+    cloud_provider: str | None = None
+    environment_name: str | None = None
+    app_name: str | None = None
+    gpu_type: str | None = None
+    gpu_count: int | None = Field(default=None, ge=0)
+    cpu_cores: float | None = Field(default=None, ge=0)
+    memory_gib: float | None = Field(default=None, ge=0)
+    timeout_s: int | None = Field(default=None, ge=0)
+    container_started_at_utc: str | None = None
+    modal_context_source: ModalContextSource
+
+    @field_validator(
+        "function_call_id",
+        "input_id",
+        "task_id",
+        "image_id",
+        "region",
+        "cloud_provider",
+        "environment_name",
+        "app_name",
+        "gpu_type",
+    )
+    @classmethod
+    def _optional_non_empty(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _require_non_empty(value)
+
+    @field_validator("container_started_at_utc")
+    @classmethod
+    def _utc(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _validate_utc(value)
+
+
+class ObservabilityCostEstimate(_StrictModel):
+    estimate_status: CostEstimateStatus
+    price_snapshot_id: str | None = None
+    currency: str | None = None
+    estimated_gpu_seconds: float | None = Field(default=None, ge=0)
+    estimated_cpu_core_seconds: float | None = Field(default=None, ge=0)
+    estimated_memory_gib_seconds: float | None = Field(default=None, ge=0)
+    estimated_gpu_cost_usd: str | None = None
+    estimated_cpu_cost_usd: str | None = None
+    estimated_memory_cost_usd: str | None = None
+    estimated_total_cost_usd: str | None = None
+    estimation_confidence: EstimationConfidence
+    cost_basis: CostBasis
+    unavailable_reason: str | None = None
+
+    @field_validator("price_snapshot_id", "currency", "unavailable_reason")
+    @classmethod
+    def _optional_non_empty(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _require_non_empty(value)
+
+    @field_validator(
+        "estimated_gpu_cost_usd",
+        "estimated_cpu_cost_usd",
+        "estimated_memory_cost_usd",
+        "estimated_total_cost_usd",
+    )
+    @classmethod
+    def _decimal_string(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not re.fullmatch(r"\d+(?:\.\d+)?", value):
+            raise ValueError("cost values must be decimal strings")
+        return value
+
+
+class ObservabilityErrorSummary(_StrictModel):
+    public_failure_code: str | None = None
+    bounded_public_error_class: str | None = None
+    error_excerpt_sha256: str | None = None
+    message: str | None = Field(default=None, max_length=512)
+
+    @field_validator("public_failure_code", "bounded_public_error_class", "message")
+    @classmethod
+    def _optional_non_empty(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _require_non_empty(value)
+
+    @field_validator("error_excerpt_sha256")
+    @classmethod
+    def _hash(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _validate_sha256(value)
+
+    @model_validator(mode="after")
+    def _validate_privacy(self) -> "ObservabilityErrorSummary":
+        sanitize_error_summary(self.model_dump(mode="json"))
+        return self
+
+
+class ObservabilityEvent(_StrictModel):
+    schema_version: Literal["tritongen.observability.v1"] = SCHEMA_VERSION
+    event_id: str
+    event_sequence: int = Field(ge=0)
+    event_type: EventType
+    severity: Severity
+    timestamp_utc: str
+    timestamp_unix_ns: int = Field(ge=0)
+    monotonic_ns: int = Field(ge=0)
+    clock_scope_id: str
+    experiment_id: str
+    run_id: str
+    artifact: ObservabilityArtifactIdentity
+    row_identity: ObservabilityRowIdentity
+    stage: StageName | None
+    attempt: ObservabilityAttemptIdentity
+    status: Status
+    duration_ns: int | None = Field(default=None, ge=0)
+    duration_source: DurationSource
+    start_monotonic_ns: int | None = Field(default=None, ge=0)
+    end_monotonic_ns: int | None = Field(default=None, ge=0)
+    token_counts: ObservabilityTokenCounts | None
+    modal_context: ObservabilityModalContext | None
+    cost_estimate: ObservabilityCostEstimate | None
+    error_summary: ObservabilityErrorSummary | None
+    attributes: dict[str, AttributeValue]
+
+    @field_validator("event_id")
+    @classmethod
+    def _uuid(cls, value: str) -> str:
+        try:
+            parsed = uuid.UUID(value)
+        except ValueError as exc:
+            raise ValueError("event_id must be an RFC 4122 UUID string") from exc
+        return str(parsed)
+
+    @field_validator("timestamp_utc")
+    @classmethod
+    def _timestamp_utc(cls, value: str) -> str:
+        return _validate_utc(value)
+
+    @field_validator("clock_scope_id", "experiment_id", "run_id")
+    @classmethod
+    def _non_empty(cls, value: str) -> str:
+        return _require_non_empty(value)
+
+    @field_validator("attributes")
+    @classmethod
+    def _attributes(cls, value: dict[str, Any]) -> dict[str, AttributeValue]:
+        return sanitize_attributes(value)
+
+    @model_validator(mode="after")
+    def _duration_contract(self) -> "ObservabilityEvent":
+        if self.duration_source in {"unavailable", "not_applicable"}:
+            if any(
+                value is not None
+                for value in (
+                    self.duration_ns,
+                    self.start_monotonic_ns,
+                    self.end_monotonic_ns,
+                )
+            ):
+                raise ValueError(
+                    "unavailable durations must not include duration or monotonic bounds"
+                )
+            return self._privacy_checked()
+
+        if self.duration_ns is None:
+            raise ValueError("measured durations require duration_ns")
+        if self.start_monotonic_ns is None or self.end_monotonic_ns is None:
+            raise ValueError("measured durations require start and end monotonic fields")
+        if self.end_monotonic_ns < self.start_monotonic_ns:
+            raise ValueError("end_monotonic_ns must be >= start_monotonic_ns")
+        if self.duration_ns != self.end_monotonic_ns - self.start_monotonic_ns:
+            raise ValueError("duration_ns must equal end_monotonic_ns - start_monotonic_ns")
+        return self._privacy_checked()
+
+    def _privacy_checked(self) -> "ObservabilityEvent":
+        reject_forbidden_observability_payload(self.model_dump(mode="json"))
+        return self
+
+
+class ObservabilitySummary(_StrictModel):
+    schema_version: Literal["tritongen.observability.v1"] = SCHEMA_VERSION
+    experiment_id: str
+    run_id: str
+    result_path: str
+    observability_event_path: str
+    observability_summary_path: str
+    generated_at_utc: str
+    git_commit: str
+    branch: str
+    workspace: str
+    row_counts: dict[str, int]
+    event_counts: dict[str, int]
+    stage_durations_ns: dict[str, int]
+    token_totals: dict[str, Any]
+    modal_context_summary: dict[str, Any]
+    estimated_cost_summary: dict[str, Any]
+    actual_billing_status: ActualBillingStatus
+    completeness_status: CompletenessStatus
+    caveats: list[str]
+    source_event_sha256: str
+    summary_sha256: str | None
+
+    @field_validator(
+        "experiment_id",
+        "run_id",
+        "result_path",
+        "observability_event_path",
+        "observability_summary_path",
+        "git_commit",
+        "branch",
+        "workspace",
+    )
+    @classmethod
+    def _non_empty(cls, value: str) -> str:
+        return _require_non_empty(value)
+
+    @field_validator("generated_at_utc")
+    @classmethod
+    def _generated_at(cls, value: str) -> str:
+        return _validate_utc(value)
+
+    @field_validator("git_commit")
+    @classmethod
+    def _git_commit(cls, value: str) -> str:
+        value = value.lower()
+        if not _GIT_RE.fullmatch(value):
+            raise ValueError("git_commit must be a hex commit prefix or full digest")
+        return value
+
+    @field_validator("workspace")
+    @classmethod
+    def _workspace(cls, value: str) -> str:
+        if PurePath(value).is_absolute():
+            raise ValueError("workspace must be a repo-relative label")
+        return value
+
+    @field_validator("row_counts", "event_counts", "stage_durations_ns")
+    @classmethod
+    def _nonnegative_counts(cls, value: dict[str, int]) -> dict[str, int]:
+        for key, count in value.items():
+            _require_non_empty(key)
+            if count < 0:
+                raise ValueError("summary counts must be nonnegative")
+        return value
+
+    @field_validator("source_event_sha256", "summary_sha256")
+    @classmethod
+    def _hashes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _validate_sha256(value)
+
+    @model_validator(mode="after")
+    def _validate_privacy(self) -> "ObservabilitySummary":
+        reject_forbidden_observability_payload(self.model_dump(mode="json"))
+        return self
+
+
+class ObservabilityHashSidecar(_StrictModel):
+    schema_version: Literal["tritongen.observability.v1"] = SCHEMA_VERSION
+    experiment_id: str
+    run_id: str
+    result_path: str
+    observability_event_path: str
+    observability_summary_path: str
+    event_jsonl_sha256: str
+    summary_json_sha256: str | None
+    summary_status: HashSummaryStatus
+    event_count: int = Field(ge=0)
+    generated_at_utc: str
+    hash_algorithm: Literal["sha256"] = "sha256"
+
+    @field_validator(
+        "experiment_id",
+        "run_id",
+        "result_path",
+        "observability_event_path",
+        "observability_summary_path",
+    )
+    @classmethod
+    def _non_empty(cls, value: str) -> str:
+        return _require_non_empty(value)
+
+    @field_validator("event_jsonl_sha256", "summary_json_sha256")
+    @classmethod
+    def _hash(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _validate_sha256(value)
+
+    @field_validator("generated_at_utc")
+    @classmethod
+    def _utc(cls, value: str) -> str:
+        return _validate_utc(value)
+
+    @model_validator(mode="after")
+    def _summary_status_contract(self) -> "ObservabilityHashSidecar":
+        if self.summary_status == "written" and self.summary_json_sha256 is None:
+            raise ValueError("written summary status requires summary_json_sha256")
+        if self.summary_status == "not_written" and self.summary_json_sha256 is not None:
+            raise ValueError("not_written summary status requires null summary hash")
+        return self
+
+
+def canonical_json_bytes(value: BaseModel | dict[str, Any]) -> bytes:
+    """Return deterministic JSON bytes with one trailing newline."""
+
+    payload = value.model_dump(mode="json") if isinstance(value, BaseModel) else value
+    return (
+        json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def canonical_event_json(event: ObservabilityEvent) -> str:
+    """Return one canonical event JSON object without its JSONL newline."""
+
+    return canonical_json_bytes(event).decode("utf-8").removesuffix("\n")
+
+
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def sha256_file_bytes(data: bytes) -> str:
+    return sha256_bytes(data)
+
+
+def row_sha256_from_canonical_json(row_json: str) -> str:
+    """Hash the exact canonical result-row JSON string before JSONL newline."""
+
+    if row_json.endswith("\n"):
+        raise ValueError("row_json must not include the trailing JSONL newline")
+    return sha256_bytes(row_json.encode("utf-8"))
+
+
+def summary_with_digest(summary: ObservabilitySummary) -> ObservabilitySummary:
+    """Return a summary whose self-reference hash follows the spec algorithm."""
+
+    without_digest = summary.model_copy(update={"summary_sha256": None})
+    digest = sha256_bytes(canonical_json_bytes(without_digest))
+    final = without_digest.model_copy(update={"summary_sha256": digest})
+    reloaded = ObservabilitySummary.model_validate_json(canonical_json_bytes(final))
+    check = reloaded.model_copy(update={"summary_sha256": None})
+    if sha256_bytes(canonical_json_bytes(check)) != digest:
+        raise ValueError("summary hash verification failed")
+    return final
+
+
+def _require_non_empty(value: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("value must be a non-empty string")
+    return value
+
+
+def _validate_sha256(value: str) -> str:
+    value = value.lower()
+    if not _SHA256_RE.fullmatch(value):
+        raise ValueError("value must be a sha256 hex digest")
+    return value
+
+
+def _validate_utc(value: str) -> str:
+    if not _UTC_RE.fullmatch(value):
+        raise ValueError("UTC timestamp must be RFC3339 and end with Z")
+    try:
+        datetime.fromisoformat(value.removesuffix("Z") + "+00:00")
+    except ValueError as exc:
+        raise ValueError("UTC timestamp must contain a valid date and time") from exc
+    return value

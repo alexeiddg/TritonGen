@@ -1,0 +1,60 @@
+from __future__ import annotations
+
+import ast
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+OBSERVABILITY_MODULES = (
+    "shared.observability",
+    "shared.observability.schema",
+    "shared.observability.logger",
+    "shared.observability.paths",
+    "shared.observability.redaction",
+)
+FORBIDDEN_IMPORTS = ("modal", "torch", "triton", "transformers", "xgrammar")
+
+
+def test_observability_imports_do_not_load_remote_or_generation_stacks() -> None:
+    for target in OBSERVABILITY_MODULES:
+        leaked = _modules_after_import(target)
+        assert leaked == [], f"{target} imported forbidden modules: {leaked}"
+
+
+def test_observability_sources_do_not_reference_forbidden_runtime_imports() -> None:
+    violations: list[str] = []
+    for path in sorted((REPO_ROOT / "shared" / "observability").glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.split(".")[0] in FORBIDDEN_IMPORTS:
+                        violations.append(f"{path.name}:{node.lineno}:{alias.name}")
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                if node.module.split(".")[0] in FORBIDDEN_IMPORTS:
+                    violations.append(f"{path.name}:{node.lineno}:{node.module}")
+
+    assert violations == []
+
+
+def _modules_after_import(target: str) -> list[str]:
+    code = (
+        "import sys\n"
+        f"import {target}  # noqa: F401\n"
+        "loaded = [name for name in "
+        f"{FORBIDDEN_IMPORTS!r} if name in sys.modules]\n"
+        "print(','.join(loaded))\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert proc.returncode == 0, (
+        f"probe failed for {target}: rc={proc.returncode} "
+        f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+    )
+    out = proc.stdout.strip()
+    return out.split(",") if out else []

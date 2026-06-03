@@ -1,7 +1,7 @@
 # Observability Sidecar Implementation Spec
 
-- Version: 0.2.0
-- Date: 2026-05-28
+- Version: 0.2.1
+- Date: 2026-06-03
 - Status: implementation specification / no code changes or runs authorized by
   itself
 - Owner stream: O, observability sidecars
@@ -282,6 +282,10 @@ Fields may be `null` before a row exists. A completed-row event should include
 the strongest available row identity, preferably including `row_sha256` after
 serialization.
 
+`row_sha256` is computed over the exact canonical serialized result-row JSON
+string before the trailing JSONL newline is added. Do not hash pretty-printed
+JSON, parsed/re-emitted dictionaries, or the newline byte.
+
 ## Event Schema Contract
 
 Every event record must include:
@@ -304,6 +308,9 @@ stage
 attempt
 status
 duration_ns
+duration_source
+start_monotonic_ns
+end_monotonic_ns
 token_counts
 modal_context
 cost_estimate
@@ -316,6 +323,23 @@ Recommended schema version:
 ```text
 tritongen.observability.v1
 ```
+
+Event identity and clock fields are fixed for O0:
+
+- `event_id` is an RFC 4122 UUID string and must be unique within the sidecar.
+- `event_sequence` is zero-based. The first event in a sidecar is `0`, and every
+  later event increments by exactly one.
+- `timestamp_utc` is an RFC 3339 UTC timestamp ending in `Z`.
+- `timestamp_unix_ns` is an integer Unix epoch timestamp in nanoseconds.
+- `monotonic_ns`, `start_monotonic_ns`, and `end_monotonic_ns` are process-local
+  monotonic or performance-counter values and must not be compared across
+  different `clock_scope_id` values.
+- `duration_ns` is the top-level elapsed operational duration. If a duration is
+  not known for an event, use `duration_ns=null` and an explicit
+  `duration_source` of `unavailable` or `not_applicable`.
+- `start_monotonic_ns` and `end_monotonic_ns` are nullable top-level fields.
+  Completed duration events should include both when they share the same
+  `clock_scope_id`.
 
 ### Event Types
 
@@ -468,6 +492,12 @@ source_event_sha256
 summary_sha256
 ```
 
+`git_commit`, `branch`, and `workspace` are explicit provenance inputs to the O0
+summary writer. The summary writer must not shell out to Git or inspect the
+local environment to infer them. `workspace` must be a repo-relative label such
+as `.` or an approved workspace identifier; absolute local filesystem paths are
+forbidden unless a run packet explicitly approves the path.
+
 `actual_billing_status` must be one of:
 
 ```text
@@ -505,15 +535,25 @@ observability_event_path
 observability_summary_path
 event_jsonl_sha256
 summary_json_sha256
+summary_status
 event_count
 generated_at_utc
 hash_algorithm
 ```
 
-`hash_algorithm` must be `sha256`. If no summary exists yet, the hash sidecar
-may record `summary_json_sha256=null` with
-`summary_status=not_written`. Once a summary is written, the hash sidecar must
-be rewritten atomically. A resume must reject event sidecars whose stored hash
+`hash_algorithm` must be `sha256`. `summary_status` must be one of:
+
+```text
+not_written
+written
+unavailable
+failed
+```
+
+If no summary exists yet, the hash sidecar may record
+`summary_json_sha256=null` with `summary_status=not_written`. Once a summary is
+written, the hash sidecar must be rewritten atomically with
+`summary_status=written`. A resume must reject event sidecars whose stored hash
 metadata conflicts with the current event bytes.
 
 ### Join And Completeness Validation
@@ -523,8 +563,7 @@ Summary generation must validate event/result alignment before reporting
 
 Required checks:
 
-- event sequences are contiguous and unique from `0` or `1`, whichever the
-  schema declares;
+- event sequences are contiguous and unique from `0`;
 - event IDs are unique;
 - exactly one `run_started` event exists;
 - exactly one terminal run event exists among `run_completed`, `run_failed`, or
@@ -955,9 +994,11 @@ Acceptance:
 - strict validation rejects unknown top-level and nested schema fields;
 - severity values, status values, event types, stage names, and duration sources
   are enumerated;
+- event IDs are UUID strings and event sequences start at `0` without gaps;
 - attributes are primitive-only and size-limited;
 - missing required IDs fail when mode is not `off`;
 - `unavailable` and `not_applicable` are explicit;
+- summaries reject absolute local workspace paths unless explicitly approved;
 - JSON schema export works if Pydantic is used.
 
 ### Phase O0B - Paths And Logger
