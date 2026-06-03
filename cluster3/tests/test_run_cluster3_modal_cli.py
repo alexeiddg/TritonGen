@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import json
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,15 @@ from cluster3.feedback.c_loop_adapter import (
 )
 from cluster3.replay.no_p_pairs import pair_for_condition, validate_pair_identity
 from cluster3.results.logger import default_content_hash_sidecar_path
+from cluster3.results.dataclass import Cluster3EvalRow
+from shared.observability import (
+    ObservabilityJsonlAppendLogger,
+    ObservabilitySummary,
+    default_observability_hash_path,
+    default_observability_summary_path,
+    file_sha256,
+    load_observability_events,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -232,6 +242,72 @@ class CLoopRecorder:
             infrastructure_failure=False,
             f3_reason=None,
         )
+
+
+class FailingObservabilityLogger:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+
+    def open(self) -> None:
+        raise RuntimeError("observability logger unavailable")
+
+
+class ScriptedObservabilityLogger:
+    def __init__(
+        self,
+        *,
+        open_exc: BaseException | None = None,
+        append_exc: BaseException | None = None,
+        summary_exc: BaseException | None = None,
+    ) -> None:
+        self.open_exc = open_exc
+        self.append_exc = append_exc
+        self.summary_exc = summary_exc
+        self.opened = False
+        self.closed = False
+        self.append_calls = 0
+        self.summary_calls = 0
+
+    def open(self) -> None:
+        self.opened = True
+        if self.open_exc is not None:
+            raise self.open_exc
+
+    def append(self, event: Any) -> None:
+        del event
+        self.append_calls += 1
+        if self.append_exc is not None:
+            raise self.append_exc
+
+    def write_summary(self, summary: Any) -> None:
+        del summary
+        self.summary_calls += 1
+        if self.summary_exc is not None:
+            raise self.summary_exc
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class SummaryInterruptingObservabilityLogger(ObservabilityJsonlAppendLogger):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.opened = False
+        self.closed = False
+        self.summary_calls = 0
+
+    def open(self) -> None:
+        self.opened = True
+        super().open()
+
+    def write_summary(self, summary: Any) -> Any:
+        del summary
+        self.summary_calls += 1
+        raise KeyboardInterrupt()
+
+    def close(self) -> None:
+        self.closed = True
+        super().close()
 
 
 def _identity_dict(identity: Any) -> dict[str, Any]:
@@ -1422,6 +1498,480 @@ def test_run_cluster3_cli_parses_args(tmp_path: Path) -> None:
     )
     assert config.condition == "C+P"
     assert config.c_repair_budget == 3
+    assert config.observability_mode == "off"
+    assert config.observability_experiment_id is None
+    assert config.observability_run_id is None
+    assert config.observability_output is None
+
+
+def test_observability_cli_exposes_required_mode_choices() -> None:
+    parser = runner_mod.build_arg_parser()
+    action = next(
+        item for item in parser._actions if "--observability-mode" in item.option_strings
+    )
+
+    assert tuple(action.choices) == ("off", "best_effort", "required")
+
+
+def test_observability_cli_rejects_unknown_mode(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "--condition",
+                "P",
+                "--output",
+                str(tmp_path / "out.jsonl"),
+                "--model-revision",
+                REV_A,
+                "--tokenizer-revision",
+                REV_B,
+                "--observability-mode",
+                "enabled",
+                "--overwrite",
+            ]
+        )
+
+
+def test_observability_cli_parses_enabled_output(tmp_path: Path) -> None:
+    event_path = tmp_path / "events.jsonl"
+    config = parse_args(
+        [
+            "--condition",
+            "P",
+            "--output",
+            str(tmp_path / "out.jsonl"),
+            "--model-revision",
+            REV_A,
+            "--tokenizer-revision",
+            REV_B,
+            "--observability-mode",
+            "required",
+            "--observability-experiment-id",
+            "exp-1",
+            "--observability-run-id",
+            "run-1",
+            "--observability-output",
+            str(event_path),
+            "--overwrite",
+        ]
+    )
+
+    assert config.observability_mode == "required"
+    assert config.observability_experiment_id == "exp-1"
+    assert config.observability_run_id == "run-1"
+    assert config.observability_output == str(event_path)
+
+
+def test_observability_enabled_modes_require_ids(tmp_path: Path) -> None:
+    for mode in ("best_effort", "required"):
+        with pytest.raises(ValueError, match="observability_experiment_id"):
+            _config(
+                tmp_path,
+                observability_mode=mode,
+                observability_run_id="run-1",
+            )
+        with pytest.raises(ValueError, match="observability_run_id"):
+            _config(
+                tmp_path,
+                observability_mode=mode,
+                observability_experiment_id="exp-1",
+            )
+
+
+def test_observability_off_preserves_stable_run_id_and_writes_no_sidecar(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "ignored.observability.jsonl"
+    base = _config(tmp_path, "P")
+    explicit_off = _config(
+        tmp_path,
+        "P",
+        observability_mode="off",
+        observability_experiment_id="exp-1",
+        observability_run_id="run-1",
+        observability_output=str(event_path),
+    )
+
+    assert runner_mod._stable_run_id(base) == runner_mod._stable_run_id(explicit_off)
+    run_cluster3(
+        explicit_off,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+        ),
+    )
+
+    assert not event_path.exists()
+    assert not default_observability_hash_path(event_path).exists()
+    assert not default_observability_summary_path(explicit_off.output).exists()
+
+
+def test_observability_required_writes_valid_sidecars_in_tmp_path(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "cluster3.events.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="cluster3-o1",
+        observability_run_id="run-required",
+        observability_output=str(event_path),
+    )
+
+    run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+        ),
+    )
+
+    events = load_observability_events(event_path)
+    event_types = [event.event_type for event in events]
+    assert [event.event_sequence for event in events] == list(range(len(events)))
+    assert event_types == [
+        "run_started",
+        "row_started",
+        "stage_started",
+        "stage_completed",
+        "row_completed",
+        "run_completed",
+    ]
+    assert {event.experiment_id for event in events} == {"cluster3-o1"}
+    assert {event.run_id for event in events} == {"run-required"}
+    assert events[1].row_identity.cluster == "cluster3"
+    assert events[1].row_identity.condition == "P"
+    assert events[4].row_identity.row_sha256 is not None
+    result_lines = Path(config.output).read_text(encoding="utf-8").splitlines()
+    assert events[4].row_identity.row_sha256 == _sha(result_lines[0])
+    assert events[3].stage == "row_append"
+    assert events[3].duration_ns is not None
+    assert events[5].duration_ns is not None
+
+    payload = json.dumps(
+        [event.model_dump(mode="json") for event in events],
+        sort_keys=True,
+    ).lower()
+    for forbidden in (
+        "prompt_text",
+        "source_text",
+        "full_source",
+        "raw_feedback",
+        "raw_compile_log",
+        "private_eval",
+        "hidden_eval",
+        "token_ids",
+        "api_key",
+        "secret",
+        "credential",
+        "password",
+        "authorization",
+        "speedup",
+        "throughput",
+        "latency",
+        "kernel_timing",
+        "benchmark",
+        "profiler",
+        "actual_cost",
+        "invoice",
+        "billing_claim",
+        "cost_per_success",
+        "pass@k",
+        "lift",
+        "statistical",
+    ):
+        assert forbidden not in payload
+
+    summary_path = default_observability_summary_path(config.output)
+    summary = ObservabilitySummary.model_validate_json(
+        summary_path.read_text(encoding="utf-8")
+    )
+    assert summary.result_path == config.output
+    assert summary.observability_event_path == str(event_path)
+    assert summary.row_counts == {"total": 1}
+    assert summary.event_counts == {
+        "run_started": 1,
+        "row_started": 1,
+        "stage_started": 1,
+        "stage_completed": 1,
+        "row_completed": 1,
+        "run_completed": 1,
+    }
+    assert summary.stage_durations_ns["row_append"] == events[3].duration_ns
+    assert summary.source_event_sha256 == file_sha256(event_path)
+    assert default_observability_hash_path(event_path).exists()
+
+
+def test_observability_row_sha256_uses_exact_cluster3_row_json(
+    tmp_path: Path,
+) -> None:
+    run = run_cluster3(
+        _config(tmp_path, "P"),
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+        ),
+    )
+    row = run.rows[0]
+    assert row.generated_metadata is not None
+    non_ascii_row = replace(
+        row,
+        generated_metadata=replace(row.generated_metadata, model_id="modelo-é"),
+    )
+
+    identity = runner_mod._observability_row_identity_from_row(non_ascii_row)
+    non_exact_json = json.dumps(
+        non_ascii_row.to_dict(),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+
+    assert identity.row_sha256 == _sha(non_ascii_row.to_json())
+    assert identity.row_sha256 != _sha(non_exact_json)
+
+
+def test_observability_enabled_resume_rejected_until_resume_policy_exists(
+    tmp_path: Path,
+) -> None:
+    for mode in ("best_effort", "required"):
+        with pytest.raises(ValueError, match="observability resume"):
+            _config(
+                tmp_path,
+                "P",
+                write_mode="resume",
+                observability_mode=mode,
+                observability_experiment_id="exp-1",
+                observability_run_id=f"run-{mode}",
+            )
+
+
+def test_observability_required_path_collision_fails_before_runner_work(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "result.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        output=str(output),
+        observability_mode="required",
+        observability_experiment_id="exp-1",
+        observability_run_id="run-1",
+        observability_output=str(output),
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(ValueError, match="collides"):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+            ),
+        )
+
+    assert generation.calls == []
+    assert correctness.calls == []
+    assert not output.exists()
+
+
+def test_observability_best_effort_logger_failure_preserves_runner_outcome(
+    tmp_path: Path,
+) -> None:
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="best_effort",
+        observability_experiment_id="exp-1",
+        observability_run_id="run-1",
+    )
+    run = run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+            observability_logger_factory=lambda *args, **kwargs: FailingObservabilityLogger(),
+        ),
+    )
+
+    assert len(run.rows) == 1
+
+
+def test_observability_required_logger_failure_fails_before_runner_work(
+    tmp_path: Path,
+) -> None:
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="exp-1",
+        observability_run_id="run-1",
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(RuntimeError, match="observability logger unavailable"):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                observability_logger_factory=(
+                    lambda *args, **kwargs: FailingObservabilityLogger()
+                ),
+            ),
+        )
+
+    assert generation.calls == []
+    assert correctness.calls == []
+
+
+def test_observability_required_first_event_failure_closes_logger(
+    tmp_path: Path,
+) -> None:
+    logger = ScriptedObservabilityLogger(
+        append_exc=RuntimeError("observability append unavailable")
+    )
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="exp-1",
+        observability_run_id="run-1",
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(RuntimeError, match="observability append unavailable"):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                observability_logger_factory=lambda *args, **kwargs: logger,
+            ),
+        )
+
+    assert logger.opened
+    assert logger.append_calls >= 1
+    assert logger.closed
+    assert generation.calls == []
+    assert correctness.calls == []
+
+
+def test_observability_best_effort_setup_interrupt_propagates(
+    tmp_path: Path,
+) -> None:
+    logger = ScriptedObservabilityLogger(open_exc=KeyboardInterrupt())
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="best_effort",
+        observability_experiment_id="exp-1",
+        observability_run_id="run-1",
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(KeyboardInterrupt):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                observability_logger_factory=lambda *args, **kwargs: logger,
+            ),
+        )
+
+    assert logger.opened
+    assert generation.calls == []
+    assert correctness.calls == []
+
+
+def test_observability_best_effort_first_event_interrupt_propagates_and_closes(
+    tmp_path: Path,
+) -> None:
+    logger = ScriptedObservabilityLogger(append_exc=KeyboardInterrupt())
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="best_effort",
+        observability_experiment_id="exp-1",
+        observability_run_id="run-1",
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(KeyboardInterrupt):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                observability_logger_factory=lambda *args, **kwargs: logger,
+            ),
+        )
+
+    assert logger.opened
+    assert logger.closed
+    assert generation.calls == []
+    assert correctness.calls == []
+
+
+def test_observability_best_effort_summary_interrupt_propagates_and_closes(
+    tmp_path: Path,
+) -> None:
+    loggers: list[SummaryInterruptingObservabilityLogger] = []
+
+    def logger_factory(*args: Any, **kwargs: Any) -> SummaryInterruptingObservabilityLogger:
+        logger = SummaryInterruptingObservabilityLogger(*args, **kwargs)
+        loggers.append(logger)
+        return logger
+
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="best_effort",
+        observability_experiment_id="exp-1",
+        observability_run_id="run-1",
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(KeyboardInterrupt):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                observability_logger_factory=logger_factory,
+            ),
+        )
+
+    assert len(loggers) == 1
+    logger = loggers[0]
+    assert logger.opened
+    assert logger.summary_calls == 1
+    assert logger.closed
+    assert len(generation.calls) == 1
+    assert len(correctness.calls) == 1
+
+
+def test_observability_does_not_mutate_cluster3_result_row_schema() -> None:
+    fields = set(Cluster3EvalRow.__dataclass_fields__)
+
+    assert not {
+        "observability_mode",
+        "observability_event_path",
+        "observability_summary_path",
+        "observability_run_id",
+        "observability_experiment_id",
+        "duration_ns",
+        "token_counts",
+        "estimated_cost",
+    } & fields
 
 
 def test_run_cluster3_cli_parses_diagnostic_seed_source(tmp_path: Path) -> None:

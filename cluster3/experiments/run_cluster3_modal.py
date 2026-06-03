@@ -11,9 +11,13 @@ import argparse
 import hashlib
 import inspect
 import json
+import subprocess
 import sys
+import time
+import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +79,23 @@ from shared.generation_metadata import (
     UNKNOWN,
     normalize_immutable_hub_revision,
 )
+from shared.observability import (
+    ObservabilityArtifactIdentity,
+    ObservabilityAttemptIdentity,
+    ObservabilityErrorSummary,
+    ObservabilityEvent,
+    ObservabilityJsonlAppendLogger,
+    ObservabilityPaths,
+    ObservabilityRowIdentity,
+    ObservabilitySummary,
+    file_sha256,
+    load_observability_events,
+    resolve_observability_paths,
+)
+from shared.observability.logger import (
+    event_counts as observability_event_counts,
+    stage_durations_ns as observability_stage_durations_ns,
+)
 from shared.repair_history.policies import RepairHistoryConfig
 
 
@@ -86,6 +107,8 @@ CONDITION_SELECTOR_CHOICES: tuple[str, ...] = (*CLUSTER3_CONDITIONS, "all")
 KERNEL_CLASS_SELECTOR_CHOICES: tuple[str, ...] = (*LOCKED_KERNEL_CLASSES, "all")
 SCALE_TIER_CHOICES: tuple[str, ...] = ("smoke", "development", "paper")
 REPO_ROOT = Path(__file__).resolve().parents[2]
+CLUSTER3_RUNNER_PATH = "cluster3/experiments/run_cluster3_modal.py"
+OBSERVABILITY_MODE_CHOICES: tuple[str, ...] = ("off", "best_effort", "required")
 DIAGNOSTIC_F1_SEED_CONDITIONS: tuple[str, ...] = ("P", "G+P")
 DIAGNOSTIC_F2_SEED_CONDITIONS: tuple[str, ...] = ("C+P", "G+C+P")
 DIAGNOSTIC_EXPECTED_INITIAL_FAILURES: tuple[str, ...] = (
@@ -100,6 +123,7 @@ PairIdentityValidator = Callable[[Any, Any], None]
 ControlResolver = Callable[..., Any]
 PRepairLoopCallable = Callable[..., PRepairLoopResult]
 CLoopRunnerCallable = Callable[..., Cluster3CLoopResult]
+ObservabilityLoggerFactory = Callable[..., ObservabilityJsonlAppendLogger]
 
 
 @dataclass(frozen=True)
@@ -120,6 +144,10 @@ class Cluster3RunnerConfig:
     max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS
     temperature: float = 0.2
     output: str = "outputs/cluster3/cluster3_phase5_runner.jsonl"
+    observability_mode: str = "off"
+    observability_experiment_id: str | None = None
+    observability_run_id: str | None = None
+    observability_output: str | None = None
     scale_tier: str = "smoke"
     kernel_class: str = "elementwise"
     n: int = 1
@@ -171,6 +199,7 @@ class Cluster3RunnerConfig:
         _require_non_empty_str(self.output, "output")
         _reject_cluster1_cluster2_output(self.output)
         _require_member(self.write_mode, ("overwrite", "resume"), "write_mode")
+        _validate_observability_config(self)
         _validate_diagnostic_seed_config(self)
 
     @property
@@ -206,6 +235,10 @@ class Cluster3RunnerConfig:
             max_new_tokens=namespace.max_new_tokens,
             temperature=namespace.temperature,
             output=namespace.output,
+            observability_mode=namespace.observability_mode,
+            observability_experiment_id=namespace.observability_experiment_id,
+            observability_run_id=namespace.observability_run_id,
+            observability_output=namespace.observability_output,
             scale_tier=namespace.scale_tier,
             kernel_class=namespace.kernel_class,
             n=namespace.n,
@@ -218,8 +251,17 @@ class Cluster3RunnerConfig:
             ),
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+    def to_dict(self, *, include_observability: bool = True) -> dict[str, Any]:
+        payload = asdict(self)
+        if not include_observability:
+            for key in (
+                "observability_mode",
+                "observability_experiment_id",
+                "observability_run_id",
+                "observability_output",
+            ):
+                payload.pop(key, None)
+        return payload
 
 
 @dataclass(frozen=True)
@@ -233,6 +275,7 @@ class RunnerDependencies:
     no_p_control_resolver: ControlResolver | None = None
     p_repair_loop: PRepairLoopCallable | None = None
     c_loop_runner: CLoopRunnerCallable | None = None
+    observability_logger_factory: ObservabilityLoggerFactory | None = None
 
 
 @dataclass(frozen=True)
@@ -270,6 +313,365 @@ class _ConditionRunStats:
     correctness_calls: int = 0
     p_loop_calls: int = 0
     c_loop_calls: int = 0
+
+
+@dataclass
+class _Cluster3ObservabilityRuntime:
+    config: Cluster3RunnerConfig
+    mode: str
+    paths: ObservabilityPaths | None = None
+    logger: ObservabilityJsonlAppendLogger | None = None
+    git_commit: str | None = None
+    branch: str | None = None
+    clock_scope_id: str = ""
+    next_event_sequence: int = 0
+    disabled_reason: str | None = None
+
+    @property
+    def enabled(self) -> bool:
+        return self.mode != "off" and self.logger is not None
+
+    def close(self) -> None:
+        if self.logger is not None:
+            self.logger.close()
+
+    def record_run_started(self, *, monotonic_ns: int) -> None:
+        if not self.enabled:
+            return
+        self._append(
+            event_type="run_started",
+            severity="info",
+            status="started",
+            monotonic_ns=monotonic_ns,
+            attributes={
+                "runner": CLUSTER3_RUNNER_PATH,
+                "condition": self.config.condition,
+                "scale_tier": self.config.scale_tier,
+                "write_mode": self.config.write_mode,
+                "observability_mode": self.mode,
+            },
+        )
+
+    def record_run_completed(
+        self,
+        *,
+        row_count: int,
+        start_monotonic_ns: int,
+        end_monotonic_ns: int,
+    ) -> None:
+        if not self.enabled:
+            return
+        self._append(
+            event_type="run_completed",
+            severity="info",
+            status="succeeded",
+            monotonic_ns=end_monotonic_ns,
+            start_monotonic_ns=start_monotonic_ns,
+            end_monotonic_ns=end_monotonic_ns,
+            attributes={
+                "runner": CLUSTER3_RUNNER_PATH,
+                "row_count": row_count,
+                "condition": self.config.condition,
+            },
+        )
+
+    def record_run_failed(
+        self,
+        *,
+        error: BaseException,
+        start_monotonic_ns: int,
+        end_monotonic_ns: int,
+    ) -> None:
+        if not self.enabled:
+            return
+        self._append(
+            event_type="run_failed",
+            severity="error",
+            status="failed",
+            monotonic_ns=end_monotonic_ns,
+            start_monotonic_ns=start_monotonic_ns,
+            end_monotonic_ns=end_monotonic_ns,
+            error_summary={
+                "public_failure_code": "runner_failed",
+                "bounded_public_error_class": type(error).__name__,
+                "message": type(error).__name__,
+            },
+            attributes={
+                "runner": CLUSTER3_RUNNER_PATH,
+                "condition": self.config.condition,
+            },
+        )
+
+    def record_row_started(
+        self,
+        *,
+        row_index: int,
+        condition: str,
+        kernel_class: str,
+        kernel_name: str,
+        dtype: str,
+        base_seed: int,
+        monotonic_ns: int,
+    ) -> None:
+        if not self.enabled:
+            return
+        self._append(
+            event_type="row_started",
+            severity="info",
+            status="started",
+            monotonic_ns=monotonic_ns,
+            row_identity=_observability_row_identity(
+                condition=condition,
+                kernel_class=kernel_class,
+                kernel_name=kernel_name,
+                dtype=dtype,
+                base_seed=base_seed,
+            ),
+            attributes={
+                "row_index": row_index,
+                "condition": condition,
+                "kernel_class": kernel_class,
+                "dtype": dtype,
+            },
+        )
+
+    def record_row_completed(
+        self,
+        *,
+        row_index: int,
+        row: Cluster3EvalRow,
+        start_monotonic_ns: int,
+        end_monotonic_ns: int,
+    ) -> None:
+        if not self.enabled:
+            return
+        self._append(
+            event_type="row_completed",
+            severity="info",
+            status="succeeded",
+            monotonic_ns=end_monotonic_ns,
+            start_monotonic_ns=start_monotonic_ns,
+            end_monotonic_ns=end_monotonic_ns,
+            row_identity=_observability_row_identity_from_row(row),
+            attempt=_observability_attempt_identity_from_row(row),
+            attributes={
+                "row_index": row_index,
+                "condition": row.condition,
+                "kernel_class": row.kernel_class,
+                "dtype": row.dtype,
+                "p_repair_attempted": row.p_repair_attempted,
+                "c_loop_fired": row.c_loop_fired,
+                "failure_code": row.failure_code,
+            },
+        )
+
+    def record_stage_started(
+        self,
+        *,
+        stage: str,
+        row_index: int,
+        row: Cluster3EvalRow,
+        monotonic_ns: int,
+    ) -> None:
+        if not self.enabled:
+            return
+        self._append(
+            event_type="stage_started",
+            severity="info",
+            status="started",
+            stage=stage,
+            monotonic_ns=monotonic_ns,
+            row_identity=_observability_row_identity_from_row(row),
+            attempt=_observability_attempt_identity_from_row(row),
+            attributes={
+                "row_index": row_index,
+                "condition": row.condition,
+                "stage": stage,
+            },
+        )
+
+    def record_stage_completed(
+        self,
+        *,
+        stage: str,
+        row_index: int,
+        row: Cluster3EvalRow,
+        start_monotonic_ns: int,
+        end_monotonic_ns: int,
+    ) -> None:
+        if not self.enabled:
+            return
+        self._append(
+            event_type="stage_completed",
+            severity="info",
+            status="succeeded",
+            stage=stage,
+            monotonic_ns=end_monotonic_ns,
+            start_monotonic_ns=start_monotonic_ns,
+            end_monotonic_ns=end_monotonic_ns,
+            row_identity=_observability_row_identity_from_row(row),
+            attempt=_observability_attempt_identity_from_row(row),
+            attributes={
+                "row_index": row_index,
+                "condition": row.condition,
+                "stage": stage,
+            },
+        )
+
+    def record_stage_failed(
+        self,
+        *,
+        stage: str,
+        row_index: int,
+        row: Cluster3EvalRow,
+        error: BaseException,
+        start_monotonic_ns: int,
+        end_monotonic_ns: int,
+    ) -> None:
+        if not self.enabled:
+            return
+        self._append(
+            event_type="stage_failed",
+            severity="error",
+            status="failed",
+            stage=stage,
+            monotonic_ns=end_monotonic_ns,
+            start_monotonic_ns=start_monotonic_ns,
+            end_monotonic_ns=end_monotonic_ns,
+            row_identity=_observability_row_identity_from_row(row),
+            attempt=_observability_attempt_identity_from_row(row),
+            error_summary={
+                "public_failure_code": "stage_failed",
+                "bounded_public_error_class": type(error).__name__,
+                "message": type(error).__name__,
+            },
+            attributes={
+                "row_index": row_index,
+                "condition": row.condition,
+                "stage": stage,
+            },
+        )
+
+    def write_summary(self, *, row_count: int) -> None:
+        if not self.enabled:
+            return
+        assert self.paths is not None
+        assert self.git_commit is not None
+        assert self.branch is not None
+        events = load_observability_events(self.paths.event_path)
+        summary = ObservabilitySummary(
+            experiment_id=self.config.observability_experiment_id or "",
+            run_id=self.config.observability_run_id or "",
+            result_path=self.config.output,
+            observability_event_path=str(self.paths.event_path),
+            observability_summary_path=str(self.paths.summary_path),
+            generated_at_utc=_utc_now(),
+            git_commit=self.git_commit,
+            branch=self.branch,
+            workspace=".",
+            row_counts={"total": row_count},
+            event_counts=observability_event_counts(events),
+            stage_durations_ns=observability_stage_durations_ns(events),
+            token_totals={"count_status": "not_implemented"},
+            modal_context_summary={"context_status": "not_implemented"},
+            estimated_cost_summary={"estimate_status": "not_implemented"},
+            actual_billing_status="not_implemented",
+            completeness_status="complete",
+            caveats=[
+                "O1 local runner observability only; token counts, Modal context, "
+                "estimated cost, and billing reconciliation are not implemented."
+            ],
+            source_event_sha256=file_sha256(self.paths.event_path),
+            summary_sha256=None,
+        )
+        self._call_logger(lambda logger: logger.write_summary(summary))
+
+    def _append(
+        self,
+        *,
+        event_type: str,
+        severity: str,
+        status: str,
+        monotonic_ns: int,
+        stage: str | None = None,
+        row_identity: ObservabilityRowIdentity | None = None,
+        attempt: ObservabilityAttemptIdentity | None = None,
+        start_monotonic_ns: int | None = None,
+        end_monotonic_ns: int | None = None,
+        error_summary: Mapping[str, Any] | None = None,
+        attributes: Mapping[str, Any] | None = None,
+    ) -> None:
+        if not self.enabled:
+            return
+        assert self.paths is not None
+        duration_ns = None
+        duration_source = "not_applicable"
+        if start_monotonic_ns is not None and end_monotonic_ns is not None:
+            duration_ns = end_monotonic_ns - start_monotonic_ns
+            duration_source = "local_monotonic"
+        safe_error_summary = (
+            ObservabilityErrorSummary.model_validate(dict(error_summary))
+            if error_summary is not None
+            else None
+        )
+        event = ObservabilityEvent(
+            event_id=str(uuid.uuid4()),
+            event_sequence=self.next_event_sequence,
+            event_type=event_type,
+            severity=severity,
+            timestamp_utc=_utc_now(),
+            timestamp_unix_ns=time.time_ns(),
+            monotonic_ns=monotonic_ns,
+            clock_scope_id=self.clock_scope_id,
+            experiment_id=self.config.observability_experiment_id or "",
+            run_id=self.config.observability_run_id or "",
+            artifact=ObservabilityArtifactIdentity(
+                result_path=self.config.output,
+                observability_event_path=str(self.paths.event_path),
+                observability_summary_path=str(self.paths.summary_path),
+                git_commit=self.git_commit,
+            ),
+            row_identity=row_identity or ObservabilityRowIdentity(),
+            stage=stage,
+            attempt=attempt or ObservabilityAttemptIdentity(),
+            status=status,
+            duration_ns=duration_ns,
+            duration_source=duration_source,
+            start_monotonic_ns=start_monotonic_ns,
+            end_monotonic_ns=end_monotonic_ns,
+            token_counts=None,
+            modal_context=None,
+            cost_estimate=None,
+            error_summary=safe_error_summary,
+            attributes=dict(attributes or {}),
+        )
+        self._append_event(event)
+
+    def _append_event(self, event: ObservabilityEvent) -> None:
+        if self.logger is None:
+            return
+        try:
+            self.logger.append(event)
+        except Exception as exc:
+            if self.mode == "required":
+                raise
+            self.disabled_reason = type(exc).__name__
+            self.close()
+            self.logger = None
+        else:
+            self.next_event_sequence += 1
+
+    def _call_logger(self, operation: Callable[[ObservabilityJsonlAppendLogger], Any]) -> None:
+        if self.logger is None:
+            return
+        try:
+            operation(self.logger)
+        except Exception as exc:
+            if self.mode == "required":
+                raise
+            self.disabled_reason = type(exc).__name__
+            self.close()
+            self.logger = None
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -321,6 +723,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         choices=DIAGNOSTIC_EXPECTED_INITIAL_FAILURES,
     )
+    parser.add_argument(
+        "--observability-mode",
+        default="off",
+        choices=OBSERVABILITY_MODE_CHOICES,
+    )
+    parser.add_argument("--observability-experiment-id", default=None)
+    parser.add_argument("--observability-run-id", default=None)
+    parser.add_argument("--observability-output", default=None)
     parser.add_argument("--output", required=True)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--overwrite", action="store_true")
@@ -538,57 +948,120 @@ def run_cluster3(
 
     rows: list[Cluster3EvalRow] = []
     audits: list[ConditionRouteAudit] = []
+    observability = _open_observability_runtime(config, deps)
+    run_start_monotonic_ns = time.perf_counter_ns()
     run_id = _stable_run_id(config)
     content_hash_sidecar = _build_runner_content_hash_sidecar(config)
     hashes_by_condition = content_hash_sidecar.generated_condition_hashes
 
-    with Cluster3JsonlAppendLogger(
-        config.output,
-        content_hash_sidecar=content_hash_sidecar,
-        mode=config.write_mode,
-        fsync=True,
-    ) as result_logger:
-        for condition in config.conditions:
-            stats = _ConditionRunStats()
-            before_rows = len(rows)
-            for kernel_class in config.kernel_classes:
-                kernel_name = get_shape_metadata(kernel_class).kernel_name
-                for dtype in config.dtypes:
-                    for base_seed in range(config.n):
-                        row = _run_generated_cell(
-                            condition=condition,
-                            kernel_class=kernel_class,
-                            kernel_name=kernel_name,
-                            dtype=dtype,
-                            base_seed=base_seed,
-                            config=config,
-                            run_id=run_id,
-                            generation=generation,
-                            correctness=correctness,
-                            dispatcher=dispatcher,
-                            p_repair_loop=p_repair_loop,
-                            c_loop_runner=c_loop_runner,
-                            c3_hashes=hashes_by_condition[condition],
-                            stats=stats,
-                        )
-                        control_row = _resolve_control_row(
-                            deps.no_p_control_resolver,
-                            row,
-                        )
-                        if control_row is not None:
-                            pair_identity_validator(row, control_row)
-                        result_logger.append(row)
-                        rows.append(row)
-            audits.append(
-                ConditionRouteAudit(
-                    condition=condition,
-                    route=_condition_route(rows[before_rows:]),
-                    generation_calls=stats.generation_calls,
-                    correctness_calls=stats.correctness_calls,
-                    p_loop_calls=stats.p_loop_calls,
-                    c_loop_calls=stats.c_loop_calls,
+    try:
+        observability.record_run_started(monotonic_ns=run_start_monotonic_ns)
+        with Cluster3JsonlAppendLogger(
+            config.output,
+            content_hash_sidecar=content_hash_sidecar,
+            mode=config.write_mode,
+            fsync=True,
+        ) as result_logger:
+            for condition in config.conditions:
+                stats = _ConditionRunStats()
+                before_rows = len(rows)
+                for kernel_class in config.kernel_classes:
+                    kernel_name = get_shape_metadata(kernel_class).kernel_name
+                    for dtype in config.dtypes:
+                        for base_seed in range(config.n):
+                            row_index = len(rows)
+                            row_start_monotonic_ns = time.perf_counter_ns()
+                            observability.record_row_started(
+                                row_index=row_index,
+                                condition=condition,
+                                kernel_class=kernel_class,
+                                kernel_name=kernel_name,
+                                dtype=dtype,
+                                base_seed=base_seed,
+                                monotonic_ns=row_start_monotonic_ns,
+                            )
+                            row = _run_generated_cell(
+                                condition=condition,
+                                kernel_class=kernel_class,
+                                kernel_name=kernel_name,
+                                dtype=dtype,
+                                base_seed=base_seed,
+                                config=config,
+                                run_id=run_id,
+                                generation=generation,
+                                correctness=correctness,
+                                dispatcher=dispatcher,
+                                p_repair_loop=p_repair_loop,
+                                c_loop_runner=c_loop_runner,
+                                c3_hashes=hashes_by_condition[condition],
+                                stats=stats,
+                            )
+                            control_row = _resolve_control_row(
+                                deps.no_p_control_resolver,
+                                row,
+                            )
+                            if control_row is not None:
+                                pair_identity_validator(row, control_row)
+                            append_start_monotonic_ns = time.perf_counter_ns()
+                            observability.record_stage_started(
+                                stage="row_append",
+                                row_index=row_index,
+                                row=row,
+                                monotonic_ns=append_start_monotonic_ns,
+                            )
+                            try:
+                                result_logger.append(row)
+                            except BaseException as exc:
+                                observability.record_stage_failed(
+                                    stage="row_append",
+                                    row_index=row_index,
+                                    row=row,
+                                    error=exc,
+                                    start_monotonic_ns=append_start_monotonic_ns,
+                                    end_monotonic_ns=time.perf_counter_ns(),
+                                )
+                                raise
+                            append_end_monotonic_ns = time.perf_counter_ns()
+                            observability.record_stage_completed(
+                                stage="row_append",
+                                row_index=row_index,
+                                row=row,
+                                start_monotonic_ns=append_start_monotonic_ns,
+                                end_monotonic_ns=append_end_monotonic_ns,
+                            )
+                            rows.append(row)
+                            observability.record_row_completed(
+                                row_index=row_index,
+                                row=row,
+                                start_monotonic_ns=row_start_monotonic_ns,
+                                end_monotonic_ns=time.perf_counter_ns(),
+                            )
+                audits.append(
+                    ConditionRouteAudit(
+                        condition=condition,
+                        route=_condition_route(rows[before_rows:]),
+                        generation_calls=stats.generation_calls,
+                        correctness_calls=stats.correctness_calls,
+                        p_loop_calls=stats.p_loop_calls,
+                        c_loop_calls=stats.c_loop_calls,
+                    )
                 )
-            )
+    except BaseException as exc:
+        observability.record_run_failed(
+            error=exc,
+            start_monotonic_ns=run_start_monotonic_ns,
+            end_monotonic_ns=time.perf_counter_ns(),
+        )
+        raise
+    else:
+        observability.record_run_completed(
+            row_count=len(rows),
+            start_monotonic_ns=run_start_monotonic_ns,
+            end_monotonic_ns=time.perf_counter_ns(),
+        )
+        observability.write_summary(row_count=len(rows))
+    finally:
+        observability.close()
 
     return Cluster3RunResult(
         rows=tuple(rows),
@@ -617,6 +1090,108 @@ def parse_dtypes(value: str) -> tuple[str, ...]:
     dtypes = tuple(item.strip() for item in value.split(",") if item.strip())
     _require_dtypes(dtypes)
     return dtypes
+
+
+def _open_observability_runtime(
+    config: Cluster3RunnerConfig,
+    deps: RunnerDependencies,
+) -> _Cluster3ObservabilityRuntime:
+    if config.observability_mode == "off":
+        return _Cluster3ObservabilityRuntime(config=config, mode="off")
+
+    try:
+        paths = resolve_observability_paths(
+            config.output,
+            event_path=config.observability_output,
+        )
+        git_commit = _git_stdout("rev-parse", "HEAD").lower()
+        branch = _git_stdout("branch", "--show-current") or "detached"
+        logger_factory = deps.observability_logger_factory or ObservabilityJsonlAppendLogger
+        logger = logger_factory(
+            paths.event_path,
+            experiment_id=config.observability_experiment_id or "",
+            run_id=config.observability_run_id or "",
+            result_path=config.output,
+            summary_path=paths.summary_path,
+            hash_path=paths.hash_path,
+            git_commit=git_commit,
+            mode=config.write_mode,
+            fsync=True,
+        )
+        logger.open()
+        next_event_sequence = 0
+        if config.write_mode == "resume":
+            next_event_sequence = len(load_observability_events(paths.event_path))
+        return _Cluster3ObservabilityRuntime(
+            config=config,
+            mode=config.observability_mode,
+            paths=paths,
+            logger=logger,
+            git_commit=git_commit,
+            branch=branch,
+            clock_scope_id=str(uuid.uuid4()),
+            next_event_sequence=next_event_sequence,
+        )
+    except Exception as exc:
+        if config.observability_mode == "required":
+            raise
+        return _Cluster3ObservabilityRuntime(
+            config=config,
+            mode=config.observability_mode,
+            disabled_reason=type(exc).__name__,
+        )
+
+
+def _observability_row_identity(
+    *,
+    condition: str,
+    kernel_class: str,
+    kernel_name: str,
+    dtype: str,
+    base_seed: int,
+    generation_seed: int | None = None,
+    attempt_index: int | None = None,
+    terminal_attempt_index: int | None = None,
+    source_hash: str | None = None,
+    row_sha256: str | None = None,
+) -> ObservabilityRowIdentity:
+    return ObservabilityRowIdentity(
+        cluster="cluster3",
+        condition=condition,
+        kernel_class=kernel_class,
+        kernel_name=kernel_name,
+        dtype=dtype,
+        base_seed=base_seed,
+        generation_seed=generation_seed,
+        attempt_index=attempt_index,
+        terminal_attempt_index=terminal_attempt_index,
+        source_hash=source_hash,
+        row_sha256=row_sha256,
+    )
+
+
+def _observability_row_identity_from_row(row: Cluster3EvalRow) -> ObservabilityRowIdentity:
+    row_json = row.to_json()
+    return _observability_row_identity(
+        condition=row.condition,
+        kernel_class=row.kernel_class,
+        kernel_name=row.kernel_name,
+        dtype=row.dtype,
+        base_seed=row.base_seed,
+        generation_seed=row.terminal_generation_seed,
+        attempt_index=row.attempt_index,
+        terminal_attempt_index=row.terminal_attempt_index,
+        source_hash=row.source_hash,
+        row_sha256=_sha256(row_json),
+    )
+
+
+def _observability_attempt_identity_from_row(row: Cluster3EvalRow) -> ObservabilityAttemptIdentity:
+    return ObservabilityAttemptIdentity(
+        attempt_index=row.attempt_index,
+        terminal_attempt_index=row.terminal_attempt_index,
+        condition=row.condition,
+    )
 
 
 def _run_generated_cell(
@@ -1721,8 +2296,27 @@ def _metadata_replay_control_condition(condition: str) -> str | None:
 
 
 def _stable_run_id(config: Cluster3RunnerConfig) -> str:
-    payload = json.dumps(config.to_dict(), sort_keys=True, separators=(",", ":"))
+    payload = json.dumps(
+        config.to_dict(include_observability=False),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
     return "cluster3-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _git_stdout(*args: str) -> str:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip()
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _read_diagnostic_seed_source(config: Cluster3RunnerConfig) -> str | None:
@@ -1793,6 +2387,28 @@ def _validate_diagnostic_seed_config(config: Cluster3RunnerConfig) -> None:
         "diagnostic_seed_source",
         relative_source.as_posix(),
     )
+
+
+def _validate_observability_config(config: Cluster3RunnerConfig) -> None:
+    _require_member(
+        config.observability_mode,
+        OBSERVABILITY_MODE_CHOICES,
+        "observability_mode",
+    )
+    if config.observability_mode == "off":
+        return
+    _require_non_empty_str(
+        config.observability_experiment_id,
+        "observability_experiment_id",
+    )
+    _require_non_empty_str(config.observability_run_id, "observability_run_id")
+    if config.write_mode == "resume":
+        raise ValueError(
+            "observability resume is not supported in O1; use observability_mode='off' "
+            "or start a new overwrite sidecar"
+        )
+    if config.observability_output is not None:
+        _require_non_empty_str(config.observability_output, "observability_output")
 
 
 def _resolve_repo_relative_file(value: str, field_name: str) -> Path:
