@@ -13,10 +13,15 @@ import pytest
 from shared.analysis.factorial import (
     _expected_prompt_sha256,
     analyze_factorial,
+    factorial_summary,
     load_result_paths,
+    load_results,
     normalize_result_rows,
     validate_paired_replay_dataframe,
 )
+
+
+FACTORIAL_FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "factorial"
 
 
 def test_factorial_cli_runs_when_invoked_by_file_path() -> None:
@@ -295,6 +300,188 @@ def test_mixed_scale_tiers_remain_non_reportable_when_diagnostic_override_is_use
 
     assert result["metadata"]["scale_tiers"] == ["development", "paper"]
     assert result["metadata"]["reportable"] is False
+
+
+def test_missing_repair_history_policy_fixture_loads_as_known_legacy() -> None:
+    df = load_results(_factorial_fixture("missing_policy_legacy.jsonl"))
+
+    assert set(df["repair_history_policy"]) == {"last_attempt_only_v1"}
+    assert set(df["repair_history_policy_state"]) == {"known_legacy_missing_policy"}
+
+    summary = factorial_summary(df)
+    assert "repair_history_policy" in summary.columns
+    assert set(summary["repair_history_policy"]) == {"last_attempt_only_v1"}
+
+
+def test_missing_repair_history_policy_unknown_artifact_is_quarantined() -> None:
+    with pytest.raises(ValueError, match="unknown repair_history_policy"):
+        load_results(
+            _factorial_fixture("missing_policy_legacy.jsonl"),
+            missing_repair_history_policy_artifact_kind="unknown",
+        )
+
+
+def test_explicit_legacy_repair_history_policy_fixture_groups_as_legacy() -> None:
+    df = load_results(_factorial_fixture("explicit_legacy.jsonl"))
+
+    assert set(df["repair_history_policy"]) == {"last_attempt_only_v1"}
+    assert set(df["repair_history_policy_state"]) == {"explicit_last_attempt_only"}
+    summary = factorial_summary(df)
+    assert set(summary["repair_history_policy"]) == {"last_attempt_only_v1"}
+
+
+def test_explicit_agentic_repair_history_fixture_groups_with_prompt_metadata() -> None:
+    df = load_results(_factorial_fixture("explicit_agentic_complete.jsonl"))
+
+    assert set(df["repair_history_policy"]) == {"agentic_transcript_v1"}
+    assert set(df["repair_history_policy_state"]) == {"explicit_agentic_transcript"}
+    assert df["repair_history_missing_agentic_metadata"].map(len).eq(0).all()
+
+    summary = factorial_summary(df)
+    for column in (
+        "repair_history_policy",
+        "repair_prompt_template_version",
+        "repair_prompt_renderer_version",
+        "repair_max_prompt_chars",
+        "repair_include_latest_source",
+    ):
+        assert column in summary.columns
+    assert set(summary["repair_history_policy"]) == {"agentic_transcript_v1"}
+    assert set(summary["repair_prompt_template_version"]) == {
+        "agentic_transcript_v1"
+    }
+    assert set(summary["repair_prompt_renderer_version"]) == {
+        "agentic_transcript_v1"
+    }
+    assert set(summary["repair_max_prompt_chars"]) == {4096}
+    assert set(summary["repair_include_latest_source"]) == {False}
+
+
+def test_agentic_no_render_terminal_fixture_loads_without_prompt_metadata() -> None:
+    df = load_results(_factorial_fixture("agentic_no_render_terminal.jsonl"))
+
+    assert set(df["repair_history_policy"]) == {"agentic_transcript_v1"}
+    assert set(df["repair_history_policy_state"]) == {"explicit_agentic_transcript"}
+    assert df["repair_history_missing_agentic_metadata"].map(len).eq(0).all()
+    assert df["repair_prompt_template_version"].isna().all()
+
+    summary = factorial_summary(df)
+    assert set(summary["repair_history_policy"]) == {"agentic_transcript_v1"}
+    assert summary["repair_prompt_template_version"].isna().all()
+
+
+def test_agentic_repair_attempt_without_rendered_metadata_is_quarantined() -> None:
+    row = {
+        "condition": "C",
+        "kernel_class": "elementwise",
+        "kernel_id": "relu",
+        "kernel_name": "relu",
+        "dtype": "fp32",
+        "base_seed": 0,
+        "attempt_index": 1,
+        "compile_success": True,
+        "functional_success": True,
+        "scale_tier": "development",
+        "repair_history_policy": "agentic_transcript_v1",
+    }
+
+    with pytest.raises(ValueError, match="incomplete agentic_transcript_v1"):
+        normalize_result_rows([row])
+
+
+def test_single_policy_no_render_and_rendered_rows_share_analysis_group() -> None:
+    df = load_results(_factorial_fixture("legacy_no_render_and_rendered.jsonl"))
+
+    summary = factorial_summary(df)
+    assert len(summary) == 1
+    assert set(summary["repair_history_policy"]) == {"last_attempt_only_v1"}
+    assert set(summary["repair_prompt_template_version"]) == {
+        "last_attempt_only_v1"
+    }
+
+    rows = _four_cell_rows()
+    for row in rows:
+        row["repair_history_policy"] = "last_attempt_only_v1"
+        if row["condition"] in {"C", "G+C"} and row["base_seed"] % 2:
+            row["repair_prompt_template_version"] = "last_attempt_only_v1"
+            row["repair_prompt_renderer_version"] = "cluster2_feedback_prompt_v1"
+
+    result = analyze_factorial(rows, bootstrap_samples=100)
+    assert result["metadata"]["repair_history_groups"] == [
+        {
+            "repair_history_policy": "last_attempt_only_v1",
+            "repair_prompt_template_version": "last_attempt_only_v1",
+            "repair_prompt_renderer_version": "cluster2_feedback_prompt_v1",
+            "repair_max_prompt_chars": None,
+            "repair_include_latest_source": None,
+            "n_rows": len(rows),
+        }
+    ]
+
+
+def test_mixed_repair_history_groups_are_separated_or_quarantined() -> None:
+    df = pd.concat(
+        [
+            load_results(_factorial_fixture("explicit_legacy.jsonl")),
+            load_results(_factorial_fixture("explicit_agentic_complete.jsonl")),
+        ],
+        ignore_index=True,
+    )
+
+    summary = factorial_summary(df)
+    assert set(summary["repair_history_policy"]) == {
+        "last_attempt_only_v1",
+        "agentic_transcript_v1",
+    }
+
+    with pytest.raises(ValueError, match="mixed repair-history analysis groups"):
+        analyze_factorial(
+            df,
+            response_variable="compile_success",
+            analysis_scope="secondary_compile_diagnostic",
+            bootstrap_samples=10,
+        )
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "message"),
+    [
+        (
+            "mixed_missing_and_explicit_legacy.jsonl",
+            "mixed_policy_artifact",
+        ),
+        ("mixed_legacy_and_agentic.jsonl", "mixed_policy_artifact"),
+        ("unknown_policy.jsonl", "unknown repair_history_policy"),
+        ("agentic_missing_metadata.jsonl", "incomplete agentic_transcript_v1"),
+        ("inconsistent_template_version.jsonl", "repair_prompt_template_version"),
+        ("inconsistent_max_prompt_chars.jsonl", "repair_max_prompt_chars"),
+        ("inconsistent_include_latest_source.jsonl", "repair_include_latest_source"),
+    ],
+)
+def test_repair_history_policy_quarantine_fixtures(
+    fixture_name: str,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        load_results(_factorial_fixture(fixture_name))
+
+
+def test_legacy_four_cell_analysis_still_preserves_existing_pairing_behavior() -> None:
+    result = analyze_factorial(_four_cell_rows(), bootstrap_samples=100)
+
+    assert result["metadata"]["repair_history_policies"] == ["last_attempt_only_v1"]
+    assert result["metadata"]["repair_history_policy_states"] == [
+        "known_legacy_missing_policy"
+    ]
+    comparison = next(
+        row
+        for row in result["paired_comparisons"]
+        if row["response_variable"] == "functional_success"
+        and row["comparison"] == "C vs none"
+    )
+    assert comparison["n_pairs"] == 4
+    assert comparison["success_rate_a"] == 0.25
+    assert comparison["success_rate_b"] == 0.5
 
 
 def test_null_scale_tier_is_unspecified_for_direct_dataframe() -> None:
@@ -1497,6 +1684,10 @@ def _jsonl_sample(path: Path, *, limit: int) -> list[dict[str, object]]:
         if len(rows) == limit:
             break
     return rows
+
+
+def _factorial_fixture(name: str) -> Path:
+    return FACTORIAL_FIXTURE_DIR / name
 
 
 def _expected_cluster2_compile_success(failure_code: object) -> bool:

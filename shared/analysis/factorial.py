@@ -41,6 +41,12 @@ from shared.eval.constants import (
     SIGNIFICANCE_ALPHA,
 )
 from shared.eval.reporting.grammar_language import grammar_condition_label_for_variants
+from shared.repair_history.policies import (
+    AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1,
+    LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1,
+    REPAIR_HISTORY_POLICIES_V1,
+    UNKNOWN_LEGACY_REPAIR_HISTORY_POLICY,
+)
 
 
 CANONICAL_CONDITIONS = (
@@ -86,6 +92,138 @@ REQUESTED_SCALE_TIER_COLUMN = "_requested_scale_tier"
 SCALE_TIER_SOURCE_RAW = "raw_row"
 SCALE_TIER_SOURCE_MISSING_DEFAULT = "raw_missing_default_unspecified"
 SCALE_TIER_SOURCE_ANALYSIS_ANNOTATION = "analysis_cli_annotation"
+REPAIR_HISTORY_POLICY_COLUMN = "repair_history_policy"
+REPAIR_HISTORY_POLICY_STATE_COLUMN = "repair_history_policy_state"
+RAW_REPAIR_HISTORY_POLICY_COLUMN = "_raw_repair_history_policy"
+REPAIR_HISTORY_POLICY_EXPLICIT_COLUMN = "_repair_history_policy_explicit"
+REPAIR_HISTORY_MISSING_METADATA_COLUMN = "repair_history_missing_agentic_metadata"
+REPAIR_HISTORY_STATE_KNOWN_LEGACY_MISSING = "known_legacy_missing_policy"
+REPAIR_HISTORY_STATE_EXPLICIT_LEGACY = "explicit_last_attempt_only"
+REPAIR_HISTORY_STATE_EXPLICIT_AGENTIC = "explicit_agentic_transcript"
+REPAIR_HISTORY_STATE_UNKNOWN_POLICY = "unknown_policy"
+REPAIR_HISTORY_STATE_MIXED_POLICY_ARTIFACT = "mixed_policy_artifact"
+REPAIR_HISTORY_STATE_INCOMPLETE_AGENTIC = "incomplete_agentic_metadata"
+REPAIR_HISTORY_GROUPING_COLUMNS = (
+    REPAIR_HISTORY_POLICY_COLUMN,
+    "repair_prompt_template_version",
+    "repair_prompt_renderer_version",
+    "repair_max_prompt_chars",
+    "repair_include_latest_source",
+)
+REPAIR_HISTORY_ARTIFACT_HOMOGENEITY_COLUMNS = (
+    "repair_prompt_template_version",
+    "repair_prompt_renderer_version",
+    "repair_max_prompt_chars",
+    "repair_include_latest_source",
+)
+REPAIR_HISTORY_ATTEMPT_INDEX_SIGNAL_FIELDS = (
+    "attempt_index",
+    "generation_index",
+    "terminal_attempt_index",
+    "p_repair_attempt_count",
+    "c_attempt_count",
+)
+REPAIR_HISTORY_ATTEMPT_BOOL_SIGNAL_FIELDS = (
+    "p_repair_attempted",
+)
+REPAIR_HISTORY_AGENTIC_REQUIRED_METADATA = (
+    "repair_prompt_template_version",
+    "repair_prompt_renderer_version",
+    "repair_anchor_attempt_index",
+    "repair_latest_attempt_index",
+    "repair_history_attempt_count",
+    "repair_prompt_sha256",
+    "repair_prompt_char_count",
+    "repair_max_prompt_chars",
+    "repair_include_latest_source",
+    "repair_anchor_source_hash",
+    "repair_latest_source_hash",
+    "repair_history_summary_sha256",
+)
+REPAIR_HISTORY_FIELD_ALIASES = {
+    REPAIR_HISTORY_POLICY_COLUMN: (
+        "repair_history_policy",
+        "c_history_policy",
+        "p_history_policy",
+    ),
+    "repair_prompt_template_version": (
+        "repair_prompt_template_version",
+        "c_repair_prompt_template_version",
+        "p_repair_prompt_template_version",
+    ),
+    "repair_prompt_renderer_version": (
+        "repair_prompt_renderer_version",
+        "c_repair_prompt_renderer_version",
+        "p_repair_prompt_renderer_version",
+    ),
+    "repair_anchor_attempt_index": (
+        "repair_anchor_attempt_index",
+        "c_repair_anchor_attempt_index",
+        "p_repair_anchor_attempt_index",
+    ),
+    "repair_latest_attempt_index": (
+        "repair_latest_attempt_index",
+        "c_repair_latest_attempt_index",
+        "p_repair_latest_attempt_index",
+    ),
+    "repair_history_attempt_count": (
+        "repair_history_attempt_count",
+        "c_repair_history_attempt_count",
+        "p_repair_history_attempt_count",
+    ),
+    "repair_prompt_sha256": (
+        "repair_prompt_sha256",
+        "c_repair_prompt_sha256",
+        "p_repair_prompt_sha256",
+    ),
+    "repair_prompt_char_count": (
+        "repair_prompt_char_count",
+        "c_repair_prompt_char_count",
+        "p_repair_prompt_char_count",
+    ),
+    "repair_max_prompt_chars": (
+        "repair_max_prompt_chars",
+        "c_repair_max_prompt_chars",
+        "p_repair_max_prompt_chars",
+    ),
+    "repair_include_latest_source": (
+        "repair_include_latest_source",
+        "c_repair_include_latest_source",
+        "p_repair_include_latest_source",
+    ),
+    "repair_anchor_source_hash": (
+        "repair_anchor_source_hash",
+        "c_repair_anchor_source_hash",
+        "p_repair_anchor_source_hash",
+    ),
+    "repair_latest_source_hash": (
+        "repair_latest_source_hash",
+        "c_repair_latest_source_hash",
+        "p_repair_latest_source_hash",
+    ),
+    "repair_history_summary_sha256": (
+        "repair_history_summary_sha256",
+        "c_repair_history_summary_sha256",
+        "p_repair_history_summary_sha256",
+    ),
+    "repair_history_error_code": (
+        "repair_history_error_code",
+        "c_repair_history_error_code",
+        "p_repair_history_error_code",
+    ),
+}
+REPAIR_HISTORY_ANALYZER_COLUMNS = (
+    REPAIR_HISTORY_POLICY_COLUMN,
+    REPAIR_HISTORY_POLICY_STATE_COLUMN,
+    RAW_REPAIR_HISTORY_POLICY_COLUMN,
+    REPAIR_HISTORY_POLICY_EXPLICIT_COLUMN,
+    REPAIR_HISTORY_MISSING_METADATA_COLUMN,
+    *(
+        field
+        for field in REPAIR_HISTORY_FIELD_ALIASES
+        if field != REPAIR_HISTORY_POLICY_COLUMN
+    ),
+)
 
 PAIRED_REPLAY_COMPARISONS = {"C": "none", "G+C": "G"}
 P_PAIRED_REPLAY_COMPARISONS: dict[str, str] = {
@@ -141,6 +279,7 @@ def load_results(
     *,
     input_role: str | None = None,
     scale_tier_annotation: str | None = None,
+    missing_repair_history_policy_artifact_kind: str = "known_legacy",
 ) -> pd.DataFrame:
     """Load and normalize one EvalResult-shaped JSONL file."""
 
@@ -154,6 +293,9 @@ def load_results(
         source_path=str(jsonl_path),
         input_role=input_role,
         scale_tier_annotation=scale_tier_annotation,
+        missing_repair_history_policy_artifact_kind=(
+            missing_repair_history_policy_artifact_kind
+        ),
     )
 
 
@@ -162,6 +304,7 @@ def load_result_paths(
     *,
     input_roles: Sequence[str | None] | None = None,
     scale_tier_annotation: str | None = None,
+    missing_repair_history_policy_artifact_kind: str = "known_legacy",
 ) -> pd.DataFrame:
     """Load and normalize one or more EvalResult JSONL paths."""
 
@@ -177,6 +320,9 @@ def load_result_paths(
             path,
             input_role=input_role,
             scale_tier_annotation=scale_tier_annotation,
+            missing_repair_history_policy_artifact_kind=(
+                missing_repair_history_policy_artifact_kind
+            ),
         )
         for path, input_role in zip(paths, role_list, strict=True)
     ]
@@ -205,6 +351,7 @@ def normalize_result_rows(
     source_path: str | None = None,
     input_role: str | None = None,
     scale_tier_annotation: str | None = None,
+    missing_repair_history_policy_artifact_kind: str = "known_legacy",
 ) -> pd.DataFrame:
     """Normalize current EvalResult and Cluster 2 row shapes for analysis."""
 
@@ -271,6 +418,16 @@ def normalize_result_rows(
             condition=condition,
             source_path=source_path,
             row_index=row_index,
+        )
+        repair_history_metadata = _repair_history_metadata_from_payload(
+            payload,
+            generated_metadata=generated_metadata,
+            replay_metadata=replay_metadata,
+            source_path=source_path,
+            row_index=row_index,
+            missing_policy_artifact_kind=(
+                missing_repair_history_policy_artifact_kind
+            ),
         )
         record = dict(payload)
         record.update(
@@ -373,12 +530,14 @@ def normalize_result_rows(
                 "source_path": source_path,
                 "source_row_index": row_index,
                 **cluster3_diagnostics,
+                **repair_history_metadata,
             }
         )
         for factor, active in _condition_factors(condition).items():
             record[factor] = active
         normalized.append(record)
-    return pd.DataFrame(normalized)
+    df = pd.DataFrame(normalized)
+    return _validate_repair_history_artifacts(df)
 
 
 def analyze_factorial(
@@ -419,6 +578,9 @@ def analyze_factorial(
         )
     df = _ensure_pair_identity_columns(df)
     df = _ensure_cluster3_analysis_columns(df)
+    df = _ensure_repair_history_analysis_columns(df)
+    df = _validate_repair_history_artifacts(df)
+    _validate_single_repair_history_analysis_group(df)
 
     _validate_conditions(df)
     scale_tiers = _validate_scale_tiers(df, allow_mixed_scale=allow_mixed_scale)
@@ -514,6 +676,7 @@ def analyze_factorial(
         ],
         "scale_tiers": scale_tiers,
         **scale_tier_metadata,
+        **_repair_history_policy_metadata(df),
         "cells_populated": list(populated_cells),
         "cells_missing": list(missing_cells),
         "cells_status": cell_status,
@@ -567,11 +730,15 @@ def factorial_summary(df: pd.DataFrame) -> pd.DataFrame:
 
     normalized = df if "dtype_original" in df else normalize_result_rows(df.to_dict("records"))
     normalized = _ensure_cluster3_analysis_columns(normalized)
+    normalized = _validate_repair_history_artifacts(
+        _ensure_repair_history_analysis_columns(normalized)
+    )
     _validate_response(normalized, SECONDARY_RESPONSE_VARIABLE, "secondary_compile_diagnostic")
-    group_cols = _factorial_summary_group_columns(normalized)
+    summary_frame = _repair_history_effective_group_frame(normalized)
+    group_cols = _factorial_summary_group_columns(summary_frame)
     group_cols.extend(["kernel_class", "dtype"])
     return (
-        normalized.groupby(group_cols, dropna=False)[SECONDARY_RESPONSE_VARIABLE]
+        summary_frame.groupby(group_cols, dropna=False)[SECONDARY_RESPONSE_VARIABLE]
         .agg(["sum", "count"])
         .rename(columns={"sum": "n_correct", "count": "n_total"})
         .assign(pass_at_1=lambda frame: frame["n_correct"] / frame["n_total"])
@@ -1012,6 +1179,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             "raw scale_tier. Explicit conflicting raw tiers are rejected."
         ),
     )
+    parser.add_argument(
+        "--missing-repair-history-policy-artifact-kind",
+        choices=("known_legacy", "unknown"),
+        default="known_legacy",
+        help=(
+            "How to classify artifacts whose rows omit repair_history_policy. "
+            "The default preserves known legacy analyzer compatibility; unknown "
+            "artifacts are quarantined."
+        ),
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--markdown-output", type=Path)
     parser.add_argument("--bootstrap-samples", type=int, default=BOOTSTRAP_SAMPLES)
@@ -1023,6 +1200,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         input_paths,
         input_roles=input_roles,
         scale_tier_annotation=args.scale_tier,
+        missing_repair_history_policy_artifact_kind=(
+            args.missing_repair_history_policy_artifact_kind
+        ),
     )
     result = analyze_factorial(
         df,
@@ -1685,6 +1865,405 @@ def _cluster3_scalar_diagnostic_value(
     )
 
 
+def _repair_history_metadata_from_payload(
+    payload: Mapping[str, Any],
+    *,
+    generated_metadata: Mapping[str, Any] | None,
+    replay_metadata: Mapping[str, Any] | None,
+    source_path: str | None,
+    row_index: int,
+    missing_policy_artifact_kind: str,
+) -> dict[str, Any]:
+    if missing_policy_artifact_kind not in {"known_legacy", "unknown"}:
+        raise ValueError(
+            "missing_repair_history_policy_artifact_kind must be known_legacy "
+            "or unknown"
+        )
+
+    values = {
+        field: _repair_history_alias_value(
+            payload,
+            generated_metadata=generated_metadata,
+            replay_metadata=replay_metadata,
+            field=field,
+            source_path=source_path,
+            row_index=row_index,
+        )
+        for field in REPAIR_HISTORY_FIELD_ALIASES
+    }
+    raw_policy = values[REPAIR_HISTORY_POLICY_COLUMN]
+    explicit_policy = not _is_missing_value(raw_policy)
+    policy, state = _classify_repair_history_policy(
+        raw_policy,
+        missing_policy_artifact_kind=missing_policy_artifact_kind,
+    )
+    missing_agentic_metadata: list[str] = []
+    if (
+        policy == AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1
+        and (
+            _has_rendered_repair_history_metadata(values)
+            or _row_requires_rendered_repair_history_metadata(
+                payload,
+                generated_metadata=generated_metadata,
+                replay_metadata=replay_metadata,
+            )
+        )
+    ):
+        missing_agentic_metadata = [
+            field
+            for field in REPAIR_HISTORY_AGENTIC_REQUIRED_METADATA
+            if _is_missing_value(values.get(field))
+        ]
+        if missing_agentic_metadata:
+            state = REPAIR_HISTORY_STATE_INCOMPLETE_AGENTIC
+
+    result = {
+        REPAIR_HISTORY_POLICY_COLUMN: policy,
+        REPAIR_HISTORY_POLICY_STATE_COLUMN: state,
+        RAW_REPAIR_HISTORY_POLICY_COLUMN: (
+            None if _is_missing_value(raw_policy) else str(raw_policy)
+        ),
+        REPAIR_HISTORY_POLICY_EXPLICIT_COLUMN: explicit_policy,
+        REPAIR_HISTORY_MISSING_METADATA_COLUMN: missing_agentic_metadata,
+    }
+    for field, value in values.items():
+        if field == REPAIR_HISTORY_POLICY_COLUMN:
+            continue
+        result[field] = _normalize_repair_history_field_value(field, value)
+    return result
+
+
+def _repair_history_alias_value(
+    payload: Mapping[str, Any],
+    *,
+    generated_metadata: Mapping[str, Any] | None,
+    replay_metadata: Mapping[str, Any] | None,
+    field: str,
+    source_path: str | None,
+    row_index: int,
+) -> Any:
+    candidates = REPAIR_HISTORY_FIELD_ALIASES[field]
+    values: list[Any] = []
+    for candidate in candidates:
+        value = payload.get(candidate)
+        if not _is_missing_value(value):
+            values.append(value)
+        for nested in (generated_metadata, replay_metadata):
+            if nested is None:
+                continue
+            value = nested.get(candidate)
+            if not _is_missing_value(value):
+                values.append(value)
+    unique = {_repair_history_comparable_value(value) for value in values}
+    if len(unique) > 1:
+        raise ValueError(
+            "conflicting repair-history metadata aliases"
+            f" for field={field!r}, source_path={source_path!r}, "
+            f"row_index={row_index}: {sorted(unique)}"
+        )
+    return values[0] if values else None
+
+
+def _repair_history_comparable_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, np.integer)):
+        return str(int(value))
+    return str(value)
+
+
+def _has_rendered_repair_history_metadata(values: Mapping[str, Any]) -> bool:
+    return any(
+        not _is_missing_value(values.get(field))
+        for field in REPAIR_HISTORY_AGENTIC_REQUIRED_METADATA
+    )
+
+
+def _row_requires_rendered_repair_history_metadata(
+    payload: Mapping[str, Any],
+    *,
+    generated_metadata: Mapping[str, Any] | None,
+    replay_metadata: Mapping[str, Any] | None,
+) -> bool:
+    for field in REPAIR_HISTORY_ATTEMPT_INDEX_SIGNAL_FIELDS:
+        value = _metadata_first_present(
+            payload,
+            generated_metadata,
+            replay_metadata,
+            field,
+            default=None,
+        )
+        if _is_missing_value(value):
+            continue
+        if int(value) > 0:
+            return True
+    for field in REPAIR_HISTORY_ATTEMPT_BOOL_SIGNAL_FIELDS:
+        value = _metadata_first_present(
+            payload,
+            generated_metadata,
+            replay_metadata,
+            field,
+            default=None,
+        )
+        if _is_missing_value(value):
+            continue
+        if _bool_or_none(value) is True:
+            return True
+    return False
+
+
+def _classify_repair_history_policy(
+    raw_policy: Any,
+    *,
+    missing_policy_artifact_kind: str,
+) -> tuple[str, str]:
+    if _is_missing_value(raw_policy):
+        if missing_policy_artifact_kind == "known_legacy":
+            return (
+                LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1,
+                REPAIR_HISTORY_STATE_KNOWN_LEGACY_MISSING,
+            )
+        return (
+            UNKNOWN_LEGACY_REPAIR_HISTORY_POLICY,
+            REPAIR_HISTORY_STATE_UNKNOWN_POLICY,
+        )
+    if not isinstance(raw_policy, str):
+        return (str(raw_policy), REPAIR_HISTORY_STATE_UNKNOWN_POLICY)
+    if raw_policy == LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1:
+        return (raw_policy, REPAIR_HISTORY_STATE_EXPLICIT_LEGACY)
+    if raw_policy == AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1:
+        return (raw_policy, REPAIR_HISTORY_STATE_EXPLICIT_AGENTIC)
+    if raw_policy not in REPAIR_HISTORY_POLICIES_V1:
+        return (raw_policy, REPAIR_HISTORY_STATE_UNKNOWN_POLICY)
+    return (raw_policy, REPAIR_HISTORY_STATE_UNKNOWN_POLICY)
+
+
+def _normalize_repair_history_field_value(field: str, value: Any) -> Any:
+    if _is_missing_value(value):
+        return None
+    if field in {
+        "repair_anchor_attempt_index",
+        "repair_latest_attempt_index",
+        "repair_history_attempt_count",
+        "repair_prompt_char_count",
+        "repair_max_prompt_chars",
+    }:
+        return int(value)
+    if field == "repair_include_latest_source":
+        return _bool_or_none(value)
+    return str(value)
+
+
+def _ensure_repair_history_analysis_columns(df: pd.DataFrame) -> pd.DataFrame:
+    if all(column in df.columns for column in REPAIR_HISTORY_ANALYZER_COLUMNS):
+        return df.copy()
+
+    updated = df.copy()
+    rows: list[dict[str, Any]] = []
+    for row_index, (_, row) in enumerate(updated.iterrows()):
+        payload = row.to_dict()
+        rows.append(
+            _repair_history_metadata_from_payload(
+                payload,
+                generated_metadata=_metadata_dict(payload.get("generated_metadata")),
+                replay_metadata=_metadata_dict(payload.get("replay_metadata")),
+                source_path=(
+                    str(payload.get("source_path"))
+                    if not _is_missing_value(payload.get("source_path"))
+                    else None
+                ),
+                row_index=row_index,
+                missing_policy_artifact_kind="known_legacy",
+            )
+        )
+    for column in REPAIR_HISTORY_ANALYZER_COLUMNS:
+        updated[column] = [row[column] for row in rows]
+    return updated
+
+
+def _validate_repair_history_artifacts(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    normalized = _ensure_repair_history_analysis_columns(df)
+    for artifact_key, artifact in _repair_history_artifact_groups(normalized):
+        state_values = _repair_history_distinct_values(
+            artifact[REPAIR_HISTORY_POLICY_STATE_COLUMN]
+        )
+        if REPAIR_HISTORY_STATE_UNKNOWN_POLICY in state_values:
+            raise ValueError(
+                "quarantined repair-history artifact has unknown repair_history_policy"
+                f" for artifact={artifact_key!r}: {state_values}"
+            )
+        if REPAIR_HISTORY_STATE_INCOMPLETE_AGENTIC in state_values:
+            missing = _missing_agentic_metadata_by_artifact(artifact)
+            raise ValueError(
+                "quarantined repair-history artifact has incomplete "
+                "agentic_transcript_v1 metadata"
+                f" for artifact={artifact_key!r}: {missing}"
+            )
+        non_missing_states = [
+            state
+            for state in state_values
+            if not _is_missing_value(state)
+        ]
+        if len(non_missing_states) > 1:
+            normalized.loc[
+                artifact.index,
+                REPAIR_HISTORY_POLICY_STATE_COLUMN,
+            ] = REPAIR_HISTORY_STATE_MIXED_POLICY_ARTIFACT
+            raise ValueError(
+                "quarantined mixed_policy_artifact repair_history_policy artifact"
+                f" for artifact={artifact_key!r}: {non_missing_states}"
+            )
+        for column in REPAIR_HISTORY_ARTIFACT_HOMOGENEITY_COLUMNS:
+            values = _repair_history_distinct_values(artifact[column])
+            if len(values) > 1:
+                raise ValueError(
+                    "quarantined mixed repair-history prompt metadata"
+                    f" for artifact={artifact_key!r}, column={column!r}: {values}"
+                )
+    return normalized
+
+
+def _repair_history_artifact_groups(
+    df: pd.DataFrame,
+) -> Iterable[tuple[str, pd.DataFrame]]:
+    if "source_path" not in df.columns:
+        yield "<in_memory_rows>", df
+        return
+    artifact_keys = [
+        "<in_memory_rows>"
+        if _is_missing_value(value)
+        else str(value)
+        for value in df["source_path"].tolist()
+    ]
+    for artifact_key in sorted(set(artifact_keys)):
+        mask = [key == artifact_key for key in artifact_keys]
+        yield artifact_key, df.loc[mask]
+
+
+def _repair_history_distinct_values(series: pd.Series) -> list[Any]:
+    values = {
+        _repair_history_group_value(value)
+        for value in series.tolist()
+        if not _is_missing_value(value)
+    }
+    return sorted(values, key=lambda value: str(value))
+
+
+def _repair_history_group_value(value: Any) -> Any:
+    if isinstance(value, (np.bool_,)):
+        return bool(value)
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating,)):
+        return float(value)
+    return value
+
+
+def _missing_agentic_metadata_by_artifact(artifact: pd.DataFrame) -> dict[int, list[str]]:
+    result: dict[int, list[str]] = {}
+    for row_index, row in artifact.iterrows():
+        missing = row.get(REPAIR_HISTORY_MISSING_METADATA_COLUMN)
+        if _is_missing_value(missing):
+            continue
+        missing_values = list(missing)
+        if missing_values:
+            result[int(row_index)] = missing_values
+    return result
+
+
+def _repair_history_group_columns(df: pd.DataFrame) -> list[str]:
+    return [
+        column
+        for column in REPAIR_HISTORY_GROUPING_COLUMNS
+        if column in df.columns
+    ]
+
+
+def _repair_history_group_records(df: pd.DataFrame) -> list[dict[str, Any]]:
+    group_frame = _repair_history_effective_group_frame(df)
+    group_columns = _repair_history_group_columns(group_frame)
+    groups: list[dict[str, Any]] = []
+    if group_columns:
+        for key, group in group_frame.groupby(group_columns, sort=True, dropna=False):
+            key_tuple = key if isinstance(key, tuple) else (key,)
+            record = {
+                column: _repair_history_output_value(value)
+                for column, value in zip(group_columns, key_tuple, strict=True)
+            }
+            record["n_rows"] = int(len(group))
+            groups.append(record)
+    return groups
+
+
+def _repair_history_effective_group_frame(df: pd.DataFrame) -> pd.DataFrame:
+    grouped = df.copy()
+    if grouped.empty:
+        return grouped
+    for _, artifact in _repair_history_artifact_groups(grouped):
+        _fill_missing_repair_history_group_values(grouped, artifact.index)
+    if REPAIR_HISTORY_POLICY_COLUMN in grouped.columns:
+        for _, policy_group in grouped.groupby(
+            REPAIR_HISTORY_POLICY_COLUMN,
+            sort=True,
+            dropna=False,
+        ):
+            _fill_missing_repair_history_group_values(grouped, policy_group.index)
+    return grouped
+
+
+def _fill_missing_repair_history_group_values(
+    grouped: pd.DataFrame,
+    index: pd.Index,
+) -> None:
+    for column in REPAIR_HISTORY_ARTIFACT_HOMOGENEITY_COLUMNS:
+        if column not in grouped.columns:
+            continue
+        values = _repair_history_distinct_values(grouped.loc[index, column])
+        if len(values) != 1:
+            continue
+        fill_value = values[0]
+        missing_mask = [
+            _is_missing_value(value)
+            for value in grouped.loc[index, column].tolist()
+        ]
+        if any(missing_mask):
+            grouped.loc[index[missing_mask], column] = fill_value
+
+
+def _validate_single_repair_history_analysis_group(df: pd.DataFrame) -> None:
+    groups = _repair_history_group_records(df)
+    if len(groups) <= 1:
+        return
+    raise ValueError(
+        "quarantined mixed repair-history analysis groups; analyze each "
+        f"repair-history group separately: {groups}"
+    )
+
+
+def _repair_history_policy_metadata(df: pd.DataFrame) -> dict[str, Any]:
+    group_columns = _repair_history_group_columns(df)
+    groups = _repair_history_group_records(df)
+    return {
+        "repair_history_policy_states": _repair_history_distinct_values(
+            df[REPAIR_HISTORY_POLICY_STATE_COLUMN]
+        ),
+        "repair_history_policies": _repair_history_distinct_values(
+            df[REPAIR_HISTORY_POLICY_COLUMN]
+        ),
+        "repair_history_group_columns": group_columns,
+        "repair_history_groups": groups,
+        "repair_history_policy_quarantine": "reject_by_default",
+    }
+
+
+def _repair_history_output_value(value: Any) -> Any:
+    if _is_missing_value(value):
+        return None
+    return _repair_history_group_value(value)
+
+
 def _factorial_summary_group_columns(df: pd.DataFrame) -> list[str]:
     group_cols: list[str] = []
     for column in (
@@ -1695,6 +2274,7 @@ def _factorial_summary_group_columns(df: pd.DataFrame) -> list[str]:
     ):
         if column in df.columns:
             group_cols.append(column)
+    group_cols.extend(_repair_history_group_columns(df))
     return group_cols
 
 
