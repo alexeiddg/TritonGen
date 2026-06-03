@@ -727,6 +727,7 @@ def _run_generated_cell(
                 generation=generation,
                 correctness=correctness,
             ),
+            repair_history_config=config.repair_history_config,
             provenance_base={"run_id": run_id},
             stats=stats,
         )
@@ -794,6 +795,7 @@ def _run_generated_cell(
                     generation=generation,
                     correctness=correctness,
                 ),
+                repair_history_config=config.repair_history_config,
                 provenance_base={"run_id": run_id},
                 stats=stats,
             )
@@ -944,6 +946,7 @@ def _call_c_loop(
     seed_candidate_evaluation: Mapping[str, Any],
     repair_budget: int,
     model_config: Mapping[str, Any],
+    repair_history_config: RepairHistoryConfig,
     provenance_base: Mapping[str, Any],
     stats: _ConditionRunStats,
 ) -> Cluster3CLoopResult:
@@ -965,6 +968,7 @@ def _call_c_loop(
         feedback_builder=None,
         repair_budget=repair_budget,
         model_config=model_config,
+        repair_history_config=repair_history_config,
         provenance_base=provenance_base,
     )
 

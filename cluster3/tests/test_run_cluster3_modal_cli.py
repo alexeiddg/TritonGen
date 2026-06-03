@@ -985,7 +985,8 @@ def test_run_cluster3_does_not_pass_p_transcript_to_c_loop(
     assert run.rows[0].c_loop_fired is True
     assert len(c_loop.calls) == 1
     c_call = c_loop.calls[0]
-    assert "repair_history_config" not in c_call
+    repair_history_config = c_call["repair_history_config"]
+    assert repair_history_config.repair_history_policy == "agentic_transcript_v1"
     assert "p_repair_trace" not in c_call
     assert "p_repair_prompt" not in c_call
     assert c_call["seed_candidate_evaluation"]["failure_code"] == "F2_NUMERIC_LARGE"
