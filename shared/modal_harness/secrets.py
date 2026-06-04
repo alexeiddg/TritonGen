@@ -28,3 +28,15 @@ hf_secrets: list[modal.Secret] = (
     if os.environ.get("TRITONGEN_MODAL_HF_SECRET")
     else []
 )
+
+# OpenAI-backed external baselines run through Modal so API keys can stay in
+# Modal Secrets instead of being passed through request payloads.
+#
+# Setup:
+#     modal secret create openai-api-key OPENAI_API_KEY=<token>
+#     export TRITONGEN_MODAL_OPENAI_SECRET=openai-api-key
+openai_secrets: list[modal.Secret] = (
+    [modal.Secret.from_name(os.environ["TRITONGEN_MODAL_OPENAI_SECRET"])]
+    if os.environ.get("TRITONGEN_MODAL_OPENAI_SECRET")
+    else []
+)

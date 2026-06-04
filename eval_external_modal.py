@@ -25,6 +25,7 @@ EXTERNAL_DIR = Path("outputs/external")
 FILES = {
     "claude": EXTERNAL_DIR / "claude_baseline_n20.jsonl",
     "gemini": EXTERNAL_DIR / "gemini_baseline_n20.jsonl",
+    "openai": EXTERNAL_DIR / "openai_baseline_n20.jsonl",
 }
 
 

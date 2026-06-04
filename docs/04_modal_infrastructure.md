@@ -26,6 +26,37 @@ Modal was introduced to support:
 
 Modal supports reproducibility only when the repository records enough provenance to reconstruct or audit the run. Modal execution by itself is not proof that a result is reproducible.
 
+## 3.1 External API Baseline Generation
+
+External API baselines can also be generated through Modal when the model is
+served by a provider API instead of loaded on a Modal GPU. The OpenAI GPT path
+uses a lightweight Modal image and a Modal Secret for `OPENAI_API_KEY`; it does
+not request a GPU for generation.
+
+Setup:
+
+```bash
+modal secret create openai-api-key OPENAI_API_KEY=<token>
+export TRITONGEN_MODAL_OPENAI_SECRET=openai-api-key
+```
+
+Smoke command:
+
+```bash
+modal run -m run_external_modal --models openai --n-seeds 1 --openai-model gpt-5.1
+```
+
+The runner writes `outputs/external/openai_baseline_n20.jsonl` with the same row
+shape as the Claude/Gemini external baseline files. Compile evaluation can then
+run through:
+
+```bash
+modal run -m eval_external_modal --model openai
+```
+
+These external API rows are experimental baseline artifacts until explicitly
+registered in `docs/05_artifacts_and_results_registry.md`.
+
 ## 4. Modal's Role By Cluster
 
 | Cluster/condition | Modal role | Current artifacts |

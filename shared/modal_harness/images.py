@@ -57,3 +57,12 @@ llm_generation_image = (
     .add_local_python_source("cluster1", "cluster2", "shared")
     .add_local_dir("cluster1/grammar", "/root/cluster1/grammar")
 )
+
+openai_generation_image = (
+    modal.Image.debian_slim(python_version=PYTHON_VERSION)
+    .uv_pip_install(
+        "openai==2.14.0",
+        "pydantic==2.10.6",
+    )
+    .add_local_python_source("shared")
+)
