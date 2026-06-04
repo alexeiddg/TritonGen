@@ -1039,6 +1039,30 @@ O5 implementation work that uses only local mocked/static fixtures still must
 record `BILLING_QUERY_AUTHORIZED: NO` and `CREDENTIAL_USE_AUTHORIZED: NO` until
 a separate execution packet is approved.
 
+### O5c Operational Collection Caveat
+
+The O5c adapter is implemented, but the first live Modal billing report
+collection did not complete because Modal workspace billing report requests hit
+rate limits. Future experiment-running agents should collect billing after
+experiment execution, not during kernel generation, and should prefer:
+
+```bash
+modal billing report --start <YYYY-MM-DD> --end <YYYY-MM-DD> --resolution d --tag-names project,experiment_id,run_id,cluster,phase --json
+```
+
+Daily resolution is preferred for multi-day windows. Hourly resolution should
+be used only for windows of 7 days or less, or after explicit approval. Modal
+billing report start dates are inclusive and end dates are exclusive. Raw
+billing reports must not be committed; sanitized reports must validate through
+O5b/O5a before use. If Modal rate-limits collection, stop and record
+`O5C_BLOCKED_MODAL_BILLING_RATE_LIMIT_WITH_ADAPTER_READY`.
+
+GitHub Actions must not run live billing collection yet. A future billing
+workflow, if added, must be `workflow_dispatch` only, use protected environment
+secrets and reviewer approval, upload no raw billing artifact, and avoid push
+or pull-request triggers. GitHub Actions may run safety tests and scans only for
+now.
+
 ### Required O5 Tests
 
 Future O5 implementation must include tests for:

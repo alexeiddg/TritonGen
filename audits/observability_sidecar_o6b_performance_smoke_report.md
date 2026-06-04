@@ -236,6 +236,20 @@ benchmark-economics claim was found.
 - The performance sidecar is smoke evidence only; any rerun or overwrite
   requires a new signed packet.
 
+## Feature Completion Caveats
+
+- O5c billing collection adapter is code-complete, but live collection remains
+  blocked by Modal billing report rate limits.
+- The handoff docs preserve the preferred manual/local Modal billing collection
+  command, daily-versus-hourly resolution guidance, inclusive-start/exclusive-end
+  semantics, raw-artifact non-commit policy, and rate-limit stop classification.
+- O6b performance smoke is complete with caveats.
+- The observability metadata feature is complete at O0-O6 scope after the final
+  documentation adjustment commit and handoff promotion.
+- Future work should be separate: Modal billing daily retry/reconciliation run,
+  performance benchmark matrix, profiler/Nsight/NCU packet, and GitHub Actions
+  safety-only CI or a later protected manual billing workflow.
+
 ## Classification
 
 ```text
@@ -244,5 +258,4 @@ O6B_PERFORMANCE_SMOKE_COMPLETE_WITH_CAVEATS
 
 ## Next-Step Recommendation
 
-Commit the reviewed O6b package, then run the compact O5b/O5c/O6a/O6b final
-promotion audit before fast-forwarding `codex-track-handoff-context`.
+Commit the final documentation adjustment, then push `codex-track-handoff-context`.
