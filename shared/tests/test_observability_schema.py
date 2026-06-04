@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from shared.observability.logger import validate_event_stream
 from shared.observability.schema import (
+    ObservabilityActualBillingReconciliation,
     ObservabilityArtifactIdentity,
     ObservabilityAttemptIdentity,
     ObservabilityCostEstimate,
@@ -337,6 +338,99 @@ def test_cost_estimate_rejects_forbidden_pricing_labels(
     payload[field] = value
     with pytest.raises(ValidationError, match="billing, invoice, API response"):
         ObservabilityCostEstimate.model_validate(payload)
+
+
+def test_actual_billing_reconciliation_accepts_safe_unreconciled_statuses() -> None:
+    unavailable = ObservabilityActualBillingReconciliation(
+        actual_billing_available=False,
+        actual_billing_status="unavailable",
+        billing_reconciliation_notes="billing reconciliation not requested in this run",
+    )
+    assert unavailable.actual_total_cost is None
+
+    not_reconciled = ObservabilityActualBillingReconciliation(
+        actual_billing_available=False,
+        actual_billing_status="not_reconciled",
+    )
+    assert not_reconciled.actual_billing_available is False
+
+
+def test_actual_billing_reconciliation_accepts_complete_static_reconciled_metadata() -> None:
+    reconciled = ObservabilityActualBillingReconciliation(
+        actual_billing_available=True,
+        actual_billing_status="reconciled",
+        actual_billing_reconciled_at_utc="2026-06-04T00:00:00Z",
+        billing_source="test_fixture",
+        billing_source_version="fixture-2026-06-04",
+        billing_time_window_start_utc="2026-06-04T00:00:00Z",
+        billing_time_window_end_utc="2026-06-04T00:05:00Z",
+        billing_attribution_method="test_fixture",
+        billing_attribution_confidence="high",
+        actual_total_cost=0.42,
+        actual_currency="USD",
+        billing_report_redacted_sha256="d" * 64,
+        billing_reconciliation_notes="redacted static unit fixture",
+    )
+
+    assert reconciled.actual_total_cost == 0.42
+
+
+@pytest.mark.parametrize(
+    "update",
+    [
+        {"actual_billing_status": "not_reconciled", "actual_total_cost": 0.01},
+        {"actual_billing_status": "not_reconciled", "actual_currency": "USD"},
+        {"actual_billing_status": "not_reconciled", "billing_source": "test_fixture"},
+        {"actual_billing_status": "reconciled", "actual_billing_available": False},
+        {"actual_billing_status": "reconciled", "actual_total_cost": None},
+        {"actual_billing_status": "reconciled", "actual_total_cost": -0.01},
+        {"actual_billing_status": "reconciled", "actual_total_cost": True},
+        {"actual_billing_status": "reconciled", "actual_total_cost": "0.01"},
+        {"actual_billing_status": "reconciled", "actual_total_cost": float("inf")},
+        {"actual_billing_status": "reconciled", "actual_currency": "EUR"},
+        {"actual_billing_status": "reconciled", "billing_source": "billing_api_response"},
+        {"actual_billing_status": "reconciled", "billing_source_version": "invoice_dump"},
+        {
+            "actual_billing_status": "reconciled",
+            "billing_time_window_start_utc": "2026-06-04T00:05:00Z",
+            "billing_time_window_end_utc": "2026-06-04T00:00:00Z",
+        },
+        {"actual_billing_status": "reconciled", "billing_report_redacted_sha256": None},
+        {
+            "actual_billing_status": "reconciled",
+            "billing_reconciliation_notes": "raw invoice dump",
+        },
+    ],
+)
+def test_actual_billing_reconciliation_rejects_incomplete_or_private_metadata(
+    update: dict[str, object],
+) -> None:
+    payload = {
+        "actual_billing_available": True,
+        "actual_billing_status": "reconciled",
+        "actual_billing_reconciled_at_utc": "2026-06-04T00:00:00Z",
+        "billing_source": "test_fixture",
+        "billing_source_version": "fixture-2026-06-04",
+        "billing_time_window_start_utc": "2026-06-04T00:00:00Z",
+        "billing_time_window_end_utc": "2026-06-04T00:05:00Z",
+        "billing_attribution_method": "test_fixture",
+        "billing_attribution_confidence": "high",
+        "actual_total_cost": 0.42,
+        "actual_currency": "USD",
+        "billing_report_redacted_sha256": "d" * 64,
+    }
+    payload.update(update)
+    if update.get("actual_billing_status") == "not_reconciled":
+        payload["actual_billing_available"] = False
+        payload["actual_billing_reconciled_at_utc"] = None
+        payload["billing_source_version"] = None
+        payload["billing_time_window_start_utc"] = None
+        payload["billing_time_window_end_utc"] = None
+        payload["billing_attribution_method"] = None
+        payload["billing_attribution_confidence"] = None
+        payload["billing_report_redacted_sha256"] = None
+    with pytest.raises(ValidationError):
+        ObservabilityActualBillingReconciliation.model_validate(payload)
 
 
 @pytest.mark.parametrize(

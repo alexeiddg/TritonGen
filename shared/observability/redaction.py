@@ -74,6 +74,24 @@ _SAFE_COST_ESTIMATE_KEYS = {
     "cost_estimate_status",
     "cost_estimate_method",
 }
+_SAFE_ACTUAL_BILLING_KEYS = {
+    "billing_reconciliation",
+    "actual_billing_summary",
+    "actual_billing_available",
+    "actual_billing_status",
+    "actual_billing_reconciled_at_utc",
+    "billing_source",
+    "billing_source_version",
+    "billing_time_window_start_utc",
+    "billing_time_window_end_utc",
+    "billing_attribution_method",
+    "billing_attribution_confidence",
+    "actual_total_cost",
+    "actual_currency",
+    "billing_query_id",
+    "billing_report_redacted_sha256",
+    "billing_reconciliation_notes",
+}
 _SAFE_ID_KEYS = {
     "event_id",
     "run_id",
@@ -157,23 +175,33 @@ _FORBIDDEN_KEY_PATTERNS = (
     "billing_data",
     "billing_report",
     "billing_api_response",
+    "full_billing_api_response",
     "pricing_api_response",
     "provider_bill",
     "provider_billing",
     "modal_bill",
     "modal_billing",
     "invoice",
+    "raw_invoice_dump",
     "cloud_invoice_dump",
+    "unredacted_workspace_billing_report",
+    "workspace_billing_report",
     "external_pricing_fetch",
     "credit_card",
     "payment_method",
     "billing_account",
+    "billing_account_secret",
+    "customer_secret",
+    "account_secret",
+    "provider_api_key",
     "cost_per_success",
     "cost_per_pass",
     "pass_at_k_cost",
     "roi",
     "economic_lift",
+    "benchmark_economics",
     "benchmark_cost_conclusion",
+    "paper_scale_cost_conclusion",
     "price_snapshot_id",
     "estimated_gpu_seconds",
     "estimated_cpu_core_seconds",
@@ -229,6 +257,18 @@ _FORBIDDEN_VALUE_PATTERNS = (
     re.compile(r"\bMODAL_IDENTITY_TOKEN\b", re.IGNORECASE),
     re.compile(r"\bAWS_SECRET_ACCESS_KEY\b", re.IGNORECASE),
     re.compile(r"BEGIN [A-Z ]*PRIVATE KEY", re.IGNORECASE),
+    re.compile(r"\braw[\s_-]+invoice\b", re.IGNORECASE),
+    re.compile(r"\binvoice[\s_-]+dump\b", re.IGNORECASE),
+    re.compile(r"\bfull[\s_-]+billing[\s_-]+api[\s_-]+response\b", re.IGNORECASE),
+    re.compile(r"\bunredacted[\s_-]+workspace[\s_-]+billing[\s_-]+report\b", re.IGNORECASE),
+    re.compile(r"\bpayment[\s_-]+method\b", re.IGNORECASE),
+    re.compile(r"\bcredit[\s_-]+card\b", re.IGNORECASE),
+    re.compile(r"\b(cost[\s_-]+per[\s_-]+success|cost_per_success)\b", re.IGNORECASE),
+    re.compile(r"\b(pass[\s_-]+at[\s_-]+k[\s_-]+cost|pass_at_k_cost)\b", re.IGNORECASE),
+    re.compile(r"\bROI\b", re.IGNORECASE),
+    re.compile(r"\beconomic[\s_-]+lift\b", re.IGNORECASE),
+    re.compile(r"\bbenchmark[\s_-]+economics\b", re.IGNORECASE),
+    re.compile(r"\bpaper[\s_-]+scale[\s_-]+cost[\s_-]+conclusion\b", re.IGNORECASE),
 )
 
 
@@ -354,6 +394,8 @@ def _reject_forbidden_key(key: str, *, path: str) -> None:
     if normalized in _SAFE_MODAL_CONTEXT_KEYS or normalized in _SAFE_STATUS_KEYS:
         return
     if normalized in _SAFE_COST_ESTIMATE_KEYS:
+        return
+    if normalized in _SAFE_ACTUAL_BILLING_KEYS:
         return
     if normalized in _SAFE_ID_KEYS:
         return

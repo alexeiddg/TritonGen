@@ -21,6 +21,7 @@ from shared.observability.paths import (
 from shared.observability.schema import (
     SCHEMA_VERSION,
     HashSummaryStatus,
+    ObservabilityActualBillingReconciliation,
     ObservabilityEvent,
     ObservabilityHashSidecar,
     ObservabilitySummary,
@@ -373,6 +374,30 @@ def estimated_cost_summary(events: tuple[ObservabilityEvent, ...]) -> dict[str, 
     }
 
 
+def actual_billing_summary(events: tuple[ObservabilityEvent, ...]) -> dict[str, object]:
+    """Return actual-billing reconciliation metadata derived from events only."""
+
+    billing_events = [
+        event.billing_reconciliation
+        for event in events
+        if event.billing_reconciliation is not None
+    ]
+    if not billing_events:
+        return _unavailable_actual_billing_summary(status="not_implemented")
+
+    reconciled_events = [
+        billing
+        for billing in billing_events
+        if billing.actual_billing_status == "reconciled"
+    ]
+    if len(reconciled_events) > 1:
+        raise ValueError("actual billing summary requires at most one reconciled event")
+    if reconciled_events:
+        return _billing_reconciliation_dict(reconciled_events[0])
+
+    return _billing_reconciliation_dict(billing_events[-1])
+
+
 def write_observability_summary_atomic(
     summary_path: str | Path,
     summary: ObservabilitySummary | dict,
@@ -485,6 +510,13 @@ def _validate_summary_against_event_stream(summary: ObservabilitySummary) -> Non
         raise ValueError("summary token_totals do not match event stream")
     if summary.estimated_cost_summary != estimated_cost_summary(events):
         raise ValueError("summary estimated_cost_summary does not match event stream")
+    if summary.actual_billing_summary != actual_billing_summary(events):
+        raise ValueError("summary actual_billing_summary does not match event stream")
+    if (
+        summary.actual_billing_status
+        != summary.actual_billing_summary["actual_billing_status"]
+    ):
+        raise ValueError("summary actual_billing_status does not match billing summary")
 
 
 def _validate_hash_sidecar_against_artifacts(sidecar: ObservabilityHashSidecar) -> None:
@@ -527,6 +559,20 @@ def _unavailable_estimated_cost_summary() -> dict[str, object]:
         "cost_estimate_status": "unavailable",
         "cost_estimate_method": "unavailable",
     }
+
+
+def _billing_reconciliation_dict(
+    reconciliation: ObservabilityActualBillingReconciliation,
+) -> dict[str, object]:
+    return reconciliation.model_dump(mode="json")
+
+
+def _unavailable_actual_billing_summary(*, status: str) -> dict[str, object]:
+    reconciliation = ObservabilityActualBillingReconciliation(
+        actual_billing_available=False,
+        actual_billing_status=status,
+    )
+    return _billing_reconciliation_dict(reconciliation)
 
 
 def _sum_cost_values(values: tuple[float | None, ...]) -> float:

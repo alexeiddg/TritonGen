@@ -99,10 +99,35 @@ ActualBillingStatus = Literal[
     "not_implemented",
     "not_requested",
     "unavailable",
-    "pending",
+    "not_reconciled",
+    "pending_approval",
+    "approved_not_queried",
     "reconciled",
-    "ambiguous",
+    "attribution_limited",
     "failed",
+]
+BillingSource = Literal[
+    "unavailable",
+    "approved_modal_billing_api",
+    "approved_modal_billing_cli_report",
+    "approved_exported_static_report",
+    "approved_provider_static_report",
+    "test_fixture",
+]
+BillingAttributionMethod = Literal[
+    "unavailable",
+    "not_applicable",
+    "app_tag",
+    "time_window",
+    "app_tag_and_time_window",
+    "redacted_static_report",
+    "test_fixture",
+]
+BillingAttributionConfidence = Literal[
+    "unavailable",
+    "low",
+    "medium",
+    "high",
 ]
 CompletenessStatus = Literal["complete", "partial", "unavailable", "failed"]
 HashSummaryStatus = Literal["not_written", "written", "unavailable", "failed"]
@@ -464,6 +489,134 @@ class ObservabilityCostEstimate(_StrictModel):
         return self
 
 
+class ObservabilityActualBillingReconciliation(_StrictModel):
+    actual_billing_available: bool
+    actual_billing_status: ActualBillingStatus
+    actual_billing_reconciled_at_utc: str | None = None
+    billing_source: BillingSource | None = None
+    billing_source_version: str | None = Field(default=None, max_length=80)
+    billing_time_window_start_utc: str | None = None
+    billing_time_window_end_utc: str | None = None
+    billing_attribution_method: BillingAttributionMethod | None = None
+    billing_attribution_confidence: BillingAttributionConfidence | None = None
+    actual_total_cost: float | None = Field(default=None, ge=0)
+    actual_currency: Literal["USD"] | None = None
+    billing_query_id: str | None = Field(default=None, max_length=80)
+    billing_report_redacted_sha256: str | None = None
+    billing_reconciliation_notes: str | None = Field(default=None, max_length=512)
+
+    @field_validator(
+        "actual_billing_reconciled_at_utc",
+        "billing_time_window_start_utc",
+        "billing_time_window_end_utc",
+    )
+    @classmethod
+    def _utc(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _validate_utc(value)
+
+    @field_validator("billing_source_version", "billing_query_id")
+    @classmethod
+    def _safe_identifier(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = _require_non_empty(value)
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:/@+-]{0,79}", value):
+            raise ValueError("billing identifiers must be bounded safe identifiers")
+        _reject_forbidden_cost_label(value)
+        return value
+
+    @field_validator("billing_report_redacted_sha256")
+    @classmethod
+    def _redacted_report_hash(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _validate_sha256(value)
+
+    @field_validator("billing_reconciliation_notes")
+    @classmethod
+    def _safe_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = _require_non_empty(value)
+        reject_forbidden_observability_payload({"billing_reconciliation_notes": value})
+        return value
+
+    @field_validator("actual_total_cost")
+    @classmethod
+    def _decimal_safe_cost(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        if not math.isfinite(value):
+            raise ValueError("actual cost values must be finite")
+        decimal = Decimal(str(value))
+        if decimal.as_tuple().exponent < -12:
+            raise ValueError("actual cost values must be decimal-safe to 12 places")
+        return value
+
+    @model_validator(mode="after")
+    def _actual_billing_contract(self) -> "ObservabilityActualBillingReconciliation":
+        cost_metadata = (
+            self.actual_billing_reconciled_at_utc,
+            self.billing_source_version,
+            self.billing_time_window_start_utc,
+            self.billing_time_window_end_utc,
+            self.billing_attribution_method,
+            self.billing_attribution_confidence,
+            self.actual_total_cost,
+            self.actual_currency,
+            self.billing_query_id,
+            self.billing_report_redacted_sha256,
+        )
+        if self.actual_billing_status == "reconciled":
+            if not self.actual_billing_available:
+                raise ValueError("reconciled actual billing requires available status")
+            if self.actual_billing_reconciled_at_utc is None:
+                raise ValueError("reconciled actual billing requires reconciled timestamp")
+            if self.billing_source is None or self.billing_source == "unavailable":
+                raise ValueError("reconciled actual billing requires approved source")
+            if self.billing_source_version is None:
+                raise ValueError("reconciled actual billing requires source version")
+            if (
+                self.billing_time_window_start_utc is None
+                or self.billing_time_window_end_utc is None
+            ):
+                raise ValueError("reconciled actual billing requires time window")
+            if _parse_utc(
+                self.billing_time_window_end_utc
+            ) < _parse_utc(self.billing_time_window_start_utc):
+                raise ValueError("billing time window end must be >= start")
+            if self.billing_attribution_method in {None, "unavailable", "not_applicable"}:
+                raise ValueError("reconciled actual billing requires attribution method")
+            if self.billing_attribution_confidence in {None, "unavailable"}:
+                raise ValueError("reconciled actual billing requires attribution confidence")
+            if self.actual_total_cost is None:
+                raise ValueError("reconciled actual billing requires actual_total_cost")
+            if self.actual_currency != "USD":
+                raise ValueError("reconciled actual billing requires USD currency")
+            if (
+                self.billing_query_id is None
+                and self.billing_report_redacted_sha256 is None
+            ):
+                raise ValueError(
+                    "reconciled actual billing requires query id or redacted report hash"
+                )
+            reject_forbidden_observability_payload(self.model_dump(mode="json"))
+            return self
+
+        if self.actual_billing_available:
+            raise ValueError("available actual billing requires reconciled status")
+        if self.billing_source not in {None, "unavailable"}:
+            raise ValueError("unreconciled actual billing must not include billing source")
+        if any(value is not None for value in cost_metadata):
+            raise ValueError(
+                "unreconciled actual billing must not include cost or source metadata"
+            )
+        reject_forbidden_observability_payload(self.model_dump(mode="json"))
+        return self
+
+
 class ObservabilityErrorSummary(_StrictModel):
     public_failure_code: str | None = None
     bounded_public_error_class: str | None = None
@@ -514,6 +667,7 @@ class ObservabilityEvent(_StrictModel):
     token_counts: ObservabilityTokenCounts | None
     modal_context: ObservabilityModalContext | None
     cost_estimate: ObservabilityCostEstimate | None
+    billing_reconciliation: ObservabilityActualBillingReconciliation | None = None
     error_summary: ObservabilityErrorSummary | None
     attributes: dict[str, AttributeValue]
 
@@ -589,6 +743,24 @@ class ObservabilitySummary(_StrictModel):
     token_totals: dict[str, Any]
     modal_context_summary: dict[str, Any]
     estimated_cost_summary: dict[str, Any]
+    actual_billing_summary: dict[str, Any] = Field(
+        default_factory=lambda: {
+            "actual_billing_available": False,
+            "actual_billing_status": "not_implemented",
+            "actual_billing_reconciled_at_utc": None,
+            "billing_source": None,
+            "billing_source_version": None,
+            "billing_time_window_start_utc": None,
+            "billing_time_window_end_utc": None,
+            "billing_attribution_method": None,
+            "billing_attribution_confidence": None,
+            "actual_total_cost": None,
+            "actual_currency": None,
+            "billing_query_id": None,
+            "billing_report_redacted_sha256": None,
+            "billing_reconciliation_notes": None,
+        }
+    )
     actual_billing_status: ActualBillingStatus
     completeness_status: CompletenessStatus
     caveats: list[str]
@@ -645,8 +817,20 @@ class ObservabilitySummary(_StrictModel):
             return None
         return _validate_sha256(value)
 
+    @field_validator("actual_billing_summary")
+    @classmethod
+    def _actual_billing_summary(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return ObservabilityActualBillingReconciliation.model_validate(value).model_dump(
+            mode="json"
+        )
+
     @model_validator(mode="after")
     def _validate_privacy(self) -> "ObservabilitySummary":
+        summary_status = self.actual_billing_summary.get("actual_billing_status")
+        if summary_status != self.actual_billing_status:
+            raise ValueError(
+                "actual_billing_status must match actual_billing_summary status"
+            )
         reject_forbidden_observability_payload(self.model_dump(mode="json"))
         return self
 
@@ -765,7 +949,11 @@ def _validate_utc(value: str) -> str:
     if not _UTC_RE.fullmatch(value):
         raise ValueError("UTC timestamp must be RFC3339 and end with Z")
     try:
-        datetime.fromisoformat(value.removesuffix("Z") + "+00:00")
+        _parse_utc(value)
     except ValueError as exc:
         raise ValueError("UTC timestamp must contain a valid date and time") from exc
     return value
+
+
+def _parse_utc(value: str) -> datetime:
+    return datetime.fromisoformat(value.removesuffix("Z") + "+00:00")

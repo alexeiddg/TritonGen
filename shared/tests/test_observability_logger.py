@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from shared.observability.logger import (
     ObservabilityJsonlAppendLogger,
+    actual_billing_summary,
     estimated_cost_summary,
     file_sha256,
     load_observability_events,
@@ -23,6 +24,7 @@ from shared.observability.paths import (
     resolve_observability_paths,
 )
 from shared.observability.schema import (
+    ObservabilityActualBillingReconciliation,
     ObservabilityArtifactIdentity,
     ObservabilityAttemptIdentity,
     ObservabilityCostEstimate,
@@ -553,6 +555,82 @@ def test_estimated_cost_summary_is_unavailable_safe_for_missing_costs(
     assert estimated_cost_summary(events) == _unavailable_cost_summary()
 
 
+def test_actual_billing_summary_is_event_derived_and_unavailable_safe(
+    tmp_path: Path,
+) -> None:
+    result = tmp_path / "outputs" / "cluster3" / "matrix.jsonl"
+    paths = resolve_observability_paths(result, workspace_root=tmp_path)
+    event = _event(
+        0,
+        result_path=str(result),
+        event_path=str(paths.event_path),
+        summary_path=str(paths.summary_path),
+    )
+    billing = _safe_actual_billing_reconciliation()
+
+    assert actual_billing_summary((event,)) == _unavailable_actual_billing_summary()
+    assert actual_billing_summary(
+        (event.model_copy(update={"billing_reconciliation": billing}),)
+    ) == billing.model_dump(mode="json")
+
+
+def test_summary_rejects_mismatched_actual_billing_summary(tmp_path: Path) -> None:
+    result = tmp_path / "outputs" / "cluster3" / "matrix.jsonl"
+    paths = resolve_observability_paths(result, workspace_root=tmp_path)
+    billing = _safe_actual_billing_reconciliation()
+
+    with ObservabilityJsonlAppendLogger(
+        paths.event_path,
+        experiment_id="exp",
+        run_id="run",
+        result_path=str(result),
+        summary_path=paths.summary_path,
+        hash_path=paths.hash_path,
+        git_commit=GIT_COMMIT,
+        mode="overwrite",
+        fsync=False,
+    ) as logger:
+        logger.append(
+            _event(
+                0,
+                result_path=str(result),
+                event_path=str(paths.event_path),
+                summary_path=str(paths.summary_path),
+            ).model_copy(update={"billing_reconciliation": billing})
+        )
+
+    summary = _summary(
+        result_path=str(result),
+        event_path=str(paths.event_path),
+        summary_path=str(paths.summary_path),
+        source_event_hash=file_sha256(paths.event_path),
+    ).model_copy(
+        update={
+            "event_counts": {"stage_completed": 1},
+            "stage_durations_ns": {"summary": 10},
+            "token_totals": token_totals(load_observability_events(paths.event_path)),
+        }
+    )
+
+    with pytest.raises(ValueError, match="actual_billing_summary"):
+        write_observability_summary_atomic(paths.summary_path, summary, fsync=False)
+
+    valid_summary = summary.model_copy(
+        update={
+            "actual_billing_status": "reconciled",
+            "actual_billing_summary": billing.model_dump(mode="json"),
+        }
+    )
+    written = write_observability_summary_atomic(
+        paths.summary_path,
+        valid_summary,
+        fsync=False,
+    )
+
+    assert written.actual_billing_status == "reconciled"
+    assert written.actual_billing_summary["actual_total_cost"] == 0.42
+
+
 def test_atomic_hash_writer_rejects_stale_artifact_metadata(tmp_path: Path) -> None:
     result = tmp_path / "outputs" / "cluster3" / "matrix.jsonl"
     paths = resolve_observability_paths(result, workspace_root=tmp_path)
@@ -952,6 +1030,24 @@ def _safe_cost_estimate(
     )
 
 
+def _safe_actual_billing_reconciliation() -> ObservabilityActualBillingReconciliation:
+    return ObservabilityActualBillingReconciliation(
+        actual_billing_available=True,
+        actual_billing_status="reconciled",
+        actual_billing_reconciled_at_utc="2026-06-04T00:00:00Z",
+        billing_source="test_fixture",
+        billing_source_version="fixture-2026-06-04",
+        billing_time_window_start_utc="2026-06-04T00:00:00Z",
+        billing_time_window_end_utc="2026-06-04T00:05:00Z",
+        billing_attribution_method="test_fixture",
+        billing_attribution_confidence="high",
+        actual_total_cost=0.42,
+        actual_currency="USD",
+        billing_report_redacted_sha256="d" * 64,
+        billing_reconciliation_notes="redacted static unit fixture",
+    )
+
+
 def _unavailable_cost_summary() -> dict[str, object]:
     return {
         "cost_estimate_available": False,
@@ -963,4 +1059,23 @@ def _unavailable_cost_summary() -> dict[str, object]:
         "pricing_source_version": None,
         "cost_estimate_status": "unavailable",
         "cost_estimate_method": "unavailable",
+    }
+
+
+def _unavailable_actual_billing_summary() -> dict[str, object]:
+    return {
+        "actual_billing_available": False,
+        "actual_billing_status": "not_implemented",
+        "actual_billing_reconciled_at_utc": None,
+        "billing_source": None,
+        "billing_source_version": None,
+        "billing_time_window_start_utc": None,
+        "billing_time_window_end_utc": None,
+        "billing_attribution_method": None,
+        "billing_attribution_confidence": None,
+        "actual_total_cost": None,
+        "actual_currency": None,
+        "billing_query_id": None,
+        "billing_report_redacted_sha256": None,
+        "billing_reconciliation_notes": None,
     }
