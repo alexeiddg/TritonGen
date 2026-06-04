@@ -1,6 +1,6 @@
 # Observability Sidecar Implementation Spec
 
-- Version: 0.2.1
+- Version: 0.2.2
 - Date: 2026-06-03
 - Status: implementation specification / no code changes or runs authorized by
   itself
@@ -740,24 +740,20 @@ CREDENTIAL
 
 O3 records counts, not tokens.
 
-Allowed token fields:
+Allowed O3 token telemetry fields are counts/status only:
 
 ```text
+token_counts_available
 prompt_tokens
 generated_tokens
 total_tokens
-max_new_tokens
-tokenizer_id
-tokenizer_revision
-count_source
-truncation_applied
-token_counts_available
+token_count_source
+token_count_status
 ```
 
-Allowed `count_source` values:
+Allowed `token_count_source` values:
 
 ```text
-tokenizer_encode
 generation_sequence_length_delta
 existing_generation_result
 existing_remote_payload
@@ -770,12 +766,24 @@ Rules:
 - never store token IDs;
 - never store prompts;
 - never store generated source text;
-- count prompt tokens before generation when the tokenizer is already loaded;
-- count generated tokens from generated sequence length minus prompt length
-  when available;
-- reuse existing fields such as `generated_token_count` where present;
+- never store tokenizer-private dumps, tokenizer internal state, raw model output,
+  raw completion text, or private feedback/eval details;
+- do not import or call tokenizers, models, or generation paths only for
+  observability telemetry;
+- record counts only when they are already supplied by the current code path,
+  returned by an existing generation payload, or cheaply computed from already
+  materialized sequence lengths without new model/runtime work;
+- count generated tokens from generated sequence length minus prompt length when
+  both lengths are already available;
+- reuse existing scalar fields such as `generated_token_count` where present;
 - record `unavailable` instead of guessing if the tokenizer or sequence length
   is unavailable;
+- `prompt_tokens`, `generated_tokens`, and `total_tokens` must be non-negative
+  integers, and `total_tokens` must equal `prompt_tokens + generated_tokens`
+  when all three are present;
+- existing model/tokenizer provenance fields such as `max_new_tokens`,
+  `tokenizer_id`, `tokenizer_revision`, or truncation flags are not O3 token
+  telemetry fields unless a later spec version explicitly reclassifies them;
 - token totals in summaries must group by condition, stage, and success/failure
   status without leaking source or prompt content.
 
