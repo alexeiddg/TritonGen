@@ -60,6 +60,27 @@ def test_valid_report_reconciles_to_o5a_metadata(tmp_path: Path) -> None:
     assert result.matched_record_count == 1
 
 
+def test_redacted_modal_report_reconciles_to_modal_cli_source(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "billing.jsonl"
+    report_path.write_text(
+        json.dumps(_record(report_source="redacted_modal_billing_report")) + "\n",
+        encoding="utf-8",
+    )
+    records = parse_redacted_billing_report(report_path)
+
+    result = reconcile_billing_records_to_run(
+        records,
+        experiment_id="exp",
+        run_id="run",
+        time_window=("2026-06-04T00:01:00Z", "2026-06-04T00:02:00Z"),
+    )
+
+    assert result.metadata.actual_billing_status == "reconciled"
+    assert result.metadata.billing_source == "approved_modal_billing_cli_report"
+
+
 def test_build_metadata_validates_through_o5a_schema() -> None:
     metadata = build_actual_billing_reconciliation_metadata(
         _record(),
@@ -192,6 +213,10 @@ def test_private_billing_and_economic_fields_are_rejected(
             "billing_time_window_start_utc": "2026-06-04T00:06:00Z",
             "billing_time_window_end_utc": "2026-06-04T00:05:00Z",
         },
+        {
+            "billing_time_window_start_utc": "2026-06-04T00:05:00Z",
+            "billing_time_window_end_utc": "2026-06-04T00:05:00Z",
+        },
         {"attribution_method": "cost_per_success"},
         {"attribution_confidence": "exact"},
     ],
@@ -223,6 +248,18 @@ def test_write_path_rejects_outputs_mutation(tmp_path: Path) -> None:
         )
 
     assert not write_path.exists()
+
+
+def test_billing_windows_use_exclusive_end_semantics() -> None:
+    result = reconcile_billing_records_to_run(
+        [_record()],
+        experiment_id="exp",
+        run_id="run",
+        time_window=("2026-06-04T00:05:00Z", "2026-06-04T00:10:00Z"),
+    )
+
+    assert result.metadata.actual_billing_status == "not_reconciled"
+    assert result.candidate_record_count == 0
 
 
 def test_billing_reconciliation_module_has_no_execution_clients() -> None:

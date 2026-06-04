@@ -15,6 +15,7 @@ OBSERVABILITY_MODULES = (
     "shared.observability.paths",
     "shared.observability.redaction",
     "shared.observability.billing_reconciliation",
+    "shared.observability.billing_modal_collection",
 )
 FORBIDDEN_IMPORTS = (
     "anthropic",

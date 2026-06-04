@@ -60,6 +60,7 @@ _REQUIRED_RECORD_KEYS = {
 }
 _OPTIONAL_ID_KEYS = {"experiment_id", "run_id", "app_tag"}
 _REPORT_SOURCE_TO_BILLING_SOURCE = {
+    "redacted_modal_billing_report": "approved_modal_billing_cli_report",
     "redacted_static_export": "approved_exported_static_report",
     "redacted_provider_static_export": "approved_provider_static_report",
     "test_fixture": "test_fixture",
@@ -183,10 +184,10 @@ def validate_billing_report_record(record: Mapping[str, Any]) -> dict[str, Any]:
         ),
         "billing_report_redacted_sha256": report_hash,
     }
-    if _parse_utc(normalized["billing_time_window_end_utc"]) < _parse_utc(
+    if _parse_utc(normalized["billing_time_window_end_utc"]) <= _parse_utc(
         normalized["billing_time_window_start_utc"]
     ):
-        raise BillingReconciliationError("billing time window end must be >= start")
+        raise BillingReconciliationError("billing time window end must be after start")
 
     for key in _OPTIONAL_ID_KEYS:
         normalized[key] = _optional_label(record.get(key), key)
@@ -471,15 +472,15 @@ def _normalize_time_window(
         _validate_utc(start, "time_window_start_utc"),
         _validate_utc(end, "time_window_end_utc"),
     )
-    if _parse_utc(normalized[1]) < _parse_utc(normalized[0]):
-        raise BillingReconciliationError("time_window end must be >= start")
+    if _parse_utc(normalized[1]) <= _parse_utc(normalized[0]):
+        raise BillingReconciliationError("time_window end must be after start")
     return normalized
 
 
 def _windows_overlap(left: BillingTimeWindow, right: BillingTimeWindow) -> bool:
     left_start, left_end = (_parse_utc(left[0]), _parse_utc(left[1]))
     right_start, right_end = (_parse_utc(right[0]), _parse_utc(right[1]))
-    return left_start <= right_end and right_start <= left_end
+    return left_start < right_end and right_start < left_end
 
 
 def _could_belong_to_target(
