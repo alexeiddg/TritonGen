@@ -48,11 +48,33 @@ def test_sanitize_attributes_accepts_only_shallow_json_primitives() -> None:
         {"system_prompt": "write a kernel"},
         {"systemPrompt": "write a kernel"},
         {"user_prompt": "write a kernel"},
+        {"hidden_prompt": "write a kernel"},
+        {"hiddenPrompt": "write a kernel"},
+        {"completion_text": "def kernel(): pass"},
+        {"completionText": "def kernel(): pass"},
+        {"generated_text": "def kernel(): pass"},
+        {"generatedText": "def kernel(): pass"},
         {"feedback": "try replacing the kernel"},
         {"raw_feedback": "try replacing the source"},
+        {"private_feedback": "private feedback payload"},
+        {"privateFeedback": "private feedback payload"},
         {"rawModelOutput": "def kernel(): pass"},
+        {"raw_output": "def kernel(): pass"},
+        {"rawOutput": "def kernel(): pass"},
+        {"raw_completion": "def kernel(): pass"},
+        {"rawCompletion": "def kernel(): pass"},
         {"raw_compile_log": "Traceback with compiler dump"},
         {"token_ids": [1, 2, 3]},
+        {"input_ids": [1, 2, 3]},
+        {"output_ids": [1, 2, 3]},
+        {"tokenizer_dump": {"ids": [1, 2, 3]}},
+        {"tokenizerDump": {"ids": [1, 2, 3]}},
+        {"tokenizer_state": "internal"},
+        {"tokenizerState": "internal"},
+        {"tokenizer_id": "tok"},
+        {"tokenizerRevision": "rev"},
+        {"max_new_tokens": 10},
+        {"truncationApplied": False},
         {"env": "HF_TOKEN=secret"},
         {"secret_name": "safe-looking-value"},
         {"message": "contains private eval details"},
@@ -85,6 +107,30 @@ def test_sanitize_attributes_accepts_only_shallow_json_primitives() -> None:
 def test_forbidden_observability_payloads_fail_closed(payload: dict[str, object]) -> None:
     with pytest.raises(ObservabilityRedactionError):
         reject_forbidden_observability_payload(payload)
+
+
+def test_safe_token_count_fields_remain_allowed() -> None:
+    reject_forbidden_observability_payload(
+        {
+            "token_counts": {
+                "token_counts_available": True,
+                "prompt_tokens": 2,
+                "generated_tokens": 3,
+                "total_tokens": 5,
+                "token_count_source": "existing_generation_result",
+                "token_count_status": "available",
+            },
+            "token_totals": {
+                "token_count_status": "available",
+                "events_with_token_counts": 1,
+                "events_with_available_token_counts": 1,
+                "prompt_tokens": 2,
+                "generated_tokens": 3,
+                "total_tokens": 5,
+                "token_count_sources": ["existing_generation_result"],
+            },
+        }
+    )
 
 
 def test_error_summary_accepts_bounded_public_hashes_but_rejects_raw_content() -> None:

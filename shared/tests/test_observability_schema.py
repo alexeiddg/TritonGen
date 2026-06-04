@@ -111,25 +111,65 @@ def test_event_stream_sequences_start_at_zero_without_gaps_and_unique_ids() -> N
 
 def test_token_counts_and_hash_helpers_are_strict() -> None:
     counts = ObservabilityTokenCounts(
+        token_counts_available=True,
         prompt_tokens=2,
         generated_tokens=3,
         total_tokens=5,
-        max_new_tokens=8,
-        tokenizer_id="tokenizer",
-        tokenizer_revision="b" * 40,
-        count_source="tokenizer_encode",
-        truncation_applied=False,
-        token_counts_available=True,
+        token_count_source="existing_generation_result",
+        token_count_status="available",
     )
     assert counts.total_tokens == 5
 
+    unavailable = ObservabilityTokenCounts(
+        token_counts_available=False,
+        token_count_source="unavailable",
+        token_count_status="unavailable",
+    )
+    assert unavailable.prompt_tokens is None
+
     with pytest.raises(ValidationError, match="total_tokens"):
         ObservabilityTokenCounts(
+            token_counts_available=True,
             prompt_tokens=2,
             generated_tokens=3,
             total_tokens=6,
-            count_source="tokenizer_encode",
+            token_count_source="existing_generation_result",
+            token_count_status="available",
+        )
+
+    with pytest.raises(ValidationError, match="available token counts"):
+        ObservabilityTokenCounts(
             token_counts_available=True,
+            token_count_source="unavailable",
+            token_count_status="available",
+        )
+
+    with pytest.raises(ValidationError, match="all counts"):
+        ObservabilityTokenCounts(
+            token_counts_available=True,
+            prompt_tokens=7,
+            generated_tokens=None,
+            total_tokens=None,
+            token_count_source="existing_generation_result",
+            token_count_status="available",
+        )
+
+    partial = ObservabilityTokenCounts(
+        token_counts_available=True,
+        prompt_tokens=7,
+        generated_tokens=None,
+        total_tokens=None,
+        token_count_source="existing_generation_result",
+        token_count_status="partial",
+    )
+    assert partial.prompt_tokens == 7
+
+    with pytest.raises(ValidationError, match="unavailable token counts"):
+        ObservabilityTokenCounts(
+            token_counts_available=False,
+            total_tokens=1,
+            token_count_source="unavailable",
+            token_count_status="unavailable",
         )
 
     row = '{"a":1}'
@@ -141,20 +181,52 @@ def test_token_counts_and_hash_helpers_are_strict() -> None:
 def test_numeric_telemetry_rejects_coerced_types() -> None:
     with pytest.raises(ValidationError):
         ObservabilityTokenCounts(
+            token_counts_available=True,
             prompt_tokens="2",
             generated_tokens=3,
             total_tokens=5,
-            count_source="tokenizer_encode",
-            token_counts_available=True,
+            token_count_source="existing_generation_result",
+            token_count_status="available",
         )
 
     with pytest.raises(ValidationError):
         ObservabilityTokenCounts(
+            token_counts_available=True,
             prompt_tokens=2.0,
             generated_tokens=3,
             total_tokens=5,
-            count_source="tokenizer_encode",
+            token_count_source="existing_generation_result",
+            token_count_status="available",
+        )
+
+    with pytest.raises(ValidationError):
+        ObservabilityTokenCounts(
             token_counts_available=True,
+            prompt_tokens=True,
+            generated_tokens=3,
+            total_tokens=4,
+            token_count_source="existing_generation_result",
+            token_count_status="available",
+        )
+
+    with pytest.raises(ValidationError):
+        ObservabilityTokenCounts(
+            token_counts_available=True,
+            prompt_tokens=-1,
+            generated_tokens=3,
+            total_tokens=2,
+            token_count_source="existing_generation_result",
+            token_count_status="available",
+        )
+
+    with pytest.raises(ValidationError):
+        ObservabilityTokenCounts(
+            token_counts_available=True,
+            prompt_tokens=float("inf"),
+            generated_tokens=3,
+            total_tokens=4,
+            token_count_source="existing_generation_result",
+            token_count_status="available",
         )
 
     payload = _summary().model_dump(mode="json")
@@ -335,15 +407,12 @@ def _event(
         start_monotonic_ns=start if measured else None,
         end_monotonic_ns=end if measured else None,
         token_counts=ObservabilityTokenCounts(
+            token_counts_available=False,
             prompt_tokens=None,
             generated_tokens=None,
             total_tokens=None,
-            max_new_tokens=None,
-            tokenizer_id=None,
-            tokenizer_revision=None,
-            count_source="not_applicable",
-            truncation_applied=None,
-            token_counts_available=False,
+            token_count_source="not_applicable",
+            token_count_status="not_applicable",
         ),
         modal_context=ObservabilityModalContext(
             modal_context_available=False,
@@ -370,7 +439,15 @@ def _summary(*, workspace: str = ".") -> ObservabilitySummary:
         row_counts={"completed": 1},
         event_counts={"stage_completed": 1},
         stage_durations_ns={"compile_eval": 25},
-        token_totals={"status": "not_applicable"},
+        token_totals={
+            "token_count_status": "unavailable",
+            "events_with_token_counts": 1,
+            "events_with_available_token_counts": 0,
+            "prompt_tokens": 0,
+            "generated_tokens": 0,
+            "total_tokens": 0,
+            "token_count_sources": ["not_applicable"],
+        },
         modal_context_summary={"status": "unavailable"},
         estimated_cost_summary={"estimate_status": "not_implemented"},
         actual_billing_status="not_implemented",

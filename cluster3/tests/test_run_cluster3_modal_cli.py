@@ -89,6 +89,17 @@ def _safe_modal_context() -> dict[str, object]:
     }
 
 
+def _safe_token_counts() -> dict[str, object]:
+    return {
+        "token_counts_available": True,
+        "prompt_tokens": 2,
+        "generated_tokens": 3,
+        "total_tokens": 5,
+        "token_count_source": "existing_generation_result",
+        "token_count_status": "available",
+    }
+
+
 def _result(
     failure_code: str | None,
     *,
@@ -1605,11 +1616,17 @@ def test_observability_off_preserves_stable_run_id_and_writes_no_sidecar(
 ) -> None:
     event_path = tmp_path / "ignored.observability.jsonl"
     context_provider_called = False
+    token_counts_provider_called = False
 
     def context_provider() -> dict[str, object]:
         nonlocal context_provider_called
         context_provider_called = True
         return _safe_modal_context()
+
+    def token_counts_provider(context: dict[str, object]) -> dict[str, object]:
+        nonlocal token_counts_provider_called
+        token_counts_provider_called = True
+        return _safe_token_counts()
 
     base = _config(tmp_path, "P")
     explicit_off = _config(
@@ -1628,10 +1645,12 @@ def test_observability_off_preserves_stable_run_id_and_writes_no_sidecar(
             generation=GenerationRecorder(),
             correctness=CorrectnessRecorder(_result(None)),
             modal_context_provider=context_provider,
+            token_counts_provider=token_counts_provider,
         ),
     )
 
     assert context_provider_called is False
+    assert token_counts_provider_called is False
     assert not event_path.exists()
     assert not default_observability_hash_path(event_path).exists()
     assert not default_observability_summary_path(explicit_off.output).exists()
@@ -1685,6 +1704,12 @@ def test_observability_required_writes_valid_sidecars_in_tmp_path(
         for event in events
         if event.modal_context is not None
     } == {False}
+    assert {event.token_counts is not None for event in events} == {True}
+    assert {
+        event.token_counts.token_counts_available
+        for event in events
+        if event.token_counts is not None
+    } == {False}
 
     payload = json.dumps(
         [event.model_dump(mode="json") for event in events],
@@ -1694,11 +1719,21 @@ def test_observability_required_writes_valid_sidecars_in_tmp_path(
         "prompt_text",
         "source_text",
         "full_source",
+        "completion_text",
+        "generated_text",
+        "raw_output",
+        "raw_completion",
         "raw_feedback",
         "raw_compile_log",
         "private_eval",
+        "private_feedback",
+        "hidden_prompt",
         "hidden_eval",
         "token_ids",
+        "input_ids",
+        "output_ids",
+        "tokenizer_dump",
+        "tokenizer_state",
         "api_key",
         "secret",
         "credential",
@@ -1736,6 +1771,15 @@ def test_observability_required_writes_valid_sidecars_in_tmp_path(
         "run_completed": 1,
     }
     assert summary.stage_durations_ns["row_append"] == events[3].duration_ns
+    assert summary.token_totals == {
+        "token_count_status": "unavailable",
+        "events_with_token_counts": 6,
+        "events_with_available_token_counts": 0,
+        "prompt_tokens": 0,
+        "generated_tokens": 0,
+        "total_tokens": 0,
+        "token_count_sources": ["unavailable"],
+    }
     assert summary.modal_context_summary == {
         "context_status": "unavailable",
         "events_with_modal_context": 6,
@@ -1792,6 +1836,131 @@ def test_observability_enabled_modes_include_supplied_safe_modal_context(
         "events_with_available_context": 6,
         "modal_context_sources": ["runner_config"],
     }
+
+
+@pytest.mark.parametrize("mode", ["best_effort", "required"])
+def test_observability_enabled_modes_include_supplied_safe_token_counts(
+    tmp_path: Path,
+    mode: str,
+) -> None:
+    event_path = tmp_path / f"{mode}-token-counts.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode=mode,
+        observability_experiment_id="cluster3-o3",
+        observability_run_id=f"run-{mode}-token-counts",
+        observability_output=str(event_path),
+    )
+    provider_contexts: list[dict[str, object]] = []
+
+    def token_counts_provider(context: dict[str, object]) -> dict[str, object] | None:
+        provider_contexts.append(dict(context))
+        if context["event_type"] == "row_completed":
+            return _safe_token_counts()
+        return None
+
+    run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+            token_counts_provider=token_counts_provider,
+        ),
+    )
+
+    events = load_observability_events(event_path)
+    assert len(events) == 6
+    assert len(provider_contexts) == 6
+    assert {tuple(sorted(context)) for context in provider_contexts} == {
+        ("condition", "event_sequence", "event_type", "stage", "status")
+    }
+    available = [
+        event.token_counts
+        for event in events
+        if event.token_counts is not None and event.token_counts.token_counts_available
+    ]
+    assert len(available) == 1
+    assert available[0].prompt_tokens == 2
+    assert available[0].generated_tokens == 3
+    assert available[0].total_tokens == 5
+
+    summary = ObservabilitySummary.model_validate_json(
+        default_observability_summary_path(config.output).read_text(encoding="utf-8")
+    )
+    assert summary.token_totals == {
+        "token_count_status": "available",
+        "events_with_token_counts": 6,
+        "events_with_available_token_counts": 1,
+        "prompt_tokens": 2,
+        "generated_tokens": 3,
+        "total_tokens": 5,
+        "token_count_sources": ["existing_generation_result", "unavailable"],
+    }
+
+
+def test_observability_best_effort_invalid_token_counts_degrades_safely(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "best-effort-invalid-token-counts.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="best_effort",
+        observability_experiment_id="cluster3-o3",
+        observability_run_id="run-best-effort-invalid-token-counts",
+        observability_output=str(event_path),
+    )
+
+    result = run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+            token_counts_provider=lambda _context: {
+                **_safe_token_counts(),
+                "prompt_tokens": -1,
+            },
+        ),
+    )
+
+    assert len(result.rows) == 1
+    assert event_path.exists()
+    assert event_path.read_text(encoding="utf-8") == ""
+    assert not default_observability_summary_path(config.output).exists()
+
+
+def test_observability_required_invalid_token_counts_fails_before_runner_work(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "required-invalid-token-counts.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="cluster3-o3",
+        observability_run_id="run-required-invalid-token-counts",
+        observability_output=str(event_path),
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(ValueError, match="prompt_tokens"):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                token_counts_provider=lambda _context: {
+                    **_safe_token_counts(),
+                    "prompt_tokens": -1,
+                },
+            ),
+        )
+
+    assert generation.calls == []
+    assert correctness.calls == []
+    assert not Path(config.output).exists()
 
 
 def test_observability_best_effort_context_failure_degrades_safely(

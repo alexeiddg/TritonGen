@@ -72,13 +72,13 @@ DurationSource = Literal[
     "not_applicable",
 ]
 TokenCountSource = Literal[
-    "tokenizer_encode",
     "generation_sequence_length_delta",
     "existing_generation_result",
     "existing_remote_payload",
     "unavailable",
     "not_applicable",
 ]
+TokenCountStatus = Literal["available", "partial", "unavailable", "not_applicable"]
 ModalContextSource = Literal[
     "shared_modal_runtime_helper",
     "modal_environment_allowlist",
@@ -197,25 +197,20 @@ class ObservabilityAttemptIdentity(_StrictModel):
 
 
 class ObservabilityTokenCounts(_StrictModel):
+    token_counts_available: bool
     prompt_tokens: int | None = Field(default=None, ge=0)
     generated_tokens: int | None = Field(default=None, ge=0)
     total_tokens: int | None = Field(default=None, ge=0)
-    max_new_tokens: int | None = Field(default=None, ge=0)
-    tokenizer_id: str | None = None
-    tokenizer_revision: str | None = None
-    count_source: TokenCountSource
-    truncation_applied: bool | None = None
-    token_counts_available: bool
-
-    @field_validator("tokenizer_id", "tokenizer_revision")
-    @classmethod
-    def _optional_non_empty(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        return _require_non_empty(value)
+    token_count_source: TokenCountSource
+    token_count_status: TokenCountStatus
 
     @model_validator(mode="after")
     def _validate_totals(self) -> "ObservabilityTokenCounts":
+        count_values = (
+            self.prompt_tokens,
+            self.generated_tokens,
+            self.total_tokens,
+        )
         if (
             self.prompt_tokens is not None
             and self.generated_tokens is not None
@@ -223,11 +218,28 @@ class ObservabilityTokenCounts(_StrictModel):
             and self.prompt_tokens + self.generated_tokens != self.total_tokens
         ):
             raise ValueError("total_tokens must equal prompt_tokens + generated_tokens")
-        if not self.token_counts_available and self.count_source not in {
+        if self.token_counts_available:
+            if self.token_count_source in {"unavailable", "not_applicable"}:
+                raise ValueError("available token counts require an available source")
+            if self.token_count_status not in {"available", "partial"}:
+                raise ValueError("available token counts require available or partial status")
+            if not any(value is not None for value in count_values):
+                raise ValueError("available token counts require at least one count")
+            if self.token_count_status == "available" and any(
+                value is None for value in count_values
+            ):
+                raise ValueError("available token count status requires all counts")
+            return self
+
+        if self.token_count_source not in {
             "unavailable",
             "not_applicable",
         }:
             raise ValueError("unavailable token counts require an unavailable source")
+        if self.token_count_status not in {"unavailable", "not_applicable"}:
+            raise ValueError("unavailable token counts require unavailable status")
+        if any(value is not None for value in count_values):
+            raise ValueError("unavailable token counts must not include counts")
         return self
 
 

@@ -1,6 +1,6 @@
 # Experiment Change Orchestration State
 
-- Version: 1.5.24
+- Version: 1.5.25
 - Date: 2026-06-03
 - Status: active live state record
 - Owner: current orchestration agent
@@ -371,11 +371,11 @@ reason. Do not backfill missing provenance silently after execution.
 
 | Field | Value |
 |---|---|
-| Git baseline commit | `6f3001e32f5145bd0efadf7a9e60f87bfe3f323a` |
+| Git baseline commit | `c93bdc0d19945e885b2121ee7efe12b6ea05db2e` |
 | Git branch | `codex/observability-sidecar-core` created from promoted `codex-track-handoff-context` |
-| Git status at latest reconciliation | O2 Modal runtime context is committed on `codex/observability-sidecar-core`; O3-Prep docs-only token telemetry launch reconciliation is active and names the later O3 implementation target surfaces; no O3 runtime code has started; no result-row schema, analyzer, raw output, Modal execution, generation, experiment artifact, billing, dependency, lockfile, tokenizer/model import, or MLflow runtime artifact changes are authorized or performed |
+| Git status at latest reconciliation | O3 token telemetry local implementation is complete pending independent review on `codex/observability-sidecar-core`; it changes only O3 allowed schema/redaction/logger/Cluster 3 runner/test/docs/report surfaces; no result-row schema, analyzer, raw output, Modal execution, generation, experiment artifact, billing, dependency, lockfile, tokenizer/model import, or MLflow runtime artifact changes are authorized or performed |
 | Orchestration contract version | `docs/15_experiment_change_orchestration_contract.md` v1.0.12 |
-| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.61.0 |
+| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.62.0 |
 | Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.2 |
 | Structural/task analyzer metadata spec version | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 |
 | MLflow tracking policy version | `.contracts/research/mlflow_tracking_policy.md` v1.0.0 |
@@ -401,7 +401,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Worktree | Branch | Commit | State ownership |
 |---|---|---|---|
-| `/Users/alexeidelgado/Desktop/TritonGen` | `codex/observability-sidecar-core` | `6f3001e` plus O3-Prep docs-only reconciliation edits | active observability worktree; O0 sidecar core, O1 Cluster 3 instrumentation, O2-Prep, and O2 Modal runtime context are committed; O3-Prep names token telemetry scope only; no Modal or output mutation |
+| `/Users/alexeidelgado/Desktop/TritonGen` | `codex/observability-sidecar-core` | `c93bdc0` plus O3 token telemetry local implementation edits | active observability worktree; O0 sidecar core, O1 Cluster 3 instrumentation, O2-Prep, O2 Modal runtime context, and O3-Prep are committed; O3 token telemetry is local-complete pending independent review; no Modal or output mutation |
 | `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `4a84600` | reference/history worktree only; same A6 commit as the promoted handoff trunk and not the place for observability work |
 | `/Users/alexeidelgado/Desktop/TritonGen/.claude/worktrees/intelligent-pasteur-72d92f` | `claude/intelligent-pasteur-72d92f` | `b0085c1` | external/unknown to this orchestration state; reconcile before relying on it |
 
@@ -410,7 +410,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 | Branch | Stream/package | Worktree | Status | Notes |
 |---|---|---|---|---|
 | `codex-track-handoff-context` | promoted handoff trunk | none while this worktree is on O0 | active baseline | Current promoted trunk is A6 at `4a84600`; use this as the baseline for O0 and future handoff work, not `main`, `ml_migration`, or stale worktrees. |
-| `codex/observability-sidecar-core` | O0 sidecar core / O1 Cluster 3 runner instrumentation / O2 Modal runtime context / O3-Prep token telemetry launch reconciliation | `/Users/alexeidelgado/Desktop/TritonGen` | O3-Prep docs-only reconciliation active | Created from `codex-track-handoff-context` at `4a84600`; O0 committed as `bcdaede`; O1 target state committed as `f088c10`; O1 Cluster 3 instrumentation committed as `8eaef2e`; O2-Prep committed as `74b3acd`; O2 Modal runtime context committed as `6f3001e`; O3-Prep authorizes no Modal/output/generation/tokenizer/model/billing/cost/performance work. |
+| `codex/observability-sidecar-core` | O0 sidecar core / O1 Cluster 3 runner instrumentation / O2 Modal runtime context / O3 token telemetry | `/Users/alexeidelgado/Desktop/TritonGen` | O3 local implementation complete pending review | Created from `codex-track-handoff-context` at `4a84600`; O0 committed as `bcdaede`; O1 target state committed as `f088c10`; O1 Cluster 3 instrumentation committed as `8eaef2e`; O2-Prep committed as `74b3acd`; O2 Modal runtime context committed as `6f3001e`; O3-Prep committed as `c93bdc0`; O3 implementation authorizes no Modal/output/generation/tokenizer/model/billing/cost/performance work. |
 | `codex/integrate-mlflow-into-handoff` | MLflow tracking harness integration | none after promotion | promoted/reference | Merged `origin/ml_migration`, preserved handoff doc/audit tracking policy, validated optional/no-op tracking tests, and was absorbed into the promoted handoff trunk before A6. |
 | `codex/llm-repair-memory-agentic-transcript-v1` | A-stream / agentic transcript implementation | `/private/tmp/tritongen-llm-repair-memory` | promoted/reference | Same commit as the promoted handoff trunk at `4a84600`; keep as reference/history, not as an active implementation branch for observability. |
 
@@ -418,7 +418,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Surface | Owner branch | Owner worktree | Scope | Start commit | Expected files | Expected tests | Review checkpoint | Status |
 |---|---|---|---|---|---|---|---|---|
-| O3-Prep token telemetry launch reconciliation | `codex/observability-sidecar-core` | `/Users/alexeidelgado/Desktop/TritonGen` | Docs-only naming of O3 target surfaces, count/status-only token fields, forbidden token/raw-text payloads, tests, stop conditions, and no-execution state | `6f3001e32f5145bd0efadf7a9e60f87bfe3f323a` | `docs/handoff/experiment_change_orchestration_state.md`; `docs/handoff/document_version_registry.md`; `docs/handoff/agentic_document_hub.md`; `docs/16_observability_sidecar_implementation_spec.md`; `audits/observability_sidecar_o3_prep_report.md` | `git diff --check`; `git status --short --branch`; forbidden code-scope diff; positive authorization scan; forbidden O3 scope scan reviewed as prohibitions/caveats/stop conditions only | Independent O3-Prep docs review before commit/promotion | active docs-only prep |
+| O3 token telemetry implementation | `codex/observability-sidecar-core` | `/Users/alexeidelgado/Desktop/TritonGen` | Count/status-only token sidecar schema, redaction, summary validation, and Cluster 3 injected-count/unavailable-safe wiring | `c93bdc0d19945e885b2121ee7efe12b6ea05db2e` | `shared/observability/schema.py`; `shared/observability/redaction.py`; `shared/observability/logger.py`; `cluster3/experiments/run_cluster3_modal.py`; focused shared/Cluster 3 tests; `docs/handoff/experiment_change_orchestration_state.md`; `docs/handoff/document_version_registry.md`; `audits/observability_sidecar_o3_token_telemetry_report.md` | O0-O3 observability suite; Cluster 3 runner suite; Cluster 3 schema/import guardrails; lightweight shared regressions; forbidden file, token/raw, model/import, telemetry, authorization, whitespace, and status scans | Independent O3 implementation review before commit/promotion | local implementation complete pending review |
 
 ## Gate Status
 
@@ -427,7 +427,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 | G0 baseline freeze | satisfied with caveat | Git status is clean, but ignored docs/audits/outputs must be checked directly when relevant. |
 | G1 orchestration contract accepted | satisfied | Contract exists and is routed through project map, hub, and registry. |
 | G2 reporting terminology stable | not started | Requires S0 acceptance. |
-| G3 observability sidecar contract stable | O0 committed / O1 committed / O2 committed / O3-Prep active | `docs/16_observability_sidecar_implementation_spec.md` v0.2.2 defines O0-O4 plus hardening guardrails, O0 clarifications, safe Modal context, and O3 token telemetry as counts/status only. O0 is committed at `bcdaede`; O1 is committed at `8eaef2e` and instruments only `cluster3/experiments/run_cluster3_modal.py` with default-off behavior and tmp_path-only tests. O2-Prep is committed at `74b3acd`; O2 Modal runtime context is committed at `6f3001e`; O3-Prep is docs-only and authorizes no runtime, Modal, output, generation, tokenizer/model, billing, cost, or performance work. |
+| G3 observability sidecar contract stable | O0 committed / O1 committed / O2 committed / O3 local implementation pending review | `docs/16_observability_sidecar_implementation_spec.md` v0.2.2 defines O0-O4 plus hardening guardrails, O0 clarifications, safe Modal context, and O3 token telemetry as counts/status only. O0 is committed at `bcdaede`; O1 is committed at `8eaef2e` and instruments only `cluster3/experiments/run_cluster3_modal.py` with default-off behavior and tmp_path-only tests. O2-Prep is committed at `74b3acd`; O2 Modal runtime context is committed at `6f3001e`; O3-Prep is committed at `c93bdc0`; O3 implementation is local-complete pending independent review and authorizes no Modal, output, generation, tokenizer/model, billing, cost, or performance work. |
 | G4 analyzer compatibility stable | spec drafted / code not started | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 defines S0-S3 metadata and report-label work; G4 still requires S1 implementation and compatibility tests. |
 | G5 agentic prompt core stable | satisfied with baseline-venv caveat | `audits/agentic_transcript_v1_a1_prompt_core_report.md` v1.0.0 records pure prompt-core implementation, typed local errors, policy config validation, public evidence/source models, deterministic anchor ranking, canonical renderer, prompt/history hashes, budget behavior, fixture manifest, prompt-injection fixture, legacy C/P byte-invariance snapshots, import isolation, focused tests, and no forbidden-surface changes. |
 | G6 agentic integration stable | promoted to handoff trunk with run gate caveat | A2 C-loop integration, A3 P-loop integration, A4 P-to-C isolation proof, A5 analyzer grouping/quarantine, and A6 run-packet gate planning are present in promoted A6 commit `4a84600`; future agentic execution remains blocked pending signed run approval and required pre-run checks. |
@@ -784,7 +784,7 @@ unresolved risk: real remote Modal context remains unproven until a later approv
 status: committed at 6f3001e32f5145bd0efadf7a9e60f87bfe3f323a; O2 review passed before commit; no Modal/output/generation run authorized or performed
 ```
 
-### Active Work Package: O3-Prep Token Telemetry Launch Reconciliation
+### Completed Work Package: O3-Prep Token Telemetry Launch Reconciliation
 
 ```text
 package: O3-Prep token telemetry launch reconciliation
@@ -810,7 +810,7 @@ O3-Prep tests/checks: git diff --check; git status --short --branch; forbidden c
 authorization state: AUTHORIZES_EXECUTION: NO; MODAL_AUTHORIZED: NO; GENERATION_AUTHORIZED: NO; GPU_AUTHORIZED: NO; OUTPUT_MUTATION_AUTHORIZED: NO; N5_AUTHORIZED: NO; N20_AUTHORIZED: NO; PAPER_SCALE_AUTHORIZED: NO; BILLING_AUTHORIZED: NO; DEPENDENCY_CHANGE_AUTHORIZED: NO
 stop conditions: O3_PREP_BLOCKED_TARGET_SURFACE_AMBIGUOUS if exact later implementation surfaces cannot be named; O3_PREP_BLOCKED_EXECUTION_AUTHORIZATION_LEAK if any doc authorizes Modal/GPU/generation/output/n5/n20/paper-scale execution; O3_PREP_BLOCKED_SCOPE_VIOLATION if runtime code, outputs, dependencies, lockfiles, or MLflow state are modified; O3_PREP_BLOCKED_DOC_CONTRADICTION if docs conflict on O3 target, allowed files, token fields, forbidden payloads, or authorization state
 handoff destination: audits/observability_sidecar_o3_prep_report.md and this state file
-status: active docs-only reconciliation; no O3 implementation started; AUTHORIZES_EXECUTION: NO
+status: committed at c93bdc0d19945e885b2121ee7efe12b6ea05db2e; superseded by the O3 token telemetry implementation package; AUTHORIZES_EXECUTION: NO
 ```
 
 ### Reference Work Package: A2 C-loop Integration
@@ -1083,7 +1083,7 @@ state update owner: implementation agent
 status: committed at 6f3001e32f5145bd0efadf7a9e60f87bfe3f323a; O2 review passed before commit; AUTHORIZES_EXECUTION: NO
 ```
 
-### Active Launch Packet: O3-PREP-TOKEN-TELEMETRY-2026-06-03
+### Completed Launch Packet: O3-PREP-TOKEN-TELEMETRY-2026-06-03
 
 ```text
 launch packet id: O3-PREP-TOKEN-TELEMETRY-2026-06-03
@@ -1116,7 +1116,33 @@ escalation thresholds: stop on target ambiguity, execution authorization leakage
 stop triggers: O3_PREP_BLOCKED_TARGET_SURFACE_AMBIGUOUS; O3_PREP_BLOCKED_EXECUTION_AUTHORIZATION_LEAK; O3_PREP_BLOCKED_SCOPE_VIOLATION; O3_PREP_BLOCKED_DOC_CONTRADICTION
 handoff destination: audits/observability_sidecar_o3_prep_report.md and this state file
 state update owner: orchestrator
-status: active docs-only reconciliation; no O3 implementation started; AUTHORIZES_EXECUTION: NO
+status: committed at c93bdc0d19945e885b2121ee7efe12b6ea05db2e; O3 implementation package has since started on the same observability branch; AUTHORIZES_EXECUTION: NO
+```
+
+### Active Work Package: O3 Token Telemetry Implementation
+
+```text
+package: O3 token telemetry implementation
+launch packet id: O3-TOKEN-TELEMETRY-2026-06-03
+branch: codex/observability-sidecar-core
+owner: current implementation agent
+scope: count/status-only token telemetry in observability sidecars for Cluster 3 O1 events; no tokenizer/model/generation execution, no output mutation, no result-row schema mutation, no Modal invocation, no billing/cost/performance telemetry
+baseline commit: c93bdc0d19945e885b2121ee7efe12b6ea05db2e
+required read set: docs/handoff/experiment_change_orchestration_state.md; docs/handoff/document_version_registry.md; docs/handoff/agentic_document_hub.md; docs/16_observability_sidecar_implementation_spec.md; audits/observability_sidecar_o3_prep_report.md; shared/observability/schema.py; shared/observability/redaction.py; shared/observability/logger.py; cluster3/experiments/run_cluster3_modal.py; cluster3/tests/test_run_cluster3_modal_cli.py
+target surfaces: shared/observability/schema.py; shared/observability/redaction.py; shared/observability/logger.py; cluster3/experiments/run_cluster3_modal.py
+test surfaces: shared/tests/test_observability_schema.py; shared/tests/test_observability_redaction.py; shared/tests/test_observability_logger.py; shared/tests/test_observability_imports.py; cluster3/tests/test_run_cluster3_modal_cli.py
+docs/report surfaces: docs/handoff/experiment_change_orchestration_state.md; docs/handoff/document_version_registry.md; audits/observability_sidecar_o3_token_telemetry_report.md
+requirement ids: O3-COUNT-SCHEMA; O3-REDACTION-DENYLIST; O3-SUMMARY-TOKEN-TOTALS; O3-CLUSTER3-INJECTED-COUNTS; O3-OFF-NO-COLLECTION; O3-BEST-EFFORT-DEGRADE; O3-REQUIRED-FAIL-CLOSED; O3-NO-TOKENIZER-MODEL-GENERATION; O3-NO-OUTPUT; O3-NO-RESULT-SCHEMA; O3-NO-BILLING-COST-PERF
+allowed files: shared/observability/schema.py; shared/observability/redaction.py; shared/observability/logger.py; shared/tests/test_observability_schema.py; shared/tests/test_observability_redaction.py; shared/tests/test_observability_logger.py; shared/tests/test_observability_imports.py; cluster3/experiments/run_cluster3_modal.py; cluster3/tests/test_run_cluster3_modal_cli.py; docs/handoff/experiment_change_orchestration_state.md; docs/handoff/document_version_registry.md; audits/observability_sidecar_o3_token_telemetry_report.md
+forbidden files: cluster1/**; cluster2/** except read-only inspection; cluster3/results/**; cluster3/feedback/** except read-only inspection; shared/modal_harness/**; shared/analysis/**; shared/repair_history/**; outputs/**; mlruns/**; pricing/billing files; dependency or lock files; Modal app/image/function definitions; scientific result-row schemas; analyzers
+implemented token behavior: ObservabilityTokenCounts accepts only token_counts_available, prompt_tokens, generated_tokens, total_tokens, token_count_source, and token_count_status; counts are strict non-negative integers; total_tokens consistency is enforced; unavailable token counts cannot carry counts; supplied token counts require a non-unavailable source/status plus one or more explicit count fields; token_count_status=available requires prompt, generated, and total counts; incomplete supplied counts must use token_count_status=partial
+redaction behavior: token IDs, input/output IDs, prompt/completion/generated/source/raw text, tokenizer dumps/internal state, hidden prompts, private eval/feedback, tokenizer provenance aliases, and raw model outputs fail closed by key/value checks; safe count/status fields remain allowed
+summary behavior: logger derives token_totals from validated event sidecars and rejects summaries whose token_totals do not match the current event stream
+runner behavior: Cluster 3 off mode does not resolve token metadata; enabled modes attach unavailable token context by default; enabled modes may attach dependency-injected safe counts; best_effort invalid counts disable sidecars without changing runner outcome; required invalid counts fail before generation/correctness adapters run
+authorization state: AUTHORIZES_EXECUTION: NO; MODAL_AUTHORIZED: NO; GENERATION_AUTHORIZED: NO; GPU_AUTHORIZED: NO; OUTPUT_MUTATION_AUTHORIZED: NO; N5_AUTHORIZED: NO; N20_AUTHORIZED: NO; PAPER_SCALE_AUTHORIZED: NO; BILLING_AUTHORIZED: NO; DEPENDENCY_CHANGE_AUTHORIZED: NO
+tests/checks run: shared O0-O3 observability suite passed; Cluster 3 runner suite passed; remaining validation is recorded in audits/observability_sidecar_o3_token_telemetry_report.md after final scans
+unresolved risk: real token counts remain unavailable in the local Cluster 3 runner path until a later approved existing count source or run packet supplies them; O3 proves schema, redaction, summary validation, default unavailable behavior, and local fake/injected count wiring only
+status: locally complete pending final validation, independent review, and commit; no Modal/output/generation run authorized or performed
 ```
 
 ### Reference Launch Packet: A2-C-LOOP-2026-06-02
@@ -1205,7 +1231,8 @@ status: promoted into A6 handoff trunk at 4a84600; reference/history only
 | O1 Cluster 3 local runner instrumentation | `codex/observability-sidecar-core` | committed | O0 plus runner lease | G3 partial | First runner is explicitly `cluster3/experiments/run_cluster3_modal.py`; primary tests are `cluster3/tests/test_run_cluster3_modal_cli.py`; commit `8eaef2e` adds default-off `off|best_effort|required` sidecars with tmp_path tests and no Modal/output/generation authorization. |
 | O2-Prep Modal runtime context launch reconciliation | `codex/observability-sidecar-core` | committed | O1 committed | O2 prep complete | Docs-only target/scope naming before O2 implementation; committed at `74b3acd`; O2 target surfaces are `shared/observability/schema.py`, `shared/observability/redaction.py`, `shared/modal_harness/runtime.py`, and `cluster3/experiments/run_cluster3_modal.py` for optional safe Modal context sidecar enrichment only. |
 | O2 Modal runtime context implementation | `codex/observability-sidecar-core` | committed | O2_PREP_COMPLETE | G3 partial | Commit `6f3001e` adds optional safe Modal context sidecar enrichment for Cluster 3 only; local fake/context tests pass; real remote context remains unproven until a later approved execution packet; no Modal/output/generation/billing/cost/performance/result-row mutation authorized. |
-| O3-Prep token telemetry launch reconciliation | `codex/observability-sidecar-core` | active docs-only prep | O2 committed | O3 prep complete | Names later O3 target surfaces as `shared/observability/schema.py`, `shared/observability/redaction.py`, `shared/observability/logger.py`, `cluster3/experiments/run_cluster3_modal.py`, and their focused tests; O3 token telemetry is counts/status only and no O3 runtime code has started. |
+| O3-Prep token telemetry launch reconciliation | `codex/observability-sidecar-core` | committed | O2 committed | O3 prep complete | Commit `c93bdc0` names later O3 target surfaces as `shared/observability/schema.py`, `shared/observability/redaction.py`, `shared/observability/logger.py`, `cluster3/experiments/run_cluster3_modal.py`, and their focused tests; O3 token telemetry is counts/status only. |
+| O3 token telemetry implementation | `codex/observability-sidecar-core` | local implementation complete pending review | O3_PREP_COMPLETE | G3 partial | Adds count/status-only token schema, fail-closed token/raw/private payload rejection, event-derived summary `token_totals`, and Cluster 3 injected-count/unavailable-safe sidecar wiring; no tokenizer/model/generation execution, output mutation, result-row schema mutation, billing/cost, or performance telemetry. |
 | A2 C-loop integration | `codex/llm-repair-memory-agentic-transcript-v1` | promoted/reference | A1 | G6 partial | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a2_c_loop_integration_report.md` v1.0.0 records default `last_attempt_only_v1` preserved, `agentic_transcript_v1` opt-in, and no Modal/output mutation. |
 | A3 P-loop integration | `codex/llm-repair-memory-agentic-transcript-v1` | promoted/reference | A1/A2 | G6 partial | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a3_p_loop_integration_report.md` v1.0.0 records default `last_attempt_only_v1` preserved, `agentic_transcript_v1` opt-in, F1_COMPILE-only P eligibility preserved, and no Modal/output/generation mutation. |
 | A4 P-to-C isolation | `codex/llm-repair-memory-agentic-transcript-v1` | promoted/reference | A2/A3 complete | G6 partial | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md` v1.0.0 remains the isolation evidence snapshot. |

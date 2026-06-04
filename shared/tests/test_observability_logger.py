@@ -11,6 +11,7 @@ from shared.observability.logger import (
     ObservabilityJsonlAppendLogger,
     file_sha256,
     load_observability_events,
+    token_totals,
     write_observability_hash_sidecar_atomic,
     write_observability_summary_atomic,
 )
@@ -415,8 +416,58 @@ def test_atomic_summary_writer_rejects_event_stream_mismatches(tmp_path: Path) -
             summary.model_copy(update={"stage_durations_ns": {"summary": 999}}),
             fsync=False,
         )
+    with pytest.raises(ValueError, match="token_totals"):
+        write_observability_summary_atomic(
+            paths.summary_path,
+            summary.model_copy(
+                update={
+                    "token_totals": {
+                        "token_count_status": "available",
+                        "events_with_token_counts": 2,
+                        "events_with_available_token_counts": 2,
+                        "prompt_tokens": 999,
+                        "generated_tokens": 999,
+                        "total_tokens": 1998,
+                        "token_count_sources": ["existing_generation_result"],
+                    }
+                }
+            ),
+            fsync=False,
+        )
 
     assert not paths.summary_path.exists()
+
+
+def test_token_totals_preserve_missing_partial_count_components(tmp_path: Path) -> None:
+    result = tmp_path / "outputs" / "cluster3" / "matrix.jsonl"
+    paths = resolve_observability_paths(result, workspace_root=tmp_path)
+    event = _event(
+        0,
+        result_path=str(result),
+        event_path=str(paths.event_path),
+        summary_path=str(paths.summary_path),
+    ).model_copy(
+        update={
+            "token_counts": ObservabilityTokenCounts(
+                token_counts_available=True,
+                prompt_tokens=7,
+                generated_tokens=None,
+                total_tokens=None,
+                token_count_source="existing_generation_result",
+                token_count_status="partial",
+            )
+        }
+    )
+
+    assert token_totals((event,)) == {
+        "token_count_status": "partial",
+        "events_with_token_counts": 1,
+        "events_with_available_token_counts": 1,
+        "prompt_tokens": 7,
+        "generated_tokens": None,
+        "total_tokens": None,
+        "token_count_sources": ["existing_generation_result"],
+    }
 
 
 def test_atomic_hash_writer_rejects_stale_artifact_metadata(tmp_path: Path) -> None:
@@ -751,8 +802,9 @@ def _event(
         start_monotonic_ns=start,
         end_monotonic_ns=end,
         token_counts=ObservabilityTokenCounts(
-            count_source="not_applicable",
             token_counts_available=False,
+            token_count_source="not_applicable",
+            token_count_status="not_applicable",
         ),
         modal_context=None,
         cost_estimate=None,
@@ -781,7 +833,15 @@ def _summary(
         row_counts={"completed": 0},
         event_counts={"stage_completed": 2},
         stage_durations_ns={"summary": 20},
-        token_totals={"status": "not_applicable"},
+        token_totals={
+            "token_count_status": "unavailable",
+            "events_with_token_counts": 2,
+            "events_with_available_token_counts": 0,
+            "prompt_tokens": 0,
+            "generated_tokens": 0,
+            "total_tokens": 0,
+            "token_count_sources": ["not_applicable"],
+        },
         modal_context_summary={"status": "unavailable"},
         estimated_cost_summary={"estimate_status": "not_implemented"},
         actual_billing_status="not_implemented",

@@ -15,7 +15,16 @@ OBSERVABILITY_MODULES = (
     "shared.observability.paths",
     "shared.observability.redaction",
 )
-FORBIDDEN_IMPORTS = ("modal", "torch", "triton", "transformers", "xgrammar")
+FORBIDDEN_IMPORTS = (
+    "anthropic",
+    "google",
+    "modal",
+    "openai",
+    "torch",
+    "transformers",
+    "triton",
+    "xgrammar",
+)
 MODAL_RUNTIME_PATH = REPO_ROOT / "shared" / "modal_harness" / "runtime.py"
 
 

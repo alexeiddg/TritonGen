@@ -89,6 +89,7 @@ from shared.observability import (
     ObservabilityPaths,
     ObservabilityRowIdentity,
     ObservabilitySummary,
+    ObservabilityTokenCounts,
     file_sha256,
     load_observability_events,
     resolve_observability_paths,
@@ -96,6 +97,7 @@ from shared.observability import (
 from shared.observability.logger import (
     event_counts as observability_event_counts,
     stage_durations_ns as observability_stage_durations_ns,
+    token_totals as observability_token_totals,
 )
 from shared.modal_harness.runtime import (
     get_modal_runtime_context_or_unavailable,
@@ -130,6 +132,9 @@ PRepairLoopCallable = Callable[..., PRepairLoopResult]
 CLoopRunnerCallable = Callable[..., Cluster3CLoopResult]
 ObservabilityLoggerFactory = Callable[..., ObservabilityJsonlAppendLogger]
 ModalContextProvider = Callable[[], Mapping[str, Any] | ObservabilityModalContext | None]
+TokenCountsProvider = Callable[
+    [Mapping[str, Any]], Mapping[str, Any] | ObservabilityTokenCounts | None
+]
 
 
 @dataclass(frozen=True)
@@ -283,6 +288,7 @@ class RunnerDependencies:
     c_loop_runner: CLoopRunnerCallable | None = None
     observability_logger_factory: ObservabilityLoggerFactory | None = None
     modal_context_provider: ModalContextProvider | None = None
+    token_counts_provider: TokenCountsProvider | None = None
 
 
 @dataclass(frozen=True)
@@ -333,6 +339,7 @@ class _Cluster3ObservabilityRuntime:
     clock_scope_id: str = ""
     next_event_sequence: int = 0
     modal_context: ObservabilityModalContext | None = None
+    token_counts_provider: TokenCountsProvider | None = None
     disabled_reason: str | None = None
 
     @property
@@ -567,6 +574,19 @@ class _Cluster3ObservabilityRuntime:
         assert self.git_commit is not None
         assert self.branch is not None
         events = load_observability_events(self.paths.event_path)
+        token_totals = observability_token_totals(events)
+        caveats = [
+            "O2 Modal context is optional and unavailable-safe; real remote "
+            "context remains unproven until an approved execution packet.",
+            "O3 token telemetry is count/status-only and does not execute "
+            "tokenizers, models, or generation paths.",
+            "Estimated cost and billing reconciliation are not implemented.",
+        ]
+        if token_totals["events_with_available_token_counts"] == 0:
+            caveats.append(
+                "Real token counts remain unavailable in this local runner path "
+                "until an approved existing count source is supplied."
+            )
         summary = ObservabilitySummary(
             experiment_id=self.config.observability_experiment_id or "",
             run_id=self.config.observability_run_id or "",
@@ -580,17 +600,12 @@ class _Cluster3ObservabilityRuntime:
             row_counts={"total": row_count},
             event_counts=observability_event_counts(events),
             stage_durations_ns=observability_stage_durations_ns(events),
-            token_totals={"count_status": "not_implemented"},
+            token_totals=token_totals,
             modal_context_summary=_observability_modal_context_summary(events),
             estimated_cost_summary={"estimate_status": "not_implemented"},
             actual_billing_status="not_implemented",
             completeness_status="complete",
-            caveats=[
-                "O2 Modal context is optional and unavailable-safe; real remote "
-                "context remains unproven until an approved execution packet. "
-                "Token counts, estimated cost, and billing reconciliation are "
-                "not implemented."
-            ],
+            caveats=caveats,
             source_event_sha256=file_sha256(self.paths.event_path),
             summary_sha256=None,
         )
@@ -614,48 +629,84 @@ class _Cluster3ObservabilityRuntime:
         if not self.enabled:
             return
         assert self.paths is not None
-        duration_ns = None
-        duration_source = "not_applicable"
-        if start_monotonic_ns is not None and end_monotonic_ns is not None:
-            duration_ns = end_monotonic_ns - start_monotonic_ns
-            duration_source = "local_monotonic"
-        safe_error_summary = (
-            ObservabilityErrorSummary.model_validate(dict(error_summary))
-            if error_summary is not None
-            else None
-        )
-        event = ObservabilityEvent(
-            event_id=str(uuid.uuid4()),
-            event_sequence=self.next_event_sequence,
-            event_type=event_type,
-            severity=severity,
-            timestamp_utc=_utc_now(),
-            timestamp_unix_ns=time.time_ns(),
-            monotonic_ns=monotonic_ns,
-            clock_scope_id=self.clock_scope_id,
-            experiment_id=self.config.observability_experiment_id or "",
-            run_id=self.config.observability_run_id or "",
-            artifact=ObservabilityArtifactIdentity(
-                result_path=self.config.output,
-                observability_event_path=str(self.paths.event_path),
-                observability_summary_path=str(self.paths.summary_path),
-                git_commit=self.git_commit,
-            ),
-            row_identity=row_identity or ObservabilityRowIdentity(),
-            stage=stage,
-            attempt=attempt or ObservabilityAttemptIdentity(),
-            status=status,
-            duration_ns=duration_ns,
-            duration_source=duration_source,
-            start_monotonic_ns=start_monotonic_ns,
-            end_monotonic_ns=end_monotonic_ns,
-            token_counts=None,
-            modal_context=self.modal_context,
-            cost_estimate=None,
-            error_summary=safe_error_summary,
-            attributes=dict(attributes or {}),
-        )
+        try:
+            duration_ns = None
+            duration_source = "not_applicable"
+            if start_monotonic_ns is not None and end_monotonic_ns is not None:
+                duration_ns = end_monotonic_ns - start_monotonic_ns
+                duration_source = "local_monotonic"
+            safe_error_summary = (
+                ObservabilityErrorSummary.model_validate(dict(error_summary))
+                if error_summary is not None
+                else None
+            )
+            event = ObservabilityEvent(
+                event_id=str(uuid.uuid4()),
+                event_sequence=self.next_event_sequence,
+                event_type=event_type,
+                severity=severity,
+                timestamp_utc=_utc_now(),
+                timestamp_unix_ns=time.time_ns(),
+                monotonic_ns=monotonic_ns,
+                clock_scope_id=self.clock_scope_id,
+                experiment_id=self.config.observability_experiment_id or "",
+                run_id=self.config.observability_run_id or "",
+                artifact=ObservabilityArtifactIdentity(
+                    result_path=self.config.output,
+                    observability_event_path=str(self.paths.event_path),
+                    observability_summary_path=str(self.paths.summary_path),
+                    git_commit=self.git_commit,
+                ),
+                row_identity=row_identity or ObservabilityRowIdentity(),
+                stage=stage,
+                attempt=attempt or ObservabilityAttemptIdentity(),
+                status=status,
+                duration_ns=duration_ns,
+                duration_source=duration_source,
+                start_monotonic_ns=start_monotonic_ns,
+                end_monotonic_ns=end_monotonic_ns,
+                token_counts=self._token_counts_for_event(
+                    event_type=event_type,
+                    stage=stage,
+                    status=status,
+                ),
+                modal_context=self.modal_context,
+                cost_estimate=None,
+                error_summary=safe_error_summary,
+                attributes=dict(attributes or {}),
+            )
+        except Exception as exc:
+            if self.mode == "required":
+                raise
+            self.disabled_reason = type(exc).__name__
+            self.close()
+            self.logger = None
+            return
         self._append_event(event)
+
+    def _token_counts_for_event(
+        self,
+        *,
+        event_type: str,
+        stage: str | None,
+        status: str,
+    ) -> ObservabilityTokenCounts:
+        if self.token_counts_provider is None:
+            return _unavailable_observability_token_counts()
+        payload = self.token_counts_provider(
+            {
+                "event_sequence": self.next_event_sequence,
+                "event_type": event_type,
+                "stage": stage,
+                "status": status,
+                "condition": self.config.condition,
+            }
+        )
+        if payload is None:
+            return _unavailable_observability_token_counts()
+        if isinstance(payload, ObservabilityTokenCounts):
+            return ObservabilityTokenCounts.model_validate(payload.model_dump(mode="json"))
+        return ObservabilityTokenCounts.model_validate(dict(payload))
 
     def _append_event(self, event: ObservabilityEvent) -> None:
         if self.logger is None:
@@ -1143,6 +1194,7 @@ def _open_observability_runtime(
             clock_scope_id=str(uuid.uuid4()),
             next_event_sequence=next_event_sequence,
             modal_context=modal_context,
+            token_counts_provider=deps.token_counts_provider,
         )
     except Exception as exc:
         if config.observability_mode == "required":
@@ -1189,6 +1241,14 @@ def _observability_modal_context_summary(
             {context.modal_context_source for context in contexts}
         ),
     }
+
+
+def _unavailable_observability_token_counts() -> ObservabilityTokenCounts:
+    return ObservabilityTokenCounts(
+        token_counts_available=False,
+        token_count_source="unavailable",
+        token_count_status="unavailable",
+    )
 
 
 def _observability_row_identity(

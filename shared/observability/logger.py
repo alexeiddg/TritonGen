@@ -287,6 +287,42 @@ def stage_durations_ns(events: tuple[ObservabilityEvent, ...]) -> dict[str, int]
     return totals
 
 
+def token_totals(events: tuple[ObservabilityEvent, ...]) -> dict[str, object]:
+    """Return count/status-only token totals derived from an event stream."""
+
+    token_events = [event.token_counts for event in events if event.token_counts is not None]
+    available_events = [counts for counts in token_events if counts.token_counts_available]
+    if not available_events:
+        status = "unavailable"
+    elif any(counts.token_count_status == "partial" for counts in available_events):
+        status = "partial"
+    else:
+        status = "available"
+
+    def _sum_available(values: tuple[int | None, ...]) -> int | None:
+        if any(value is None for value in values):
+            return None
+        return sum(value for value in values if value is not None)
+
+    return {
+        "token_count_status": status,
+        "events_with_token_counts": len(token_events),
+        "events_with_available_token_counts": len(available_events),
+        "prompt_tokens": _sum_available(
+            tuple(counts.prompt_tokens for counts in available_events)
+        ),
+        "generated_tokens": _sum_available(
+            tuple(counts.generated_tokens for counts in available_events)
+        ),
+        "total_tokens": _sum_available(
+            tuple(counts.total_tokens for counts in available_events)
+        ),
+        "token_count_sources": sorted(
+            {counts.token_count_source for counts in token_events}
+        ),
+    }
+
+
 def write_observability_summary_atomic(
     summary_path: str | Path,
     summary: ObservabilitySummary | dict,
@@ -395,6 +431,8 @@ def _validate_summary_against_event_stream(summary: ObservabilitySummary) -> Non
         raise ValueError("summary event_counts do not match event stream")
     if summary.stage_durations_ns != stage_durations_ns(events):
         raise ValueError("summary stage_durations_ns do not match event stream")
+    if summary.token_totals != token_totals(events):
+        raise ValueError("summary token_totals do not match event stream")
 
 
 def _validate_hash_sidecar_against_artifacts(sidecar: ObservabilityHashSidecar) -> None:
