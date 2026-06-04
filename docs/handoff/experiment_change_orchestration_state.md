@@ -1,6 +1,6 @@
 # Experiment Change Orchestration State
 
-- Version: 1.5.26
+- Version: 1.5.27
 - Date: 2026-06-03
 - Status: active live state record
 - Owner: current orchestration agent
@@ -1154,7 +1154,7 @@ unresolved risk: real token counts remain unavailable in the local Cluster 3 run
 status: committed at 4ddc7673724a709f8a028b4d52e39b48144b56eb; no Modal/output/generation run authorized or performed
 ```
 
-### Active Launch Packet: O4-PREP-ESTIMATED-COST-2026-06-03
+### Completed Launch Packet: O4-PREP-ESTIMATED-COST-2026-06-03
 
 ```text
 launch packet id: O4-PREP-ESTIMATED-COST-2026-06-03
@@ -1188,7 +1188,27 @@ escalation thresholds: stop on target ambiguity, execution authorization leakage
 stop triggers: O4_PREP_BLOCKED_TARGET_SURFACE_AMBIGUOUS; O4_PREP_BLOCKED_EXECUTION_AUTHORIZATION_LEAK; O4_PREP_BLOCKED_BILLING_CLAIM_LEAK; O4_PREP_BLOCKED_SCOPE_VIOLATION; O4_PREP_BLOCKED_DOC_CONTRADICTION
 handoff destination: audits/observability_sidecar_o4_prep_report.md and this state file
 state update owner: orchestrator
-status: docs-only reconciliation complete pending independent review and commit; AUTHORIZES_EXECUTION: NO
+status: committed at d30aa500df9efb0ee0ce987dbb46317ed1db14d3; AUTHORIZES_EXECUTION: NO
+```
+
+### Active Implementation Checkpoint: O4-ESTIMATED-COST-2026-06-03
+
+```text
+checkpoint id: O4-ESTIMATED-COST-2026-06-03
+agent role: implementation agent
+branch: codex/observability-sidecar-core
+worktree: /Users/alexeidelgado/Desktop/TritonGen
+baseline commit: d30aa500df9efb0ee0ce987dbb46317ed1db14d3
+package: O4 estimated cost telemetry implementation
+scope: supplied estimated or unavailable cost metadata in observability sidecars only
+target surfaces: shared/observability/schema.py; shared/observability/redaction.py; shared/observability/logger.py; cluster3/experiments/run_cluster3_modal.py
+test surfaces: shared/tests/test_observability_schema.py; shared/tests/test_observability_redaction.py; shared/tests/test_observability_logger.py; shared/tests/test_observability_imports.py; cluster3/tests/test_run_cluster3_modal_cli.py
+allowed files touched: shared/observability/schema.py; shared/observability/redaction.py; shared/observability/logger.py; shared/tests/test_observability_schema.py; shared/tests/test_observability_redaction.py; shared/tests/test_observability_logger.py; shared/tests/test_observability_imports.py; cluster3/experiments/run_cluster3_modal.py; cluster3/tests/test_run_cluster3_modal_cli.py; docs/handoff/experiment_change_orchestration_state.md; docs/handoff/document_version_registry.md; audits/observability_sidecar_o4_estimated_cost_report.md
+implemented behavior: reconciled ObservabilityCostEstimate to the O4 allowed field set; rejects old draft cost fields; validates non-negative finite USD-only estimates; rejects string/bool/non-finite/negative/coerced cost values; enforces estimated_total_cost consistency; unavailable estimates cannot carry cost/pricing metadata; redaction fails closed on actual billing, invoice, account-charge, provider/Modal bill, billing/pricing response, external pricing fetch, cost-per-success, pass@k cost, ROI, economic-lift, and benchmark-cost conclusion keys; logger derives estimated_cost_summary from validated events; Cluster 3 off mode does not resolve cost metadata; enabled modes attach unavailable cost context by default and can attach dependency-injected safe estimates; best_effort invalid costs degrade sidecars safely; required invalid costs fail before generation/correctness adapters run
+authorization state: AUTHORIZES_EXECUTION: NO; MODAL_AUTHORIZED: NO; GENERATION_AUTHORIZED: NO; GPU_AUTHORIZED: NO; OUTPUT_MUTATION_AUTHORIZED: NO; N5_AUTHORIZED: NO; N20_AUTHORIZED: NO; PAPER_SCALE_AUTHORIZED: NO; BILLING_AUTHORIZED: NO; DEPENDENCY_CHANGE_AUTHORIZED: NO
+tests/checks run: shared O0-O4 observability suite passed; Cluster 3 runner suite passed; Cluster 3 schema/import guardrails passed; repair-history/factorial lightweight regressions passed; final scans recorded in audits/observability_sidecar_o4_estimated_cost_report.md
+unresolved risk: real estimates remain unavailable until a later approved supplied/config/static pricing source is authorized; actual billing remains O5+ only and no invoice/billing API evidence is produced by O4
+status: local implementation complete pending independent review and commit; no Modal/output/generation/billing/pricing/API run authorized or performed
 ```
 
 ### Reference Launch Packet: A2-C-LOOP-2026-06-02
@@ -1279,7 +1299,8 @@ status: promoted into A6 handoff trunk at 4a84600; reference/history only
 | O2 Modal runtime context implementation | `codex/observability-sidecar-core` | committed | O2_PREP_COMPLETE | G3 partial | Commit `6f3001e` adds optional safe Modal context sidecar enrichment for Cluster 3 only; local fake/context tests pass; real remote context remains unproven until a later approved execution packet; no Modal/output/generation/billing/cost/performance/result-row mutation authorized. |
 | O3-Prep token telemetry launch reconciliation | `codex/observability-sidecar-core` | committed | O2 committed | O3 prep complete | Commit `c93bdc0` names later O3 target surfaces as `shared/observability/schema.py`, `shared/observability/redaction.py`, `shared/observability/logger.py`, `cluster3/experiments/run_cluster3_modal.py`, and their focused tests; O3 token telemetry is counts/status only. |
 | O3 token telemetry implementation | `codex/observability-sidecar-core` | committed | O3_PREP_COMPLETE | G3 partial | Commit `4ddc767` adds count/status-only token schema, fail-closed token/raw/private payload rejection, event-derived summary `token_totals`, and Cluster 3 injected-count/unavailable-safe sidecar wiring; no tokenizer/model/generation execution, output mutation, result-row schema mutation, billing/cost, or performance telemetry. |
-| O4-Prep estimated cost telemetry launch reconciliation | `codex/observability-sidecar-core` | active docs-only reconciliation | O3 committed | O4 prep complete | Names later O4 target surfaces as `shared/observability/schema.py`, `shared/observability/redaction.py`, `shared/observability/logger.py`, and `cluster3/experiments/run_cluster3_modal.py` only for supplied estimated/unavailable sidecar cost metadata; no runtime code, actual billing, invoices, external pricing fetch, cost-per-success, pass@k cost, ROI, economic-lift, benchmark economics, output mutation, analyzer change, dependency change, or result-row schema mutation. |
+| O4-Prep estimated cost telemetry launch reconciliation | `codex/observability-sidecar-core` | committed | O3 committed | O4 prep complete | Commit `d30aa50` names later O4 target surfaces as `shared/observability/schema.py`, `shared/observability/redaction.py`, `shared/observability/logger.py`, and `cluster3/experiments/run_cluster3_modal.py` only for supplied estimated/unavailable sidecar cost metadata; no runtime code, actual billing, invoices, external pricing fetch, cost-per-success, pass@k cost, ROI, economic-lift, benchmark economics, output mutation, analyzer change, dependency change, or result-row schema mutation. |
+| O4 estimated cost telemetry implementation | `codex/observability-sidecar-core` | local implementation complete pending review | O4_PREP_COMPLETE | G3 partial | Reconciles `ObservabilityCostEstimate` to the O4 allowed field set, adds fail-closed cost/billing/economic redaction, validates event-derived `estimated_cost_summary`, and wires Cluster 3 dependency-injected supplied/unavailable cost sidecars only; no actual billing, invoice, external pricing fetch, output mutation, result-row schema mutation, analyzer/economic metric change, dependency change, or performance telemetry. |
 | A2 C-loop integration | `codex/llm-repair-memory-agentic-transcript-v1` | promoted/reference | A1 | G6 partial | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a2_c_loop_integration_report.md` v1.0.0 records default `last_attempt_only_v1` preserved, `agentic_transcript_v1` opt-in, and no Modal/output mutation. |
 | A3 P-loop integration | `codex/llm-repair-memory-agentic-transcript-v1` | promoted/reference | A1/A2 | G6 partial | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a3_p_loop_integration_report.md` v1.0.0 records default `last_attempt_only_v1` preserved, `agentic_transcript_v1` opt-in, F1_COMPILE-only P eligibility preserved, and no Modal/output/generation mutation. |
 | A4 P-to-C isolation | `codex/llm-repair-memory-agentic-transcript-v1` | promoted/reference | A2/A3 complete | G6 partial | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md` v1.0.0 remains the isolation evidence snapshot. |

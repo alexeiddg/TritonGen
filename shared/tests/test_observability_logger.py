@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from shared.observability.logger import (
     ObservabilityJsonlAppendLogger,
+    estimated_cost_summary,
     file_sha256,
     load_observability_events,
     token_totals,
@@ -24,6 +25,7 @@ from shared.observability.paths import (
 from shared.observability.schema import (
     ObservabilityArtifactIdentity,
     ObservabilityAttemptIdentity,
+    ObservabilityCostEstimate,
     ObservabilityEvent,
     ObservabilityHashSidecar,
     ObservabilityRowIdentity,
@@ -438,6 +440,39 @@ def test_atomic_summary_writer_rejects_event_stream_mismatches(tmp_path: Path) -
     assert not paths.summary_path.exists()
 
 
+def test_summary_rejects_mismatched_estimated_cost_summary(tmp_path: Path) -> None:
+    result = tmp_path / "outputs" / "cluster3" / "matrix.jsonl"
+    paths = resolve_observability_paths(result, workspace_root=tmp_path)
+    _write_two_events(paths.event_path, paths.summary_path, paths.hash_path, result)
+    summary = _summary(
+        result_path=str(result),
+        event_path=str(paths.event_path),
+        summary_path=str(paths.summary_path),
+        source_event_hash=file_sha256(paths.event_path),
+    )
+
+    with pytest.raises(ValueError, match="estimated_cost_summary"):
+        write_observability_summary_atomic(
+            paths.summary_path,
+            summary.model_copy(
+                update={
+                    "estimated_cost_summary": {
+                        "cost_estimate_available": True,
+                        "estimated_input_cost": 1.0,
+                        "estimated_output_cost": 2.0,
+                        "estimated_total_cost": 3.0,
+                        "currency": "USD",
+                        "pricing_source": "test_fixture",
+                        "pricing_source_version": "2026-06-03",
+                        "cost_estimate_status": "estimated",
+                        "cost_estimate_method": "test_fixture",
+                    }
+                }
+            ),
+            fsync=False,
+        )
+
+
 def test_token_totals_preserve_missing_partial_count_components(tmp_path: Path) -> None:
     result = tmp_path / "outputs" / "cluster3" / "matrix.jsonl"
     paths = resolve_observability_paths(result, workspace_root=tmp_path)
@@ -468,6 +503,54 @@ def test_token_totals_preserve_missing_partial_count_components(tmp_path: Path) 
         "total_tokens": None,
         "token_count_sources": ["existing_generation_result"],
     }
+
+
+def test_estimated_cost_summary_aggregates_valid_event_costs(tmp_path: Path) -> None:
+    result = tmp_path / "outputs" / "cluster3" / "matrix.jsonl"
+    paths = resolve_observability_paths(result, workspace_root=tmp_path)
+    events = (
+        _event(
+            0,
+            result_path=str(result),
+            event_path=str(paths.event_path),
+            summary_path=str(paths.summary_path),
+        ).model_copy(update={"cost_estimate": _safe_cost_estimate(0.10, 0.03)}),
+        _event(
+            1,
+            result_path=str(result),
+            event_path=str(paths.event_path),
+            summary_path=str(paths.summary_path),
+        ).model_copy(update={"cost_estimate": _safe_cost_estimate(0.20, 0.07)}),
+    )
+
+    assert estimated_cost_summary(events) == {
+        "cost_estimate_available": True,
+        "estimated_input_cost": 0.3,
+        "estimated_output_cost": 0.1,
+        "estimated_total_cost": 0.4,
+        "currency": "USD",
+        "pricing_source": "test_fixture",
+        "pricing_source_version": "2026-06-03",
+        "cost_estimate_status": "estimated",
+        "cost_estimate_method": "test_fixture",
+    }
+
+
+def test_estimated_cost_summary_is_unavailable_safe_for_missing_costs(
+    tmp_path: Path,
+) -> None:
+    result = tmp_path / "outputs" / "cluster3" / "matrix.jsonl"
+    paths = resolve_observability_paths(result, workspace_root=tmp_path)
+    events = (
+        _event(
+            0,
+            result_path=str(result),
+            event_path=str(paths.event_path),
+            summary_path=str(paths.summary_path),
+        ),
+    )
+
+    assert estimated_cost_summary(events) == _unavailable_cost_summary()
 
 
 def test_atomic_hash_writer_rejects_stale_artifact_metadata(tmp_path: Path) -> None:
@@ -843,10 +926,41 @@ def _summary(
             "token_count_sources": ["not_applicable"],
         },
         modal_context_summary={"status": "unavailable"},
-        estimated_cost_summary={"estimate_status": "not_implemented"},
+        estimated_cost_summary=_unavailable_cost_summary(),
         actual_billing_status="not_implemented",
         completeness_status="complete",
         caveats=[],
         source_event_sha256=source_event_hash,
         summary_sha256=None,
     )
+
+
+def _safe_cost_estimate(
+    input_cost: float,
+    output_cost: float,
+) -> ObservabilityCostEstimate:
+    return ObservabilityCostEstimate(
+        cost_estimate_available=True,
+        estimated_input_cost=input_cost,
+        estimated_output_cost=output_cost,
+        estimated_total_cost=round(input_cost + output_cost, 12),
+        currency="USD",
+        pricing_source="test_fixture",
+        pricing_source_version="2026-06-03",
+        cost_estimate_status="estimated",
+        cost_estimate_method="test_fixture",
+    )
+
+
+def _unavailable_cost_summary() -> dict[str, object]:
+    return {
+        "cost_estimate_available": False,
+        "estimated_input_cost": None,
+        "estimated_output_cost": None,
+        "estimated_total_cost": None,
+        "currency": None,
+        "pricing_source": None,
+        "pricing_source_version": None,
+        "cost_estimate_status": "unavailable",
+        "cost_estimate_method": "unavailable",
+    }

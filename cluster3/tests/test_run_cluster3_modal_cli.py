@@ -100,6 +100,34 @@ def _safe_token_counts() -> dict[str, object]:
     }
 
 
+def _safe_cost_estimate() -> dict[str, object]:
+    return {
+        "cost_estimate_available": True,
+        "estimated_input_cost": 0.12,
+        "estimated_output_cost": 0.03,
+        "estimated_total_cost": 0.15,
+        "currency": "USD",
+        "pricing_source": "test_fixture",
+        "pricing_source_version": "2026-06-03",
+        "cost_estimate_status": "estimated",
+        "cost_estimate_method": "test_fixture",
+    }
+
+
+def _unavailable_cost_summary() -> dict[str, object]:
+    return {
+        "cost_estimate_available": False,
+        "estimated_input_cost": None,
+        "estimated_output_cost": None,
+        "estimated_total_cost": None,
+        "currency": None,
+        "pricing_source": None,
+        "pricing_source_version": None,
+        "cost_estimate_status": "unavailable",
+        "cost_estimate_method": "unavailable",
+    }
+
+
 def _result(
     failure_code: str | None,
     *,
@@ -1617,6 +1645,7 @@ def test_observability_off_preserves_stable_run_id_and_writes_no_sidecar(
     event_path = tmp_path / "ignored.observability.jsonl"
     context_provider_called = False
     token_counts_provider_called = False
+    cost_estimate_provider_called = False
 
     def context_provider() -> dict[str, object]:
         nonlocal context_provider_called
@@ -1627,6 +1656,11 @@ def test_observability_off_preserves_stable_run_id_and_writes_no_sidecar(
         nonlocal token_counts_provider_called
         token_counts_provider_called = True
         return _safe_token_counts()
+
+    def cost_estimate_provider(context: dict[str, object]) -> dict[str, object]:
+        nonlocal cost_estimate_provider_called
+        cost_estimate_provider_called = True
+        return _safe_cost_estimate()
 
     base = _config(tmp_path, "P")
     explicit_off = _config(
@@ -1646,11 +1680,13 @@ def test_observability_off_preserves_stable_run_id_and_writes_no_sidecar(
             correctness=CorrectnessRecorder(_result(None)),
             modal_context_provider=context_provider,
             token_counts_provider=token_counts_provider,
+            cost_estimate_provider=cost_estimate_provider,
         ),
     )
 
     assert context_provider_called is False
     assert token_counts_provider_called is False
+    assert cost_estimate_provider_called is False
     assert not event_path.exists()
     assert not default_observability_hash_path(event_path).exists()
     assert not default_observability_summary_path(explicit_off.output).exists()
@@ -1710,6 +1746,12 @@ def test_observability_required_writes_valid_sidecars_in_tmp_path(
         for event in events
         if event.token_counts is not None
     } == {False}
+    assert {event.cost_estimate is not None for event in events} == {True}
+    assert {
+        event.cost_estimate.cost_estimate_available
+        for event in events
+        if event.cost_estimate is not None
+    } == {False}
 
     payload = json.dumps(
         [event.model_dump(mode="json") for event in events],
@@ -1746,10 +1788,21 @@ def test_observability_required_writes_valid_sidecars_in_tmp_path(
         "benchmark",
         "profiler",
         "actual_cost",
+        "actual_billing",
         "invoice",
+        "account_charge",
+        "provider_bill",
+        "modal_bill",
+        "billing_api_response",
+        "pricing_api_response",
         "billing_claim",
         "cost_per_success",
+        "cost_per_pass",
+        "pass_at_k_cost",
         "pass@k",
+        "roi",
+        "economic_lift",
+        "benchmark_cost_conclusion",
         "lift",
         "statistical",
     ):
@@ -1780,6 +1833,7 @@ def test_observability_required_writes_valid_sidecars_in_tmp_path(
         "total_tokens": 0,
         "token_count_sources": ["unavailable"],
     }
+    assert summary.estimated_cost_summary == _unavailable_cost_summary()
     assert summary.modal_context_summary == {
         "context_status": "unavailable",
         "events_with_modal_context": 6,
@@ -1899,6 +1953,69 @@ def test_observability_enabled_modes_include_supplied_safe_token_counts(
     }
 
 
+@pytest.mark.parametrize("mode", ["best_effort", "required"])
+def test_observability_enabled_modes_include_supplied_safe_cost_estimates(
+    tmp_path: Path,
+    mode: str,
+) -> None:
+    event_path = tmp_path / f"{mode}-cost-estimates.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode=mode,
+        observability_experiment_id="cluster3-o4",
+        observability_run_id=f"run-{mode}-cost-estimates",
+        observability_output=str(event_path),
+    )
+    provider_contexts: list[dict[str, object]] = []
+
+    def cost_estimate_provider(context: dict[str, object]) -> dict[str, object] | None:
+        provider_contexts.append(dict(context))
+        if context["event_type"] == "row_completed":
+            return _safe_cost_estimate()
+        return None
+
+    run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+            cost_estimate_provider=cost_estimate_provider,
+        ),
+    )
+
+    events = load_observability_events(event_path)
+    assert len(events) == 6
+    assert len(provider_contexts) == 6
+    assert {tuple(sorted(context)) for context in provider_contexts} == {
+        ("condition", "event_sequence", "event_type", "stage", "status")
+    }
+    available = [
+        event.cost_estimate
+        for event in events
+        if event.cost_estimate is not None
+        and event.cost_estimate.cost_estimate_available
+    ]
+    assert len(available) == 1
+    assert available[0].estimated_total_cost == 0.15
+    assert available[0].pricing_source == "test_fixture"
+
+    summary = ObservabilitySummary.model_validate_json(
+        default_observability_summary_path(config.output).read_text(encoding="utf-8")
+    )
+    assert summary.estimated_cost_summary == {
+        "cost_estimate_available": True,
+        "estimated_input_cost": 0.12,
+        "estimated_output_cost": 0.03,
+        "estimated_total_cost": 0.15,
+        "currency": "USD",
+        "pricing_source": "test_fixture",
+        "pricing_source_version": "2026-06-03",
+        "cost_estimate_status": "estimated",
+        "cost_estimate_method": "test_fixture",
+    }
+
+
 def test_observability_best_effort_invalid_token_counts_degrades_safely(
     tmp_path: Path,
 ) -> None:
@@ -1920,6 +2037,37 @@ def test_observability_best_effort_invalid_token_counts_degrades_safely(
             token_counts_provider=lambda _context: {
                 **_safe_token_counts(),
                 "prompt_tokens": -1,
+            },
+        ),
+    )
+
+    assert len(result.rows) == 1
+    assert event_path.exists()
+    assert event_path.read_text(encoding="utf-8") == ""
+    assert not default_observability_summary_path(config.output).exists()
+
+
+def test_observability_best_effort_invalid_cost_estimate_degrades_safely(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "best-effort-invalid-cost-estimate.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="best_effort",
+        observability_experiment_id="cluster3-o4",
+        observability_run_id="run-best-effort-invalid-cost-estimate",
+        observability_output=str(event_path),
+    )
+
+    result = run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+            cost_estimate_provider=lambda _context: {
+                **_safe_cost_estimate(),
+                "estimated_input_cost": -1.0,
             },
         ),
     )
@@ -1954,6 +2102,39 @@ def test_observability_required_invalid_token_counts_fails_before_runner_work(
                 token_counts_provider=lambda _context: {
                     **_safe_token_counts(),
                     "prompt_tokens": -1,
+                },
+            ),
+        )
+
+    assert generation.calls == []
+    assert correctness.calls == []
+    assert not Path(config.output).exists()
+
+
+def test_observability_required_invalid_cost_estimate_fails_before_runner_work(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "required-invalid-cost-estimate.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="cluster3-o4",
+        observability_run_id="run-required-invalid-cost-estimate",
+        observability_output=str(event_path),
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(ValueError, match="estimated_input_cost"):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                cost_estimate_provider=lambda _context: {
+                    **_safe_cost_estimate(),
+                    "estimated_input_cost": -1.0,
                 },
             ),
         )

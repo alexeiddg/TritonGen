@@ -61,6 +61,19 @@ _SAFE_MODAL_CONTEXT_KEYS = {
     "events_with_available_context",
     "modal_context_sources",
 }
+_SAFE_COST_ESTIMATE_KEYS = {
+    "cost_estimate",
+    "estimated_cost_summary",
+    "cost_estimate_available",
+    "estimated_input_cost",
+    "estimated_output_cost",
+    "estimated_total_cost",
+    "currency",
+    "pricing_source",
+    "pricing_source_version",
+    "cost_estimate_status",
+    "cost_estimate_method",
+}
 _SAFE_ID_KEYS = {
     "event_id",
     "run_id",
@@ -69,15 +82,10 @@ _SAFE_ID_KEYS = {
     "task_id",
     "image_id",
     "clock_scope_id",
-    "price_snapshot_id",
-    "snapshot_id",
 }
 _SAFE_STATUS_KEYS = {
     "actual_billing_status",
     "summary_status",
-    "estimate_status",
-    "cost_basis",
-    "estimation_confidence",
 }
 _FORBIDDEN_EXACT_KEYS = {
     "authorization",
@@ -143,10 +151,39 @@ _FORBIDDEN_KEY_PATTERNS = (
     "identity_token",
     "authorization_header",
     "actual_cost",
+    "actual_billing",
     "actual_billing_cost",
+    "account_charge",
     "billing_data",
     "billing_report",
+    "billing_api_response",
+    "pricing_api_response",
+    "provider_bill",
+    "provider_billing",
+    "modal_bill",
+    "modal_billing",
     "invoice",
+    "cloud_invoice_dump",
+    "external_pricing_fetch",
+    "credit_card",
+    "payment_method",
+    "billing_account",
+    "cost_per_success",
+    "cost_per_pass",
+    "pass_at_k_cost",
+    "roi",
+    "economic_lift",
+    "benchmark_cost_conclusion",
+    "price_snapshot_id",
+    "estimated_gpu_seconds",
+    "estimated_cpu_core_seconds",
+    "estimated_memory_gib_seconds",
+    "estimated_gpu_cost_usd",
+    "estimated_cpu_cost_usd",
+    "estimated_memory_cost_usd",
+    "estimated_total_cost_usd",
+    "estimation_confidence",
+    "cost_basis",
     "gpu_utilization",
     "gpu_power",
     "gpu_memory",
@@ -316,6 +353,8 @@ def _reject_forbidden_key(key: str, *, path: str) -> None:
         return
     if normalized in _SAFE_MODAL_CONTEXT_KEYS or normalized in _SAFE_STATUS_KEYS:
         return
+    if normalized in _SAFE_COST_ESTIMATE_KEYS:
+        return
     if normalized in _SAFE_ID_KEYS:
         return
     if normalized in _FORBIDDEN_EXACT_KEYS:
@@ -335,7 +374,8 @@ def _reject_forbidden_string(value: str, *, path: str) -> None:
 
 
 def _normalize_key(key: str) -> str:
-    camel_split = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key.strip())
+    acronym_split = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", "_", key.strip())
+    camel_split = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", acronym_split)
     return re.sub(r"[^a-z0-9]+", "_", camel_split.lower()).strip("_")
 
 

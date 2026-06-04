@@ -323,6 +323,56 @@ def token_totals(events: tuple[ObservabilityEvent, ...]) -> dict[str, object]:
     }
 
 
+def estimated_cost_summary(events: tuple[ObservabilityEvent, ...]) -> dict[str, object]:
+    """Return estimated/unavailable cost metadata derived from an event stream."""
+
+    cost_events = [
+        event.cost_estimate for event in events if event.cost_estimate is not None
+    ]
+    available_events = [
+        estimate for estimate in cost_events if estimate.cost_estimate_available
+    ]
+    if not available_events:
+        return _unavailable_estimated_cost_summary()
+
+    currencies = {estimate.currency for estimate in available_events}
+    pricing_sources = {estimate.pricing_source for estimate in available_events}
+    pricing_versions = {estimate.pricing_source_version for estimate in available_events}
+    methods = {estimate.cost_estimate_method for estimate in available_events}
+    if currencies != {"USD"}:
+        raise ValueError("available cost estimates must use a single USD currency")
+    if len(pricing_sources) != 1 or None in pricing_sources:
+        raise ValueError("available cost estimates must use one pricing_source")
+    if len(pricing_versions) != 1 or None in pricing_versions:
+        raise ValueError("available cost estimates must use one pricing_source_version")
+    if len(methods) != 1:
+        raise ValueError("available cost estimates must use one cost_estimate_method")
+
+    input_cost = _sum_cost_values(
+        tuple(estimate.estimated_input_cost for estimate in available_events)
+    )
+    output_cost = _sum_cost_values(
+        tuple(estimate.estimated_output_cost for estimate in available_events)
+    )
+    total_cost = _sum_cost_values(
+        tuple(estimate.estimated_total_cost for estimate in available_events)
+    )
+    if total_cost != _round_cost(input_cost + output_cost):
+        raise ValueError("estimated_total_cost does not match input/output cost totals")
+
+    return {
+        "cost_estimate_available": True,
+        "estimated_input_cost": input_cost,
+        "estimated_output_cost": output_cost,
+        "estimated_total_cost": total_cost,
+        "currency": "USD",
+        "pricing_source": next(iter(pricing_sources)),
+        "pricing_source_version": next(iter(pricing_versions)),
+        "cost_estimate_status": "estimated",
+        "cost_estimate_method": next(iter(methods)),
+    }
+
+
 def write_observability_summary_atomic(
     summary_path: str | Path,
     summary: ObservabilitySummary | dict,
@@ -433,6 +483,8 @@ def _validate_summary_against_event_stream(summary: ObservabilitySummary) -> Non
         raise ValueError("summary stage_durations_ns do not match event stream")
     if summary.token_totals != token_totals(events):
         raise ValueError("summary token_totals do not match event stream")
+    if summary.estimated_cost_summary != estimated_cost_summary(events):
+        raise ValueError("summary estimated_cost_summary does not match event stream")
 
 
 def _validate_hash_sidecar_against_artifacts(sidecar: ObservabilityHashSidecar) -> None:
@@ -461,6 +513,30 @@ def _reject_write_path_collisions(
             raise ValueError(f"{path_name} collides with {other_name}")
     if path.exists() and not path.is_file():
         raise ValueError(f"{path_name} points at an existing non-file path")
+
+
+def _unavailable_estimated_cost_summary() -> dict[str, object]:
+    return {
+        "cost_estimate_available": False,
+        "estimated_input_cost": None,
+        "estimated_output_cost": None,
+        "estimated_total_cost": None,
+        "currency": None,
+        "pricing_source": None,
+        "pricing_source_version": None,
+        "cost_estimate_status": "unavailable",
+        "cost_estimate_method": "unavailable",
+    }
+
+
+def _sum_cost_values(values: tuple[float | None, ...]) -> float:
+    if any(value is None for value in values):
+        raise ValueError("available cost estimates require complete cost values")
+    return _round_cost(sum(value for value in values if value is not None))
+
+
+def _round_cost(value: float) -> float:
+    return round(value, 12)
 
 
 def _write_bytes_atomic(path: Path, payload: bytes, *, fsync: bool) -> None:

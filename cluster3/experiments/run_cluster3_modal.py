@@ -82,6 +82,7 @@ from shared.generation_metadata import (
 from shared.observability import (
     ObservabilityArtifactIdentity,
     ObservabilityAttemptIdentity,
+    ObservabilityCostEstimate,
     ObservabilityErrorSummary,
     ObservabilityEvent,
     ObservabilityJsonlAppendLogger,
@@ -95,6 +96,7 @@ from shared.observability import (
     resolve_observability_paths,
 )
 from shared.observability.logger import (
+    estimated_cost_summary as observability_estimated_cost_summary,
     event_counts as observability_event_counts,
     stage_durations_ns as observability_stage_durations_ns,
     token_totals as observability_token_totals,
@@ -134,6 +136,9 @@ ObservabilityLoggerFactory = Callable[..., ObservabilityJsonlAppendLogger]
 ModalContextProvider = Callable[[], Mapping[str, Any] | ObservabilityModalContext | None]
 TokenCountsProvider = Callable[
     [Mapping[str, Any]], Mapping[str, Any] | ObservabilityTokenCounts | None
+]
+CostEstimateProvider = Callable[
+    [Mapping[str, Any]], Mapping[str, Any] | ObservabilityCostEstimate | None
 ]
 
 
@@ -289,6 +294,7 @@ class RunnerDependencies:
     observability_logger_factory: ObservabilityLoggerFactory | None = None
     modal_context_provider: ModalContextProvider | None = None
     token_counts_provider: TokenCountsProvider | None = None
+    cost_estimate_provider: CostEstimateProvider | None = None
 
 
 @dataclass(frozen=True)
@@ -340,6 +346,7 @@ class _Cluster3ObservabilityRuntime:
     next_event_sequence: int = 0
     modal_context: ObservabilityModalContext | None = None
     token_counts_provider: TokenCountsProvider | None = None
+    cost_estimate_provider: CostEstimateProvider | None = None
     disabled_reason: str | None = None
 
     @property
@@ -575,17 +582,25 @@ class _Cluster3ObservabilityRuntime:
         assert self.branch is not None
         events = load_observability_events(self.paths.event_path)
         token_totals = observability_token_totals(events)
+        cost_summary = observability_estimated_cost_summary(events)
         caveats = [
             "O2 Modal context is optional and unavailable-safe; real remote "
             "context remains unproven until an approved execution packet.",
             "O3 token telemetry is count/status-only and does not execute "
             "tokenizers, models, or generation paths.",
-            "Estimated cost and billing reconciliation are not implemented.",
+            "O4 estimated cost telemetry is supplied/unavailable sidecar metadata "
+            "only and does not query billing, pricing APIs, invoices, or dashboards.",
+            "Actual billing reconciliation remains future O5 work.",
         ]
         if token_totals["events_with_available_token_counts"] == 0:
             caveats.append(
                 "Real token counts remain unavailable in this local runner path "
                 "until an approved existing count source is supplied."
+            )
+        if not cost_summary["cost_estimate_available"]:
+            caveats.append(
+                "Real estimated cost remains unavailable until an approved supplied "
+                "or static pricing source is provided."
             )
         summary = ObservabilitySummary(
             experiment_id=self.config.observability_experiment_id or "",
@@ -602,7 +617,7 @@ class _Cluster3ObservabilityRuntime:
             stage_durations_ns=observability_stage_durations_ns(events),
             token_totals=token_totals,
             modal_context_summary=_observability_modal_context_summary(events),
-            estimated_cost_summary={"estimate_status": "not_implemented"},
+            estimated_cost_summary=cost_summary,
             actual_billing_status="not_implemented",
             completeness_status="complete",
             caveats=caveats,
@@ -671,7 +686,11 @@ class _Cluster3ObservabilityRuntime:
                     status=status,
                 ),
                 modal_context=self.modal_context,
-                cost_estimate=None,
+                cost_estimate=self._cost_estimate_for_event(
+                    event_type=event_type,
+                    stage=stage,
+                    status=status,
+                ),
                 error_summary=safe_error_summary,
                 attributes=dict(attributes or {}),
             )
@@ -707,6 +726,30 @@ class _Cluster3ObservabilityRuntime:
         if isinstance(payload, ObservabilityTokenCounts):
             return ObservabilityTokenCounts.model_validate(payload.model_dump(mode="json"))
         return ObservabilityTokenCounts.model_validate(dict(payload))
+
+    def _cost_estimate_for_event(
+        self,
+        *,
+        event_type: str,
+        stage: str | None,
+        status: str,
+    ) -> ObservabilityCostEstimate:
+        if self.cost_estimate_provider is None:
+            return _unavailable_observability_cost_estimate()
+        payload = self.cost_estimate_provider(
+            {
+                "event_sequence": self.next_event_sequence,
+                "event_type": event_type,
+                "stage": stage,
+                "status": status,
+                "condition": self.config.condition,
+            }
+        )
+        if payload is None:
+            return _unavailable_observability_cost_estimate()
+        if isinstance(payload, ObservabilityCostEstimate):
+            return ObservabilityCostEstimate.model_validate(payload.model_dump(mode="json"))
+        return ObservabilityCostEstimate.model_validate(dict(payload))
 
     def _append_event(self, event: ObservabilityEvent) -> None:
         if self.logger is None:
@@ -1195,6 +1238,7 @@ def _open_observability_runtime(
             next_event_sequence=next_event_sequence,
             modal_context=modal_context,
             token_counts_provider=deps.token_counts_provider,
+            cost_estimate_provider=deps.cost_estimate_provider,
         )
     except Exception as exc:
         if config.observability_mode == "required":
@@ -1248,6 +1292,14 @@ def _unavailable_observability_token_counts() -> ObservabilityTokenCounts:
         token_counts_available=False,
         token_count_source="unavailable",
         token_count_status="unavailable",
+    )
+
+
+def _unavailable_observability_cost_estimate() -> ObservabilityCostEstimate:
+    return ObservabilityCostEstimate(
+        cost_estimate_available=False,
+        cost_estimate_status="unavailable",
+        cost_estimate_method="unavailable",
     )
 
 

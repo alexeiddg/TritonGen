@@ -92,6 +92,31 @@ def test_sanitize_attributes_accepts_only_shallow_json_primitives() -> None:
         {"billing": {"workspace": "secret"}},
         {"invoice_id": "invoice-1"},
         {"actual_cost": "1.00"},
+        {"actualBilling": "1.00"},
+        {"actual_billing": "1.00"},
+        {"account_charge": "1.00"},
+        {"provider_bill": "1.00"},
+        {"modalBill": "1.00"},
+        {"credit_card": "4111111111111111"},
+        {"paymentMethod": "card"},
+        {"billing_account": "acct-1"},
+        {"billing_api_response": {"cost": 1}},
+        {"pricingApiResponse": {"rate": 1}},
+        {"billingAPIResponse": {"cost": 1}},
+        {"pricingAPIResponse": {"rate": 1}},
+        {"cloud_invoice_dump": "invoice"},
+        {"external_pricing_fetch": "https://example.invalid/pricing"},
+        {"externalPRICINGFetch": "https://example.invalid/pricing"},
+        {"cost_per_success": 1.0},
+        {"costPerPass": 1.0},
+        {"pass_at_k_cost": 1.0},
+        {"ROI": 1.0},
+        {"economic_lift": 1.0},
+        {"benchmark_cost_conclusion": "cheaper"},
+        {"price_snapshot_id": "legacy-snapshot"},
+        {"estimated_gpu_seconds": 1.0},
+        {"estimated_total_cost_usd": "1.00"},
+        {"cost_basis": "billing_report_interval"},
         {"gpu_utilization": 50},
         {"gpuPower": 10},
         {"gpu_memory": 1024},
@@ -128,6 +153,35 @@ def test_safe_token_count_fields_remain_allowed() -> None:
                 "generated_tokens": 3,
                 "total_tokens": 5,
                 "token_count_sources": ["existing_generation_result"],
+            },
+        }
+    )
+
+
+def test_safe_estimated_cost_fields_remain_allowed() -> None:
+    reject_forbidden_observability_payload(
+        {
+            "cost_estimate": {
+                "cost_estimate_available": True,
+                "estimated_input_cost": 0.12,
+                "estimated_output_cost": 0.03,
+                "estimated_total_cost": 0.15,
+                "currency": "USD",
+                "pricing_source": "test_fixture",
+                "pricing_source_version": "2026-06-03",
+                "cost_estimate_status": "estimated",
+                "cost_estimate_method": "test_fixture",
+            },
+            "estimated_cost_summary": {
+                "cost_estimate_available": True,
+                "estimated_input_cost": 0.12,
+                "estimated_output_cost": 0.03,
+                "estimated_total_cost": 0.15,
+                "currency": "USD",
+                "pricing_source": "test_fixture",
+                "pricing_source_version": "2026-06-03",
+                "cost_estimate_status": "estimated",
+                "cost_estimate_method": "test_fixture",
             },
         }
     )

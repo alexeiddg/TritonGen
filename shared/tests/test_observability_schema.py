@@ -238,14 +238,158 @@ def test_numeric_telemetry_rejects_coerced_types() -> None:
 def test_nonfinite_cost_numbers_are_rejected_before_serialization() -> None:
     with pytest.raises(ValidationError):
         ObservabilityCostEstimate(
-            estimate_status="estimated",
-            estimated_gpu_seconds=float("inf"),
-            estimation_confidence="low",
-            cost_basis="unavailable",
+            cost_estimate_available=True,
+            estimated_input_cost=0.1,
+            estimated_output_cost=float("inf"),
+            estimated_total_cost=float("inf"),
+            currency="USD",
+            pricing_source="test_fixture",
+            pricing_source_version="v1",
+            cost_estimate_status="estimated",
+            cost_estimate_method="test_fixture",
         )
 
     with pytest.raises(ValueError):
-        canonical_json_bytes({"estimated_gpu_seconds": float("inf")})
+        canonical_json_bytes({"estimated_input_cost": float("inf")})
+
+
+def test_cost_estimate_accepts_safe_estimates_and_unavailable_status() -> None:
+    estimate = ObservabilityCostEstimate(
+        cost_estimate_available=True,
+        estimated_input_cost=0.12,
+        estimated_output_cost=0.03,
+        estimated_total_cost=0.15,
+        currency="USD",
+        pricing_source="test_fixture",
+        pricing_source_version="2026-06-03",
+        cost_estimate_status="estimated",
+        cost_estimate_method="test_fixture",
+    )
+    assert estimate.estimated_total_cost == 0.15
+
+    unavailable = ObservabilityCostEstimate(
+        cost_estimate_available=False,
+        cost_estimate_status="unavailable",
+        cost_estimate_method="unavailable",
+    )
+    assert unavailable.estimated_total_cost is None
+
+
+@pytest.mark.parametrize(
+    "update",
+    [
+        {"estimated_input_cost": -0.01},
+        {"estimated_input_cost": True},
+        {"estimated_input_cost": "0.01"},
+        {"estimated_input_cost": float("nan")},
+        {"estimated_input_cost": 0.1234567890123},
+        {"currency": "EUR"},
+        {"estimated_total_cost": 0.14},
+        {"pricing_source": None},
+        {"pricing_source_version": None},
+        {"cost_estimate_method": "unavailable"},
+    ],
+)
+def test_cost_estimate_rejects_invalid_estimates(update: dict[str, object]) -> None:
+    payload = {
+        "cost_estimate_available": True,
+        "estimated_input_cost": 0.12,
+        "estimated_output_cost": 0.03,
+        "estimated_total_cost": 0.15,
+        "currency": "USD",
+        "pricing_source": "test_fixture",
+        "pricing_source_version": "2026-06-03",
+        "cost_estimate_status": "estimated",
+        "cost_estimate_method": "test_fixture",
+    }
+    payload.update(update)
+    with pytest.raises(ValidationError):
+        ObservabilityCostEstimate.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("pricing_source", "billing_api_response"),
+        ("pricing_source", "pricing_api_response"),
+        ("pricing_source", "cloud_invoice_dump"),
+        ("pricing_source", "external_pricing_fetch"),
+        ("pricing_source", "modal.billing.workspace_billing_report"),
+        ("pricing_source_version", "billingAPIResponse"),
+        ("pricing_source_version", "externalPRICINGFetch"),
+    ],
+)
+def test_cost_estimate_rejects_forbidden_pricing_labels(
+    field: str,
+    value: str,
+) -> None:
+    payload = {
+        "cost_estimate_available": True,
+        "estimated_input_cost": 0.12,
+        "estimated_output_cost": 0.03,
+        "estimated_total_cost": 0.15,
+        "currency": "USD",
+        "pricing_source": "test_fixture",
+        "pricing_source_version": "2026-06-03",
+        "cost_estimate_status": "estimated",
+        "cost_estimate_method": "test_fixture",
+    }
+    payload[field] = value
+    with pytest.raises(ValidationError, match="billing, invoice, API response"):
+        ObservabilityCostEstimate.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "update",
+    [
+        {"estimated_input_cost": 0.01},
+        {"estimated_output_cost": 0.01},
+        {"estimated_total_cost": 0.01},
+        {"currency": "USD"},
+        {"pricing_source": "test_fixture"},
+        {"pricing_source_version": "v1"},
+        {"cost_estimate_status": "estimated"},
+        {"cost_estimate_method": "supplied"},
+    ],
+)
+def test_unavailable_cost_estimate_rejects_estimate_metadata(
+    update: dict[str, object],
+) -> None:
+    payload = {
+        "cost_estimate_available": False,
+        "cost_estimate_status": "unavailable",
+        "cost_estimate_method": "unavailable",
+    }
+    payload.update(update)
+    with pytest.raises(ValidationError):
+        ObservabilityCostEstimate.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "estimate_status",
+        "price_snapshot_id",
+        "estimated_gpu_seconds",
+        "estimated_cpu_core_seconds",
+        "estimated_memory_gib_seconds",
+        "estimated_gpu_cost_usd",
+        "estimated_cpu_cost_usd",
+        "estimated_memory_cost_usd",
+        "estimated_total_cost_usd",
+        "estimation_confidence",
+        "cost_basis",
+    ],
+)
+def test_old_draft_cost_fields_are_rejected(field: str) -> None:
+    payload = {
+        "cost_estimate_available": False,
+        "cost_estimate_status": "unavailable",
+        "cost_estimate_method": "unavailable",
+        field: "draft",
+    }
+    with pytest.raises(ValidationError):
+        ObservabilityCostEstimate.model_validate(payload)
 
 
 def test_modal_context_accepts_safe_allowlisted_fields() -> None:
@@ -449,7 +593,17 @@ def _summary(*, workspace: str = ".") -> ObservabilitySummary:
             "token_count_sources": ["not_applicable"],
         },
         modal_context_summary={"status": "unavailable"},
-        estimated_cost_summary={"estimate_status": "not_implemented"},
+        estimated_cost_summary={
+            "cost_estimate_available": False,
+            "estimated_input_cost": None,
+            "estimated_output_cost": None,
+            "estimated_total_cost": None,
+            "currency": None,
+            "pricing_source": None,
+            "pricing_source_version": None,
+            "cost_estimate_status": "unavailable",
+            "cost_estimate_method": "unavailable",
+        },
         actual_billing_status="not_implemented",
         completeness_status="complete",
         caveats=[],

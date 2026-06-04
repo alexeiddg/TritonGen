@@ -17,12 +17,19 @@ OBSERVABILITY_MODULES = (
 )
 FORBIDDEN_IMPORTS = (
     "anthropic",
+    "boto3",
     "google",
+    "httpx",
+    "mlflow",
     "modal",
     "openai",
+    "requests",
+    "stripe",
     "torch",
     "transformers",
     "triton",
+    "urllib",
+    "wandb",
     "xgrammar",
 )
 MODAL_RUNTIME_PATH = REPO_ROOT / "shared" / "modal_harness" / "runtime.py"

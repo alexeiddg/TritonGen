@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import uuid
+from decimal import Decimal
 from datetime import datetime
 from pathlib import PurePath
 from typing import Any, Literal
@@ -86,14 +88,13 @@ ModalContextSource = Literal[
     "unavailable",
 ]
 CostEstimateStatus = Literal["not_implemented", "not_requested", "unavailable", "estimated"]
-CostBasis = Literal[
-    "caller_observed_remote_call_wall_time",
-    "remote_container_stage_wall_time",
-    "configured_resource_request_time",
-    "billing_report_interval",
+CostEstimateMethod = Literal[
+    "supplied",
+    "static_table",
+    "test_fixture",
     "unavailable",
+    "not_applicable",
 ]
-EstimationConfidence = Literal["low", "medium", "high", "unavailable"]
 ActualBillingStatus = Literal[
     "not_implemented",
     "not_requested",
@@ -325,41 +326,142 @@ class ObservabilityModalContext(_StrictModel):
         return self
 
 
-class ObservabilityCostEstimate(_StrictModel):
-    estimate_status: CostEstimateStatus
-    price_snapshot_id: str | None = None
-    currency: str | None = None
-    estimated_gpu_seconds: float | None = Field(default=None, ge=0)
-    estimated_cpu_core_seconds: float | None = Field(default=None, ge=0)
-    estimated_memory_gib_seconds: float | None = Field(default=None, ge=0)
-    estimated_gpu_cost_usd: str | None = None
-    estimated_cpu_cost_usd: str | None = None
-    estimated_memory_cost_usd: str | None = None
-    estimated_total_cost_usd: str | None = None
-    estimation_confidence: EstimationConfidence
-    cost_basis: CostBasis
-    unavailable_reason: str | None = None
+_FORBIDDEN_COST_LABEL_PATTERNS = (
+    "actual_billing",
+    "actual_cost",
+    "account_charge",
+    "billing",
+    "billing_account",
+    "billing_api_response",
+    "billing_data",
+    "billing_report",
+    "benchmark_cost_conclusion",
+    "cloud_invoice_dump",
+    "cost_per_pass",
+    "cost_per_success",
+    "credit_card",
+    "economic_lift",
+    "external_pricing_fetch",
+    "invoice",
+    "modal_bill",
+    "modal_billing",
+    "pass_at_k_cost",
+    "payment_method",
+    "pricing_api_response",
+    "provider_bill",
+    "provider_billing",
+    "roi",
+)
 
-    @field_validator("price_snapshot_id", "currency", "unavailable_reason")
+
+def _normalize_cost_label(value: str) -> str:
+    acronym_split = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", "_", value.strip())
+    camel_split = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", acronym_split)
+    return re.sub(r"[^a-z0-9]+", "_", camel_split.lower()).strip("_")
+
+
+def _reject_forbidden_cost_label(value: str) -> None:
+    normalized = _normalize_cost_label(value)
+    compact = normalized.replace("_", "")
+    for pattern in _FORBIDDEN_COST_LABEL_PATTERNS:
+        if pattern in normalized or pattern.replace("_", "") in compact:
+            raise ValueError(
+                "pricing source labels must not name billing, invoice, API "
+                "response, external pricing fetch, or economic claim sources"
+            )
+
+
+class ObservabilityCostEstimate(_StrictModel):
+    cost_estimate_available: bool
+    estimated_input_cost: float | None = Field(default=None, ge=0)
+    estimated_output_cost: float | None = Field(default=None, ge=0)
+    estimated_total_cost: float | None = Field(default=None, ge=0)
+    currency: Literal["USD"] | None = None
+    pricing_source: str | None = Field(default=None, max_length=80)
+    pricing_source_version: str | None = Field(default=None, max_length=80)
+    cost_estimate_status: CostEstimateStatus
+    cost_estimate_method: CostEstimateMethod
+
+    @field_validator("pricing_source", "pricing_source_version")
     @classmethod
     def _optional_non_empty(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        return _require_non_empty(value)
+        value = _require_non_empty(value)
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:/@+-]{0,79}", value):
+            raise ValueError("pricing source labels must be bounded safe identifiers")
+        _reject_forbidden_cost_label(value)
+        return value
 
     @field_validator(
-        "estimated_gpu_cost_usd",
-        "estimated_cpu_cost_usd",
-        "estimated_memory_cost_usd",
-        "estimated_total_cost_usd",
+        "estimated_input_cost",
+        "estimated_output_cost",
+        "estimated_total_cost",
     )
     @classmethod
-    def _decimal_string(cls, value: str | None) -> str | None:
+    def _decimal_safe_cost(cls, value: float | None) -> float | None:
         if value is None:
             return None
-        if not re.fullmatch(r"\d+(?:\.\d+)?", value):
-            raise ValueError("cost values must be decimal strings")
+        if not math.isfinite(value):
+            raise ValueError("cost values must be finite")
+        decimal = Decimal(str(value))
+        if decimal.as_tuple().exponent < -12:
+            raise ValueError("cost values must be decimal-safe to 12 places")
         return value
+
+    @model_validator(mode="after")
+    def _cost_contract(self) -> "ObservabilityCostEstimate":
+        cost_values = (
+            self.estimated_input_cost,
+            self.estimated_output_cost,
+            self.estimated_total_cost,
+        )
+        if self.cost_estimate_available:
+            if self.cost_estimate_status != "estimated":
+                raise ValueError("available cost estimates require estimated status")
+            if self.cost_estimate_method not in {
+                "supplied",
+                "static_table",
+                "test_fixture",
+            }:
+                raise ValueError("available cost estimates require an estimate method")
+            if self.currency != "USD":
+                raise ValueError("available cost estimates require USD currency")
+            if self.pricing_source is None or self.pricing_source_version is None:
+                raise ValueError("available cost estimates require pricing source metadata")
+            if any(value is None for value in cost_values):
+                raise ValueError("available cost estimates require all cost values")
+            assert self.estimated_input_cost is not None
+            assert self.estimated_output_cost is not None
+            assert self.estimated_total_cost is not None
+            expected_total = self.estimated_input_cost + self.estimated_output_cost
+            if not math.isclose(
+                self.estimated_total_cost,
+                expected_total,
+                rel_tol=0.0,
+                abs_tol=1e-9,
+            ):
+                raise ValueError(
+                    "estimated_total_cost must equal estimated_input_cost + "
+                    "estimated_output_cost"
+                )
+            reject_forbidden_observability_payload(self.model_dump(mode="json"))
+            return self
+
+        if self.cost_estimate_status == "estimated":
+            raise ValueError("unavailable cost estimates cannot use estimated status")
+        if any(value is not None for value in cost_values):
+            raise ValueError("unavailable cost estimates must not include cost values")
+        if self.currency is not None:
+            raise ValueError("unavailable cost estimates must not include currency")
+        if self.pricing_source is not None or self.pricing_source_version is not None:
+            raise ValueError(
+                "unavailable cost estimates must not include pricing source metadata"
+            )
+        if self.cost_estimate_method not in {"unavailable", "not_applicable"}:
+            raise ValueError("unavailable cost estimates require unavailable method")
+        reject_forbidden_observability_payload(self.model_dump(mode="json"))
+        return self
 
 
 class ObservabilityErrorSummary(_StrictModel):
