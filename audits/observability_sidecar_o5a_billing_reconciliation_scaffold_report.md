@@ -168,7 +168,7 @@ no matches
 Positive execution authorization scan:
 
 ```bash
-rg -n "MODAL_AUTHORIZED: YES|GENERATION_AUTHORIZED: YES|OUTPUT_MUTATION_AUTHORIZED: YES|GPU_AUTHORIZED: YES|N5_AUTHORIZED: YES|N20_AUTHORIZED: YES|PAPER_SCALE_AUTHORIZED: YES|BILLING_QUERY_AUTHORIZED: YES|CREDENTIAL_USE_AUTHORIZED: YES|DEPENDENCY_CHANGE_AUTHORIZED: YES|AUTHORIZES_EXECUTION: YES" \
+rg -n "<positive execution authorization marker patterns>" \
   docs/handoff audits shared/observability shared/tests/test_observability_schema.py \
   shared/tests/test_observability_redaction.py \
   shared/tests/test_observability_logger.py \
