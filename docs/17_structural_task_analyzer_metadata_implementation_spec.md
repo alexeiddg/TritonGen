@@ -1,7 +1,7 @@
 # Structural/Task Analyzer Metadata Implementation Spec
 
-- Version: 0.1.2
-- Date: 2026-05-28
+- Version: 0.1.3
+- Date: 2026-06-04
 - Status: implementation specification / no code changes, output mutation, Modal
   runs, n=5 runs, n=20 runs, paper-scale work, profiler, timing, speedup, or
   benchmark work authorized by itself
@@ -120,6 +120,11 @@ docs/preliminary_report/preliminary_report.md
 docs/preliminary_report/README.md
 ```
 
+S0 may also add the single acceptance evidence file
+`audits/structural_task_s0_terminology_acceptance_report.md`. Other audit
+creation or audit edits remain out of scope for S0 unless a later packet names
+them explicitly.
+
 Forbidden in S0:
 
 ```text
@@ -129,7 +134,7 @@ cluster1/*
 cluster2/*
 cluster3/*
 outputs/*
-audits/*
+audits/* except audits/structural_task_s0_terminology_acceptance_report.md
 ```
 
 S0 exit criteria:

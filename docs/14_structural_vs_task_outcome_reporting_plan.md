@@ -5,6 +5,10 @@
 - Primary goal: make the report answer two separate questions cleanly:
   - what improves generated-code structure?
   - what improves task success?
+- Implementation authority: this document defines the vocabulary and reporting
+  intent. `docs/17_structural_task_analyzer_metadata_implementation_spec.md`
+  is the executable S0-S3 implementation contract for analyzer metadata,
+  report-label sequencing, compatibility, and output-mutation boundaries.
 
 ## Executive Summary
 
@@ -374,3 +378,8 @@ Start with a docs-only PR:
 
 That keeps blast radius low and gives the analyzer/report changes a stable
 contract before implementation.
+
+After `docs/17_structural_task_analyzer_metadata_implementation_spec.md` is in
+force, S0 acceptance should be a short terminology gate confirmation rather
+than a second planning cycle. S1 should then implement only the additive
+analyzer metadata contract defined there.
