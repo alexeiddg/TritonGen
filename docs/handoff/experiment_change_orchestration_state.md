@@ -1,7 +1,7 @@
 # Experiment Change Orchestration State
 
-- Version: 1.5.27
-- Date: 2026-06-03
+- Version: 1.5.28
+- Date: 2026-06-04
 - Status: active live state record
 - Owner: current orchestration agent
 - Contract: `docs/15_experiment_change_orchestration_contract.md`
@@ -371,12 +371,12 @@ reason. Do not backfill missing provenance silently after execution.
 
 | Field | Value |
 |---|---|
-| Git baseline commit | `4ddc7673724a709f8a028b4d52e39b48144b56eb` |
-| Git branch | `codex/observability-sidecar-core` created from promoted `codex-track-handoff-context` |
-| Git status at latest reconciliation | O3 token telemetry is committed at `4ddc767` on `codex/observability-sidecar-core`; O4-Prep docs-only launch reconciliation is active and may change only the named handoff/spec/audit docs; no runtime code, result-row schema, analyzer, raw output, Modal execution, generation, experiment artifact, billing, dependency, lockfile, external pricing fetch, or MLflow runtime artifact changes are authorized or performed |
+| Git baseline commit | `309c451d2710b376cb29b28c73ef28b7ea940bc6` |
+| Git branch | `codex/observability-o5-prep` created from updated `codex-track-handoff-context` |
+| Git status at latest reconciliation | O0-O4 observability package is promoted into local and remote `codex-track-handoff-context` at `309c451`; O5-Prep docs-only actual billing reconciliation target/scope naming is active and may change only the named handoff/spec/audit docs; no runtime code, result-row schema, analyzer, raw output, Modal execution, generation, experiment artifact, billing query, credential use, dependency, lockfile, external pricing fetch, or MLflow runtime artifact changes are authorized or performed |
 | Orchestration contract version | `docs/15_experiment_change_orchestration_contract.md` v1.0.12 |
-| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.63.0 |
-| Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.3 |
+| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.65.0 |
+| Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.4 |
 | Structural/task analyzer metadata spec version | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 |
 | MLflow tracking policy version | `.contracts/research/mlflow_tracking_policy.md` v1.0.0 |
 | Agentic transcript implementation spec version | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5 |
@@ -389,6 +389,7 @@ reason. Do not backfill missing provenance silently after execution.
 | Agentic transcript A4 P-to-C isolation proof | promoted into A6 handoff trunk by commit `4a84600`; `audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md` v1.0.0 remains the evidence snapshot; no Modal/output/generation work performed |
 | Agentic transcript A5 analyzer grouping/quarantine | promoted into A6 handoff trunk by commit `4a84600`; `audits/agentic_transcript_v1_a5_analyzer_grouping_report.md` v1.0.0 remains the evidence snapshot; no Modal/output/generation work performed |
 | Agentic transcript A6 run-packet gate planning | promoted into handoff trunk at commit `4a84600`; `audits/agentic_transcript_v1_a6_run_packet_gate_report.md` v1.0.0 remains the evidence snapshot; `docs/handoff/agentic_transcript_v1_next_run_packet.md` is `DRAFT_NOT_APPROVED` and authorizes no Modal/output/generation/n=5/n=20/paper-scale work |
+| Observability O0-O4 package | promoted into handoff trunk at commit `309c451`; `audits/observability_sidecar_o0_o4_final_acceptance_report.md` records `O0_O4_FINAL_ACCEPTANCE_PASS_WITH_CAVEATS`; actual billing reconciliation remains not started |
 | Current Cluster 3 gate | Phase 14e four-cell n=5 development matrix frozen with warnings; no broader run without explicit approval packet |
 | Paper-scale status | blocked; no Cluster 3 `n=20` until Gate G8 |
 
@@ -401,7 +402,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Worktree | Branch | Commit | State ownership |
 |---|---|---|---|
-| `/Users/alexeidelgado/Desktop/TritonGen` | `codex/observability-sidecar-core` | `4ddc767` plus O4-Prep docs-only reconciliation edits | active observability worktree; O0 sidecar core, O1 Cluster 3 instrumentation, O2-Prep, O2 Modal runtime context, O3-Prep, and O3 token telemetry are committed; O4-Prep is docs-only and authorizes no Modal, output mutation, generation, billing, pricing fetch, dependency, lockfile, analyzer, or runtime-code work |
+| `/Users/alexeidelgado/Desktop/TritonGen` | `codex/observability-o5-prep` | `309c451` plus O5-Prep docs-only reconciliation edits | active O5-Prep worktree; O0-O4 observability package is promoted; O5-Prep is docs-only and authorizes no Modal, output mutation, generation, billing query, credential use, dependency, lockfile, analyzer, or runtime-code work |
 | `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `4a84600` | reference/history worktree only; same A6 commit as the promoted handoff trunk and not the place for observability work |
 | `/Users/alexeidelgado/Desktop/TritonGen/.claude/worktrees/intelligent-pasteur-72d92f` | `claude/intelligent-pasteur-72d92f` | `b0085c1` | external/unknown to this orchestration state; reconcile before relying on it |
 
@@ -409,8 +410,9 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Branch | Stream/package | Worktree | Status | Notes |
 |---|---|---|---|---|
-| `codex-track-handoff-context` | promoted handoff trunk | none while this worktree is on O0 | active baseline | Current promoted trunk is A6 at `4a84600`; use this as the baseline for O0 and future handoff work, not `main`, `ml_migration`, or stale worktrees. |
-| `codex/observability-sidecar-core` | O0 sidecar core / O1 Cluster 3 runner instrumentation / O2 Modal runtime context / O3 token telemetry / O4-Prep estimated cost launch reconciliation | `/Users/alexeidelgado/Desktop/TritonGen` | O4-Prep docs-only reconciliation active | Created from `codex-track-handoff-context` at `4a84600`; O0 committed as `bcdaede`; O1 target state committed as `f088c10`; O1 Cluster 3 instrumentation committed as `8eaef2e`; O2-Prep committed as `74b3acd`; O2 Modal runtime context committed as `6f3001e`; O3-Prep committed as `c93bdc0`; O3 committed as `4ddc767`; O4-Prep authorizes no runtime code, Modal/output/generation/model/tokenizer/billing/pricing-fetch/performance/analyzer/dependency work. |
+| `codex-track-handoff-context` | promoted handoff trunk | none while this worktree is on O5-Prep | active baseline | Current promoted trunk includes MLflow integration ancestry, A2-A6 repair-memory ancestry, and the complete O0-O4 observability package at `309c451`. Use this as the baseline for O5-Prep and future handoff work, not `main`, `ml_migration`, or stale worktrees. |
+| `codex/observability-sidecar-core` | O0-O4 observability package | none after promotion | promoted/reference | Created from `codex-track-handoff-context` at `4a84600`; O0 committed as `bcdaede`; O1 target state committed as `f088c10`; O1 committed as `8eaef2e`; O2-Prep committed as `74b3acd`; O2 committed as `6f3001e`; O3-Prep committed as `c93bdc0`; O3 committed as `4ddc767`; O4-Prep committed as `d30aa50`; O4 committed as `d4244af`; final acceptance committed as `309c451`. Treat as complete/reference, not the place for O5. |
+| `codex/observability-o5-prep` | O5-Prep actual billing reconciliation launch reconciliation | `/Users/alexeidelgado/Desktop/TritonGen` | docs-only reconciliation active | Created from promoted `codex-track-handoff-context` at `309c451`; may edit only the named handoff/spec/audit docs; authorizes no O5 runtime code, billing query, credential use, Modal/output/generation run, analyzer/economic metric change, dependency change, lockfile change, result-row schema change, or historical sidecar/output mutation. |
 | `codex/integrate-mlflow-into-handoff` | MLflow tracking harness integration | none after promotion | promoted/reference | Merged `origin/ml_migration`, preserved handoff doc/audit tracking policy, validated optional/no-op tracking tests, and was absorbed into the promoted handoff trunk before A6. |
 | `codex/llm-repair-memory-agentic-transcript-v1` | A-stream / agentic transcript implementation | `/private/tmp/tritongen-llm-repair-memory` | promoted/reference | Same commit as the promoted handoff trunk at `4a84600`; keep as reference/history, not as an active implementation branch for observability. |
 
@@ -418,7 +420,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Surface | Owner branch | Owner worktree | Scope | Start commit | Expected files | Expected tests | Review checkpoint | Status |
 |---|---|---|---|---|---|---|---|---|
-| O4-Prep estimated cost launch reconciliation | `codex/observability-sidecar-core` | `/Users/alexeidelgado/Desktop/TritonGen` | Docs-only target/scope naming for sidecar-only estimated/unavailable cost metadata | `4ddc7673724a709f8a028b4d52e39b48144b56eb` | `docs/handoff/experiment_change_orchestration_state.md`; `docs/handoff/document_version_registry.md`; `docs/handoff/agentic_document_hub.md`; `docs/16_observability_sidecar_implementation_spec.md`; `audits/observability_sidecar_o4_prep_report.md` | `git diff --check`; forbidden code-scope diff; positive authorization scan; forbidden O4 scope scan reviewed as prohibitions/caveats/stop conditions only | Independent O4-Prep docs-only review before commit/promotion | docs-only reconciliation active |
+| O5-Prep actual billing reconciliation launch reconciliation | `codex/observability-o5-prep` | `/Users/alexeidelgado/Desktop/TritonGen` | Docs-only target/scope naming for future post-hoc actual billing reconciliation | `309c451d2710b376cb29b28c73ef28b7ea940bc6` | `docs/handoff/experiment_change_orchestration_state.md`; `docs/handoff/document_version_registry.md`; `docs/handoff/agentic_document_hub.md`; `docs/16_observability_sidecar_implementation_spec.md`; `audits/observability_sidecar_o5_prep_report.md` | `git diff --check`; forbidden code-scope diff; positive authorization scan; forbidden O5 scope scan reviewed as prohibitions/caveats/stop conditions only | Independent O5-Prep docs-only review before commit/promotion | docs-only reconciliation active |
 
 ## Gate Status
 
@@ -427,7 +429,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 | G0 baseline freeze | satisfied with caveat | Git status is clean, but ignored docs/audits/outputs must be checked directly when relevant. |
 | G1 orchestration contract accepted | satisfied | Contract exists and is routed through project map, hub, and registry. |
 | G2 reporting terminology stable | not started | Requires S0 acceptance. |
-| G3 observability sidecar contract stable | O0 committed / O1 committed / O2 committed / O3 committed / O4-Prep active | `docs/16_observability_sidecar_implementation_spec.md` v0.2.3 defines O0-O4 plus hardening guardrails, O0 clarifications, safe Modal context, O3 token telemetry as counts/status only, and O4 estimated/unavailable cost metadata as sidecar-only with no actual billing or economic claims. O0 is committed at `bcdaede`; O1 is committed at `8eaef2e`; O2-Prep is committed at `74b3acd`; O2 Modal runtime context is committed at `6f3001e`; O3-Prep is committed at `c93bdc0`; O3 is committed at `4ddc767`; O4-Prep authorizes no runtime code, Modal, output, generation, tokenizer/model, billing, pricing-fetch, analyzer, dependency, cost-per-success, pass@k cost, ROI, economic-lift, or performance work. |
+| G3 observability sidecar contract stable | O0-O4 promoted / O5-Prep active | `docs/16_observability_sidecar_implementation_spec.md` v0.2.4 defines O0-O4 plus hardening guardrails and names O5-Prep as docs-only actual billing reconciliation target/scope work. O0-O4 final acceptance is committed at `309c451` with caveats. O5-Prep authorizes no runtime code, Modal, output, generation, tokenizer/model, billing query, credential use, pricing fetch, analyzer, dependency, cost-per-success, pass@k cost, ROI, economic-lift, or performance work. |
 | G4 analyzer compatibility stable | spec drafted / code not started | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 defines S0-S3 metadata and report-label work; G4 still requires S1 implementation and compatibility tests. |
 | G5 agentic prompt core stable | satisfied with baseline-venv caveat | `audits/agentic_transcript_v1_a1_prompt_core_report.md` v1.0.0 records pure prompt-core implementation, typed local errors, policy config validation, public evidence/source models, deterministic anchor ranking, canonical renderer, prompt/history hashes, budget behavior, fixture manifest, prompt-injection fixture, legacy C/P byte-invariance snapshots, import isolation, focused tests, and no forbidden-surface changes. |
 | G6 agentic integration stable | promoted to handoff trunk with run gate caveat | A2 C-loop integration, A3 P-loop integration, A4 P-to-C isolation proof, A5 analyzer grouping/quarantine, and A6 run-packet gate planning are present in promoted A6 commit `4a84600`; future agentic execution remains blocked pending signed run approval and required pre-run checks. |
@@ -483,9 +485,12 @@ Historical context:
 |---|---|---|
 | orchestration contract | complete | `docs/15_experiment_change_orchestration_contract.md` created and routed. |
 | operating-control addendum | complete | State record, lease, decision authority, run packet, merge protocol, and trust boundary added to the contract. |
-| observability sidecar implementation spec | complete / tightened | `docs/16_observability_sidecar_implementation_spec.md` v0.2.3 created, routed, clarified for O0, narrowed for O3 token telemetry as counts/status only, and tightened for O4 estimated/unavailable cost metadata only; O0 sidecar-core code is committed at `bcdaede`, and the O1 first-runner target is fixed in this state file. |
+| observability sidecar implementation spec | complete / tightened | `docs/16_observability_sidecar_implementation_spec.md` v0.2.4 created, routed, clarified for O0, narrowed for O3 token telemetry as counts/status only, tightened for O4 estimated/unavailable cost metadata only, and extended with a docs-only O5 actual-billing reconciliation contract; O0-O4 are promoted at `309c451`, and O5 implementation remains not started. |
 | O1 Cluster 3 local runner instrumentation | committed | Commit `8eaef2e` adds opt-in Cluster 3 runner observability sidecars with default-off behavior, required explicit IDs when enabled, tmp_path-only tests, no result-row schema mutation, and no Modal/output/generation authorization. |
 | O2 Modal runtime context implementation | committed | Commit `6f3001e` adds optional safe Modal runtime context sidecar support for Cluster 3 only with local fake-context tests, no `.remote()` to `.spawn()` switch, no new Modal invocation, no outputs/result-row mutation, no billing/cost/performance telemetry, and no execution authorization. |
+| O3 token telemetry implementation | committed | Commit `4ddc767` adds count/status-only token telemetry, fail-closed token/raw/private payload rejection, event-derived token summary validation, and Cluster 3 injected/unavailable token sidecars with no tokenizer/model/generation/output/result-row/billing/performance changes. |
+| O4 estimated cost telemetry implementation | committed | Commit `d4244af` adds supplied estimated or unavailable cost sidecar metadata and validation with no actual billing, invoice, external pricing fetch, output/result-row/analyzer/economic metric, dependency, or performance changes. |
+| O0-O4 observability final acceptance | committed | Commit `309c451` records `O0_O4_FINAL_ACCEPTANCE_PASS_WITH_CAVEATS` and promotes the complete O0-O4 observability package into the handoff trunk. O5 was not started in that package. |
 | structural/task analyzer metadata implementation spec | complete | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 created and routed; analyzer/report code implementation not started. |
 | agentic transcript implementation spec | complete | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5 created, routed, edge-case hardened, research cross-checked, and expanded with implementation checkpoint gates plus canonical rendering, public-evidence-only ranking, fixture manifest, byte-invariance, import-isolation, metadata-nullability, CLI/API/default, mixed-policy analyzer, commit-slicing, rollback, and no-cleanup gates; A0-A6 are promoted into the A6 handoff trunk at `4a84600`. |
 | agentic transcript docs-only checkpoint | complete | `audits/agentic_transcript_v1_spec_checkpoint_report.md` v1.0.0 confirms source-doc inspection, readiness-audit reconciliation as `aligned_with_spec`, A0 readiness, no-code/no-output mutation, worktree caveats, and required local docs/import sanity tests. |
@@ -537,41 +542,41 @@ Historical context:
   committed at `4ddc767`. O3 remains count/status-only sidecar telemetry and
   authorizes no generation, model calls, tokenizer/model imports for telemetry,
   output mutation, billing, cost, performance, or result-row schema change.
-- O4-Prep is docs-only estimated cost telemetry launch reconciliation. It names
-  later O4 target surfaces but starts no O4 runtime code and authorizes no
-  actual billing, invoices, account charges, provider/Modal billing, billing API
-  calls, external pricing fetches, cost-per-success, pass@k cost, ROI, economic
-  lift, benchmark economics, Modal execution, generation, output mutation,
-  analyzer change, or result-row schema change.
+- O0-O4 observability is accepted with caveats and promoted at `309c451`.
+- O5-Prep is docs-only actual billing reconciliation launch reconciliation. It
+  names later O5 target surfaces and allowed/forbidden billing metadata, but
+  starts no O5 runtime code and authorizes no billing query, credential use,
+  Modal billing/API/CLI invocation, raw invoice or billing report storage,
+  historical sidecar/output mutation, analyzer/economic metric change,
+  cost-per-success, pass@k cost, ROI, economic lift, benchmark economics,
+  Modal execution, generation, output mutation, or result-row schema change.
 - No analyzer metric-registry implementation is active yet.
 
 ## Next Allowed Actions
 
 Allowed without run approval:
 
-1. Create remaining component implementation specs for paper-scale readiness or
+1. Complete O5-Prep docs-only target/scope reconciliation on
+   `codex/observability-o5-prep`.
+2. Run independent O5-Prep docs-only review and commit only after an explicit
+   O5-Prep pass verdict allows commit.
+3. Do not start O5 actual billing reconciliation implementation until O5-Prep
+   is committed and a separate O5 implementation launch packet is approved.
+   Later O5 remains sidecar-only and post-hoc. It requires a separate approval
+   packet before any billing query, credential use, Modal billing/API/CLI call,
+   exported report processing, or historical sidecar/output mutation.
+4. Create remaining component implementation specs for paper-scale readiness or
    future Cluster 3 run packet/spec, if explicitly requested.
-2. Complete independent O4-Prep docs-only review and commit it only after an
-   explicit O4-Prep pass verdict allows commit.
-3. Start O4 estimated cost telemetry implementation only after O4-Prep is
-   committed. Later O4 remains sidecar-only and may record only
-   estimated/unavailable cost metadata from supplied config, tests, fakes, or an
-   explicitly approved static table. O4 still authorizes no actual billing,
-   invoices, account charges, provider/Modal billing, billing API calls,
-   external pricing fetches, cost-per-success, pass@k cost, ROI, economic lift,
-   benchmark economics, Modal execution, generation, experiment runs, output
-   mutation, analyzer/economic metric changes, dependency/lockfile changes, or
-   result-row schema mutation.
-4. Start other safe parallel branches only after adding package cards below:
+5. Start other safe parallel branches only after adding package cards below:
    - S0 docs terminology;
    - future analyzer/report branches after their serialized-surface leases are
      created.
-5. Review A6 run-packet gate planning or prepare a future signed approval
+6. Review A6 run-packet gate planning or prepare a future signed approval
    packet from `docs/handoff/agentic_transcript_v1_run_packet_template.md`.
    The current next-run packet is `DRAFT_NOT_APPROVED` and does not authorize
    Modal execution, generation, n=5, n=20, paper-scale work, or output
    mutation.
-6. Create serialized-surface leases before touching analyzer, runner, repair
+7. Create serialized-surface leases before touching analyzer, runner, repair
    loop, result schema, raw output, or report-data-builder surfaces.
 
 Not allowed without explicit approval:
@@ -580,6 +585,8 @@ Not allowed without explicit approval:
 - n=5 run execution;
 - n=20 or paper-scale work;
 - output overwrite or mutation;
+- billing query, credential use, Modal billing/API/CLI invocation, raw billing
+  report processing, or historical sidecar migration;
 - performance, profiler, timing, speedup, or benchmark work.
 
 ## A1 Prompt Core Checkpoint State
@@ -608,7 +615,7 @@ A3 P-loop integration: promoted into A6 trunk at 4a84600; audits/agentic_transcr
 A4 P-to-C isolation proof: promoted into A6 trunk at 4a84600; audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md v1.0.0
 A5 analyzer grouping/quarantine: promoted into A6 trunk at 4a84600; audits/agentic_transcript_v1_a5_analyzer_grouping_report.md v1.0.0
 A6 run-packet gate planning: promoted into handoff trunk at 4a84600; audits/agentic_transcript_v1_a6_run_packet_gate_report.md v1.0.0; docs/handoff/agentic_transcript_v1_next_run_packet.md is DRAFT_NOT_APPROVED
-next observability action: complete O4-Prep docs-only review and commit O4-Prep only if review passes; O4 implementation and future agentic runs still require the appropriate launch packet or signed run approval packet
+next observability action: complete O5-Prep docs-only review and commit O5-Prep only if review passes; O5 implementation and future agentic runs still require the appropriate launch packet or signed run approval packet
 ```
 
 A1 allowed files:
@@ -1191,7 +1198,7 @@ state update owner: orchestrator
 status: committed at d30aa500df9efb0ee0ce987dbb46317ed1db14d3; AUTHORIZES_EXECUTION: NO
 ```
 
-### Active Implementation Checkpoint: O4-ESTIMATED-COST-2026-06-03
+### Completed Work Package: O4 Estimated Cost Telemetry Implementation
 
 ```text
 checkpoint id: O4-ESTIMATED-COST-2026-06-03
@@ -1208,7 +1215,45 @@ implemented behavior: reconciled ObservabilityCostEstimate to the O4 allowed fie
 authorization state: AUTHORIZES_EXECUTION: NO; MODAL_AUTHORIZED: NO; GENERATION_AUTHORIZED: NO; GPU_AUTHORIZED: NO; OUTPUT_MUTATION_AUTHORIZED: NO; N5_AUTHORIZED: NO; N20_AUTHORIZED: NO; PAPER_SCALE_AUTHORIZED: NO; BILLING_AUTHORIZED: NO; DEPENDENCY_CHANGE_AUTHORIZED: NO
 tests/checks run: shared O0-O4 observability suite passed; Cluster 3 runner suite passed; Cluster 3 schema/import guardrails passed; repair-history/factorial lightweight regressions passed; final scans recorded in audits/observability_sidecar_o4_estimated_cost_report.md
 unresolved risk: real estimates remain unavailable until a later approved supplied/config/static pricing source is authorized; actual billing remains O5+ only and no invoice/billing API evidence is produced by O4
-status: local implementation complete pending independent review and commit; no Modal/output/generation/billing/pricing/API run authorized or performed
+status: committed at d4244af33ef22abe652a1c5a1a76694f69469c8e; final O0-O4 acceptance committed at 309c451d2710b376cb29b28c73ef28b7ea940bc6; no Modal/output/generation/billing/pricing/API run authorized or performed
+```
+
+### Active Launch Packet: O5-PREP-BILLING-RECONCILIATION-2026-06-04
+
+```text
+launch packet id: O5-PREP-BILLING-RECONCILIATION-2026-06-04
+agent role: documentation reconciliation agent
+branch: codex/observability-o5-prep
+worktree: /Users/alexeidelgado/Desktop/TritonGen
+baseline commit: 309c451d2710b376cb29b28c73ef28b7ea940bc6
+package: O5-Prep actual billing reconciliation launch reconciliation
+scope: docs-only target/scope naming before any O5 implementation; no O5 runtime code starts in this package
+required read set: docs/handoff/experiment_change_orchestration_state.md; docs/handoff/document_version_registry.md; docs/handoff/agentic_document_hub.md; docs/16_observability_sidecar_implementation_spec.md; audits/observability_sidecar_o0_o4_final_acceptance_report.md
+target surfaces for later O5 implementation: shared/observability/schema.py; shared/observability/redaction.py; shared/observability/logger.py; shared/observability/billing_reconciliation.py; shared/tests/test_observability_schema.py; shared/tests/test_observability_redaction.py; shared/tests/test_observability_logger.py; shared/tests/test_observability_imports.py; shared/tests/test_observability_billing_reconciliation.py
+runner target surfaces for later O5 implementation: none by default; any runner-specific integration test or code path requires a later launch-packet amendment naming the exact file before edits
+docs/report surfaces for later O5 implementation: docs/handoff/experiment_change_orchestration_state.md; docs/handoff/document_version_registry.md; optional audits/observability_sidecar_o5_billing_reconciliation_report.md
+requirement ids in scope: O5-PREP-TARGET-SURFACE; O5-PREP-ACTUAL-BILLING-FIELDS; O5-PREP-FORBIDDEN-BILLING-PAYLOADS; O5-PREP-NO-RUNTIME-CODE; O5-PREP-NO-BILLING-QUERY; O5-PREP-NO-CREDENTIALS; O5-PREP-NO-OUTPUT-MUTATION; O5-PREP-NO-ECONOMIC-CLAIMS; O5-PREP-NO-ANALYZER; O5-PREP-TEST-PLAN
+allowed files for O5-Prep: docs/handoff/experiment_change_orchestration_state.md; docs/handoff/document_version_registry.md; docs/handoff/agentic_document_hub.md if needed; docs/16_observability_sidecar_implementation_spec.md only for narrow O5 clarification; audits/observability_sidecar_o5_prep_report.md
+forbidden files for O5-Prep: shared/observability/**; shared/modal_harness/**; cluster1/**; cluster2/**; cluster3/**; shared/analysis/**; shared/repair_history/**; outputs/**; mlruns/**; pyproject.toml; requirements*.txt; dependency or lock files
+allowed files for later O5 implementation after O5_PREP_COMPLETE: shared/observability/schema.py; shared/observability/redaction.py; shared/observability/logger.py; shared/observability/billing_reconciliation.py; shared/tests/test_observability_schema.py; shared/tests/test_observability_redaction.py; shared/tests/test_observability_logger.py; shared/tests/test_observability_imports.py; shared/tests/test_observability_billing_reconciliation.py; docs/handoff/experiment_change_orchestration_state.md; docs/handoff/document_version_registry.md; optional audits/observability_sidecar_o5_billing_reconciliation_report.md
+forbidden files for later O5 implementation unless a new launch-packet amendment explicitly approves them: cluster1/**; cluster2/**; cluster3/**; shared/modal_harness/**; shared/analysis/**; shared/repair_history/**; outputs/**; mlruns/**; dependency or lock files; Modal app/image/function definitions; scientific result-row schemas; analyzers; raw invoice dumps; raw billing reports; raw billing API responses; runtime output artifacts
+allowed actual-billing reconciliation fields: actual_billing_available; actual_billing_status; actual_billing_reconciled_at_utc; billing_source; billing_source_version; billing_time_window_start_utc; billing_time_window_end_utc; billing_attribution_method; billing_attribution_confidence; actual_total_cost; actual_currency; billing_query_id; billing_report_redacted_sha256; billing_reconciliation_notes
+field constraints: fields are sidecar-only; actual_total_cost requires an approved billing source, time window, attribution method, and redacted report hash or query identifier; actual_currency is USD until a currency policy is approved; historical untagged runs must be attribution_limited or low confidence unless a non-overlapping time window can be proven; report hashes are hashes of redacted/safe summaries, not raw invoice or API payloads
+forbidden billing/private/economic payloads: raw invoice dump; full billing API response; unredacted workspace billing report; payment method; credit_card; billing account secret; customer account secret; credentials; api key; Modal identity token; provider API key; private per-user billing data; raw provider bill; cost_per_success; cost_per_pass; pass_at_k_cost; ROI; economic lift; benchmark economics; performance/profiler/timing/speedup claims
+behavior constraints for later O5: post-hoc reconciliation only; no synchronous per-row billing claims during generation; no billing query without separate explicit approval; no credential use without separate explicit approval; dry-run first; mocked/static fixtures in unit tests; no raw billing report storage; no output artifact mutation or historical sidecar rewrite unless separately approved; no scientific-row schema mutation; no analyzer/economic metric changes; no cost-per-success/pass@k/ROI/economic-lift/benchmark-economics/paper-scale cost claims; observability remains default-off; omitted/off behavior remains unchanged
+future approval packet requirements: billing source; credential scope; workspace/account scope; time window; delay buffer; app tags or attribution keys; target run_id; target experiment_id; whether historical runs are app-tagged; raw report handling policy; redaction policy; output sidecar path; no-output-mutation or explicit mutation authorization; expected cost/credential risk; dry-run command; stop conditions
+required tests after O5-Prep: unavailable actual billing status accepted; reconciled billing status requires approved source metadata; actual_total_cost rejected without approved billing source metadata; negative/non-finite/string/bool actual costs rejected; unsupported currency rejected; raw invoice/API response rejected; credentials/secrets/payment fields rejected; untagged historical attribution marked limited; billing report hash accepted only for redacted/safe summaries; no billing/provider/Modal API calls in unit tests; mocked/static billing fixture only; no result-row mutation; no outputs mutation; no economic/scientific claims
+required O5-Prep checks: git diff --check; git status --short --branch; forbidden code-scope diff; positive authorization scan; forbidden O5 scope scan reviewed as prohibitions/caveats/stop conditions only
+authorization state: AUTHORIZES_EXECUTION: NO; MODAL_AUTHORIZED: NO; GENERATION_AUTHORIZED: NO; GPU_AUTHORIZED: NO; OUTPUT_MUTATION_AUTHORIZED: NO; N5_AUTHORIZED: NO; N20_AUTHORIZED: NO; PAPER_SCALE_AUTHORIZED: NO; BILLING_QUERY_AUTHORIZED: NO; CREDENTIAL_USE_AUTHORIZED: NO; DEPENDENCY_CHANGE_AUTHORIZED: NO
+dependency/lockfile changes allowed: no
+network/dependency-download/API calls allowed: no
+secrets/credentials access allowed: no
+Modal/output mutation allowed: no
+escalation thresholds: stop on target ambiguity, execution authorization leakage, credential/billing query authorization leakage, runtime-code edits during O5-Prep, output mutation, dependency/lockfile changes, MLflow runtime state changes, raw invoice/API response storage, credential/payment/account secret exposure, cost-per-success/pass@k/ROI/economic-lift/benchmark-economics claim, analyzer/statistical/economic broadening, performance/profiler/timing/speedup/latency/throughput capture, or result-row schema mutation
+stop triggers: O5_PREP_BLOCKED_TARGET_SURFACE_AMBIGUOUS; O5_PREP_BLOCKED_BILLING_EXECUTION_AUTHORIZATION_LEAK; O5_PREP_BLOCKED_PRIVATE_BILLING_PAYLOAD_RISK; O5_PREP_BLOCKED_ECONOMIC_CLAIM_LEAK; O5_PREP_BLOCKED_SCOPE_VIOLATION; O5_PREP_BLOCKED_DOC_CONTRADICTION
+handoff destination: audits/observability_sidecar_o5_prep_report.md and this state file
+state update owner: orchestrator
+status: active docs-only reconciliation; AUTHORIZES_EXECUTION: NO
 ```
 
 ### Reference Launch Packet: A2-C-LOOP-2026-06-02
@@ -1300,7 +1345,9 @@ status: promoted into A6 handoff trunk at 4a84600; reference/history only
 | O3-Prep token telemetry launch reconciliation | `codex/observability-sidecar-core` | committed | O2 committed | O3 prep complete | Commit `c93bdc0` names later O3 target surfaces as `shared/observability/schema.py`, `shared/observability/redaction.py`, `shared/observability/logger.py`, `cluster3/experiments/run_cluster3_modal.py`, and their focused tests; O3 token telemetry is counts/status only. |
 | O3 token telemetry implementation | `codex/observability-sidecar-core` | committed | O3_PREP_COMPLETE | G3 partial | Commit `4ddc767` adds count/status-only token schema, fail-closed token/raw/private payload rejection, event-derived summary `token_totals`, and Cluster 3 injected-count/unavailable-safe sidecar wiring; no tokenizer/model/generation execution, output mutation, result-row schema mutation, billing/cost, or performance telemetry. |
 | O4-Prep estimated cost telemetry launch reconciliation | `codex/observability-sidecar-core` | committed | O3 committed | O4 prep complete | Commit `d30aa50` names later O4 target surfaces as `shared/observability/schema.py`, `shared/observability/redaction.py`, `shared/observability/logger.py`, and `cluster3/experiments/run_cluster3_modal.py` only for supplied estimated/unavailable sidecar cost metadata; no runtime code, actual billing, invoices, external pricing fetch, cost-per-success, pass@k cost, ROI, economic-lift, benchmark economics, output mutation, analyzer change, dependency change, or result-row schema mutation. |
-| O4 estimated cost telemetry implementation | `codex/observability-sidecar-core` | local implementation complete pending review | O4_PREP_COMPLETE | G3 partial | Reconciles `ObservabilityCostEstimate` to the O4 allowed field set, adds fail-closed cost/billing/economic redaction, validates event-derived `estimated_cost_summary`, and wires Cluster 3 dependency-injected supplied/unavailable cost sidecars only; no actual billing, invoice, external pricing fetch, output mutation, result-row schema mutation, analyzer/economic metric change, dependency change, or performance telemetry. |
+| O4 estimated cost telemetry implementation | `codex/observability-sidecar-core` | committed | O4_PREP_COMPLETE | G3 partial | Commit `d4244af` reconciles `ObservabilityCostEstimate` to the O4 allowed field set, adds fail-closed cost/billing/economic redaction, validates event-derived `estimated_cost_summary`, and wires Cluster 3 dependency-injected supplied/unavailable cost sidecars only; no actual billing, invoice, external pricing fetch, output mutation, result-row schema mutation, analyzer/economic metric change, dependency change, or performance telemetry. |
+| O0-O4 final acceptance | `codex/observability-sidecar-core` then `codex-track-handoff-context` | committed/promoted | O4 committed | O0-O4 package accepted with caveats | Commit `309c451` records final acceptance and promotes O0-O4 observability into the handoff trunk. O5 was not started. |
+| O5-Prep actual billing reconciliation launch reconciliation | `codex/observability-o5-prep` | active docs-only | O0-O4 promoted | O5 prep pending | Names future O5 target surfaces, allowed sidecar-only actual-billing reconciliation fields, forbidden billing/private/economic payloads, approval packet requirements, tests, and stop conditions. No runtime code, billing query, credential use, Modal/output/generation, analyzer/economic metric, dependency/lockfile, result-row schema, or historical sidecar/output mutation is authorized. |
 | A2 C-loop integration | `codex/llm-repair-memory-agentic-transcript-v1` | promoted/reference | A1 | G6 partial | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a2_c_loop_integration_report.md` v1.0.0 records default `last_attempt_only_v1` preserved, `agentic_transcript_v1` opt-in, and no Modal/output mutation. |
 | A3 P-loop integration | `codex/llm-repair-memory-agentic-transcript-v1` | promoted/reference | A1/A2 | G6 partial | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a3_p_loop_integration_report.md` v1.0.0 records default `last_attempt_only_v1` preserved, `agentic_transcript_v1` opt-in, F1_COMPILE-only P eligibility preserved, and no Modal/output/generation mutation. |
 | A4 P-to-C isolation | `codex/llm-repair-memory-agentic-transcript-v1` | promoted/reference | A2/A3 complete | G6 partial | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md` v1.0.0 remains the isolation evidence snapshot. |
@@ -1379,7 +1426,7 @@ and name the replacement check.
 | O2 Modal identity | Shared Modal runtime helper tests; remote response schema compatibility tests; fixture/backward-compatibility tests with missing optional context; forbidden Modal/secrets/env-field rejection tests; no-`.spawn()` and no-new-Modal-invocation scans; Cluster 3 off-mode unchanged tests. | Target surfaces are `shared/observability/schema.py`, `shared/observability/redaction.py`, `shared/modal_harness/runtime.py`, and `cluster3/experiments/run_cluster3_modal.py` only after O2-Prep completes. No new Modal app/image/function, no outputs mutation, no result-row schema change, no billing/cost, and no GPU/performance telemetry. |
 | O3 token telemetry | Schema/redaction/logger tests for count/status-only token telemetry; token-ID, prompt/generated/source/raw-text rejection tests; no tokenizer/model import checks for `shared/observability`; Cluster 3 off-mode and enabled fake-count sidecar tests; sidecar join/key tests; row-schema and outputs stability checks. | Target surfaces are `shared/observability/schema.py`, `shared/observability/redaction.py`, `shared/observability/logger.py`, and `cluster3/experiments/run_cluster3_modal.py` only after O3-Prep completes. Token fields stay out of scientific rows; no generation, model call, tokenizer/model import, output mutation, billing/cost, or performance telemetry is authorized. |
 | O4 estimated cost | Schema/redaction/logger tests for supplied estimated/unavailable cost metadata; total/component consistency tests; unavailable-safe tests; forbidden actual-billing, invoice, account-charge, cost-per-success, pass@k cost, ROI, economic-lift, billing-response, and pricing-response rejection tests; no billing/provider/Modal/cloud API import checks for `shared/observability`; Cluster 3 off-mode and enabled fake-cost sidecar tests. | Target surfaces are `shared/observability/schema.py`, `shared/observability/redaction.py`, `shared/observability/logger.py`, and `cluster3/experiments/run_cluster3_modal.py` only after O4-Prep completes. Cost fields stay out of scientific rows; no actual billing, invoice, external pricing fetch, generation, model/tokenizer execution, output mutation, analyzer/economic metric change, cost-per-success/pass@k/lift claim, dependency/lockfile change, or performance telemetry is authorized. |
-| O5 billing reconciliation | CLI argument tests; attribution-confidence tests; dry-run or mocked billing API tests. | Real billing query requires approval if network/credentials are involved. |
+| O5 billing reconciliation | Schema/redaction/logger tests for actual-billing status and bounded actual-cost fields; pure reconciliation helper tests using mocked/static fixtures; dry-run behavior tests; attribution-confidence tests; rejected raw invoice/API response, credential, payment, private-account, unsupported-currency, non-finite/string/bool/negative cost, cost-per-success, pass@k cost, ROI, economic-lift, benchmark-economics, and performance-claim fixtures; import/no-call checks proving unit tests do not invoke billing/provider/Modal APIs. | Target surfaces are `shared/observability/schema.py`, `shared/observability/redaction.py`, `shared/observability/logger.py`, and `shared/observability/billing_reconciliation.py` only after O5-Prep completes. Real billing query, credential use, Modal billing/API/CLI invocation, exported report processing, output mutation, or historical sidecar migration requires a separate explicit approval packet. Actual billing fields stay out of scientific rows; no analyzer/economic metric or paper-scale cost claim is authorized. |
 | A0 policy constants | Import/constants tests; default-policy test proving behavior remains `last_attempt_only_v1` or current default. | No prompt behavior change. |
 | A1 prompt core | Attempt evidence tests; anchor selector ranking/tie-break tests; golden prompt tests; fixture acceptance manifest validation; legacy C/P byte-invariance snapshots; prompt-core import-isolation scan; prompt-injection guard tests; truncation/fail-closed tests; prompt-hash exactness tests. | No runner behavior change. |
 | A2 C-loop integration | Cluster 2 repair-loop tests; F2-only boundary tests; omitted/legacy/agentic/invalid policy flag parsing and default tests; invalid budget and latest-source setting tests; metadata nullability matrix tests; prompt hash and anchor metadata tests; mixed-policy artifact rejection/quarantine tests where applicable. | Requires C-loop and likely Cluster 2 runner leases. |

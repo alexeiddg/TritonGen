@@ -1,7 +1,7 @@
 # Observability Sidecar Implementation Spec
 
-- Version: 0.2.3
-- Date: 2026-06-03
+- Version: 0.2.4
+- Date: 2026-06-04
 - Status: implementation specification / no code changes or runs authorized by
   itself
 - Owner stream: O, observability sidecars
@@ -91,7 +91,7 @@ implementation work.
 | O2 Modal context | Capture optional remote runtime identity and resource context. | No switch from `.remote()` to `.spawn()`. | No new Modal run by implementation alone. |
 | O3 token telemetry | Record prompt/generated/total token counts when already available or cheaply computable. | Do not store token IDs or prompt text. | No new generation run by implementation alone. |
 | O4 estimated cost metadata | Add supplied/static estimated or unavailable cost sidecar metadata and validation. | No actual billing, cost-per-success, pass@k cost, ROI, economic-lift, or paper-scale cost claim. | No billing API, invoice, provider billing, Modal billing, external pricing fetch, Modal run, generation, output mutation, or analyzer change. |
-| O5 actual billing reconciliation | Future CLI/API reconciliation. | Requires billing/tag policy and credentials. | Requires explicit approval if querying billing. |
+| O5 actual billing reconciliation | Future post-hoc reconciliation of actual billing status and bounded actual-cost facts into sidecars. | Requires billing/tag policy, credential scope, raw-report handling policy, and a separate approval packet. | Requires explicit approval before any billing query, credential use, CLI/API call, or historical sidecar migration. |
 | O6 performance timing contract | Future Level 4/performance-only contract. | Out of scope. | Out of scope. |
 
 ## Package O0: Sidecar Core Contract
@@ -863,17 +863,210 @@ paper-scale cost conclusions are not observability-sidecar claims.
 
 O5 is future work. It must not be implemented as part of O0 through O4.
 
-Minimum future requirements:
+O5-Prep is docs-only. It names the future target and authorization boundary but
+does not authorize billing execution, credential use, runtime code, output
+mutation, or historical sidecar updates.
+
+### Future O5 Target Surfaces
+
+A later O5 implementation may modify only these surfaces unless a new launch
+packet amends this list before code starts:
+
+```text
+shared/observability/schema.py
+shared/observability/redaction.py
+shared/observability/logger.py
+shared/observability/billing_reconciliation.py
+shared/tests/test_observability_schema.py
+shared/tests/test_observability_redaction.py
+shared/tests/test_observability_logger.py
+shared/tests/test_observability_imports.py
+shared/tests/test_observability_billing_reconciliation.py
+docs/handoff/experiment_change_orchestration_state.md
+docs/handoff/document_version_registry.md
+audits/observability_sidecar_o5_billing_reconciliation_report.md
+```
+
+No runner file is approved for O5 by default. If integration validation needs a
+runner-specific test, the later O5 launch packet must name the exact runner and
+test file before edits begin. A future command entry point should live behind
+`shared/observability/billing_reconciliation.py`; no standalone script or CLI
+wrapper is approved by O5-Prep.
+
+### Allowed O5 Sidecar Fields
+
+O5 fields are sidecar-only and may appear only after a separate O5
+implementation is approved. Allowed field families are:
+
+```text
+actual_billing_available
+actual_billing_status
+actual_billing_reconciled_at_utc
+billing_source
+billing_source_version
+billing_time_window_start_utc
+billing_time_window_end_utc
+billing_attribution_method
+billing_attribution_confidence
+actual_total_cost
+actual_currency
+billing_query_id
+billing_report_redacted_sha256
+billing_reconciliation_notes
+```
+
+Initial allowed statuses should distinguish `not_implemented`, `not_requested`,
+`unavailable`, `pending_approval`, `approved_not_queried`, `reconciled`,
+`attribution_limited`, and `failed`. `actual_total_cost` may be populated only
+when the approved billing source metadata, time window, attribution method, and
+redacted report hash or query identifier are present. `actual_currency` is
+bounded to `USD` until a later currency policy is approved.
+
+`billing_source` must identify one approved source class:
+
+```text
+unavailable
+approved_modal_billing_api
+approved_modal_billing_cli_report
+approved_exported_static_report
+approved_manual_redacted_summary
+```
+
+Historical untagged artifacts must be marked `attribution_limited` or equivalent
+low-confidence status unless a non-overlapping time window can be proven. App
+tagged future runs may support stronger attribution, but only after the run
+packet records the tag policy before execution.
+
+Billing report hashes must be hashes of redacted or otherwise safe summaries.
+They must not be hashes of raw invoices, raw workspace billing reports, full
+API responses, or credential-bearing payloads.
+
+`billing_reconciliation_notes` must be bounded, redacted, and operational. It
+must not contain raw report excerpts, invoice lines, private account details,
+credentials, payment details, or economic/scientific interpretations.
+
+### Forbidden O5 Payloads And Claims
+
+O5 sidecars, tests, reports, and handoffs must not store or authorize:
+
+```text
+raw invoice dump
+full billing API response
+unredacted workspace billing report
+payment method
+credit_card
+billing account secret
+customer account secret
+credentials
+api key
+Modal identity token
+provider API key
+private per-user billing data
+raw provider bill
+cost_per_success
+cost_per_pass
+pass_at_k_cost
+ROI
+economic lift
+benchmark economics
+performance/profiler/timing/speedup claim
+```
+
+O5 actual billing facts remain operational audit metadata. They are not
+scientific result rows, not analyzer metrics, not pass@k economics, and not
+paper-scale cost conclusions.
+
+### O5 Behavior Constraints
+
+O5 reconciliation is post-hoc. It must not run synchronously during generation
+or claim per-row actual billing unless Modal or another approved source can
+attribute usage at that granularity.
+
+Required future constraints:
 
 - explicit user approval for credentialed billing access;
-- dry-run mode;
+- dry-run mode before any billing query;
 - start/end UTC window with delay buffer after run completion;
 - App tag filter where available;
 - isolated-window fallback with `attribution_confidence=low` when tags are
   missing;
 - clear separation between pre-credit granular cost and final invoice cost;
-- no per-row actual billing claim unless Modal can attribute usage at that
-  granularity.
+- mocked or static fixtures for unit tests;
+- no raw billing report storage;
+- no output artifact mutation or historical sidecar rewrite unless separately
+  approved;
+- no scientific-row schema mutation;
+- no analyzer or economic metric changes;
+- no cost-per-success, pass@k cost, ROI, economic-lift, benchmark-economics, or
+  paper-scale cost claim;
+- no performance, profiler, timing, speedup, latency, throughput, Nsight, or NCU
+  broadening;
+- observability remains default-off and omitted/off behavior remains unchanged.
+
+### Future Approval Packet
+
+Any later O5 packet that would query billing or use credentials must name:
+
+```text
+billing source:
+credential scope:
+workspace/account scope:
+time window:
+delay buffer:
+app tags or attribution keys:
+target run_id:
+target experiment_id:
+historical runs app-tagged: yes/no
+raw report handling policy:
+redaction policy:
+output sidecar path:
+output mutation authorization:
+expected cost/credential risk:
+dry-run command:
+stop conditions:
+```
+
+O5 implementation work that uses only local mocked/static fixtures still must
+record `BILLING_QUERY_AUTHORIZED: NO` and `CREDENTIAL_USE_AUTHORIZED: NO` until
+a separate execution packet is approved.
+
+### Required O5 Tests
+
+Future O5 implementation must include tests for:
+
+- unavailable actual-billing status accepted;
+- reconciled billing status requires approved source metadata;
+- actual cost rejected without approved source metadata;
+- negative, non-finite, string, boolean, or coerced actual costs rejected;
+- unsupported currency rejected;
+- raw invoice/API response rejected;
+- credentials, secrets, payment fields, and private billing account fields
+  rejected;
+- untagged historical attribution marked limited;
+- billing report hash accepted only for redacted/safe summaries;
+- no billing/provider/Modal API calls in unit tests;
+- mocked or static billing fixtures only;
+- no result-row mutation;
+- no output mutation;
+- no economic or scientific claims.
+
+### O5 Stop Conditions
+
+Stop with a blocked classification if any of these occur:
+
+- target surfaces are ambiguous;
+- O5-Prep or implementation docs authorize billing API, billing CLI, network, or
+  credential use without a separate approval packet;
+- raw invoice, full API response, credential, payment method, or private billing
+  account data would be stored;
+- output mutation, historical sidecar rewrite, result-row schema mutation, or
+  analyzer/economic metric change is required;
+- cost-per-success, pass@k cost, ROI, economic lift, benchmark economics,
+  performance, profiler, timing, speedup, latency, throughput, Nsight, or NCU
+  claims appear;
+- dependency or lockfile changes are needed;
+- docs conflict on target surfaces, allowed fields, authorization state, or the
+  O6 performance boundary.
 
 ## Privacy And Boundary Contract
 
