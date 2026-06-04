@@ -1,6 +1,6 @@
 # Observability Sidecar Implementation Spec
 
-- Version: 0.2.2
+- Version: 0.2.3
 - Date: 2026-06-03
 - Status: implementation specification / no code changes or runs authorized by
   itself
@@ -25,7 +25,7 @@ Observability sidecars record operational facts adjacent to result artifacts:
 - run, stage, row, and attempt durations;
 - token counts and token-count availability;
 - Modal runtime identity and resource context when available;
-- estimated compute cost from pinned pricing snapshots;
+- estimated or unavailable cost metadata from supplied/static pricing inputs;
 - post-hoc billing reconciliation status when later implemented;
 - artifact and event completeness metadata.
 
@@ -59,7 +59,7 @@ when later verifying these facts.
 | [Modal billing guide](https://modal.com/docs/guide/billing) | Billing reports are post-hoc. Actual cost should be reconciled after a run, not written synchronously per row. |
 | [Modal billing API](https://modal.com/docs/reference/modal.billing) and [billing CLI](https://modal.com/docs/reference/cli/billing) | O5 may use `modal.billing.workspace_billing_report` or `modal billing report`, but network/credentialed billing access requires explicit approval. |
 | [Modal App reference](https://modal.com/docs/reference/modal.App) | App tags can support cost attribution for future runs. Current untagged historical runs cannot be made precisely tag-attributed after the fact. |
-| [Modal pricing](https://modal.com/pricing) | Estimated cost must use a pinned pricing snapshot with source URL, retrieval date, currency, and rates. It must not be silently treated as invoice cost. |
+| [Modal pricing](https://modal.com/pricing) | Estimated cost must use a supplied/static pricing source and version. O4 must not fetch external pricing at runtime and must not silently treat estimates as invoice cost. |
 | [Modal environment variables](https://modal.com/docs/guide/environment_variables) | Only an allowlist of non-secret Modal runtime variables may be recorded. Secrets and identity tokens must be excluded. |
 | [Modal current function call ID](https://modal.com/docs/reference/modal.current_function_call_id) and [current input ID](https://modal.com/docs/reference/modal.current_input_id) | Remote event records may include function-call and input IDs through the existing `shared/modal_harness/runtime.py` helper. |
 | [Modal FunctionCall](https://modal.com/docs/reference/modal.FunctionCall) | Switching from `.remote()` to `.spawn()` only for telemetry is a behavior change and is out of scope for initial sidecar work. |
@@ -90,7 +90,7 @@ implementation work.
 | O1 local runner instrumentation | Add opt-in run/stage/row events to one runner at a time. | Unchanged when mode is `off`; sidecars written only when enabled. | Tests only unless a run packet approves execution. |
 | O2 Modal context | Capture optional remote runtime identity and resource context. | No switch from `.remote()` to `.spawn()`. | No new Modal run by implementation alone. |
 | O3 token telemetry | Record prompt/generated/total token counts when already available or cheaply computable. | Do not store token IDs or prompt text. | No new generation run by implementation alone. |
-| O4 estimated compute cost | Add pinned pricing snapshots and summary math. | No actual billing claim. | No billing API call. |
+| O4 estimated cost metadata | Add supplied/static estimated or unavailable cost sidecar metadata and validation. | No actual billing, cost-per-success, pass@k cost, ROI, economic-lift, or paper-scale cost claim. | No billing API, invoice, provider billing, Modal billing, external pricing fetch, Modal run, generation, output mutation, or analyzer change. |
 | O5 actual billing reconciliation | Future CLI/API reconciliation. | Requires billing/tag policy and credentials. | Requires explicit approval if querying billing. |
 | O6 performance timing contract | Future Level 4/performance-only contract. | Out of scope. | Out of scope. |
 
@@ -112,8 +112,9 @@ shared/tests/test_observability_redaction.py
 shared/tests/test_observability_imports.py
 ```
 
-If O0 needs pricing helpers, defer them to O4 or add them only behind tests that
-do not require runner integration.
+If O0 needs pricing helpers, defer them to O4. O4-Prep narrows the initial O4
+implementation to supplied/static estimated or unavailable metadata only; any
+new pricing table or parser file requires an explicit O4 scope amendment.
 
 O1 runner branches may add runner-specific observability tests beside the
 runner they instrument and may add a shared runner contract test under:
@@ -122,11 +123,10 @@ runner they instrument and may add a shared runner contract test under:
 shared/tests/test_observability_runner_contract.py
 ```
 
-O4 may add cost-estimate tests under:
-
-```text
-shared/tests/test_observability_costs.py
-```
+O4 implementation must use the target files named by the O4-Prep launch packet.
+The initial O4 package should add coverage to the existing observability
+schema, redaction, logger, import, and Cluster 3 runner tests unless a later
+approved O4 amendment authorizes a new dedicated cost test file.
 
 ### Forbidden Files
 
@@ -789,83 +789,75 @@ Rules:
 
 ## Cost Estimate Contract
 
-O4 estimates compute cost from observed durations and pinned rate snapshots.
+O4 is estimated-cost sidecar metadata only. It may record a supplied/static
+estimate or an explicit unavailable status. It must not query Modal billing,
+provider billing, invoices, billing APIs, pricing APIs, cloud dashboards, or
+external pricing pages at runtime.
 
-Add a pricing snapshot only under:
-
-```text
-shared/observability/pricing/
-```
-
-Snapshot fields:
+Allowed O4 cost-estimate fields are limited to:
 
 ```text
-snapshot_id
-retrieved_at_utc
-source_url
+cost_estimate_available
+estimated_input_cost
+estimated_output_cost
+estimated_total_cost
 currency
-provider
-rates
-notes
-```
-
-Cost estimate fields:
-
-```text
-estimate_status
-price_snapshot_id
-currency
-estimated_gpu_seconds
-estimated_cpu_core_seconds
-estimated_memory_gib_seconds
-estimated_gpu_cost_usd
-estimated_cpu_cost_usd
-estimated_memory_cost_usd
-estimated_total_cost_usd
-estimation_confidence
-unavailable_reason
+pricing_source
+pricing_source_version
+cost_estimate_status
+cost_estimate_method
 ```
 
 Rules:
 
-- represent money as decimal strings in JSON;
-- keep estimated and actual billing fields separate;
-- do not claim cost-per-success in the sidecar layer;
-- do not query Modal billing in O4;
-- mark estimates `unavailable` when resource allocation or duration data is
-  insufficient;
-- document every pricing snapshot with source URL and retrieval date;
-- require a spec update if Modal pricing changes format or attribution model.
+- all fields are observability sidecar fields only and never scientific result
+  row fields;
+- cost estimates must be recorded only when supplied by config, tests, fakes, or
+  a static table explicitly approved by the O4 launch scope;
+- no O4 code may fetch pricing or billing data from a networked service, CLI,
+  dashboard, local invoice dump, or cloud API;
+- monetary values must be non-negative finite numbers; negative, non-finite,
+  string, boolean, or coerced cost values must be rejected;
+- `currency` is bounded to `USD` for initial O4 unless a later spec amendment
+  explicitly adds another currency and conversion policy;
+- `estimated_total_cost` must equal `estimated_input_cost +
+  estimated_output_cost` when both component estimates are present;
+- unavailable estimates must not carry cost values, pricing-source identifiers,
+  or methods that imply an estimate was computed;
+- `pricing_source` and `pricing_source_version` identify the supplied/static
+  basis only; they are not billing evidence and are not proof of invoice cost;
+- current O0-O3 draft cost fields in `ObservabilityCostEstimate` must be
+  reconciled to this allowed O4 field set before O4 implementation is accepted.
 
-### Cost Basis And Confidence
-
-Estimated cost must state the measurement basis:
-
-```text
-caller_observed_remote_call_wall_time
-remote_container_stage_wall_time
-configured_resource_request_time
-billing_report_interval
-unavailable
-```
-
-Caller-observed remote-call wall time is useful for budget planning but is not
-equivalent to Modal billable/container time. If only caller-observed wall time is
-available, set `estimation_confidence=low` unless a later validation proves the
-estimate is a conservative upper bound. If resource request fields are missing,
-set `estimate_status=unavailable`.
-
-The summary must distinguish:
+O4 must fail closed on fields or attributes that imply actual billing or
+economic conclusions, including:
 
 ```text
-estimated_compute_cost
-actual_billing_cost
-cost_basis
-estimation_confidence
+actual_cost
+actual_billing
+invoice
+account_charge
+provider_bill
+modal_bill
+credit_card
+payment_method
+billing_account
+cost_per_success
+cost_per_pass
+pass_at_k_cost
+ROI
+economic_lift
+benchmark_cost_conclusion
+billing_api_response
+pricing_api_response
+cloud_invoice_dump
 ```
 
-O0 through O4 may populate only estimated fields. Actual billing fields remain
-`not_implemented`, `not_requested`, or `unavailable`.
+The summary must distinguish estimated cost metadata from actual billing status.
+O0 through O4 may populate only estimated/unavailable cost metadata. Actual
+billing fields remain `not_implemented`, `not_requested`, or `unavailable`.
+Cost-per-success, pass@k cost, ROI, economic lift, benchmark economics, and
+paper-scale cost conclusions are not observability-sidecar claims.
 
 ## Actual Billing Reconciliation Contract
 
@@ -1099,17 +1091,26 @@ Acceptance:
 
 ### Phase O4 - Estimated Cost
 
-Add pricing snapshot parsing and summary estimates.
+Add sidecar-only estimated/unavailable cost metadata when supplied by
+config/tests/fakes or an explicitly approved static table.
 
 Acceptance:
 
-- formulas use decimal arithmetic;
-- estimates are separated from actual billing;
-- missing resource data yields `estimate_status=unavailable`;
-- caller-observed wall-clock estimates are labeled with low confidence unless
-  explicitly justified;
-- pricing snapshot source URL and retrieval date are recorded;
-- no billing API or CLI call occurs.
+- allowed fields are limited to `cost_estimate_available`,
+  `estimated_input_cost`, `estimated_output_cost`, `estimated_total_cost`,
+  `currency`, `pricing_source`, `pricing_source_version`,
+  `cost_estimate_status`, and `cost_estimate_method`;
+- estimates are separated from actual billing and economic conclusions;
+- missing or absent cost data yields unavailable-safe metadata;
+- unavailable estimates do not carry cost values;
+- component and total estimates are internally consistent when present;
+- forbidden actual-billing, invoice, account-charge, cost-per-success, pass@k
+  cost, ROI, economic-lift, benchmark-economics, billing-response, or
+  pricing-response payloads fail closed;
+- no billing API, pricing API, billing CLI, invoice, dashboard, provider-billing,
+  cloud API, external pricing fetch, Modal run, generation, output mutation,
+  result-row schema mutation, analyzer change, dependency change, or lockfile
+  change occurs.
 
 ## Required Tests
 
@@ -1133,7 +1134,12 @@ O1, per runner:
 O4:
 
 ```bash
-.venv/bin/python -m pytest shared/tests/test_observability_costs.py -q
+.venv/bin/python -m pytest \
+  shared/tests/test_observability_schema.py \
+  shared/tests/test_observability_logger.py \
+  shared/tests/test_observability_redaction.py \
+  shared/tests/test_observability_imports.py \
+  cluster3/tests/test_run_cluster3_modal_cli.py -q
 ```
 
 Required scans before any package exits:
@@ -1202,9 +1208,13 @@ O3 exits when:
 
 O4 exits when:
 
-- pricing snapshot tests pass;
-- estimated cost summaries are deterministic;
-- cost basis and confidence are explicit;
+- estimated/unavailable cost metadata tests pass;
+- allowed O4 cost fields and summary validation are deterministic;
+- cost source/status/method are explicit and sidecar-only;
+- missing cost data is unavailable-safe;
+- forbidden actual-billing, invoice, account-charge, cost-per-success, pass@k
+  cost, ROI, economic-lift, benchmark-economics, billing-response, and
+  pricing-response payloads are rejected;
 - actual billing remains `not_implemented`, `not_requested`, or `unavailable`.
 
 ## Rollback Policy
