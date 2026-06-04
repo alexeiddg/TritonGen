@@ -129,8 +129,38 @@ BillingAttributionConfidence = Literal[
     "medium",
     "high",
 ]
+PerformanceTimingMethodCandidate = Literal[
+    "cuda_events",
+    "triton_do_bench",
+    "torch_profiler",
+]
+PerformanceFuturePacketType = Literal["O6b_modal_gpu_performance"]
+SpeedupBaselinePolicy = Literal[
+    "fixed_baseline_same_shape_dtype_device",
+    "pytorch_reference_same_shape_dtype_device",
+    "cluster2_correctness_passing_same_shape_dtype_device",
+]
 CompletenessStatus = Literal["complete", "partial", "unavailable", "failed"]
 HashSummaryStatus = Literal["not_written", "written", "unavailable", "failed"]
+
+O6B_REQUIRED_PERFORMANCE_RUN_PACKET_FIELDS: tuple[str, ...] = (
+    "benchmark_target_artifact",
+    "baseline_artifact_or_type",
+    "kernel_class",
+    "problem_id",
+    "dtype",
+    "shape_set",
+    "device_gpu_type",
+    "modal_image_digest",
+    "timing_method",
+    "warmup_iterations",
+    "measured_repetitions",
+    "timeout_s",
+    "correctness_prerequisite",
+    "performance_sidecar_output_path",
+    "no_scientific_row_mutation",
+    "paper_scale_packet_required_for_claims",
+)
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _UTC_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
@@ -614,6 +644,63 @@ class ObservabilityActualBillingReconciliation(_StrictModel):
                 "unreconciled actual billing must not include cost or source metadata"
             )
         reject_forbidden_observability_payload(self.model_dump(mode="json"))
+        return self
+
+
+class ObservabilityPerformanceContract(_StrictModel):
+    performance_contract_version: str
+    performance_execution_authorized: Literal[False]
+    required_future_packet_type: PerformanceFuturePacketType
+    timing_method_allowed_future: list[PerformanceTimingMethodCandidate]
+    speedup_baseline_policy: SpeedupBaselinePolicy
+    shape_dtype_device_lock_required: Literal[True]
+    warmup_required: Literal[True]
+    repetitions_required: Literal[True]
+    separate_performance_sidecar_required: Literal[True]
+    scientific_row_mutation_allowed: Literal[False]
+    smoke_dev_paper_scale_claim_boundary: str = Field(max_length=160)
+    future_o6b_required_fields: list[str]
+
+    @field_validator("performance_contract_version")
+    @classmethod
+    def _safe_version(cls, value: str) -> str:
+        value = _require_non_empty(value)
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:/@+-]{0,79}", value):
+            raise ValueError("performance contract version must be a safe identifier")
+        return value
+
+    @field_validator("timing_method_allowed_future")
+    @classmethod
+    def _timing_methods(
+        cls,
+        value: list[PerformanceTimingMethodCandidate],
+    ) -> list[PerformanceTimingMethodCandidate]:
+        required = {"cuda_events", "triton_do_bench", "torch_profiler"}
+        if set(value) != required or len(value) != len(required):
+            raise ValueError("O6a must enumerate the approved future timing candidates")
+        return value
+
+    @field_validator("smoke_dev_paper_scale_claim_boundary")
+    @classmethod
+    def _claim_boundary(cls, value: str) -> str:
+        value = _require_non_empty(value)
+        if "paper" not in value.lower() or "claim" not in value.lower():
+            raise ValueError("claim boundary must explicitly mention paper claims")
+        return value
+
+    @field_validator("future_o6b_required_fields")
+    @classmethod
+    def _future_o6b_fields(cls, value: list[str]) -> list[str]:
+        required = set(O6B_REQUIRED_PERFORMANCE_RUN_PACKET_FIELDS)
+        if set(value) != required or len(value) != len(required):
+            raise ValueError("future O6b packet field list must match the O6b contract")
+        return value
+
+    @model_validator(mode="after")
+    def _performance_contract(self) -> "ObservabilityPerformanceContract":
+        reject_forbidden_observability_payload(
+            {"performance_contract": self.model_dump(mode="json")}
+        )
         return self
 
 

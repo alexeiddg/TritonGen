@@ -1,6 +1,6 @@
 # Observability Sidecar Implementation Spec
 
-- Version: 0.2.4
+- Version: 0.2.5
 - Date: 2026-06-04
 - Status: implementation specification / no code changes or runs authorized by
   itself
@@ -9,14 +9,16 @@
 - Orchestration source: `docs/15_experiment_change_orchestration_contract.md`
 - Live state source: `docs/handoff/experiment_change_orchestration_state.md`
 - Current Cluster 3 context: Phase 14e froze the four-cell n=5 development
-  matrix; no n=20, paper-scale, performance, profiler, timing, or speedup work
-  is authorized by this spec
+  matrix; no n=20, paper-scale, profiler trace, Nsight, NCU, output mutation,
+  or scientific-row mutation work is authorized by this spec. O6a defines the
+  Level-4 performance sidecar contract only; O6b requires a separate execution
+  packet before any Modal/GPU timing run.
 
 ## Purpose
 
 This document defines the implementation contract for observability sidecars
 across TritonGen experiment runners. It is meant to be precise enough for an
-agent to implement O0 through O4 without changing scientific result-row schemas,
+agent to implement O0 through O6a without changing scientific result-row schemas,
 without creating mixed-policy artifacts, and without accidentally authorizing
 paid Modal or paper-scale work.
 
@@ -27,6 +29,7 @@ Observability sidecars record operational facts adjacent to result artifacts:
 - Modal runtime identity and resource context when available;
 - estimated or unavailable cost metadata from supplied/static pricing inputs;
 - post-hoc billing reconciliation status when later implemented;
+- Level-4 performance contract metadata before any timing execution;
 - artifact and event completeness metadata.
 
 Scientific rows remain the source of truth for experimental outcomes. Sidecars
@@ -43,8 +46,8 @@ This spec does not:
   or Cluster 3 scientific result rows in O0 through O4;
 - record prompts, full source text, raw feedback, raw compile logs, private
   eval details, or hidden correctness data in sidecars;
-- implement performance benchmarking, kernel timing, speedup, profiler, Nsight,
-  NCU, throughput, or latency measurements;
+- execute performance benchmarking, kernel timing, speedup, profiler, Nsight,
+  NCU, throughput, or latency measurements without a later O6b run packet;
 - make actual Modal billing claims without a later O5 reconciliation contract;
 - make cost-per-success, lift, pass@k, statistical, or correctness-improvement
   claims.
@@ -64,6 +67,10 @@ when later verifying these facts.
 | [Modal current function call ID](https://modal.com/docs/reference/modal.current_function_call_id) and [current input ID](https://modal.com/docs/reference/modal.current_input_id) | Remote event records may include function-call and input IDs through the existing `shared/modal_harness/runtime.py` helper. |
 | [Modal FunctionCall](https://modal.com/docs/reference/modal.FunctionCall) | Switching from `.remote()` to `.spawn()` only for telemetry is a behavior change and is out of scope for initial sidecar work. |
 | [Modal GPU metrics](https://modal.com/docs/guide/gpu-metrics) | GPU utilization, power, memory, and temperature are operational metrics, not kernel-performance evidence. They are out of scope unless a later O6/performance contract authorizes them. |
+| [Modal GPU acceleration](https://modal.com/docs/guide/gpu) and [Modal Function options](https://modal.com/docs/reference/modal.Function) | O6b may use explicitly configured Modal GPU Functions only when a signed O6b packet names the target function, GPU/resource settings, timeout, and artifact policy. |
+| [Modal PyTorch profiling example](https://frontend.modal.com/docs/examples/torch_profiling) | Profiler traces are files in ephemeral containers unless persisted. O6a does not authorize profiler traces, Nsight, NCU, or Volume persistence; a later profiler packet must name trace retention and redaction rules. |
+| [PyTorch CUDA Event reference](https://docs.pytorch.org/docs/2.9/generated/torch.cuda.Event.html) | CUDA events are a future timing-method candidate for O6b, not imported or called by O6a. |
+| [Triton `triton.testing.do_bench`](https://triton-lang.org/main/python-api/generated/triton.testing.do_bench.html) | Triton benchmark utilities are a future timing-method candidate for O6b and require explicit warmup/repetition policy. |
 | [JSON Lines](https://jsonlines.org/) | Event sidecars should be UTF-8 newline-delimited JSON, one complete JSON object per line. |
 | [Python `time` docs](https://docs.python.org/3/library/time.html) | Durations should use monotonic/performance-counter clocks such as `perf_counter_ns`; wall-clock UTC timestamps are for ordering and human audit, not elapsed-time math. |
 | [Pydantic models](https://docs.pydantic.dev/) | Pydantic is already used by the repo's Modal harness and is acceptable for strict sidecar schema validation without adding a new dependency. |
@@ -92,7 +99,8 @@ implementation work.
 | O3 token telemetry | Record prompt/generated/total token counts when already available or cheaply computable. | Do not store token IDs or prompt text. | No new generation run by implementation alone. |
 | O4 estimated cost metadata | Add supplied/static estimated or unavailable cost sidecar metadata and validation. | No actual billing, cost-per-success, pass@k cost, ROI, economic-lift, or paper-scale cost claim. | No billing API, invoice, provider billing, Modal billing, external pricing fetch, Modal run, generation, output mutation, or analyzer change. |
 | O5 actual billing reconciliation | Future post-hoc reconciliation of actual billing status and bounded actual-cost facts into sidecars. | Requires billing/tag policy, credential scope, raw-report handling policy, and a separate approval packet. | Requires explicit approval before any billing query, credential use, CLI/API call, or historical sidecar migration. |
-| O6 performance timing contract | Future Level 4/performance-only contract. | Out of scope. | Out of scope. |
+| O6a Level-4 performance contract | Add sidecar-only performance/speedup measurement contract, future O6b packet requirements, baseline policy, and fail-closed redaction/tests. | None. | No Modal/GPU/timing/profiler execution. |
+| O6b Level-4 performance execution | Future explicitly approved Modal GPU benchmark packet. | Dedicated performance sidecar only. | Requires separate packet before any Modal/GPU/timing run. |
 
 ## Package O0: Sidecar Core Contract
 
@@ -656,8 +664,9 @@ Implementation rules:
   start and end around the remote call;
 - remote containers may record their own process-local stage durations with a
   different `clock_scope_id`;
-- avoid field names `latency`, `runtime_ms`, `kernel_time`, `timing`,
-  `throughput`, or `speedup` until O6.
+- avoid field names `latency`, `runtime_ms`, `kernel_time`, `throughput`, or
+  `speedup` in operational event sidecars. These names belong only in a future
+  O6b performance sidecar after explicit approval.
 
 Preferred duration fields:
 
@@ -1067,6 +1076,152 @@ Stop with a blocked classification if any of these occur:
 - dependency or lockfile changes are needed;
 - docs conflict on target surfaces, allowed fields, authorization state, or the
   O6 performance boundary.
+
+## Package O6a: Level-4 Performance Contract
+
+O6 is the final named observability sidecar step. It is no longer disabled-only,
+but O6a remains contract and fixture scaffolding only. O6a makes future
+Level-4 performance measurement explicit without running Modal, GPU timing,
+generation, experiments, profilers, benchmarks, or output mutation.
+
+O6a may add only:
+
+```text
+shared/observability/performance_contract.py
+shared/observability/schema.py
+shared/observability/redaction.py
+shared/tests/test_observability_performance_contract.py
+shared/tests/test_observability_schema.py
+shared/tests/test_observability_redaction.py
+shared/tests/test_observability_imports.py
+audits/observability_sidecar_o6a_performance_contract_report.md
+```
+
+O6a defines a strict `ObservabilityPerformanceContract` with:
+
+```text
+performance_contract_version
+performance_execution_authorized=false
+required_future_packet_type=O6b_modal_gpu_performance
+timing_method_allowed_future=[cuda_events, triton_do_bench, torch_profiler]
+speedup_baseline_policy
+shape_dtype_device_lock_required=true
+warmup_required=true
+repetitions_required=true
+separate_performance_sidecar_required=true
+scientific_row_mutation_allowed=false
+smoke_dev_paper_scale_claim_boundary
+future_o6b_required_fields
+```
+
+O6a must reject real measurement fields in sidecars, summaries, attributes, or
+contract payloads, including:
+
+```text
+latency_ms
+throughput
+speedup
+speedup_vs_baseline
+kernel_time
+wall_time
+cuda_event_time
+timing_samples
+median_ms
+p25_ms
+p75_ms
+min_ms
+max_ms
+profiler_trace
+profiler_output
+Nsight output
+NCU output
+benchmark_score
+performance_claim
+paper_scale_claim
+```
+
+O6a does not authorize profiler trace persistence. Modal's profiling example
+shows that profiler outputs are files on disk and must be persisted explicitly,
+for example with Volumes, if retained. Any future profiler-trace work therefore
+needs a separate profiler packet that names trace paths, retention duration,
+redaction policy, and deletion policy.
+
+### O6b Run-Packet Requirements
+
+Actual performance execution first becomes possible only in O6b and only after
+a signed packet names every field below:
+
+```text
+benchmark_target_artifact
+baseline_artifact_or_type
+kernel_class
+problem_id
+dtype
+shape_set
+device_gpu_type
+modal_image_digest
+timing_method
+warmup_iterations
+measured_repetitions
+timeout_s
+correctness_prerequisite
+performance_sidecar_output_path
+no_scientific_row_mutation
+paper_scale_packet_required_for_claims
+```
+
+The O6b packet must also set explicit authorization flags:
+
+```text
+MODAL_AUTHORIZED:
+GPU_AUTHORIZED:
+PERFORMANCE_EXECUTION_AUTHORIZED:
+GENERATION_AUTHORIZED:
+OUTPUT_MUTATION_AUTHORIZED:
+PAPER_SCALE_AUTHORIZED:
+PROFILER_TRACE_AUTHORIZED:
+NSIGHT_AUTHORIZED:
+NCU_AUTHORIZED:
+```
+
+O6b may authorize Modal/GPU timing for a dedicated benchmark harness, but it
+must not mutate existing Cluster 1/2/3 scientific rows, rewrite prior outputs,
+mix timing data into compile/correctness `pass@k` rows, or claim paper-scale
+results from smoke/development runs. Speedup comparisons must lock shape, dtype,
+device/GPU type, correctness prerequisite, and baseline artifact or baseline
+type before execution.
+
+### Future Performance Sidecar Row Plan
+
+A future O6b sidecar row may include measurement fields only after O6b approval:
+
+```text
+experiment_id
+run_id
+benchmark_id
+kernel_artifact_hash
+baseline_artifact_hash
+kernel_class
+problem_id
+dtype
+shape_signature
+gpu_type
+modal_image_digest
+timing_method
+warmup_iters
+repetitions
+median_ms
+p25_ms
+p75_ms
+min_ms
+max_ms
+speedup_vs_baseline
+measurement_status
+caveats
+```
+
+These fields remain forbidden in O6a. O6a may document them and validate future
+packet requirements, but it must not write populated measurement rows.
 
 ## Privacy And Boundary Contract
 

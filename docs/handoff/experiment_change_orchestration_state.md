@@ -1,6 +1,6 @@
 # Experiment Change Orchestration State
 
-- Version: 1.5.29
+- Version: 1.5.32
 - Date: 2026-06-04
 - Status: active live state record
 - Owner: current orchestration agent
@@ -30,7 +30,9 @@ abandoning, or executing work governed by
 - If this file contradicts current code, tests, artifact registry entries, or
   git/worktree state, stop and reconcile the mismatch before continuing.
 - This file does not authorize Modal, n=5, n=20, paper-scale work, output
-  mutation, profiler, timing, speedup, or benchmark work.
+  mutation, profiler trace collection, timing execution, speedup computation,
+  or benchmark execution unless a later signed run packet explicitly grants
+  those permissions. O6a may define contract/schema scaffolding only.
 - The orchestration contract is frozen for implementation use. Add process only
   when a concrete amendment trigger is recorded.
 
@@ -371,12 +373,12 @@ reason. Do not backfill missing provenance silently after execution.
 
 | Field | Value |
 |---|---|
-| Git baseline commit | `cf63de80a8fe5a9cd20229657126f12f6a0d306d` O5b static ingestion commit; current uncommitted O5c adapter/report edits sit on top |
-| Git branch | `codex/observability-o5b-reconciliation` |
-| Git status at latest reconciliation | O5b static/redacted actual-billing report ingestion is committed at `cf63de8`; O5c Modal billing report adapter/report edits are active and live collection is blocked by Modal billing-report rate limits; no nonempty raw or redacted billing artifact is retained; no output mutation, result-row schema mutation, analyzer/economic metric, dependency/lockfile change, external pricing fetch, generation, GPU/Modal compute run, or MLflow runtime artifact change is authorized |
+| Git baseline commit | `dc48782 Add O5c Modal billing collection adapter` |
+| Git branch | `codex/observability-o6-performance-contract` |
+| Git status at latest reconciliation | O5c adapter-ready blocked state is committed at `dc48782`; O6a Level-4 performance contract/schema/redaction/test/docs scaffolding is active. O6a authorizes no Modal, GPU, generation, profiler, benchmark, timing execution, output mutation, result-row schema mutation, analyzer/economic metric, dependency/lockfile change, historical sidecar/output mutation, or MLflow runtime artifact change. |
 | Orchestration contract version | `docs/15_experiment_change_orchestration_contract.md` v1.0.12 |
-| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.68.0 |
-| Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.4 |
+| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.69.0 |
+| Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.5 |
 | Structural/task analyzer metadata spec version | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 |
 | MLflow tracking policy version | `.contracts/research/mlflow_tracking_policy.md` v1.0.0 |
 | Agentic transcript implementation spec version | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5 |
@@ -389,7 +391,7 @@ reason. Do not backfill missing provenance silently after execution.
 | Agentic transcript A4 P-to-C isolation proof | promoted into A6 handoff trunk by commit `4a84600`; `audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md` v1.0.0 remains the evidence snapshot; no Modal/output/generation work performed |
 | Agentic transcript A5 analyzer grouping/quarantine | promoted into A6 handoff trunk by commit `4a84600`; `audits/agentic_transcript_v1_a5_analyzer_grouping_report.md` v1.0.0 remains the evidence snapshot; no Modal/output/generation work performed |
 | Agentic transcript A6 run-packet gate planning | promoted into handoff trunk at commit `4a84600`; `audits/agentic_transcript_v1_a6_run_packet_gate_report.md` v1.0.0 remains the evidence snapshot; `docs/handoff/agentic_transcript_v1_next_run_packet.md` is `DRAFT_NOT_APPROVED` and authorizes no Modal/output/generation/n=5/n=20/paper-scale work |
-| Observability O0-O4 package | promoted into handoff trunk at commit `309c451`; `audits/observability_sidecar_o0_o4_final_acceptance_report.md` records `O0_O4_FINAL_ACCEPTANCE_PASS_WITH_CAVEATS`; O5-Prep and O5a are accepted locally, O5b static/redacted report ingestion is committed at `cf63de8`, and O5c live Modal billing collection is blocked by rate limits after adapter/test implementation |
+| Observability O0-O6a package | O0-O4 promoted into handoff trunk at commit `309c451`; O5-Prep/O5a accepted locally through `c41a5bc`; O5b committed at `cf63de8`; O5c adapter-ready blocked state committed at `dc48782`; O6a Level-4 performance contract scaffolding is active on `codex/observability-o6-performance-contract` and authorizes no execution |
 | Current Cluster 3 gate | Phase 14e four-cell n=5 development matrix frozen with warnings; no broader run without explicit approval packet |
 | Paper-scale status | blocked; no Cluster 3 `n=20` until Gate G8 |
 
@@ -402,7 +404,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Worktree | Branch | Commit | State ownership |
 |---|---|---|---|
-| `/Users/alexeidelgado/Desktop/TritonGen` | `codex/observability-o5b-reconciliation` | `cf63de8` plus O5c Modal billing collection adapter/report edits | active O5c worktree; O5b is committed; O5c has explicit billing-query authorization for the supplied UTC window but live collection is blocked by Modal billing-report rate limits; no retained raw/redacted artifact, output mutation, generation, dependency, lockfile, analyzer/economic metric, result-row schema mutation, or MLflow runtime work |
+| `/Users/alexeidelgado/Desktop/TritonGen` | `codex/observability-o6-performance-contract` | `dc48782` plus O6a contract scaffolding edits | active O6a worktree; O5c adapter-ready blocked state is committed; O6a is contract/schema/redaction/test/docs only and authorizes no Modal/GPU/generation/profiler/benchmark/timing execution, output mutation, result-row schema mutation, analyzer/economic metric, dependency/lockfile, historical sidecar/output mutation, or MLflow runtime work |
 | `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `4a84600` | reference/history worktree only; same A6 commit as the promoted handoff trunk and not the place for observability work |
 | `/Users/alexeidelgado/Desktop/TritonGen/.claude/worktrees/intelligent-pasteur-72d92f` | `claude/intelligent-pasteur-72d92f` | `b0085c1` | external/unknown to this orchestration state; reconcile before relying on it |
 
@@ -413,7 +415,8 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 | `codex-track-handoff-context` | promoted handoff trunk | none while this worktree is on O5b | local baseline behind O5b branch | Local handoff trunk includes MLflow integration ancestry, A2-A6 repair-memory ancestry, the complete O0-O4 observability package at `309c451`, and local O5-Prep/O5a commits through `c41a5bc`; O5b additionally merged remote onboarding update `670950d`. Do not use `main`, `ml_migration`, or stale worktrees for observability work. |
 | `codex/observability-sidecar-core` | O0-O4 observability package | none after promotion | promoted/reference | Created from `codex-track-handoff-context` at `4a84600`; O0 committed as `bcdaede`; O1 target state committed as `f088c10`; O1 committed as `8eaef2e`; O2-Prep committed as `74b3acd`; O2 committed as `6f3001e`; O3-Prep committed as `c93bdc0`; O3 committed as `4ddc767`; O4-Prep committed as `d30aa50`; O4 committed as `d4244af`; final acceptance committed as `309c451`. Treat as complete/reference, not the place for O5. |
 | `codex/observability-o5-prep` | O5-Prep and O5a actual billing reconciliation scaffolding | none after O5b branch creation | accepted/reference | Created from promoted `codex-track-handoff-context` at `309c451`; O5-Prep committed as `effd644`, O5a scaffolding committed as `263d317`, and O5a final acceptance committed as `c41a5bc`. Treat as reference/history, not the place for O5b edits. |
-| `codex/observability-o5b-reconciliation` | O5b static ingestion plus O5c Modal billing collection adapter | `/Users/alexeidelgado/Desktop/TritonGen` | active blocked O5c implementation | O5b is committed at `cf63de8`; O5c adds only the named adapter/test/docs/audit surfaces and attempted the approved Modal billing CLI window, but live collection is blocked by Modal billing-report rate limits. No nonempty raw/redacted artifact is retained and no output/result-row/analyzer/dependency/generation/GPU/Modal compute/MLflow runtime mutation is authorized. |
+| `codex/observability-o5b-reconciliation` | O5b static ingestion plus O5c Modal billing collection adapter | none after O6 branch creation | committed/reference | O5b is committed at `cf63de8`; O5c adapter-ready blocked state is committed at `dc48782`. No nonempty raw/redacted artifact is retained and no output/result-row/analyzer/dependency/generation/GPU/Modal compute/MLflow runtime mutation is authorized. |
+| `codex/observability-o6-performance-contract` | O6a Level-4 performance contract scaffolding | `/Users/alexeidelgado/Desktop/TritonGen` | active O6a implementation | Created from O5c baseline `dc48782`. Scope is limited to shared observability performance contract schema/helper/redaction/tests plus docs/audit. O6a authorizes no Modal/GPU/generation/profiler/benchmark/timing execution, output mutation, result-row schema mutation, analyzer/economic metric, dependency/lockfile, historical sidecar/output mutation, or MLflow runtime work. |
 | `codex/integrate-mlflow-into-handoff` | MLflow tracking harness integration | none after promotion | promoted/reference | Merged `origin/ml_migration`, preserved handoff doc/audit tracking policy, validated optional/no-op tracking tests, and was absorbed into the promoted handoff trunk before A6. |
 | `codex/llm-repair-memory-agentic-transcript-v1` | A-stream / agentic transcript implementation | `/private/tmp/tritongen-llm-repair-memory` | promoted/reference | Same commit as the promoted handoff trunk at `4a84600`; keep as reference/history, not as an active implementation branch for observability. |
 
@@ -421,7 +424,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Surface | Owner branch | Owner worktree | Scope | Start commit | Expected files | Expected tests | Review checkpoint | Status |
 |---|---|---|---|---|---|---|---|---|
-| O5c Modal billing report collection adapter | `codex/observability-o5b-reconciliation` | `/Users/alexeidelgado/Desktop/TritonGen` | Deterministic Modal billing CLI adapter, hourly query chunking, and O5b redacted sanitizer for the approved UTC window; live collection blocked by Modal rate limit | `cf63de80a8fe5a9cd20229657126f12f6a0d306d` | `shared/observability/billing_reconciliation.py`; `shared/observability/billing_modal_collection.py`; `shared/tests/test_observability_billing_reconciliation.py`; `shared/tests/test_observability_billing_modal_collection.py`; `shared/tests/test_observability_imports.py`; `docs/handoff/experiment_change_orchestration_state.md`; `docs/handoff/document_version_registry.md`; `audits/observability_sidecar_o5c_modal_billing_collection_report.md` | focused shared observability tests; non-observability regression bundle; `git diff --check`; forbidden code-scope diff; billing/API/credential scan; economic/performance scan; artifact-retention check | Independent O5c review before commit/promotion; live collection retry requires rate-limit clearance or separately approved API fallback | active blocked implementation |
+| O6a Level-4 performance contract scaffolding | `codex/observability-o6-performance-contract` | `/Users/alexeidelgado/Desktop/TritonGen` | Contract/schema/redaction/helper/tests/docs only for future O6b Modal GPU performance sidecars; no execution | `dc48782 Add O5c Modal billing collection adapter` | `shared/observability/schema.py`; `shared/observability/redaction.py`; `shared/observability/performance_contract.py`; `shared/observability/__init__.py`; `shared/tests/test_observability_performance_contract.py`; `shared/tests/test_observability_schema.py`; `shared/tests/test_observability_redaction.py`; `shared/tests/test_observability_imports.py`; `docs/16_observability_sidecar_implementation_spec.md`; `docs/handoff/experiment_change_orchestration_state.md`; `docs/handoff/document_version_registry.md`; `audits/observability_sidecar_o6a_performance_contract_report.md` | focused shared observability tests; non-observability regression bundle; `git diff --check`; forbidden scope diff; execution-authorization scan; timing/profiler import scan; performance-claim scan | Independent O6a review before commit/promotion; O6b benchmark execution requires a separate signed packet | active implementation |
 
 ## Gate Status
 
@@ -430,7 +433,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 | G0 baseline freeze | satisfied with caveat | Git status is clean, but ignored docs/audits/outputs must be checked directly when relevant. |
 | G1 orchestration contract accepted | satisfied | Contract exists and is routed through project map, hub, and registry. |
 | G2 reporting terminology stable | not started | Requires S0 acceptance. |
-| G3 observability sidecar contract stable | O0-O4 promoted / O5c blocked | `docs/16_observability_sidecar_implementation_spec.md` v0.2.4 defines O0-O5 boundaries. O0-O4 final acceptance is committed at `309c451` with caveats, O5-Prep/O5a are accepted locally through `c41a5bc`, O5b is committed at `cf63de8`, and O5c adapter/report work is blocked by Modal billing-report rate limits after the approved CLI attempt. No nonempty raw/redacted artifact is retained, and no output mutation, generation, tokenizer/model execution, pricing fetch, analyzer/economic metric, dependency/lockfile change, cost-per-success, pass@k cost, ROI, economic-lift, or performance work is authorized. |
+| G3 observability sidecar contract stable | O0-O5c committed / O6a active | `docs/16_observability_sidecar_implementation_spec.md` v0.2.5 defines O0-O6a boundaries. O0-O4 final acceptance is committed at `309c451` with caveats, O5-Prep/O5a are accepted locally through `c41a5bc`, O5b is committed at `cf63de8`, O5c adapter-ready blocked state is committed at `dc48782`, and O6a contract scaffolding is active. No nonempty raw/redacted billing artifact is retained, and no output mutation, generation, tokenizer/model execution, pricing fetch, analyzer/economic metric, dependency/lockfile change, cost-per-success, pass@k cost, ROI, economic-lift, Modal/GPU timing execution, profiler trace, Nsight, NCU, benchmark execution, or paper-scale performance claim is authorized. |
 | G4 analyzer compatibility stable | spec drafted / code not started | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 defines S0-S3 metadata and report-label work; G4 still requires S1 implementation and compatibility tests. |
 | G5 agentic prompt core stable | satisfied with baseline-venv caveat | `audits/agentic_transcript_v1_a1_prompt_core_report.md` v1.0.0 records pure prompt-core implementation, typed local errors, policy config validation, public evidence/source models, deterministic anchor ranking, canonical renderer, prompt/history hashes, budget behavior, fixture manifest, prompt-injection fixture, legacy C/P byte-invariance snapshots, import isolation, focused tests, and no forbidden-surface changes. |
 | G6 agentic integration stable | promoted to handoff trunk with run gate caveat | A2 C-loop integration, A3 P-loop integration, A4 P-to-C isolation proof, A5 analyzer grouping/quarantine, and A6 run-packet gate planning are present in promoted A6 commit `4a84600`; future agentic execution remains blocked pending signed run approval and required pre-run checks. |
@@ -486,7 +489,7 @@ Historical context:
 |---|---|---|
 | orchestration contract | complete | `docs/15_experiment_change_orchestration_contract.md` created and routed. |
 | operating-control addendum | complete | State record, lease, decision authority, run packet, merge protocol, and trust boundary added to the contract. |
-| observability sidecar implementation spec | complete / tightened | `docs/16_observability_sidecar_implementation_spec.md` v0.2.4 created, routed, clarified for O0, narrowed for O3 token telemetry as counts/status only, tightened for O4 estimated/unavailable cost metadata only, and extended with O5 actual-billing reconciliation boundaries; O0-O4 are promoted at `309c451`, O5-Prep/O5a are accepted locally through `c41a5bc`, O5b static/redacted report ingestion is committed at `cf63de8`, and O5c Modal billing collection is blocked by Modal billing-report rate limits. |
+| observability sidecar implementation spec | complete / tightened | `docs/16_observability_sidecar_implementation_spec.md` v0.2.5 created, routed, clarified for O0, narrowed for O3 token telemetry as counts/status only, tightened for O4 estimated/unavailable cost metadata only, extended with O5 actual-billing reconciliation boundaries, and extended with O6a Level-4 performance contract scaffolding plus future O6b packet requirements; O0-O4 are promoted at `309c451`, O5-Prep/O5a are accepted locally through `c41a5bc`, O5b is committed at `cf63de8`, O5c adapter-ready blocked state is committed at `dc48782`, and O6a is active. |
 | O1 Cluster 3 local runner instrumentation | committed | Commit `8eaef2e` adds opt-in Cluster 3 runner observability sidecars with default-off behavior, required explicit IDs when enabled, tmp_path-only tests, no result-row schema mutation, and no Modal/output/generation authorization. |
 | O2 Modal runtime context implementation | committed | Commit `6f3001e` adds optional safe Modal runtime context sidecar support for Cluster 3 only with local fake-context tests, no `.remote()` to `.spawn()` switch, no new Modal invocation, no outputs/result-row mutation, no billing/cost/performance telemetry, and no execution authorization. |
 | O3 token telemetry implementation | committed | Commit `4ddc767` adds count/status-only token telemetry, fail-closed token/raw/private payload rejection, event-derived token summary validation, and Cluster 3 injected/unavailable token sidecars with no tokenizer/model/generation/output/result-row/billing/performance changes. |
@@ -495,7 +498,8 @@ Historical context:
 | O5-Prep actual billing reconciliation launch reconciliation | committed | Commit `effd644` names future O5 target surfaces, allowed sidecar-only actual-billing reconciliation fields, forbidden billing/private/economic payloads, approval-packet requirements, tests, and stop conditions. |
 | O5a actual billing reconciliation scaffolding | accepted with caveats | Commit `263d317` adds shared observability schema/redaction/logger scaffolding for mocked/static actual-billing reconciliation metadata only, and commit `c41a5bc` records final acceptance. No live billing query, credential use, Modal billing CLI/API invocation, output mutation, runner integration, result-row schema mutation, analyzer/economic metric, dependency/lockfile, MLflow runtime state, or historical sidecar mutation is authorized. |
 | O5b static/redacted billing reconciliation ingestion | committed | Commit `cf63de8` adds pure local static/redacted report parsing, O5a schema validation, dry-run default, explicit non-output write path, and limited attribution handling. |
-| O5c Modal billing report collection | blocked | O5c adapter/tests are implemented locally, but the approved live Modal billing CLI collection is blocked by Modal billing-report limits. The full hourly window exceeded Modal's 7-day limit, and the chunked strategy hit the workspace billing report rate limit. No nonempty raw/redacted artifact is retained. |
+| O5c Modal billing report collection | committed / adapter-ready blocked | Commit `dc48782` adds the adapter-ready blocked state. The approved live Modal billing CLI collection remains blocked by Modal billing-report limits. The full hourly window exceeded Modal's 7-day limit, and the chunked strategy hit the workspace billing report rate limit. No nonempty raw/redacted artifact is retained. |
+| O6a Level-4 performance contract scaffolding | active | Branch `codex/observability-o6-performance-contract` adds contract/schema/redaction/helper/tests/docs only. It defines the O6a/O6b split and future O6b run-packet requirements but authorizes no Modal/GPU/generation/profiler/benchmark/timing execution, output mutation, result-row schema mutation, analyzer/economic metric, dependency/lockfile, historical sidecar/output mutation, or MLflow runtime work. |
 | structural/task analyzer metadata implementation spec | complete | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.2 created and routed; analyzer/report code implementation not started. |
 | agentic transcript implementation spec | complete | `docs/18_agentic_transcript_v1_implementation_spec.md` v0.1.5 created, routed, edge-case hardened, research cross-checked, and expanded with implementation checkpoint gates plus canonical rendering, public-evidence-only ranking, fixture manifest, byte-invariance, import-isolation, metadata-nullability, CLI/API/default, mixed-policy analyzer, commit-slicing, rollback, and no-cleanup gates; A0-A6 are promoted into the A6 handoff trunk at `4a84600`. |
 | agentic transcript docs-only checkpoint | complete | `audits/agentic_transcript_v1_spec_checkpoint_report.md` v1.0.0 confirms source-doc inspection, readiness-audit reconciliation as `aligned_with_spec`, A0 readiness, no-code/no-output mutation, worktree caveats, and required local docs/import sanity tests. |
@@ -550,28 +554,28 @@ Historical context:
 - O0-O4 observability is accepted with caveats and promoted at `309c451`.
 - O5-Prep and O5a are accepted locally through `c41a5bc`.
 - O5b static/redacted billing reconciliation ingestion is committed at
-  `cf63de8`; O5c Modal billing collection adapter/report work is active but
-  blocked by Modal billing-report limits on
-  `codex/observability-o5b-reconciliation`. No nonempty raw/redacted billing
-  artifact is retained. The package authorizes no Modal compute/generation,
-  output mutation, historical sidecar/output mutation, analyzer/economic metric
-  change, cost-per-success, pass@k cost, ROI,
-  economic lift, benchmark economics, Modal execution, generation, output
-  mutation, or result-row schema change.
+  `cf63de8`; O5c adapter-ready blocked state is committed at `dc48782`.
+  No nonempty raw/redacted billing artifact is retained.
+- O6a Level-4 performance contract scaffolding is active on
+  `codex/observability-o6-performance-contract`. O6a authorizes no Modal,
+  GPU, generation, profiler, benchmark, timing execution, output mutation,
+  historical sidecar/output mutation, analyzer/economic metric change,
+  cost-per-success, pass@k cost, ROI, economic lift, result-row schema change,
+  or paper-scale performance claim.
 - No analyzer metric-registry implementation is active yet.
 
 ## Next Allowed Actions
 
 Allowed without run approval:
 
-1. Run an independent O5c review on the current adapter/report changes before
-   any commit or promotion decision.
+1. Run an independent O6a review on the current performance contract
+   scaffolding before any commit or promotion decision.
 2. Retry O5c live billing collection only after the Modal workspace billing
    report rate limit clears, using the same approved UTC window and chunked CLI
    commands, or after a separate explicit API-fallback approval.
-3. Do not start O6, output mutation, historical sidecar migration,
+3. Do not start O6b, output mutation, historical sidecar migration,
    analyzer/economic metrics, cost-per-success/pass@k cost, or paper-scale
-   economic claims.
+   economic/performance claims without a signed packet.
 4. Create remaining component implementation specs for paper-scale readiness or
    future Cluster 3 run packet/spec, if explicitly requested.
 5. Start other safe parallel branches only after adding package cards below:
@@ -594,7 +598,9 @@ Not allowed without explicit approval:
 - output overwrite or mutation;
 - billing query, credential use, Modal billing/API/CLI invocation, raw billing
   report processing, or historical sidecar migration;
-- performance, profiler, timing, speedup, or benchmark work.
+- Modal/GPU performance execution, profiler trace collection, Nsight, NCU,
+  timing execution, speedup computation, or benchmark execution without an O6b
+  packet.
 
 ## A1 Prompt Core Checkpoint State
 
@@ -622,7 +628,7 @@ A3 P-loop integration: promoted into A6 trunk at 4a84600; audits/agentic_transcr
 A4 P-to-C isolation proof: promoted into A6 trunk at 4a84600; audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md v1.0.0
 A5 analyzer grouping/quarantine: promoted into A6 trunk at 4a84600; audits/agentic_transcript_v1_a5_analyzer_grouping_report.md v1.0.0
 A6 run-packet gate planning: promoted into handoff trunk at 4a84600; audits/agentic_transcript_v1_a6_run_packet_gate_report.md v1.0.0; docs/handoff/agentic_transcript_v1_next_run_packet.md is DRAFT_NOT_APPROVED
-next observability action: complete O5b static/redacted report ingestion review and commit O5b only if review passes; live billing reconciliation, O6, and future agentic runs still require the appropriate launch packet or signed run approval packet
+next observability action: complete O6a review and commit only if review passes; O6b performance execution, O5c live billing retry, and future agentic runs still require the appropriate launch packet or signed run approval packet
 ```
 
 A1 allowed files:
@@ -1444,7 +1450,8 @@ status: promoted into A6 handoff trunk at 4a84600; reference/history only
 | O5-Prep actual billing reconciliation launch reconciliation | `codex/observability-o5-prep` | committed | O0-O4 promoted | O5_PREP_COMPLETE | Commit `effd644` names future O5 target surfaces, allowed sidecar-only actual-billing reconciliation fields, forbidden billing/private/economic payloads, approval packet requirements, tests, and stop conditions. No runtime code, billing query, credential use, Modal/output/generation, analyzer/economic metric, dependency/lockfile, result-row schema, or historical sidecar/output mutation is authorized. |
 | O5a actual billing reconciliation scaffolding | `codex/observability-o5-prep` | accepted with caveats | O5_PREP_COMPLETE | O5a acceptance complete | Commit `263d317` adds shared observability schema/redaction/logger scaffolding for mocked/static actual-billing reconciliation metadata only, and commit `c41a5bc` records `O5A_FINAL_ACCEPTANCE_PASS_WITH_CAVEATS`. No runner integration, billing query, credential use, Modal billing CLI/API invocation, output mutation, result-row schema mutation, analyzer/economic metric, dependency/lockfile, or MLflow runtime change is authorized. |
 | O5b static/redacted billing reconciliation ingestion | `codex/observability-o5b-reconciliation` | committed | O5A_FINAL_ACCEPTANCE_PASS_WITH_CAVEATS | O5b complete | Commit `cf63de8` adds pure local JSON/JSONL static-redacted report ingestion, O5a schema validation, dry-run default, explicit non-output metadata write path, and attribution-limited handling. No output mutation, result-row schema mutation, analyzer/economic metric, dependency/lockfile, MLflow runtime state, generation, or O6 work is included. |
-| O5c Modal billing report collection | `codex/observability-o5b-reconciliation` | blocked | O5b committed plus explicit O5c billing-query packet | O5C_BLOCKED_MODAL_BILLING_RATE_LIMIT_WITH_ADAPTER_READY | Adds deterministic Modal billing CLI adapter and redacted O5b sanitizer tests, then attempts the approved `2026-05-01T00:00:00Z` to exclusive-end `2026-06-05T00:00:00Z` hourly report. Modal rejected the full query for the 7-day hourly limit and rejected the chunked strategy with a workspace billing report rate limit. No nonempty raw/redacted billing artifact was retained, no output/result-row/analyzer mutation occurred, and no economic/scientific claim is authorized. |
+| O5c Modal billing report collection | `codex/observability-o5b-reconciliation` | committed / adapter-ready blocked | O5b committed plus explicit O5c billing-query packet | O5C_REVIEW_PASS_COMMIT_ADAPTER_READY_BLOCKED | Commit `dc48782` adds deterministic Modal billing CLI adapter and redacted O5b sanitizer tests, then records the approved `2026-05-01T00:00:00Z` to exclusive-end `2026-06-05T00:00:00Z` hourly report attempt. Modal rejected the full query for the 7-day hourly limit and rejected the chunked strategy with a workspace billing report rate limit. No nonempty raw/redacted billing artifact was retained, no output/result-row/analyzer mutation occurred, and no economic/scientific claim is authorized. |
+| O6a Level-4 performance contract scaffolding | `codex/observability-o6-performance-contract` | active | O5c adapter-ready blocked baseline `dc48782` | O6A review pending | Adds metadata-only performance contract schema/helper/redaction/tests/docs for future O6b benchmark execution. No Modal/GPU/generation/profiler/benchmark/timing execution, output mutation, result-row schema mutation, analyzer/economic metric, dependency/lockfile, historical sidecar/output mutation, or MLflow runtime work is authorized. |
 | A2 C-loop integration | `codex/llm-repair-memory-agentic-transcript-v1` | promoted/reference | A1 | G6 partial | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a2_c_loop_integration_report.md` v1.0.0 records default `last_attempt_only_v1` preserved, `agentic_transcript_v1` opt-in, and no Modal/output mutation. |
 | A3 P-loop integration | `codex/llm-repair-memory-agentic-transcript-v1` | promoted/reference | A1/A2 | G6 partial | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a3_p_loop_integration_report.md` v1.0.0 records default `last_attempt_only_v1` preserved, `agentic_transcript_v1` opt-in, F1_COMPILE-only P eligibility preserved, and no Modal/output/generation mutation. |
 | A4 P-to-C isolation | `codex/llm-repair-memory-agentic-transcript-v1` | promoted/reference | A2/A3 complete | G6 partial | Promoted into A6 handoff trunk at `4a84600`; `audits/agentic_transcript_v1_a4_p_to_c_isolation_report.md` v1.0.0 remains the isolation evidence snapshot. |

@@ -16,6 +16,11 @@ from shared.observability.paths import (
     resolve_observability_paths,
     validate_observability_paths,
 )
+from shared.observability.performance_contract import (
+    default_o6a_performance_contract,
+    required_o6b_run_packet_fields,
+    validate_o6a_performance_contract,
+)
 from shared.observability.redaction import (
     ObservabilityRedactionError,
     reject_forbidden_observability_payload,
@@ -23,6 +28,7 @@ from shared.observability.redaction import (
     sanitize_error_summary,
 )
 from shared.observability.schema import (
+    O6B_REQUIRED_PERFORMANCE_RUN_PACKET_FIELDS,
     SCHEMA_VERSION,
     ObservabilityArtifactIdentity,
     ObservabilityAttemptIdentity,
@@ -31,6 +37,7 @@ from shared.observability.schema import (
     ObservabilityEvent,
     ObservabilityHashSidecar,
     ObservabilityModalContext,
+    ObservabilityPerformanceContract,
     ObservabilityRowIdentity,
     ObservabilityRunIdentity,
     ObservabilitySummary,
@@ -44,6 +51,7 @@ from shared.observability.schema import (
 
 __all__ = [
     "SCHEMA_VERSION",
+    "O6B_REQUIRED_PERFORMANCE_RUN_PACKET_FIELDS",
     "ObservabilityArtifactIdentity",
     "ObservabilityAttemptIdentity",
     "ObservabilityCostEstimate",
@@ -53,6 +61,7 @@ __all__ = [
     "ObservabilityJsonlAppendLogger",
     "ObservabilityModalContext",
     "ObservabilityPaths",
+    "ObservabilityPerformanceContract",
     "ObservabilityRedactionError",
     "ObservabilityRowIdentity",
     "ObservabilityRunIdentity",
@@ -60,12 +69,14 @@ __all__ = [
     "ObservabilityTokenCounts",
     "canonical_event_json",
     "canonical_json_bytes",
+    "default_o6a_performance_contract",
     "default_observability_event_path",
     "default_observability_hash_path",
     "default_observability_summary_path",
     "file_sha256",
     "load_observability_events",
     "reject_forbidden_observability_payload",
+    "required_o6b_run_packet_fields",
     "resolve_observability_paths",
     "row_sha256_from_canonical_json",
     "sanitize_attributes",
@@ -73,6 +84,7 @@ __all__ = [
     "sha256_bytes",
     "summary_with_digest",
     "validate_event_stream",
+    "validate_o6a_performance_contract",
     "validate_observability_paths",
     "write_observability_hash_sidecar_atomic",
     "write_observability_summary_atomic",

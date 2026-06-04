@@ -92,6 +92,21 @@ _SAFE_ACTUAL_BILLING_KEYS = {
     "billing_report_redacted_sha256",
     "billing_reconciliation_notes",
 }
+_SAFE_PERFORMANCE_CONTRACT_ROOT_KEY = "performance_contract"
+_SAFE_PERFORMANCE_CONTRACT_CHILD_KEYS = {
+    "performance_contract_version",
+    "performance_execution_authorized",
+    "required_future_packet_type",
+    "timing_method_allowed_future",
+    "speedup_baseline_policy",
+    "shape_dtype_device_lock_required",
+    "warmup_required",
+    "repetitions_required",
+    "separate_performance_sidecar_required",
+    "scientific_row_mutation_allowed",
+    "smoke_dev_paper_scale_claim_boundary",
+    "future_o6b_required_fields",
+}
 _SAFE_ID_KEYS = {
     "event_id",
     "run_id",
@@ -220,12 +235,36 @@ _FORBIDDEN_KEY_PATTERNS = (
     "power_draw",
     "temperature",
     "profiler",
+    "profiler_output",
+    "profiler_trace",
+    "raw_profiler_log",
+    "nsight",
+    "nsight_output",
+    "ncu",
+    "ncu_output",
+    "cuda_event",
+    "cuda_event_time",
     "kernel_timing",
     "latency",
+    "latency_ms",
+    "kernel_time",
+    "wall_time",
+    "timing_samples",
     "throughput",
     "speedup",
+    "speedup_claim",
+    "speedup_vs_baseline",
+    "throughput_claim",
     "performance",
+    "performance_claim",
     "benchmark",
+    "benchmark_score",
+    "median_ms",
+    "p25_ms",
+    "p75_ms",
+    "min_ms",
+    "max_ms",
+    "paper_scale_claim",
 )
 _FORBIDDEN_SECRET_KEY_PATTERNS = (
     "secret",
@@ -269,6 +308,12 @@ _FORBIDDEN_VALUE_PATTERNS = (
     re.compile(r"\beconomic[\s_-]+lift\b", re.IGNORECASE),
     re.compile(r"\bbenchmark[\s_-]+economics\b", re.IGNORECASE),
     re.compile(r"\bpaper[\s_-]+scale[\s_-]+cost[\s_-]+conclusion\b", re.IGNORECASE),
+    re.compile(r"\bprofiler[\s_-]+trace\b", re.IGNORECASE),
+    re.compile(r"\braw[\s_-]+profiler[\s_-]+logs?\b", re.IGNORECASE),
+    re.compile(r"\bNsight\b", re.IGNORECASE),
+    re.compile(r"\bNCU\b", re.IGNORECASE),
+    re.compile(r"\bpaper[\s_-]+scale[\s_-]+claim\b", re.IGNORECASE),
+    re.compile(r"\bperformance[\s_-]+claim\b", re.IGNORECASE),
 )
 
 
@@ -397,6 +442,8 @@ def _reject_forbidden_key(key: str, *, path: str) -> None:
         return
     if normalized in _SAFE_ACTUAL_BILLING_KEYS:
         return
+    if _is_performance_contract_key_allowed(normalized, path=path):
+        return
     if normalized in _SAFE_ID_KEYS:
         return
     if normalized in _FORBIDDEN_EXACT_KEYS:
@@ -413,6 +460,14 @@ def _reject_forbidden_string(value: str, *, path: str) -> None:
     for pattern in _FORBIDDEN_VALUE_PATTERNS:
         if pattern.search(value):
             raise ObservabilityRedactionError(f"{path} contains forbidden content")
+
+
+def _is_performance_contract_key_allowed(normalized: str, *, path: str) -> bool:
+    if normalized == _SAFE_PERFORMANCE_CONTRACT_ROOT_KEY:
+        return path == "$.performance_contract"
+    if normalized in _SAFE_PERFORMANCE_CONTRACT_CHILD_KEYS:
+        return path.startswith("$.performance_contract.")
+    return False
 
 
 def _normalize_key(key: str) -> str:

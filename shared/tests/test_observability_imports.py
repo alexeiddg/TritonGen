@@ -14,6 +14,7 @@ OBSERVABILITY_MODULES = (
     "shared.observability.logger",
     "shared.observability.paths",
     "shared.observability.redaction",
+    "shared.observability.performance_contract",
     "shared.observability.billing_reconciliation",
     "shared.observability.billing_modal_collection",
 )
@@ -35,6 +36,18 @@ FORBIDDEN_IMPORTS = (
     "xgrammar",
 )
 MODAL_RUNTIME_PATH = REPO_ROOT / "shared" / "modal_harness" / "runtime.py"
+FORBIDDEN_TIMING_CALL_STRINGS = (
+    "torch.cuda.Event",
+    "triton.testing.do_bench",
+    "time.perf_counter",
+    "time.time",
+    "torch.profiler",
+    "nsys",
+    "subprocess.*nsys",
+    "subprocess.*ncu",
+    "nvml",
+    "pynvml",
+)
 
 
 def test_observability_imports_do_not_load_remote_or_generation_stacks() -> None:
@@ -55,6 +68,17 @@ def test_observability_sources_do_not_reference_forbidden_runtime_imports() -> N
             elif isinstance(node, ast.ImportFrom) and node.module:
                 if node.module.split(".")[0] in FORBIDDEN_IMPORTS:
                     violations.append(f"{path.name}:{node.lineno}:{node.module}")
+
+    assert violations == []
+
+
+def test_observability_sources_do_not_call_timing_or_profiler_apis() -> None:
+    violations: list[str] = []
+    for path in sorted((REPO_ROOT / "shared" / "observability").glob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        for needle in FORBIDDEN_TIMING_CALL_STRINGS:
+            if needle in source:
+                violations.append(f"{path.name}:{needle}")
 
     assert violations == []
 
