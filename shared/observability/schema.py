@@ -232,6 +232,7 @@ class ObservabilityTokenCounts(_StrictModel):
 
 
 class ObservabilityModalContext(_StrictModel):
+    modal_context_available: bool
     is_remote: bool | None = None
     function_call_id: str | None = None
     input_id: str | None = None
@@ -272,6 +273,44 @@ class ObservabilityModalContext(_StrictModel):
         if value is None:
             return None
         return _validate_utc(value)
+
+    @model_validator(mode="after")
+    def _availability_contract(self) -> "ObservabilityModalContext":
+        present_fields = (
+            self.function_call_id,
+            self.input_id,
+            self.task_id,
+            self.image_id,
+            self.region,
+            self.cloud_provider,
+            self.environment_name,
+            self.app_name,
+            self.gpu_type,
+            self.gpu_count,
+            self.cpu_cores,
+            self.memory_gib,
+            self.timeout_s,
+            self.container_started_at_utc,
+        )
+        if self.modal_context_available:
+            if self.modal_context_source == "unavailable":
+                raise ValueError("available Modal context requires a non-unavailable source")
+            if not any(value is not None for value in present_fields):
+                raise ValueError(
+                    "available Modal context requires at least one runtime identity "
+                    "or resource field"
+                )
+            reject_forbidden_observability_payload(self.model_dump(mode="json"))
+            return self
+
+        if self.modal_context_source != "unavailable":
+            raise ValueError("unavailable Modal context requires source unavailable")
+        if self.is_remote:
+            raise ValueError("unavailable Modal context cannot be remote")
+        if any(value is not None for value in present_fields):
+            raise ValueError("unavailable Modal context must not include runtime fields")
+        reject_forbidden_observability_payload(self.model_dump(mode="json"))
+        return self
 
 
 class ObservabilityCostEstimate(_StrictModel):

@@ -61,6 +61,25 @@ def test_sanitize_attributes_accepts_only_shallow_json_primitives() -> None:
         {"message": "allclose mismatch payload"},
         {"message": "MODAL_IDENTITY_TOKEN leaked"},
         {"message": "AWS_SECRET_ACCESS_KEY leaked"},
+        {"MODAL_IDENTITY_TOKEN": "secret"},
+        {"token": "secret"},
+        {"authorization": "Bearer secret"},
+        {"api_key": "secret"},
+        {"environment_variables": {"SAFE": "no"}},
+        {"env": {"SAFE": "no"}},
+        {"billing": {"workspace": "secret"}},
+        {"invoice_id": "invoice-1"},
+        {"actual_cost": "1.00"},
+        {"gpu_utilization": 50},
+        {"gpuPower": 10},
+        {"gpu_memory": 1024},
+        {"temperature": 80},
+        {"profiler_trace": "trace"},
+        {"kernel_timing": 12},
+        {"latency_ms": 12},
+        {"throughput": 1},
+        {"speedup": 2},
+        {"performance_metrics": {"x": 1}},
     ],
 )
 def test_forbidden_observability_payloads_fail_closed(payload: dict[str, object]) -> None:
@@ -90,6 +109,39 @@ def test_camel_case_hash_aliases_remain_allowed() -> None:
             "sourceSha256": "a" * 64,
             "promptSha256": "b" * 64,
             "sourceEventSha256": "c" * 64,
+        }
+    )
+
+
+def test_safe_modal_context_keys_remain_allowed() -> None:
+    reject_forbidden_observability_payload(
+        {
+            "modal_context": {
+                "modal_context_available": True,
+                "is_remote": True,
+                "function_call_id": "fc-1",
+                "input_id": "in-1",
+                "task_id": "task-1",
+                "image_id": "image-1",
+                "region": "us-east",
+                "cloud_provider": "aws",
+                "environment_name": "prod",
+                "app_name": "tritongen",
+                "gpu_type": "L4",
+                "gpu_count": 1,
+                "cpu_cores": 2.0,
+                "memory_gib": 8.0,
+                "timeout_s": 300,
+                "container_started_at_utc": "2026-06-03T00:00:00Z",
+                "modal_context_source": "runner_config",
+            },
+            "modal_context_summary": {
+                "context_status": "available",
+                "events_with_modal_context": 1,
+                "events_with_available_context": 1,
+                "modal_context_sources": ["runner_config"],
+            },
+            "actual_billing_status": "not_implemented",
         }
     )
 

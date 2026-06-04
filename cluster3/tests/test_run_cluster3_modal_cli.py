@@ -67,6 +67,28 @@ def _config(tmp_path: Path, condition: str = "P", **overrides: object) -> Cluste
     return Cluster3RunnerConfig(**values)  # type: ignore[arg-type]
 
 
+def _safe_modal_context() -> dict[str, object]:
+    return {
+        "modal_context_available": True,
+        "is_remote": True,
+        "function_call_id": "fc-123",
+        "input_id": "in-123",
+        "task_id": "task-123",
+        "image_id": "image-123",
+        "region": "us-east",
+        "cloud_provider": "aws",
+        "environment_name": "test",
+        "app_name": "tritongen",
+        "gpu_type": "L4",
+        "gpu_count": 1,
+        "cpu_cores": 2.0,
+        "memory_gib": 8.0,
+        "timeout_s": 300,
+        "container_started_at_utc": "2026-06-03T00:00:00Z",
+        "modal_context_source": "runner_config",
+    }
+
+
 def _result(
     failure_code: str | None,
     *,
@@ -1582,6 +1604,13 @@ def test_observability_off_preserves_stable_run_id_and_writes_no_sidecar(
     tmp_path: Path,
 ) -> None:
     event_path = tmp_path / "ignored.observability.jsonl"
+    context_provider_called = False
+
+    def context_provider() -> dict[str, object]:
+        nonlocal context_provider_called
+        context_provider_called = True
+        return _safe_modal_context()
+
     base = _config(tmp_path, "P")
     explicit_off = _config(
         tmp_path,
@@ -1598,9 +1627,11 @@ def test_observability_off_preserves_stable_run_id_and_writes_no_sidecar(
         dependencies=RunnerDependencies(
             generation=GenerationRecorder(),
             correctness=CorrectnessRecorder(_result(None)),
+            modal_context_provider=context_provider,
         ),
     )
 
+    assert context_provider_called is False
     assert not event_path.exists()
     assert not default_observability_hash_path(event_path).exists()
     assert not default_observability_summary_path(explicit_off.output).exists()
@@ -1648,6 +1679,12 @@ def test_observability_required_writes_valid_sidecars_in_tmp_path(
     assert events[3].stage == "row_append"
     assert events[3].duration_ns is not None
     assert events[5].duration_ns is not None
+    assert {event.modal_context is not None for event in events} == {True}
+    assert {
+        event.modal_context.modal_context_available
+        for event in events
+        if event.modal_context is not None
+    } == {False}
 
     payload = json.dumps(
         [event.model_dump(mode="json") for event in events],
@@ -1699,8 +1736,160 @@ def test_observability_required_writes_valid_sidecars_in_tmp_path(
         "run_completed": 1,
     }
     assert summary.stage_durations_ns["row_append"] == events[3].duration_ns
+    assert summary.modal_context_summary == {
+        "context_status": "unavailable",
+        "events_with_modal_context": 6,
+        "events_with_available_context": 0,
+        "modal_context_sources": ["unavailable"],
+    }
     assert summary.source_event_sha256 == file_sha256(event_path)
     assert default_observability_hash_path(event_path).exists()
+
+
+@pytest.mark.parametrize("mode", ["best_effort", "required"])
+def test_observability_enabled_modes_include_supplied_safe_modal_context(
+    tmp_path: Path,
+    mode: str,
+) -> None:
+    event_path = tmp_path / f"{mode}.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode=mode,
+        observability_experiment_id="cluster3-o2",
+        observability_run_id=f"run-{mode}",
+        observability_output=str(event_path),
+    )
+
+    run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+            modal_context_provider=_safe_modal_context,
+        ),
+    )
+
+    events = load_observability_events(event_path)
+    assert len(events) == 6
+    assert {
+        event.modal_context.function_call_id
+        for event in events
+        if event.modal_context is not None
+    } == {"fc-123"}
+    assert {
+        event.modal_context.modal_context_available
+        for event in events
+        if event.modal_context is not None
+    } == {True}
+
+    summary = ObservabilitySummary.model_validate_json(
+        default_observability_summary_path(config.output).read_text(encoding="utf-8")
+    )
+    assert summary.modal_context_summary == {
+        "context_status": "available",
+        "events_with_modal_context": 6,
+        "events_with_available_context": 6,
+        "modal_context_sources": ["runner_config"],
+    }
+
+
+def test_observability_best_effort_context_failure_degrades_safely(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "best-effort-context-failure.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="best_effort",
+        observability_experiment_id="cluster3-o2",
+        observability_run_id="run-best-effort-context-failure",
+        observability_output=str(event_path),
+    )
+
+    def failing_context_provider() -> dict[str, object]:
+        raise RuntimeError("context unavailable")
+
+    result = run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+            modal_context_provider=failing_context_provider,
+        ),
+    )
+
+    events = load_observability_events(event_path)
+    assert len(result.rows) == 1
+    assert {
+        event.modal_context.modal_context_available
+        for event in events
+        if event.modal_context is not None
+    } == {False}
+
+
+def test_observability_required_forbidden_modal_context_fails_before_runner_work(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "required-forbidden-context.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="cluster3-o2",
+        observability_run_id="run-required-forbidden-context",
+        observability_output=str(event_path),
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(ValueError, match="non-allowlisted"):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                modal_context_provider=lambda: {"MODAL_IDENTITY_TOKEN": "secret"},
+            ),
+        )
+
+    assert generation.calls == []
+    assert correctness.calls == []
+    assert not event_path.exists()
+
+
+def test_observability_required_malformed_modal_context_fails_before_runner_work(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "required-malformed-context.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="cluster3-o2",
+        observability_run_id="run-required-malformed-context",
+        observability_output=str(event_path),
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(ValueError, match="unavailable Modal context"):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                modal_context_provider=lambda: {
+                    "modal_context_available": False,
+                    "function_call_id": "fc-123",
+                    "modal_context_source": "runner_config",
+                },
+            ),
+        )
+
+    assert generation.calls == []
+    assert correctness.calls == []
+    assert not event_path.exists()
 
 
 def test_observability_row_sha256_uses_exact_cluster3_row_json(

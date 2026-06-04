@@ -92,6 +92,7 @@ def test_timestamp_fields_reject_impossible_dates() -> None:
 
     with pytest.raises(ValidationError, match="valid date"):
         ObservabilityModalContext(
+            modal_context_available=False,
             container_started_at_utc=invalid_timestamp,
             modal_context_source="unavailable",
         )
@@ -175,6 +176,97 @@ def test_nonfinite_cost_numbers_are_rejected_before_serialization() -> None:
         canonical_json_bytes({"estimated_gpu_seconds": float("inf")})
 
 
+def test_modal_context_accepts_safe_allowlisted_fields() -> None:
+    context = ObservabilityModalContext(
+        modal_context_available=True,
+        is_remote=True,
+        function_call_id="fc-123",
+        input_id="in-123",
+        task_id="task-123",
+        image_id="image-123",
+        region="us-east",
+        cloud_provider="aws",
+        environment_name="prod",
+        app_name="tritongen",
+        gpu_type="L4",
+        gpu_count=1,
+        cpu_cores=2.5,
+        memory_gib=8.0,
+        timeout_s=300,
+        container_started_at_utc="2026-06-03T00:00:00Z",
+        modal_context_source="runner_config",
+    )
+
+    assert context.modal_context_available is True
+    assert context.function_call_id == "fc-123"
+
+
+def test_modal_context_available_requires_identity_or_resource_field() -> None:
+    with pytest.raises(ValidationError, match="runtime identity or resource field"):
+        ObservabilityModalContext(
+            modal_context_available=True,
+            modal_context_source="runner_config",
+        )
+
+
+def test_modal_context_missing_values_are_unavailable_safe() -> None:
+    context = ObservabilityModalContext(
+        modal_context_available=False,
+        is_remote=False,
+        modal_context_source="unavailable",
+    )
+
+    assert context.modal_context_available is False
+
+    with pytest.raises(ValidationError, match="unavailable Modal context"):
+        ObservabilityModalContext(
+            modal_context_available=False,
+            is_remote=False,
+            function_call_id="fc-123",
+            modal_context_source="unavailable",
+        )
+
+    with pytest.raises(ValidationError, match="source unavailable"):
+        ObservabilityModalContext(
+            modal_context_available=False,
+            is_remote=False,
+            modal_context_source="runner_config",
+        )
+
+
+def test_modal_context_rejects_negative_and_nonfinite_resources() -> None:
+    with pytest.raises(ValidationError):
+        ObservabilityModalContext(
+            modal_context_available=True,
+            gpu_count=-1,
+            modal_context_source="runner_config",
+        )
+
+    with pytest.raises(ValidationError):
+        ObservabilityModalContext(
+            modal_context_available=True,
+            cpu_cores=-1.0,
+            modal_context_source="runner_config",
+        )
+
+    with pytest.raises(ValidationError):
+        ObservabilityModalContext(
+            modal_context_available=True,
+            memory_gib=float("inf"),
+            modal_context_source="runner_config",
+        )
+
+
+def test_modal_context_rejects_forbidden_values_inside_safe_fields() -> None:
+    with pytest.raises(ValidationError):
+        ObservabilityModalContext(
+            modal_context_available=True,
+            is_remote=True,
+            function_call_id="MODAL_IDENTITY_TOKEN leaked",
+            modal_context_source="runner_config",
+        )
+
+
 def test_summary_rejects_absolute_workspace_and_hashes_self_reference() -> None:
     with pytest.raises(ValidationError, match="workspace"):
         _summary(workspace="/Users/alexeidelgado/Desktop/TritonGen")
@@ -254,6 +346,7 @@ def _event(
             token_counts_available=False,
         ),
         modal_context=ObservabilityModalContext(
+            modal_context_available=False,
             is_remote=False,
             modal_context_source="unavailable",
         ),

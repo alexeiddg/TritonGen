@@ -39,6 +39,31 @@ _SAFE_TOKEN_COUNT_KEYS = {
     "count_source",
     "truncation_applied",
 }
+_SAFE_MODAL_CONTEXT_KEYS = {
+    "modal_context",
+    "modal_context_available",
+    "is_remote",
+    "function_call_id",
+    "input_id",
+    "task_id",
+    "image_id",
+    "region",
+    "cloud_provider",
+    "environment_name",
+    "app_name",
+    "gpu_type",
+    "gpu_count",
+    "cpu_cores",
+    "memory_gib",
+    "timeout_s",
+    "container_started_at_utc",
+    "modal_context_source",
+    "modal_context_summary",
+    "context_status",
+    "events_with_modal_context",
+    "events_with_available_context",
+    "modal_context_sources",
+}
 _SAFE_ID_KEYS = {
     "event_id",
     "run_id",
@@ -50,10 +75,27 @@ _SAFE_ID_KEYS = {
     "price_snapshot_id",
     "snapshot_id",
 }
+_SAFE_STATUS_KEYS = {
+    "actual_billing_status",
+    "summary_status",
+    "estimate_status",
+    "cost_basis",
+    "estimation_confidence",
+}
 _FORBIDDEN_EXACT_KEYS = {
+    "authorization",
+    "billing",
+    "credential",
+    "credentials",
+    "env",
+    "environ",
+    "environment",
     "source",
     "prompt",
     "feedback",
+    "password",
+    "secret",
+    "token",
 }
 _FORBIDDEN_KEY_PATTERNS = (
     "source_text",
@@ -82,11 +124,34 @@ _FORBIDDEN_KEY_PATTERNS = (
     "input_ids",
     "output_ids",
     "environment_dump",
+    "environment_variables",
+    "env_vars",
     "env_dump",
+    "os_environ",
     "modal_identity_token",
     "hf_token",
     "aws_secret_access_key",
     "identity_token",
+    "authorization_header",
+    "actual_cost",
+    "actual_billing_cost",
+    "billing_data",
+    "billing_report",
+    "invoice",
+    "gpu_utilization",
+    "gpu_power",
+    "gpu_memory",
+    "gpu_temperature",
+    "gpu_mem",
+    "power_draw",
+    "temperature",
+    "profiler",
+    "kernel_timing",
+    "latency",
+    "throughput",
+    "speedup",
+    "performance",
+    "benchmark",
 )
 _FORBIDDEN_SECRET_KEY_PATTERNS = (
     "secret",
@@ -231,6 +296,8 @@ def _validate_primitive(value: JsonPrimitive, *, path: str) -> None:
 def _reject_forbidden_key(key: str, *, path: str) -> None:
     normalized = _normalize_key(key)
     if normalized in _SAFE_HASH_KEYS or normalized in _SAFE_TOKEN_COUNT_KEYS:
+        return
+    if normalized in _SAFE_MODAL_CONTEXT_KEYS or normalized in _SAFE_STATUS_KEYS:
         return
     if normalized in _SAFE_ID_KEYS:
         return

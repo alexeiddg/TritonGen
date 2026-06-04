@@ -85,6 +85,7 @@ from shared.observability import (
     ObservabilityErrorSummary,
     ObservabilityEvent,
     ObservabilityJsonlAppendLogger,
+    ObservabilityModalContext,
     ObservabilityPaths,
     ObservabilityRowIdentity,
     ObservabilitySummary,
@@ -95,6 +96,10 @@ from shared.observability import (
 from shared.observability.logger import (
     event_counts as observability_event_counts,
     stage_durations_ns as observability_stage_durations_ns,
+)
+from shared.modal_harness.runtime import (
+    get_modal_runtime_context_or_unavailable,
+    normalize_modal_context,
 )
 from shared.repair_history.policies import RepairHistoryConfig
 
@@ -124,6 +129,7 @@ ControlResolver = Callable[..., Any]
 PRepairLoopCallable = Callable[..., PRepairLoopResult]
 CLoopRunnerCallable = Callable[..., Cluster3CLoopResult]
 ObservabilityLoggerFactory = Callable[..., ObservabilityJsonlAppendLogger]
+ModalContextProvider = Callable[[], Mapping[str, Any] | ObservabilityModalContext | None]
 
 
 @dataclass(frozen=True)
@@ -276,6 +282,7 @@ class RunnerDependencies:
     p_repair_loop: PRepairLoopCallable | None = None
     c_loop_runner: CLoopRunnerCallable | None = None
     observability_logger_factory: ObservabilityLoggerFactory | None = None
+    modal_context_provider: ModalContextProvider | None = None
 
 
 @dataclass(frozen=True)
@@ -325,6 +332,7 @@ class _Cluster3ObservabilityRuntime:
     branch: str | None = None
     clock_scope_id: str = ""
     next_event_sequence: int = 0
+    modal_context: ObservabilityModalContext | None = None
     disabled_reason: str | None = None
 
     @property
@@ -573,13 +581,15 @@ class _Cluster3ObservabilityRuntime:
             event_counts=observability_event_counts(events),
             stage_durations_ns=observability_stage_durations_ns(events),
             token_totals={"count_status": "not_implemented"},
-            modal_context_summary={"context_status": "not_implemented"},
+            modal_context_summary=_observability_modal_context_summary(events),
             estimated_cost_summary={"estimate_status": "not_implemented"},
             actual_billing_status="not_implemented",
             completeness_status="complete",
             caveats=[
-                "O1 local runner observability only; token counts, Modal context, "
-                "estimated cost, and billing reconciliation are not implemented."
+                "O2 Modal context is optional and unavailable-safe; real remote "
+                "context remains unproven until an approved execution packet. "
+                "Token counts, estimated cost, and billing reconciliation are "
+                "not implemented."
             ],
             source_event_sha256=file_sha256(self.paths.event_path),
             summary_sha256=None,
@@ -640,7 +650,7 @@ class _Cluster3ObservabilityRuntime:
             start_monotonic_ns=start_monotonic_ns,
             end_monotonic_ns=end_monotonic_ns,
             token_counts=None,
-            modal_context=None,
+            modal_context=self.modal_context,
             cost_estimate=None,
             error_summary=safe_error_summary,
             attributes=dict(attributes or {}),
@@ -1106,6 +1116,7 @@ def _open_observability_runtime(
         )
         git_commit = _git_stdout("rev-parse", "HEAD").lower()
         branch = _git_stdout("branch", "--show-current") or "detached"
+        modal_context = _resolve_observability_modal_context(config, deps)
         logger_factory = deps.observability_logger_factory or ObservabilityJsonlAppendLogger
         logger = logger_factory(
             paths.event_path,
@@ -1131,6 +1142,7 @@ def _open_observability_runtime(
             branch=branch,
             clock_scope_id=str(uuid.uuid4()),
             next_event_sequence=next_event_sequence,
+            modal_context=modal_context,
         )
     except Exception as exc:
         if config.observability_mode == "required":
@@ -1140,6 +1152,43 @@ def _open_observability_runtime(
             mode=config.observability_mode,
             disabled_reason=type(exc).__name__,
         )
+
+
+def _resolve_observability_modal_context(
+    config: Cluster3RunnerConfig,
+    deps: RunnerDependencies,
+) -> ObservabilityModalContext:
+    try:
+        if deps.modal_context_provider is None:
+            raw_context = get_modal_runtime_context_or_unavailable(
+                collect_current_ids=False
+            )
+        else:
+            raw_context = normalize_modal_context(deps.modal_context_provider())
+        return ObservabilityModalContext.model_validate(raw_context)
+    except Exception:
+        if config.observability_mode == "required":
+            raise
+        return ObservabilityModalContext.model_validate(
+            get_modal_runtime_context_or_unavailable(collect_current_ids=False)
+        )
+
+
+def _observability_modal_context_summary(
+    events: Sequence[ObservabilityEvent],
+) -> dict[str, Any]:
+    contexts = [event.modal_context for event in events if event.modal_context is not None]
+    available_contexts = [
+        context for context in contexts if context.modal_context_available
+    ]
+    return {
+        "context_status": "available" if available_contexts else "unavailable",
+        "events_with_modal_context": len(contexts),
+        "events_with_available_context": len(available_contexts),
+        "modal_context_sources": sorted(
+            {context.modal_context_source for context in contexts}
+        ),
+    }
 
 
 def _observability_row_identity(

@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OBSERVABILITY_MODULES = (
     "shared.observability",
@@ -14,6 +16,7 @@ OBSERVABILITY_MODULES = (
     "shared.observability.redaction",
 )
 FORBIDDEN_IMPORTS = ("modal", "torch", "triton", "transformers", "xgrammar")
+MODAL_RUNTIME_PATH = REPO_ROOT / "shared" / "modal_harness" / "runtime.py"
 
 
 def test_observability_imports_do_not_load_remote_or_generation_stacks() -> None:
@@ -36,6 +39,48 @@ def test_observability_sources_do_not_reference_forbidden_runtime_imports() -> N
                     violations.append(f"{path.name}:{node.lineno}:{node.module}")
 
     assert violations == []
+
+
+def test_modal_runtime_context_helper_import_is_lazy_and_has_no_spawn() -> None:
+    leaked = _modules_after_import("shared.modal_harness.runtime")
+    assert "modal" not in leaked
+
+    source = MODAL_RUNTIME_PATH.read_text(encoding="utf-8")
+    assert ".spawn(" not in source
+    assert ".spawn_map(" not in source
+
+
+def test_modal_runtime_context_normalizer_requires_consistent_availability() -> None:
+    from shared.modal_harness.runtime import normalize_modal_context
+
+    with pytest.raises(ValueError, match="available Modal context"):
+        normalize_modal_context({"modal_context_available": True})
+
+    with pytest.raises(ValueError, match="unavailable Modal context"):
+        normalize_modal_context(
+            {
+                "modal_context_available": False,
+                "function_call_id": "fc-123",
+                "modal_context_source": "runner_config",
+            }
+        )
+    with pytest.raises(ValueError, match="remote flag"):
+        normalize_modal_context(
+            {"modal_context_available": False, "is_remote": "false"}
+        )
+
+
+def test_modal_runtime_context_normalizer_accepts_supplied_runtime_context() -> None:
+    from shared.modal_harness.runtime import normalize_modal_context
+
+    context = normalize_modal_context({"function_call_id": "fc-123"})
+
+    assert context == {
+        "function_call_id": "fc-123",
+        "modal_context_available": True,
+        "is_remote": True,
+        "modal_context_source": "runner_config",
+    }
 
 
 def _modules_after_import(target: str) -> list[str]:
