@@ -15,9 +15,13 @@ OBSERVABILITY_MODULES = (
     "shared.observability.paths",
     "shared.observability.redaction",
     "shared.observability.performance_contract",
+    "shared.observability.performance_harness",
+    "shared.observability.performance_sidecar",
+    "shared.observability.performance_modal_smoke",
     "shared.observability.billing_reconciliation",
     "shared.observability.billing_modal_collection",
 )
+OBSERVABILITY_RUNTIME_ENTRYPOINTS = {"performance_modal_smoke.py"}
 FORBIDDEN_IMPORTS = (
     "anthropic",
     "boto3",
@@ -48,6 +52,15 @@ FORBIDDEN_TIMING_CALL_STRINGS = (
     "nvml",
     "pynvml",
 )
+FORBIDDEN_PROFILER_CALL_STRINGS = (
+    "torch.profiler",
+    "triton.profiler",
+    "nsys",
+    "subprocess.*nsys",
+    "subprocess.*ncu",
+    "nvml",
+    "pynvml",
+)
 
 
 def test_observability_imports_do_not_load_remote_or_generation_stacks() -> None:
@@ -59,6 +72,8 @@ def test_observability_imports_do_not_load_remote_or_generation_stacks() -> None
 def test_observability_sources_do_not_reference_forbidden_runtime_imports() -> None:
     violations: list[str] = []
     for path in sorted((REPO_ROOT / "shared" / "observability").glob("*.py")):
+        if path.name in OBSERVABILITY_RUNTIME_ENTRYPOINTS:
+            continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -75,10 +90,64 @@ def test_observability_sources_do_not_reference_forbidden_runtime_imports() -> N
 def test_observability_sources_do_not_call_timing_or_profiler_apis() -> None:
     violations: list[str] = []
     for path in sorted((REPO_ROOT / "shared" / "observability").glob("*.py")):
+        if path.name in OBSERVABILITY_RUNTIME_ENTRYPOINTS:
+            continue
         source = path.read_text(encoding="utf-8")
         for needle in FORBIDDEN_TIMING_CALL_STRINGS:
             if needle in source:
                 violations.append(f"{path.name}:{needle}")
+
+    assert violations == []
+
+
+def test_o6b_modal_smoke_import_is_lazy_and_registers_no_function_by_default() -> None:
+    leaked = _modules_after_import("shared.observability.performance_modal_smoke")
+    assert leaked == []
+
+    code = (
+        "import shared.observability.performance_modal_smoke as smoke\n"
+        "print(hasattr(smoke, 'remote_o6b_performance_smoke'))\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == "False"
+
+
+def test_o6b_modal_smoke_import_stays_inert_if_modal_is_already_loaded() -> None:
+    code = (
+        "import sys\n"
+        "import types\n"
+        "sys.modules['modal'] = types.ModuleType('modal')\n"
+        "import shared.observability.performance_modal_smoke as smoke\n"
+        "print(hasattr(smoke, 'remote_o6b_performance_smoke'))\n"
+        "print('shared.modal_harness.app' in sys.modules)\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines() == ["False", "False"]
+
+
+def test_o6b_modal_smoke_source_does_not_reference_profiler_tools() -> None:
+    source = (
+        REPO_ROOT
+        / "shared"
+        / "observability"
+        / "performance_modal_smoke.py"
+    ).read_text(encoding="utf-8")
+
+    violations = [
+        needle for needle in FORBIDDEN_PROFILER_CALL_STRINGS if needle in source
+    ]
 
     assert violations == []
 
