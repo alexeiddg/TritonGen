@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.2
+Version: 1.37.3
 Date: 2026-06-05
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -60,7 +60,8 @@ treated as report-facing.
 | Agentic transcript next-run packet draft | `docs/handoff/agentic_transcript_v1_next_run_packet.md` |
 | C3 n20 metric-family-gated experiment packet | `docs/experiment_packets/c3_n20_metric_family_gated_packet.md` |
 | Full Pipeline grammar-mode x C x P launch packet v1 | `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md` |
-| Full Pipeline L1a n=1 authorization packet draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md` |
+| Full Pipeline L1a n=1 authorization packet review draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md` |
+| Full Pipeline L1a authorization packet completion audit | `audits/l1a_authorization_packet_completion_report.md` |
 | Full Pipeline L1a baseline pin audit | `audits/l1a_packet_baseline_pin_report.md` |
 | Grammar-mode code-support audit for L1a readiness | `audits/grammar_mode_code_support_audit_report.md` |
 | Grammar-mode support implementation report | `audits/grammar_mode_support_implementation_report.md` |
@@ -144,30 +145,32 @@ passed review under
 `FULL_PIPELINE_LAUNCH_PACKET_V1_REVIEW_PASS_COMMIT_ALLOWED`, was fast-forwarded
 into `codex-track-handoff-context` at `5cc6326`, is promotion-audited in
 `audits/full_pipeline_launch_packet_v1_promotion_audit_report.md`, and is now
-patched under
-`FULL_PIPELINE_LAUNCH_PACKET_12CELL_PATCH_BLOCKED_CODE_SUPPORT_AMBIGUITY`. The
+patched under the 12-cell `grammar_mode x C x P` plan. The
 active future design is the 12-cell `grammar_mode x C x P` matrix. The old
 8-cell plan is superseded for future execution. The L1a n=1 authorization packet
-draft is
+review draft is
 `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md`;
-it is unsigned and non-authorizing. Its baseline/provenance is now pinned to
-`code_support_commit: c24fbaa Add local grammar-mode support for 12-cell L1a`
-and `planning_baseline_commit: 9aeb3c1 Audit grammar mode support promotion`;
-see `audits/l1a_packet_baseline_pin_report.md` for the packet patch audit. Local
-representability support now uses the repo-supported grammar-mode values
-`grammar_off`, `template_upper_bound`, and `task_agnostic`; see
+it is unsigned, non-authorizing, and complete for review/user signature only.
+Its baseline/provenance is now pinned to baseline-pin commit
+`d172e02 Pin L1a packet to grammar mode support baseline` and
+`code_support_commit: c24fbaa Add local grammar-mode support for 12-cell L1a`;
+see `audits/l1a_packet_baseline_pin_report.md` and
+`audits/l1a_authorization_packet_completion_report.md`. Local representability
+support uses the repo-supported grammar-mode values `grammar_off`,
+`template_upper_bound`, and `task_agnostic`; see
 `audits/grammar_mode_support_implementation_report.md` for
 `GRAMMAR_MODE_SUPPORT_IMPLEMENTATION_PARTIAL_TRACKING_DEFERRED`. MLflow
 post-hoc grammar-mode indexing remains deferred, and no execution packet is
-approved. The next step is L1a authorization packet completion/review, not
-execution. The earlier code-support audit
+approved. The completed packet explicitly blocks execution because the current
+Cluster 3 runner has selectors for only `P`, `G+P`, `C+P`, and `G+C+P`, while
+the selected 12-cell matrix also requires six no-P cells. The earlier
+code-support audit
 `audits/grammar_mode_code_support_audit_report.md` remains historical evidence
 for the blocker that this implementation branch addresses. Future L1a
-authorization review must start from the implementation report and must not
-draft or run an execution packet until a separate explicit approval supplies the
-exact command, branch, commit, target paths, observability IDs, grammar-mode
-mapping, repair-history policy, model/revision/decoding config, stop/spend
-limits, analyzer/report plan, and MLflow post-hoc indexing proof. The patched
+authorization review must start from the completed packet and must not draft or
+run an execution packet until full 12-cell launcher support or an explicit
+no-P control-row source policy is reviewed, numeric stop/spend limits are
+supplied, and a separate explicit approval is signed. The patched
 launch packet now uses the same repo-supported grammar-mode vocabulary and
 defines MLflow
 post-hoc indexing plus observability, repair-memory, structural/task,

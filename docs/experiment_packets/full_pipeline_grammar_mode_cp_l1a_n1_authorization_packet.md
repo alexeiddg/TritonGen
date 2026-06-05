@@ -3,18 +3,21 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1`
-packet_version: `0.2.1`
-packet_type: draft authorization packet; not an execution packet
-branch: `codex/l1a-packet-baseline-pin`
-baseline_commit: `9aeb3c1 Audit grammar mode support promotion`
-planning_baseline_commit: `9aeb3c1 Audit grammar mode support promotion`
+packet_version: `0.3.0`
+packet_type: completed review packet for possible future authorization; not an execution packet until signed
+branch: `codex/l1a-authorization-packet-completion`
+baseline_commit: `d172e02 Pin L1a packet to grammar mode support baseline`
+planning_baseline_commit: `d172e02 Pin L1a packet to grammar mode support baseline`
 code_support_commit: `c24fbaa Add local grammar-mode support for 12-cell L1a`
+baseline_pin_commit: `d172e02 Pin L1a packet to grammar mode support baseline`
 superseded_baseline_commit: `0cc43c1 Audit full pipeline launch packet promotion`
 launch_packet: `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md`
 created_at: 2026-06-05
 baseline_pinned_at: 2026-06-05
-status: `DRAFT_NOT_APPROVED`
+packet_completed_at: 2026-06-05
+status: `DRAFT_READY_FOR_USER_SIGNATURE`
 code_support_status: `LOCAL_REPRESENTABILITY_READY`
+execution_readiness_status: `BLOCKED_PENDING_FULL_12CELL_LAUNCHER_AND_SIGNATURE`
 AUTHORIZES_EXECUTION: NO
 
 Execution authorization flags:
@@ -34,16 +37,24 @@ CREDENTIAL_USE_AUTHORIZED: NO
 DEPENDENCY_CHANGE_AUTHORIZED: NO
 ```
 
-This packet is a draft authorization artifact for review. It is not signed and
-does not authorize Modal, GPU work, generation, experiments, output mutation,
-analyzer output refresh, report artifact refresh, MLflow runtime writes,
-billing queries, dependency changes, lockfile changes, or paper-scale claims.
+This packet is complete for review and possible future user signature. It is
+not signed and does not authorize Modal, GPU work, generation, experiments,
+output mutation, analyzer output refresh, report artifact refresh, MLflow
+runtime writes, billing queries, dependency changes, lockfile changes, or
+paper-scale claims.
 
-The active planning baseline is the promoted handoff/audit commit
-`9aeb3c1`. The executable local grammar-mode support required for the 12-cell
-design is pinned separately to `c24fbaa`. The older `0cc43c1` baseline is
-historical context only and is not sufficient for L1a authorization because it
-predates the local grammar-mode support proof.
+The active planning baseline is the promoted baseline-pin commit `d172e02`.
+The executable local grammar-mode support required for the 12-cell design is
+pinned separately to `c24fbaa`. The older `0cc43c1` baseline is historical
+context only and is not sufficient for L1a authorization because it predates the
+local grammar-mode support proof.
+
+Execution remains blocked even after packet completion because the current
+Cluster 3 runner accepts only `P`, `G+P`, `C+P`, `G+C+P`, and `all`. The
+selected 12-cell matrix also includes six no-P cells that do not have a current
+Cluster 3 execution selector. A future signer must either approve an
+implementation that adds full 12-cell launcher support or sign a narrower
+diagnostic subset packet; this packet does not authorize the subset.
 
 ## Launch-Packet Dependency
 
@@ -59,7 +70,9 @@ It must not be converted into an execution packet unless:
   `full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/`;
 - local grammar-mode representability proof remains present on the target
   branch, including the 12-cell planner, row labeling, and analyzer grouping
-  fixture tests.
+  fixture tests;
+- full 12-cell launcher support exists for all no-P and P-containing cells, or
+  a separate signed packet explicitly narrows the run and labels it diagnostic.
 
 ## Intended L1a Scope
 
@@ -134,39 +147,76 @@ Local code-support proof:
 ```text
 approval_source: not_approved
 approval_timestamp: not_applicable
-target_branch: unavailable_until_approval
-target_commit: unavailable_until_review_commit
-command: not_authorized
+target_branch: codex-track-handoff-context
+target_commit: d172e02 Pin L1a packet to grammar mode support baseline
+packet_completion_branch: codex/l1a-authorization-packet-completion
+command: not_authorized; see review-only command manifest below
+command_manifest_status: BLOCKED_NO_FULL_12CELL_EXECUTION_LAUNCHER
 working_directory: /Users/alexeidelgado/Desktop/TritonGen
-exact_condition_list: unavailable_until_approval_must_match_twelve_cell_matrix
-output_jsonl_paths: unavailable_until_approval
-observability_sidecar_paths: unavailable_until_approval
-content_hash_sidecar_paths: unavailable_until_approval
-model_id: unavailable_until_approval
-model_revision: unavailable_until_approval
-tokenizer_revision: unavailable_until_approval
-decoding_config: unavailable_until_approval
-seed_policy: unavailable_until_approval
-kernel_class: elementwise_relu_or_explicit_future_value
-problem_ids: unavailable_until_approval
-dtype: fp32_or_explicit_future_value
-shape_policy: unavailable_until_approval
-repair_history_policy: agentic_transcript_v1_for_C_or_P_cells
-grammar_file_hash_lock: unavailable_until_approval
-observability_mode: best_effort_or_required_until_approval
+exact_condition_list: twelve-cell matrix in this packet
+output_jsonl_paths: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.jsonl
+observability_sidecar_paths: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.observability.jsonl plus adjacent summary/hash sidecars
+content_hash_sidecar_paths: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.jsonl.hashes.json
+model_id: Qwen/Qwen2.5-Coder-7B-Instruct-AWQ
+model_revision: 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a
+tokenizer_revision: 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a
+decoding_config: temperature=0.2; max_new_tokens=1536
+seed_policy: n=1 uses base_seed=0 per cell/invocation
+kernel_class: elementwise
+problem_ids: not_applicable_current_runner_uses_kernel_class_shape_metadata
+dtype: fp32
+shape_policy: elementwise locked-kernel shape metadata from current Cluster 3 runner
+repair_history_policy: agentic_transcript_v1 for C-enabled or P-enabled cells; not_applicable when both C and P are off
+grammar_file_hash_lock: template_upper_bound=0f875b88ea80d7bc9573793f2cfb81bd75523af5ef5c0416466bc07d3eaf9b82; task_agnostic=7896a1befca10f68ab6aa4521681fa2577eba6fb669e87daf622c15691a22e32
+observability_mode: best_effort
 observability_experiment_id: full_pipeline_grammar_mode_cp_factorial_v1
-observability_run_id: unavailable_until_approval
-mlflow_disposition: post_hoc_non_authoritative_unavailable_until_approval
+observability_run_id: full_pipeline_grammar_mode_cp_factorial_v1_l1a_20260605_review_only
+mlflow_disposition: post_hoc_non_authoritative; runtime MLflow writes remain unauthorized; grammar-mode indexing patch remains deferred
 max_rows: 12
-max_generation_attempts: unavailable_until_approval
-max_repair_attempts_per_row: unavailable_until_approval
-max_wall_clock: unavailable_until_approval
-max_estimated_cost: unavailable_until_approval
+max_generation_attempts: one initial generation per executable cell plus approved repair attempts
+max_repair_attempts_per_row: P=5 when P is enabled; C=5 when C is enabled; 0 otherwise
+max_wall_clock: pending_user_signature_required
+max_estimated_cost: pending_user_signature_required
 stop_on_first_infrastructure_failure: yes
 overwrite_policy: fail_if_any_target_path_exists
 resume_policy: no_resume_unless_explicitly_approved
-post_run_validation_commands: unavailable_until_approval
+post_run_validation_commands: required list in Post-Run Validation section
 ```
+
+## L1a Command Manifest For Review
+
+No command in this section is authorized. The manifest records the exact
+condition-level intent and the current execution support status.
+
+| condition_id | runner selector | grammar argument | output JSONL | support status |
+|---|---|---|---|---|
+| `grammar_off__c_off__p_off` | none available | none | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_off.jsonl` | `BLOCKED_NO_CLUSTER3_NO_P_SELECTOR` |
+| `grammar_off__c_on__p_off` | none available | none | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_off.jsonl` | `BLOCKED_NO_CLUSTER3_NO_P_SELECTOR` |
+| `grammar_off__c_off__p_on` | `--condition P` | ignored by non-G row | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_on.jsonl` | `RUNNER_SELECTOR_PRESENT_REVIEW_ONLY` |
+| `grammar_off__c_on__p_on` | `--condition C+P` | ignored by non-G row | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_on.jsonl` | `RUNNER_SELECTOR_PRESENT_REVIEW_ONLY` |
+| `template_upper_bound__c_off__p_off` | none available | `template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_off.jsonl` | `BLOCKED_NO_CLUSTER3_NO_P_SELECTOR` |
+| `template_upper_bound__c_on__p_off` | none available | `template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_off.jsonl` | `BLOCKED_NO_CLUSTER3_NO_P_SELECTOR` |
+| `template_upper_bound__c_off__p_on` | `--condition G+P` | `--grammar-variant template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_on.jsonl` | `RUNNER_SELECTOR_PRESENT_REVIEW_ONLY` |
+| `template_upper_bound__c_on__p_on` | `--condition G+C+P` | `--grammar-variant template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_on.jsonl` | `RUNNER_SELECTOR_PRESENT_REVIEW_ONLY` |
+| `task_agnostic__c_off__p_off` | none available | `task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_off.jsonl` | `BLOCKED_NO_CLUSTER3_NO_P_SELECTOR` |
+| `task_agnostic__c_on__p_off` | none available | `task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_off.jsonl` | `BLOCKED_NO_CLUSTER3_NO_P_SELECTOR` |
+| `task_agnostic__c_off__p_on` | `--condition G+P` | `--grammar-variant task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_on.jsonl` | `RUNNER_SELECTOR_PRESENT_REVIEW_ONLY` |
+| `task_agnostic__c_on__p_on` | `--condition G+C+P` | `--grammar-variant task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_on.jsonl` | `RUNNER_SELECTOR_PRESENT_REVIEW_ONLY` |
+
+Command preview for currently selectable P-containing cells:
+
+```text
+.venv/bin/python -m modal run -m cluster3.experiments.run_cluster3_modal --condition P --kernel-class elementwise --scale-tier smoke --n 1 --model-id Qwen/Qwen2.5-Coder-7B-Instruct-AWQ --model-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --tokenizer-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --dtypes fp32 --temperature 0.2 --max-new-tokens 1536 --p-repair-budget 5 --c-repair-budget 0 --repair-history-policy agentic_transcript_v1 --observability-mode best_effort --observability-experiment-id full_pipeline_grammar_mode_cp_factorial_v1 --observability-run-id full_pipeline_grammar_mode_cp_factorial_v1_l1a_20260605_review_only --observability-output artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_on.observability.jsonl --output outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_on.jsonl --overwrite
+.venv/bin/python -m modal run -m cluster3.experiments.run_cluster3_modal --condition C+P --kernel-class elementwise --scale-tier smoke --n 1 --model-id Qwen/Qwen2.5-Coder-7B-Instruct-AWQ --model-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --tokenizer-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --dtypes fp32 --temperature 0.2 --max-new-tokens 1536 --p-repair-budget 5 --c-repair-budget 5 --repair-history-policy agentic_transcript_v1 --observability-mode best_effort --observability-experiment-id full_pipeline_grammar_mode_cp_factorial_v1 --observability-run-id full_pipeline_grammar_mode_cp_factorial_v1_l1a_20260605_review_only --observability-output artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_on.observability.jsonl --output outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_on.jsonl --overwrite
+.venv/bin/python -m modal run -m cluster3.experiments.run_cluster3_modal --condition G+P --grammar-variant template_upper_bound --kernel-class elementwise --scale-tier smoke --n 1 --model-id Qwen/Qwen2.5-Coder-7B-Instruct-AWQ --model-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --tokenizer-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --dtypes fp32 --temperature 0.2 --max-new-tokens 1536 --p-repair-budget 5 --c-repair-budget 0 --repair-history-policy agentic_transcript_v1 --observability-mode best_effort --observability-experiment-id full_pipeline_grammar_mode_cp_factorial_v1 --observability-run-id full_pipeline_grammar_mode_cp_factorial_v1_l1a_20260605_review_only --observability-output artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_on.observability.jsonl --output outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_on.jsonl --overwrite
+.venv/bin/python -m modal run -m cluster3.experiments.run_cluster3_modal --condition G+C+P --grammar-variant template_upper_bound --kernel-class elementwise --scale-tier smoke --n 1 --model-id Qwen/Qwen2.5-Coder-7B-Instruct-AWQ --model-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --tokenizer-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --dtypes fp32 --temperature 0.2 --max-new-tokens 1536 --p-repair-budget 5 --c-repair-budget 5 --repair-history-policy agentic_transcript_v1 --observability-mode best_effort --observability-experiment-id full_pipeline_grammar_mode_cp_factorial_v1 --observability-run-id full_pipeline_grammar_mode_cp_factorial_v1_l1a_20260605_review_only --observability-output artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_on.observability.jsonl --output outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_on.jsonl --overwrite
+.venv/bin/python -m modal run -m cluster3.experiments.run_cluster3_modal --condition G+P --grammar-variant task_agnostic --kernel-class elementwise --scale-tier smoke --n 1 --model-id Qwen/Qwen2.5-Coder-7B-Instruct-AWQ --model-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --tokenizer-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --dtypes fp32 --temperature 0.2 --max-new-tokens 1536 --p-repair-budget 5 --c-repair-budget 0 --repair-history-policy agentic_transcript_v1 --observability-mode best_effort --observability-experiment-id full_pipeline_grammar_mode_cp_factorial_v1 --observability-run-id full_pipeline_grammar_mode_cp_factorial_v1_l1a_20260605_review_only --observability-output artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_on.observability.jsonl --output outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_on.jsonl --overwrite
+.venv/bin/python -m modal run -m cluster3.experiments.run_cluster3_modal --condition G+C+P --grammar-variant task_agnostic --kernel-class elementwise --scale-tier smoke --n 1 --model-id Qwen/Qwen2.5-Coder-7B-Instruct-AWQ --model-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --tokenizer-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --dtypes fp32 --temperature 0.2 --max-new-tokens 1536 --p-repair-budget 5 --c-repair-budget 5 --repair-history-policy agentic_transcript_v1 --observability-mode best_effort --observability-experiment-id full_pipeline_grammar_mode_cp_factorial_v1 --observability-run-id full_pipeline_grammar_mode_cp_factorial_v1_l1a_20260605_review_only --observability-output artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_on.observability.jsonl --output outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_on.jsonl --overwrite
+```
+
+The six no-P cells must remain unlaunchable until a future implementation adds
+an approved `grammar_mode x C x P` launcher or an explicit no-P control-row
+source policy.
 
 ## Planned Namespaces
 
@@ -212,7 +262,7 @@ Additional required proof before approval:
 ## Post-Run Validation Required After Any Future Approved Run
 
 If a later signed execution packet authorizes L1a and artifacts are created, the
-post-run audit must include:
+post-run audit must include these exact validation classes:
 
 - row-count validation for 12 expected rows or explicit stop-condition
   disposition;
@@ -249,11 +299,11 @@ Stop before or during any future approved L1a execution if:
 
 ## Explicit Approval
 
-Unsigned. No execution is approved.
+Ready for user signature but unsigned. No execution is approved.
 
 ```text
 NOT APPROVED. A future user approval must replace this line with a signed L1a
-approval that names exact command, branch, commit, 12-cell matrix, grammar-mode
-mapping, output paths, sidecar paths, model/revision/decoding config, stop/spend
-limits, and validation commands.
+approval that names this packet, the exact target branch and commit, the full
+12-cell launcher support proof, the output and sidecar paths, stop/spend
+limits, and the post-run validation command bundle.
 ```

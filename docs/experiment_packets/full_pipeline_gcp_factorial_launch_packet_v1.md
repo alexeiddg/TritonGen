@@ -3,6 +3,7 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GCP_FACTORIAL_LAUNCH_PACKET_V1`
+packet_version: `0.2.2`
 packet_type: patched draft launch planning packet
 branch_created_on: `codex/full-pipeline-launch-packet-v1`
 patch_branch: `codex/full-pipeline-l1-smoke-dev-approval-packet`
@@ -682,6 +683,12 @@ L1a remains blocked until a later signed authorization packet supplies:
 - target path nonexistence proof;
 - statement that generated artifacts are development-only.
 
+The L1a n=1 packet is now complete for review/user signature only at
+`docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md`
+v0.3.0. That packet records the exact review fields but still blocks execution
+because the current Cluster 3 runner lacks selectors for the six no-P cells in
+the selected 12-cell matrix and no approval is signed.
+
 L1b remains blocked until:
 
 - L1a passes;
@@ -732,8 +739,9 @@ This packet does not authorize:
 
 ## Classification
 
-`FULL_PIPELINE_LAUNCH_PACKET_12CELL_PATCH_BLOCKED_CODE_SUPPORT_AMBIGUITY` is
-the current classification for L0 planning: the selected design has been patched
-to the 12-cell `grammar_mode x C x P` design, but L1a execution remains blocked
-until a future authorization packet confirms the distinct active grammar-mode
-mapping and proves row/analyzer support.
+`FULL_PIPELINE_LAUNCH_PACKET_12CELL_PATCH_BLOCKED_L1A_LAUNCHER_AND_SIGNATURE`
+is the current classification for L0 planning: the selected design has been
+patched to the 12-cell `grammar_mode x C x P` design, and the L1a packet is
+complete for review/user signature only. L1a execution remains blocked until
+full 12-cell launcher support covers the six no-P cells and a separate signed
+approval authorizes the run.
