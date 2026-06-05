@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.34.0
+Version: 1.35.0
 Date: 2026-06-05
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -59,7 +59,8 @@ treated as report-facing.
 | Agentic transcript run-packet template | `docs/handoff/agentic_transcript_v1_run_packet_template.md` |
 | Agentic transcript next-run packet draft | `docs/handoff/agentic_transcript_v1_next_run_packet.md` |
 | C3 n20 metric-family-gated experiment packet | `docs/experiment_packets/c3_n20_metric_family_gated_packet.md` |
-| Full Pipeline G/C/P launch packet v1 | `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md` |
+| Full Pipeline grammar-mode x C x P launch packet v1 | `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md` |
+| Full Pipeline L1a n=1 authorization packet draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md` |
 | Experiment change orchestration state | `docs/handoff/experiment_change_orchestration_state.md` |
 | Current artifact identities and caveats | `docs/05_artifacts_and_results_registry.md` |
 | Current Cluster 3/P methodology | `docs/04_methodology_cluster3.md` |
@@ -138,15 +139,22 @@ claims. The promoted full-pipeline launch packet is
 `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md`; it
 passed review under
 `FULL_PIPELINE_LAUNCH_PACKET_V1_REVIEW_PASS_COMMIT_ALLOWED`, was fast-forwarded
-into `codex-track-handoff-context` at `5cc6326`, and is promotion-audited in
-`audits/full_pipeline_launch_packet_v1_promotion_audit_report.md`. It selects a
-future fresh 8-cell G/C/P factorial, recommends L1 smoke/dev before L2 n20, and
-defines MLflow post-hoc indexing plus observability, repair-memory,
-structural/task, namespace, billing, and stop/spend policy. It is also
-non-authorizing and does not approve Modal/GPU/generation, output mutation,
-MLflow runtime writes, billing queries, n=5, n=20, paper-scale, timing, speedup,
-profiler, or benchmark work. Agentic repair-memory implementation agents must
-also read
+into `codex-track-handoff-context` at `5cc6326`, is promotion-audited in
+`audits/full_pipeline_launch_packet_v1_promotion_audit_report.md`, and is now
+patched under
+`FULL_PIPELINE_LAUNCH_PACKET_12CELL_PATCH_BLOCKED_CODE_SUPPORT_AMBIGUITY`. The
+active future design is the 12-cell `grammar_mode x C x P` matrix. The old
+8-cell plan is superseded for future execution. The L1a n=1 authorization packet
+draft is
+`docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md`;
+it is unsigned, non-authorizing, and blocked pending explicit approval plus
+grammar-mode support/mapping proof. The patched launch packet defines MLflow
+post-hoc indexing plus observability, repair-memory, structural/task,
+namespace, billing, stop/spend, old-run comparability, and grammar-mode policy.
+It is also non-authorizing and does not approve Modal/GPU/generation, output
+mutation, MLflow runtime writes, billing queries, n=1, n=5, n=20, paper-scale,
+timing, speedup, profiler, or benchmark work. Agentic repair-memory
+implementation agents must also read
 `docs/18_agentic_transcript_v1_implementation_spec.md` before starting A0-A6
 work. Before any future `agentic_transcript_v1` Modal, generation, n=5, n=20,
 paper-scale, or output-mutating work, agents must also read

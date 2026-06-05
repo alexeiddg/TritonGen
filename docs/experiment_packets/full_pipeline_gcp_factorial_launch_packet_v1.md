@@ -1,12 +1,14 @@
-# Full Pipeline G/C/P Factorial Launch Packet v1
+# Full Pipeline Grammar-Mode x C x P Launch Packet v1
 
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GCP_FACTORIAL_LAUNCH_PACKET_V1`
-packet_type: draft launch planning packet
-branch: `codex/full-pipeline-launch-packet-v1`
-baseline_commit: `7d9ac22 Add C3 n20 metric family packet`
+packet_type: patched draft launch planning packet
+branch_created_on: `codex/full-pipeline-launch-packet-v1`
+patch_branch: `codex/full-pipeline-l1-smoke-dev-approval-packet`
+baseline_commit: `0cc43c1 Audit full pipeline launch packet promotion`
 created_at: 2026-06-05
+patched_at: 2026-06-05
 status: `DRAFT_NOT_APPROVED`
 AUTHORIZES_EXECUTION: NO
 
@@ -32,21 +34,33 @@ generation, experiments, benchmarks, profilers, output mutation, analyzer output
 refresh, report artifact refresh, MLflow runtime writes, billing queries,
 dependency changes, lockfile changes, or paper-scale claims.
 
+## Patch Summary
+
+This patch supersedes the previously selected fresh 8-cell design for future
+execution. The selected preregistered design is now a 12-cell
+`grammar_mode x C x P` design.
+
+The older 8-cell planning artifact remains historical context only. It must not
+be used as the active future execution design, preregistration design, output
+namespace, or L1/L2 condition matrix.
+
 ## Objective
 
-Plan the first fresh post-change Cluster 3 G/C/P run after MLflow tracking,
-observability sidecars, `agentic_transcript_v1` repair memory, and
+Plan the first fresh post-change Cluster 3 full-pipeline run after MLflow
+tracking, observability sidecars, `agentic_transcript_v1` repair memory, and
 structural/task reporting changes have landed in the handoff trunk.
 
 The packet answers four launch-design questions:
 
-1. whether to target a fresh 8-cell G/C/P factorial or only the 4 P-containing
-   Cluster 3 extension;
-2. whether the next execution gate should be smoke/dev or paper-scale;
+1. whether to target the superseded 8-cell plan or the selected 12-cell
+   grammar-mode-expanded design;
+2. whether the next executable gate should be L1a smoke/dev, L1b
+   development/stability, or L2 paper-scale;
 3. how MLflow should index repo artifacts post-hoc;
 4. how result rows, content hashes, observability sidecars, analyzer outputs,
-   report artifacts, repair-history labels, metric-family metadata, and billing
-   reconciliation should join without making any metadata layer authoritative.
+   report artifacts, repair-history labels, grammar-mode labels,
+   metric-family metadata, and billing reconciliation should join without
+   making any metadata layer authoritative.
 
 ## Governing Evidence
 
@@ -65,10 +79,9 @@ This plan was written against these governing surfaces:
 - `docs/handoff/experiment_change_orchestration_state.md`
 - `docs/handoff/document_version_registry.md`
 - `docs/handoff/agentic_document_hub.md`
-
-`audits/full_pipeline_run_recon_report.md` was not present in this checkout.
-The local reconnaissance conclusion supplied to this packet is therefore treated
-as task context, while the files above remain the inspected repo evidence.
+- `cluster1/README.md`
+- `shared/generation_metadata.py`
+- `cluster3/experiments/run_cluster3_modal.py`
 
 ## Scientific Rationale
 
@@ -78,102 +91,105 @@ observability sidecars, and structural/task metric metadata improve auditability
 provenance, report interpretation, and artifact indexing, but they do not by
 themselves change the generated candidates or repair loop behavior.
 
-A fresh run should therefore avoid mixing historical `last_attempt_only_v1`
-controls with new `agentic_transcript_v1` treatment cells in headline paper
-claims. Historical rows remain useful as baselines, diagnostics, or
-compatibility checks only when the analysis explicitly models repair-history
-policy as a cohort/factor and labels the caveat.
+The grammar-mode expansion is scientifically meaningful only if future
+execution can prove that the active grammar modes are distinct, supported, and
+reported as a three-level factor. It allows C/P feedback effects to be compared
+within each grammar mode and prevents a binary grammar-on interpretation from
+collapsing materially different grammar surfaces.
+
+A fresh run should avoid mixing historical `last_attempt_only_v1` controls with
+new `agentic_transcript_v1` treatment cells in headline paper claims. Historical
+rows remain useful as baselines, diagnostics, or compatibility checks only when
+the analysis explicitly models repair-history policy as a cohort/factor and
+labels the caveat.
+
+## Terminology
+
+`grammar_mode` is the primary grammar factor for this packet.
+
+Allowed planned values:
+
+- `grammar_off`: no grammar-constrained decoding.
+- `primary_grammar`: the current primary grammar path, if available and
+  confirmed in code/config before execution.
+- `task_agnostic_grammar`: the task-agnostic grammar path.
+
+Current code-support caveat:
+
+- Repo evidence currently records `task_agnostic` as the report-facing primary
+  grammar variant and `template_upper_bound` as diagnostic/non-primary.
+- `shared/generation_metadata.py` exposes `template_upper_bound` and
+  `task_agnostic` grammar variants, while `cluster3/experiments/run_cluster3_modal.py`
+  exposes a `grammar_variant` field rather than a first-class three-level
+  `grammar_mode` selector.
+- Therefore 12-cell L1a execution is blocked until the future authorization
+  packet confirms whether `primary_grammar` is distinct from
+  `task_agnostic_grammar`, maps each active mode to exact grammar paths and
+  hashes, and proves the Cluster 3 path can label/analyze `grammar_mode` per
+  row.
 
 ## Design Choice
 
-Selected design: fresh 8-cell G/C/P factorial.
+Selected design: fresh 12-cell `grammar_mode x C x P` design.
 
-Conditions:
+The superseded design was a fresh 8-cell plan over grammar on/off plus C/P
+feedback. That design is no longer the active future-execution plan.
 
-- `none`
-- `G`
-- `C`
-- `P`
-- `G+C`
-- `G+P`
-- `C+P`
-- `G+C+P`
+## Twelve-Cell Matrix
 
-The rejected narrower design is a 4-cell P-containing extension:
-
-- `P`
-- `G+P`
-- `C+P`
-- `G+C+P`
-
-The 4-cell extension is cheaper and aligns with the existing Cluster 3 n20
-metric-family packet, but it risks primary comparisons against older no-P
-controls unless the launch packet explicitly reuses those controls as a
-separate historical cohort. A fresh all-cell run is cleaner for attribution
-across grammar constraint G, correctness feedback C, compile feedback P, repair
-history policy, structural/code-surface outcomes, and task/functional outcomes.
-
-## Recommended Execution Gate
-
-The next executable gate should be L1 smoke/dev, not L2 paper-scale.
-
-L1 should be `n=1` or another small explicitly bounded sample that proves:
-
-- the command path is valid;
-- all output namespaces are fresh;
-- content-hash sidecars are written;
-- observability sidecars write in the approved mode;
-- rows carry repair-history labels where applicable;
-- analyzer grouping/quarantine handles repair-history policy;
-- structural/task metric metadata can be consumed;
-- MLflow post-hoc indexing can import or index artifacts after they exist;
-- no overwrite/resume behavior occurs without approval.
-
-L1 is not paper evidence. L2 paper-scale remains blocked until L1 passes and a
-separate signed approval packet names exact commands, paths, model revisions,
-budgets, stop conditions, analysis commands, reporting commands, MLflow import
-commands, and cost/spend boundaries.
+| condition_id | grammar_mode | correctness_feedback_C | compile_feedback_P | repair_history_policy | primary comparison role |
+|---|---|---:|---:|---|---|
+| `grammar_off__c_off__p_off` | `grammar_off` | off | off | `not_applicable` | Baseline for no grammar and no feedback |
+| `grammar_off__c_on__p_off` | `grammar_off` | on | off | `agentic_transcript_v1` when C loop is enabled | C effect without grammar and without P |
+| `grammar_off__c_off__p_on` | `grammar_off` | off | on | `agentic_transcript_v1` when P loop is enabled | P effect without grammar and without C |
+| `grammar_off__c_on__p_on` | `grammar_off` | on | on | `agentic_transcript_v1` when C/P loops are enabled | C/P interaction without grammar |
+| `primary_grammar__c_off__p_off` | `primary_grammar` | off | off | `not_applicable` | Grammar-mode baseline for primary grammar |
+| `primary_grammar__c_on__p_off` | `primary_grammar` | on | off | `agentic_transcript_v1` when C loop is enabled | C effect under primary grammar |
+| `primary_grammar__c_off__p_on` | `primary_grammar` | off | on | `agentic_transcript_v1` when P loop is enabled | P effect under primary grammar |
+| `primary_grammar__c_on__p_on` | `primary_grammar` | on | on | `agentic_transcript_v1` when C/P loops are enabled | C/P interaction under primary grammar |
+| `task_agnostic_grammar__c_off__p_off` | `task_agnostic_grammar` | off | off | `not_applicable` | Grammar-mode baseline for task-agnostic grammar |
+| `task_agnostic_grammar__c_on__p_off` | `task_agnostic_grammar` | on | off | `agentic_transcript_v1` when C loop is enabled | C effect under task-agnostic grammar |
+| `task_agnostic_grammar__c_off__p_on` | `task_agnostic_grammar` | off | on | `agentic_transcript_v1` when P loop is enabled | P effect under task-agnostic grammar |
+| `task_agnostic_grammar__c_on__p_on` | `task_agnostic_grammar` | on | on | `agentic_transcript_v1` when C/P loops are enabled | C/P interaction under task-agnostic grammar |
 
 ## Execution Ladder
 
 | Level | Status | Purpose | Scope | Authorization state |
 |---|---|---|---|---|
-| L0 packet only | current phase | Plan the launch design and artifact policy | Docs only; no outputs; no MLflow runtime writes | Open in this packet; execution not authorized |
-| L1 smoke/dev | future only | Validate command path, namespace, sidecars, analyzer compatibility, MLflow post-hoc indexing, and no-overwrite protections | `n=1` or small n; exact command and paths required in a later approval | Blocked pending explicit user approval |
-| L2 paper-scale | future only | Paper candidate for the selected 8-cell design | Proposed `n=20` per condition only after L1 passes | Blocked pending L1 pass, Gate G8, exact cost/spend boundary, exact Modal command, exact output paths, exact analyzer/report/MLflow import commands, and explicit user approval |
+| L0 packet patch | current phase | Patch the active planning design and handoff routing | Docs only; no outputs; no MLflow runtime writes | Open in this packet; execution not authorized |
+| L1a smoke/dev | future approval only | Validate command path, output namespace, row schema, sidecars, analyzer grouping, and MLflow post-hoc indexing for the 12-cell design | 12 cells, `n=1` per cell, exact command and paths required in a later signed approval | Blocked pending explicit user approval and grammar-mode support proof |
+| L1b dev/stability | future approval only | Check condition-specific instability, repair-loop activation, analyzer/report stability, and sidecar stability | 12 cells, `n=5` per cell, only after L1a passes | Blocked pending L1a pass and explicit user approval |
+| L2 paper-scale candidate | future approval only | Paper candidate for the selected 12-cell design | 12 cells, proposed `n=20` per cell only after L1a/L1b pass | Blocked pending L1a and L1b pass, Gate G8, exact costs/commands/paths, exact analyzer/report/MLflow commands, and explicit user approval |
 
-## Condition Matrix
-
-| condition | G active? | C active? | P active? | repair_history_policy | expected feedback eligibility | primary structural metrics | primary task metrics | diagnostics | comparability notes |
-|---|---:|---:|---:|---|---|---|---|---|---|
-| `none` | no | no | no | `not_applicable`; no repair-loop memory activation | No C or P feedback | `level1_compile_success_rate`, syntax/harness diagnostics where evidence exists | `level2_functional_success_rate` if Level 2 evidence exists | terminal failure distribution, `level_reach_rates`, `metric_availability` | Fresh control for all G/C/P factors; do not reuse old `last_attempt_only_v1` rows for primary claims unless modeled as historical cohort |
-| `G` | yes | no | no | `not_applicable`; no repair-loop memory activation | Grammar constraint only; no C or P feedback | `grammar_valid_rate`, `level1_compile_success_rate`, syntax/harness diagnostics | `level2_functional_success_rate` if Level 2 evidence exists | grammar rejection layer, terminal failures, `level_reach_rates`, `metric_availability` | Fresh G-only control; historical G rows are diagnostic unless explicitly modeled |
-| `C` | no | yes | no | `agentic_transcript_v1` when C repair loop is explicitly enabled | C repairs only F2 functional failures; F0/F1/F1_RUNTIME/F3 do not trigger C | `level1_compile_success_rate` and gate reach | `level2_functional_success_rate`, repair-set/eval-set success where evidence exists | `feedback_activation`, initial-F2 C path, terminal failure distribution, mixed policy quarantine | Compare to fresh `none`; old C rows under `last_attempt_only_v1` are historical baselines only |
-| `P` | no | no | yes | `agentic_transcript_v1` when P repair loop is explicitly enabled | P repairs only F1_COMPILE; F1_RUNTIME remains terminal; F0/F2/F3 do not trigger P | `level1_compile_success_rate`, compile repair success, compile pass@k if gate-qualified | `level2_functional_success_rate` only after Level 2 evidence exists | `feedback_activation`, P attempt count, terminal failure distribution, `level_reach_rates` | Compare to fresh `none`; old P rows under `last_attempt_only_v1` are not primary-comparable |
-| `G+C` | yes | yes | no | `agentic_transcript_v1` when C repair loop is explicitly enabled | Grammar plus C repairs only F2 | `grammar_valid_rate`, `level1_compile_success_rate` | `level2_functional_success_rate`, repair-set/eval-set success where evidence exists | grammar rejection, C activation, terminal failures, `metric_availability` | Compare to fresh `G` and fresh `C`; old G+C rows are historical unless explicitly modeled |
-| `G+P` | yes | no | yes | `agentic_transcript_v1` when P repair loop is explicitly enabled | Grammar plus P repairs only F1_COMPILE; F1_RUNTIME remains terminal | `grammar_valid_rate`, `level1_compile_success_rate`, compile repair success | `level2_functional_success_rate` only after Level 2 evidence exists | grammar rejection, P activation, terminal failures | Compare to fresh `G` and fresh `P`; do not treat reused Phase 12/14 G+P as primary paper evidence |
-| `C+P` | no | yes | yes | `agentic_transcript_v1` when C/P loops are explicitly enabled | P repairs only F1_COMPILE; C repairs only F2; direct initial-F2 and post-P F2 paths must be distinct | `level1_compile_success_rate`, compile repair success, gate reach | `level2_functional_success_rate`, C repair success where evidence exists | P activation, C activation, initial-F2 vs post-P F2, terminal failures, mixed policy quarantine | Compare to fresh `C`, fresh `P`, and fresh `none`; mixed legacy controls require explicit caveat |
-| `G+C+P` | yes | yes | yes | `agentic_transcript_v1` when C/P loops are explicitly enabled | Grammar plus P F1_COMPILE repair plus C F2 repair; F1_RUNTIME remains terminal | `grammar_valid_rate`, `level1_compile_success_rate`, compile repair success | `level2_functional_success_rate`, C repair success where evidence exists | `feedback_activation`, initial-F2, post-P F2, grammar rejection, terminal failures | Full treatment cell; primary comparisons require fresh all-cell controls under the same policy and budgets |
+L1a and L1b are not paper evidence. L2 paper-scale remains blocked until L1a
+and L1b pass and a separate signed approval packet names exact commands, paths,
+model revisions, budgets, stop conditions, analysis commands, reporting
+commands, MLflow import commands, and cost/spend boundaries.
 
 ## Kernel And Problem Scope
 
-Recommended L1 scope:
+Recommended L1a scope:
 
 - kernel class: `elementwise_relu` or another explicitly named Cluster 3 smoke
   fixture selected before approval;
 - problem IDs: exact stable problem IDs must be listed in the future approval
   packet;
 - scale tier: smoke/dev only;
-- row count: `n=1` per selected condition or another small bounded n explicitly
-  approved before execution.
+- row count: `n=1` per selected 12-cell condition.
+
+Recommended L1b scope:
+
+- kernel class: same as L1a unless L1b approval explicitly broadens it;
+- row count: `n=5` per 12-cell condition;
+- purpose: development/stability only, not paper evidence.
 
 Recommended L2 scope:
 
-- kernel class: start with the same class validated by L1 unless the L2 packet
-  explicitly broadens scope;
-- proposed row count: `n=20` per condition cell;
-- all problem IDs, seeds, shapes, dtypes, model revisions, grammar variants, and
-  repair budgets must be fixed before approval.
+- kernel class: start with the same class validated by L1a/L1b unless the L2
+  packet explicitly broadens scope;
+- proposed row count: `n=20` per 12-cell condition;
+- all problem IDs, seeds, shapes, dtypes, model revisions, grammar modes,
+  grammar paths/hashes, and repair budgets must be fixed before approval.
 
 ## Dtype And Shape Scope
 
@@ -198,7 +214,11 @@ A future executable packet must specify:
 - maximum generation attempts;
 - maximum repair attempts;
 - prompt/template versions;
-- grammar variant and grammar hash for G-active cells;
+- exact `grammar_mode` values;
+- exact grammar file/path or grammar activation config for each active grammar
+  mode;
+- grammar file hash or sidecar grammar hash where supported;
+- proof that both active grammar modes are supported by current code;
 - whether all cells use the same model/revision/decoding configuration.
 
 No model download, tokenizer download, API call, generation call, or dependency
@@ -211,18 +231,18 @@ configuration for C/P repair loops. It is not the default.
 
 Policy requirements:
 
-- `none` and `G` have no repair-loop memory activation.
+- rows with C off and P off have no repair-loop memory activation;
 - C/P cells must label `repair_history_policy` in rows/artifacts when the
-  current schema supports it.
-- `agentic_transcript_v1` applies only to C/P repair loops when enabled.
-- P repairs only F1_COMPILE.
-- C repairs only F2.
-- F1_RUNTIME remains terminal.
-- Direct initial-F2 C paths must remain distinct from post-P F2 paths.
-- If explicit `agentic_transcript_v1` validation fails, the run must fail closed
-  rather than silently falling back to `last_attempt_only_v1`.
-- Analyzer/reporting must group or quarantine by `repair_history_policy`.
-- Historical `last_attempt_only_v1` outputs are baselines/diagnostics only
+  current schema supports it;
+- `agentic_transcript_v1` applies only to C/P repair loops when enabled;
+- P repairs only `F1_COMPILE`;
+- C repairs only F2;
+- `F1_RUNTIME` remains terminal;
+- direct initial-F2 C paths must remain distinct from post-P F2 paths;
+- if explicit `agentic_transcript_v1` validation fails, the run must fail
+  closed rather than silently falling back to `last_attempt_only_v1`;
+- analyzer/reporting must group or quarantine by `repair_history_policy`;
+- historical `last_attempt_only_v1` outputs are baselines/diagnostics only
   unless a future packet explicitly models policy as a cohort/factor.
 
 New `agentic_transcript_v1` artifacts must not share output paths with legacy
@@ -230,12 +250,12 @@ New `agentic_transcript_v1` artifacts must not share output paths with legacy
 
 ## Observability Policy
 
-Future L1 smoke/dev recommendation:
+Future L1a smoke/dev recommendation:
 
 - mode: `best_effort` unless the approval packet chooses `required`;
-- `observability_experiment_id`: `full_pipeline_gcp_factorial_v1`;
+- `observability_experiment_id`: `full_pipeline_grammar_mode_cp_factorial_v1`;
 - `observability_run_id`: explicit per execution, for example
-  `full_pipeline_gcp_factorial_v1_smoke_<YYYYMMDD>_<shortid>`;
+  `full_pipeline_grammar_mode_cp_factorial_v1_l1a_<YYYYMMDD>_<shortid>`;
 - sidecar path: use the namespace in this packet;
 - failure behavior: preserve scientific rows; degraded sidecars make the run
   development-only and must be recorded in the handoff.
@@ -255,15 +275,16 @@ Join keys:
 - output JSONL path;
 - row identity fields;
 - row SHA256 when available;
-- condition;
+- `condition_id`;
+- `grammar_mode`;
 - kernel class;
 - dtype;
 - seed/problem ID.
 
-Observability metadata remains sidecar-only. Scientific rows must not be mutated
-solely to add token, duration, Modal, billing, cost, or observability-only
-metadata unless the current schema already supports the field and the future
-packet explicitly authorizes that behavior.
+Observability metadata remains sidecar-only. Scientific rows must not be
+mutated solely to add token, duration, Modal, billing, cost, or
+observability-only metadata unless the current schema already supports the
+field and the future packet explicitly authorizes that behavior.
 
 ## MLflow Post-Hoc Indexing Policy
 
@@ -308,11 +329,12 @@ or writing to `mlruns/`.
 | `experiment_id` | tag | launch packet / observability sidecar | post-hoc | `experiment_id` | Logical design identity |
 | `run_id` | tag | launch packet / observability sidecar | post-hoc | `run_id` | Concrete execution attempt |
 | `cluster` | tag | launch packet / row metadata | post-hoc | output path + row metadata | Expected `cluster3` for this packet |
-| `phase` | tag | launch packet / handoff | post-hoc | `experiment_id` | L1 smoke/dev or L2 paper-scale |
-| `condition` | tag/param | JSONL rows | post-hoc or in-run if available | condition + row identity | Per-row or per-child-run index policy must be fixed before L2 |
-| `grammar_active` | param/tag | condition matrix / row metadata | post-hoc | condition | G factor |
-| `correctness_feedback_active` | param/tag | condition matrix / row metadata | post-hoc | condition | C factor |
-| `compile_feedback_active` | param/tag | condition matrix / row metadata | post-hoc | condition | P factor |
+| `phase` | tag | launch packet / handoff | post-hoc | `experiment_id` | L1a, L1b, or L2 |
+| `condition_id` | tag/param | JSONL rows or sidecar labels | post-hoc | condition_id + row identity | Per-row or per-child-run index policy must be fixed before L2 |
+| `grammar_mode` | param/tag | launch packet / row metadata | post-hoc | grammar_mode + row identity | Three-level primary grammar factor |
+| `grammar_variant` | param/tag | row metadata | post-hoc | grammar_mode + grammar path/hash | Diagnostic/mapping field, not a replacement for `grammar_mode` |
+| `correctness_feedback_active` | param/tag | condition matrix / row metadata | post-hoc | condition_id | C factor |
+| `compile_feedback_active` | param/tag | condition matrix / row metadata | post-hoc | condition_id | P factor |
 | `repair_history_policy` | param/tag | row/artifact metadata | post-hoc | repair_history_policy + output path | Required for C/P comparability |
 | `model_id` | param | future approval packet / row metadata | post-hoc | run_id | Must be explicit before execution |
 | `model_revision` | param | future approval packet / row metadata | post-hoc | run_id | Use explicit unavailable reason if absent |
@@ -331,10 +353,10 @@ or writing to `mlruns/`.
 | analyzer schema/registry version | tag/param | analyzer metadata | post-hoc | analyzer JSON path | Include `metric_registry_v1` / `outcome_family_v1` when present |
 | report path | artifact/tag | report files | post-hoc | analyzer JSON path | Report is derived from analyzer output |
 | billing reconciliation path | artifact/tag | billing artifact if later available | post-hoc | experiment_id + run_id + billing window | Only after separate billing approval; raw billing not committed |
-| `level2_functional_success_rate` | metric | analyzer JSON | post-hoc | analyzer output + condition | task_functional primary only when prerequisites pass |
-| `level1_compile_success_rate` | metric | analyzer JSON | post-hoc | analyzer output + condition | structural_code_surface secondary/diagnostic |
-| `feedback_activation` | metric/artifact | analyzer diagnostics / rows | post-hoc | condition + policy | Mixed diagnostic |
-| `level_reach_rates` | metric/artifact | analyzer diagnostics | post-hoc | condition | Mixed diagnostic |
+| `level2_functional_success_rate` | metric | analyzer JSON | post-hoc | analyzer output + condition_id | task_functional primary only when prerequisites pass |
+| `level1_compile_success_rate` | metric | analyzer JSON | post-hoc | analyzer output + condition_id | structural_code_surface secondary/diagnostic |
+| `feedback_activation` | metric/artifact | analyzer diagnostics / rows | post-hoc | condition_id + policy | Mixed diagnostic |
+| `level_reach_rates` | metric/artifact | analyzer diagnostics | post-hoc | condition_id | Mixed diagnostic |
 | `metric_availability` | artifact | analyzer diagnostics | post-hoc | analyzer JSON path | Required for deferred/future metrics |
 
 ## Structural/Task Metric-Family Policy
@@ -349,6 +371,17 @@ guidance:
   and remain `future_only` unless a later O6-style performance packet authorizes
   measurement.
 
+Metric-family interpretation changes for the 12-cell design:
+
+- structural/code-surface comparisons include `grammar_mode` as a three-level
+  factor;
+- task/functional comparisons include `grammar_mode` as a three-level factor;
+- C/P interactions must be analyzed conditional on `grammar_mode`;
+- the grammar-mode comparison must not be collapsed into a two-level active
+  grammar flag for primary claims;
+- a derived binary active-grammar diagnostic may be reported only as diagnostic
+  if the derivation is explicit.
+
 Primary task metrics:
 
 - `level2_functional_success_rate`;
@@ -359,7 +392,7 @@ Primary task metrics:
 Primary/secondary structural metrics:
 
 - syntax validity when compatible explicit evidence exists;
-- grammar validity for G-active rows;
+- grammar validity for active grammar-mode rows;
 - harness compatibility;
 - `level1_compile_success_rate`;
 - `compile_pass_at_k` only if gate-qualified and not bare pass@k.
@@ -387,37 +420,47 @@ MLflow indexing commands must consume the metadata to benefit from it.
 Fresh namespaces:
 
 ```text
-outputs/cluster3/full_pipeline_gcp_factorial_v1/smoke/
-outputs/cluster3/full_pipeline_gcp_factorial_v1/n20/
-artifacts/observability/full_pipeline_gcp_factorial_v1/smoke/
-artifacts/observability/full_pipeline_gcp_factorial_v1/n20/
-artifacts/analysis/full_pipeline_gcp_factorial_v1/
-artifacts/reports/full_pipeline_gcp_factorial_v1/
-artifacts/mlflow_index/full_pipeline_gcp_factorial_v1/
-artifacts/billing/full_pipeline_gcp_factorial_v1/
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1b_n5/
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20/
+artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/
+artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1b_n5/
+artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20/
+artifacts/analysis/full_pipeline_grammar_mode_cp_factorial_v1/
+artifacts/reports/full_pipeline_grammar_mode_cp_factorial_v1/
+artifacts/mlflow_index/full_pipeline_grammar_mode_cp_factorial_v1/
+artifacts/billing/full_pipeline_grammar_mode_cp_factorial_v1/
 ```
+
+The old `full_pipeline_gcp_factorial_v1` namespace must not be used for this
+design. If any target path already exists, future launch must stop unless an
+explicit resume/append/archive policy is approved before execution.
 
 No overwrite policy:
 
-- output JSONL names must include condition, n, dtype, kernel scope, and date or
-  run_id;
+- output JSONL names must include `grammar_mode`, C/P settings, n, dtype, kernel
+  scope, and date or run_id;
 - if any target path exists, stop unless an explicit resume/append/archive
   policy is approved before execution;
 - raw JSONL must never be rewritten to repair metadata;
 - content-hash sidecars must be generated from the final JSONL bytes;
 - legacy outputs must not be reused as fresh controls for primary claims.
 
-Example future L1 names, not authorized by this packet:
+Example future L1a names, not authorized by this packet:
 
 ```text
-outputs/cluster3/full_pipeline_gcp_factorial_v1/smoke/condition-none_n1_fp32_elementwise_relu_<run_id>.jsonl
-outputs/cluster3/full_pipeline_gcp_factorial_v1/smoke/condition-g_n1_fp32_elementwise_relu_<run_id>.jsonl
-outputs/cluster3/full_pipeline_gcp_factorial_v1/smoke/condition-c_n1_fp32_elementwise_relu_<run_id>.jsonl
-outputs/cluster3/full_pipeline_gcp_factorial_v1/smoke/condition-p_n1_fp32_elementwise_relu_<run_id>.jsonl
-outputs/cluster3/full_pipeline_gcp_factorial_v1/smoke/condition-g-plus-c_n1_fp32_elementwise_relu_<run_id>.jsonl
-outputs/cluster3/full_pipeline_gcp_factorial_v1/smoke/condition-g-plus-p_n1_fp32_elementwise_relu_<run_id>.jsonl
-outputs/cluster3/full_pipeline_gcp_factorial_v1/smoke/condition-c-plus-p_n1_fp32_elementwise_relu_<run_id>.jsonl
-outputs/cluster3/full_pipeline_gcp_factorial_v1/smoke/condition-g-plus-c-plus-p_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_off_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_off_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_on_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_on_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/primary_grammar__c_off__p_off_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/primary_grammar__c_on__p_off_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/primary_grammar__c_off__p_on_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/primary_grammar__c_on__p_on_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic_grammar__c_off__p_off_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic_grammar__c_on__p_off_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic_grammar__c_off__p_on_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic_grammar__c_on__p_on_n1_fp32_elementwise_relu_<run_id>.jsonl
 ```
 
 ## Sidecar Namespace Reservation
@@ -429,16 +472,22 @@ Expected sidecars:
 - observability summary sidecar;
 - observability hash sidecar.
 
-Preferred L1 sidecar namespace:
+Preferred L1a sidecar namespace:
 
 ```text
-artifacts/observability/full_pipeline_gcp_factorial_v1/smoke/<run_id>/
+artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<run_id>/
+```
+
+Preferred L1b sidecar namespace:
+
+```text
+artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1b_n5/<run_id>/
 ```
 
 Preferred L2 sidecar namespace:
 
 ```text
-artifacts/observability/full_pipeline_gcp_factorial_v1/n20/<run_id>/
+artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20/<run_id>/
 ```
 
 If sidecars stay adjacent to output JSONL paths, the future packet must show the
@@ -449,19 +498,28 @@ exact derived event, summary, and hash paths before approval.
 Analyzer and report artifacts should be separate from raw outputs:
 
 ```text
-artifacts/analysis/full_pipeline_gcp_factorial_v1/<run_id>/factorial_analysis.json
-artifacts/reports/full_pipeline_gcp_factorial_v1/<run_id>/
+artifacts/analysis/full_pipeline_grammar_mode_cp_factorial_v1/<run_id>/factorial_analysis.json
+artifacts/reports/full_pipeline_grammar_mode_cp_factorial_v1/<run_id>/
 ```
 
 The future packet must list exact analyzer and report commands. Analyzer output
 refresh and report artifact refresh are not authorized here.
+
+Analyzer grouping requirements:
+
+- group by `grammar_mode`, not only an active-grammar boolean;
+- preserve C/P factors within each `grammar_mode`;
+- reject or quarantine rows missing `grammar_mode`;
+- reject or quarantine rows where `grammar_mode`, grammar path, and grammar hash
+  conflict;
+- treat derived active-grammar summaries as diagnostic only.
 
 ## Billing Namespace Reservation
 
 Billing reconciliation is future post-hoc work only:
 
 ```text
-artifacts/billing/full_pipeline_gcp_factorial_v1/<run_id>/
+artifacts/billing/full_pipeline_grammar_mode_cp_factorial_v1/<run_id>/
 ```
 
 Actual billing collection requires a separate approval packet naming source,
@@ -469,6 +527,25 @@ credential scope, time window, attribution keys, raw-report handling, redaction
 policy, dry-run command, stop conditions, and output path. Raw billing reports
 must not be committed. If Modal billing collection is rate-limited, stop and
 record `O5C_BLOCKED_MODAL_BILLING_RATE_LIMIT_WITH_ADAPTER_READY`.
+
+## Old-Run Comparability Policy
+
+Previous 8-cell or 4-cell planning artifacts are superseded for future
+execution. Historical runs can be used only as historical baselines or
+diagnostics.
+
+Comparability requirements:
+
+- old `last_attempt_only_v1` rows must not be mixed with
+  `agentic_transcript_v1` rows for primary claims;
+- old one-grammar outputs must not be used as if they cover both active grammar
+  modes;
+- template or diagnostic grammar rows must not be treated as primary grammar
+  rows unless a future contract explicitly changes their role;
+- historical rows may appear only in labeled diagnostic/baseline sections;
+- primary claims for this design require fresh rows for all 12 cells under the
+  same approved repair-history, grammar-mode, model, dtype, shape, and stop
+  policies.
 
 ## Denominator And Eligibility Policy
 
@@ -517,6 +594,8 @@ Default stop requirements:
 - stop on row-count mismatch;
 - stop on schema validation failure;
 - stop on hash sidecar mismatch;
+- stop on missing or unsupported `grammar_mode`;
+- stop on grammar-mode/path/hash mismatch;
 - stop on P firing outside `F1_COMPILE`;
 - stop on C firing outside F2;
 - stop on `F1_RUNTIME` repair attempt;
@@ -527,10 +606,18 @@ Default stop requirements:
 
 ## Validation Plan
 
-Future L1 approval must include:
+Future L1a approval must include:
 
-- exact Modal command, but not in this packet;
+- exact command, but not in this packet;
+- exact 12-cell condition matrix;
 - exact target output paths and sidecar paths;
+- exact `grammar_mode` values;
+- exact grammar file/path or grammar activation config for each active grammar
+  mode;
+- validation that both active grammar modes are supported by current code;
+- per-row `grammar_mode` label;
+- per-row grammar file/hash or sidecar grammar hash where supported;
+- analyzer grouping by `grammar_mode`, not only an active-grammar boolean;
 - preflight path-existence check;
 - command/config proof for `repair_history_policy=agentic_transcript_v1` on C/P
   loops where enabled;
@@ -544,11 +631,18 @@ Future L1 approval must include:
 - structural/task metric metadata validation;
 - MLflow post-hoc importer dry-run or fixture proof before any L2 approval.
 
+Future L1b approval must include:
+
+- L1a audit reference;
+- exact `n=5` condition matrix;
+- exact instability and repair-loop activation review criteria;
+- exact analyzer/report stability commands.
+
 Future L2 approval must additionally include:
 
-- L1 audit reference;
+- L1a and L1b audit references;
 - Gate G8 readiness proof;
-- exact n=20 condition matrix;
+- exact `n=20` condition matrix;
 - exact model/revision/decoding details;
 - exact cost/spend boundary;
 - billing reconciliation plan or explicit unavailable status;
@@ -558,29 +652,41 @@ Future L2 approval must additionally include:
 
 ## Launch Prerequisites
 
-L1 remains blocked until a later approval packet supplies:
+L1a remains blocked until a later signed authorization packet supplies:
 
 - approval source and timestamp;
 - exact branch and commit;
 - exact command;
-- exact conditions to run;
+- exact 12 conditions to run;
 - exact n;
 - exact output paths;
 - exact observability IDs and paths;
 - exact model/revision/decoding policy;
+- exact `grammar_mode` mapping;
+- exact grammar file/path or activation config for `primary_grammar`;
+- exact grammar file/path or activation config for `task_agnostic_grammar`;
+- proof that both active grammar modes are supported and distinct or an
+  explicit approved decision that they are intentionally aliased;
 - exact repair-history policy config;
 - exact stop/spend limits;
 - exact validation commands;
 - target path nonexistence proof;
 - statement that generated artifacts are development-only.
 
+L1b remains blocked until:
+
+- L1a passes;
+- L1a artifact/audit references are recorded;
+- instability and repair-loop activation review criteria are accepted;
+- a separate L1b approval packet is signed.
+
 L2 remains blocked until:
 
-- L1 passes;
+- L1a and L1b pass;
 - Gate G8 is satisfied;
 - a post-hoc MLflow importer or equivalent script exists and passes a fixture or
   L1 import proof;
-- analyzer/reporting can separate repair-history policies;
+- analyzer/reporting can separate repair-history policies and `grammar_mode`;
 - structural/task metric-family metadata validates;
 - observability summaries and hash sidecars are complete or explicitly accepted
   as unavailable;
@@ -598,7 +704,7 @@ This packet does not authorize:
 - experiments;
 - benchmarks;
 - profilers;
-- n=5, n=20, paper-scale, or broader matrix execution;
+- L1a, L1b, L2, n=1, n=5, n=20, paper-scale, or broader matrix execution;
 - output mutation;
 - raw JSONL rewrite;
 - analyzer output refresh;
@@ -617,6 +723,8 @@ This packet does not authorize:
 
 ## Classification
 
-`FULL_PIPELINE_LAUNCH_PACKET_V1_COMPLETE` is satisfied for L0 only if the
-packet, audit, handoff updates, and validation scans pass without protected
-scope changes or authorization leakage.
+`FULL_PIPELINE_LAUNCH_PACKET_12CELL_PATCH_BLOCKED_CODE_SUPPORT_AMBIGUITY` is
+the current classification for L0 planning: the selected design has been patched
+to the 12-cell `grammar_mode x C x P` design, but L1a execution remains blocked
+until a future authorization packet confirms the distinct active grammar-mode
+mapping and proves row/analyzer support.

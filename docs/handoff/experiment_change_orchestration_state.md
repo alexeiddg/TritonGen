@@ -1,6 +1,6 @@
 # Experiment Change Orchestration State
 
-- Version: 1.5.49
+- Version: 1.5.50
 - Date: 2026-06-05
 - Status: active live state record
 - Owner: current orchestration agent
@@ -375,11 +375,11 @@ reason. Do not backfill missing provenance silently after execution.
 
 | Field | Value |
 |---|---|
-| Git baseline commit | `5cc6326 Review full pipeline launch packet` |
-| Git branch | `codex-track-handoff-context` after fast-forward promotion from `codex/full-pipeline-launch-packet-v1` |
-| Git status at latest reconciliation | Full Pipeline Launch Packet v1 was fast-forward promoted into `codex-track-handoff-context` at `5cc6326` under `FULL_PIPELINE_LAUNCH_PACKET_V1_PROMOTION_COMPLETE` as a non-authorizing plan for a future fresh G/C/P factorial with MLflow post-hoc indexing. Scope is limited to `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md`, `audits/full_pipeline_launch_packet_v1_report.md`, `audits/full_pipeline_launch_packet_v1_promotion_audit_report.md`, and handoff routing updates. No Modal/GPU/generation/experiment/benchmark/billing run, output mutation, raw JSONL rewrite, analyzer output refresh, report artifact refresh, result schema, dependency, lockfile, timing, speedup, profiler, MLflow runtime write, or paper-scale work is authorized. |
+| Git baseline commit | `0cc43c1 Audit full pipeline launch packet promotion` |
+| Git branch | `codex/full-pipeline-l1-smoke-dev-approval-packet` after branch creation from pushed `codex-track-handoff-context` |
+| Git status at latest reconciliation | Full Pipeline Launch Packet v1 was patched from the superseded 8-cell plan to the selected 12-cell `grammar_mode x C x P` design under `FULL_PIPELINE_LAUNCH_PACKET_12CELL_PATCH_BLOCKED_CODE_SUPPORT_AMBIGUITY`, and `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md` was added as an unsigned/non-authorizing L1a n=1 draft authorization packet. L1a execution remains blocked pending explicit approval and grammar-mode support/mapping proof. Scope is limited to experiment packets, `audits/full_pipeline_launch_packet_v1_12cell_patch_report.md`, and handoff routing updates. No Modal/GPU/generation/experiment/benchmark/billing run, output mutation, raw JSONL rewrite, analyzer output refresh, report artifact refresh, result schema, dependency, lockfile, timing, speedup, profiler, MLflow runtime write, n=1 execution, n=5, n=20, or paper-scale work is authorized. |
 | Orchestration contract version | `docs/15_experiment_change_orchestration_contract.md` v1.0.13 |
-| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.86.0 |
+| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.87.0 |
 | Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.6 |
 | Structural/task analyzer metadata spec version | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.4 |
 | MLflow tracking policy version | `.contracts/research/mlflow_tracking_policy.md` v1.0.0 |
@@ -395,7 +395,7 @@ reason. Do not backfill missing provenance silently after execution.
 | Agentic transcript A6 run-packet gate planning | promoted into handoff trunk at commit `4a84600`; `audits/agentic_transcript_v1_a6_run_packet_gate_report.md` v1.0.0 remains the evidence snapshot; `docs/handoff/agentic_transcript_v1_next_run_packet.md` is `DRAFT_NOT_APPROVED` and authorizes no Modal/output/generation/n=5/n=20/paper-scale work |
 | Observability O0-O6b package | O0-O4 promoted into handoff trunk at commit `309c451`; O5-Prep/O5a accepted locally through `c41a5bc`; O5b committed at `cf63de8`; O5c adapter-ready blocked state committed at `dc48782`; O6a Level-4 performance contract scaffolding committed at `d966ad0`; O6b smoke sidecar committed at `403cfea`; final O5b/O5c/O6a/O6b promotion audit passed with caveats |
 | Structural/task reporting S0-S4 package | S0 terminology accepted at `d9bbdb2`; S1 analyzer metric registry metadata committed at `ff876d2`; S2 report metadata consumption committed at `a7b0cdb`; S3 report refresh docs-only record committed at `f1058eb`; S0-S3 promotion audit committed at `80086f9`; S4 future experiment metric-family guidance committed at `f73ecb9`, fast-forwarded into `codex-track-handoff-context`, and promotion-audited at `d015862`. Generated preliminary-report previews remain ignored local outputs unless a future explicit force-add publication decision is made. |
-| Current Cluster 3 gate | Phase 14e four-cell n=5 development matrix frozen with warnings; C3 n20 metric-family-gated experiment packet review passed as draft/non-authorizing planning only; Full Pipeline Launch Packet v1 is promoted on the handoff trunk and recommends a future fresh 8-cell G/C/P factorial with L1 smoke/dev before n20; no broader run without explicit approval packet |
+| Current Cluster 3 gate | Phase 14e four-cell n=5 development matrix frozen with warnings; C3 n20 metric-family-gated experiment packet review passed as draft/non-authorizing planning only; Full Pipeline Launch Packet v1 is promoted and patched to the selected 12-cell `grammar_mode x C x P` design; L1a n=1 authorization packet is drafted/unsigned and blocked pending explicit approval plus grammar-mode support/mapping proof; no broader run without explicit approval packet |
 | Paper-scale status | blocked; no Cluster 3 `n=20` launch or paper-scale claim until a later signed launch approval satisfies Gate G8 |
 
 Important repository note: on the handoff trunk, `docs/`, `audits/`, and
@@ -407,7 +407,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Worktree | Branch | Commit | State ownership |
 |---|---|---|---|
-| `/Users/alexeidelgado/Desktop/TritonGen` | `codex-track-handoff-context` | promoted Full Pipeline Launch Packet v1 at `5cc6326` | Current promoted handoff trunk. Scope is `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md`, handoff routing records, `audits/full_pipeline_launch_packet_v1_report.md`, and `audits/full_pipeline_launch_packet_v1_promotion_audit_report.md`. The packet selects a future fresh 8-cell G/C/P factorial, recommends L1 smoke/dev before L2 n20, defines MLflow post-hoc indexing, observability, repair-memory, structural/task, namespace, and stop/spend policy, and was promoted under `FULL_PIPELINE_LAUNCH_PACKET_V1_PROMOTION_COMPLETE`. No analyzer code, report builder, analyzer semantic change, raw JSONL rewrite, experiment run, analyzer output refresh, report artifact refresh, `outputs/` tracked mutation, `artifacts/`, `mlruns/`, result schema, dependency, lockfile, Modal, GPU, generation, n=5, n=20, paper-scale, profiler, timing, speedup, benchmark, billing query, or MLflow runtime write is authorized |
+| `/Users/alexeidelgado/Desktop/TritonGen` | `codex/full-pipeline-l1-smoke-dev-approval-packet` | branched from pushed handoff trunk at `0cc43c1` | Current docs-only packet branch. Scope is patching `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md` to the 12-cell `grammar_mode x C x P` design, adding the unsigned L1a n=1 authorization packet draft, adding `audits/full_pipeline_launch_packet_v1_12cell_patch_report.md`, and updating handoff routing records. L1a execution remains blocked pending explicit approval and grammar-mode support/mapping proof. No analyzer code, report builder, analyzer semantic change, raw JSONL rewrite, experiment run, analyzer output refresh, report artifact refresh, `outputs/` tracked mutation, `artifacts/`, `mlruns/`, result schema, dependency, lockfile, Modal, GPU, generation, n=1 execution, n=5, n=20, paper-scale, profiler, timing, speedup, benchmark, billing query, or MLflow runtime write is authorized |
 | `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `4a84600` | reference/history worktree only; same A6 commit as the promoted handoff trunk and not the place for observability work |
 | `/Users/alexeidelgado/Desktop/TritonGen/.claude/worktrees/intelligent-pasteur-72d92f` | `claude/intelligent-pasteur-72d92f` | `b0085c1` | external/unknown to this orchestration state; reconcile before relying on it |
 
@@ -415,9 +415,10 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Branch | Stream/package | Worktree | Status | Notes |
 |---|---|---|---|---|
-| `codex/full-pipeline-launch-packet-v1` | Full Pipeline Launch Packet v1 / fresh G/C/P factorial planning | none after promotion | promoted/reference | Created from `7d9ac22 Add C3 n20 metric family packet`, reviewed at `5cc6326`, and fast-forward promoted into `codex-track-handoff-context`. Scope is a non-authorizing full-pipeline launch packet plus handoff registry/audit routing. It selects a future fresh 8-cell G/C/P factorial, recommends L1 smoke/dev before L2 n20, reserves fresh output/artifact namespaces, records MLflow post-hoc indexing requirements, and passed review under `FULL_PIPELINE_LAUNCH_PACKET_V1_REVIEW_PASS_COMMIT_ALLOWED`. No analyzer/report code, report output refresh, raw JSONL rewrite, output/artifact/mlruns mutation, result schema, dependency, lockfile, Modal/GPU/generation, n=5, n=20, paper-scale, profiler, timing, speedup, benchmark, billing query, MLflow runtime write, or execution authorization is in scope. |
+| `codex/full-pipeline-l1-smoke-dev-approval-packet` | Full Pipeline Launch Packet v1 12-cell patch plus L1a n=1 authorization draft | `/Users/alexeidelgado/Desktop/TritonGen` | active docs-only packet branch | Created from pushed `codex-track-handoff-context` tip `0cc43c1`. Scope is patching the active launch packet from the superseded 8-cell plan to the selected 12-cell `grammar_mode x C x P` design, adding an unsigned/non-authorizing L1a n=1 draft authorization packet, adding the 12-cell patch audit, and updating handoff routing. L1a execution remains blocked pending explicit approval and grammar-mode support/mapping proof. No analyzer/report code, report output refresh, raw JSONL rewrite, output/artifact/mlruns mutation, result schema, dependency, lockfile, Modal/GPU/generation, n=1 execution, n=5, n=20, paper-scale, profiler, timing, speedup, benchmark, billing query, MLflow runtime write, or execution authorization is in scope. |
+| `codex/full-pipeline-launch-packet-v1` | Full Pipeline Launch Packet v1 / superseded 8-cell planning source | none after promotion | promoted/reference; superseded for future execution by 12-cell patch | Created from `7d9ac22 Add C3 n20 metric family packet`, reviewed at `5cc6326`, and fast-forward promoted into `codex-track-handoff-context`. The original selected 8-cell plan is historical context only after the 12-cell patch. No analyzer/report code, report output refresh, raw JSONL rewrite, output/artifact/mlruns mutation, result schema, dependency, lockfile, Modal/GPU/generation, n=5, n=20, paper-scale, profiler, timing, speedup, benchmark, billing query, MLflow runtime write, or execution authorization is in scope. |
 | `codex/c3-n20-metric-family-gated-packet` | C3 packet / metric-family-gated future experiment planning | none after handoff-trunk baseline `7d9ac22` | committed/reference | Created the non-authorizing Cluster 3 n20 experiment packet plus handoff registry/audit routing. No analyzer/report code, report output refresh, raw JSONL rewrite, output/artifact mutation, result schema, dependency, lockfile, Modal/GPU/generation, n=5, n=20, paper-scale, profiler, timing, speedup, benchmark, or execution authorization is in scope. |
-| `codex-track-handoff-context` | promoted handoff trunk | `/Users/alexeidelgado/Desktop/TritonGen` | Full Pipeline Launch Packet v1 promoted; L1 still blocked | Handoff trunk includes MLflow integration ancestry, A2-A6 repair-memory ancestry, O0-O6b observability metadata features, the final O5c operational billing caveat, structural/task S0-S3 promoted through `80086f9`, S4 future experiment guidance at `f73ecb9`, S4 promotion audit at `d015862`, C3 n20 metric-family packet commit `7d9ac22`, and Full Pipeline Launch Packet v1 commit `5cc6326`. Do not use `main`, `ml_migration`, or stale worktrees for structural/task, observability, C3 packet, full-pipeline packet, or L1 planning work. |
+| `codex-track-handoff-context` | promoted handoff trunk | none while current worktree is on `codex/full-pipeline-l1-smoke-dev-approval-packet` | pushed baseline for 12-cell patch branch | Handoff trunk includes MLflow integration ancestry, A2-A6 repair-memory ancestry, O0-O6b observability metadata features, the final O5c operational billing caveat, structural/task S0-S3 promoted through `80086f9`, S4 future experiment guidance at `f73ecb9`, S4 promotion audit at `d015862`, C3 n20 metric-family packet commit `7d9ac22`, Full Pipeline Launch Packet v1 commit `5cc6326`, and promotion audit `0cc43c1`. Do not use `main`, `ml_migration`, or stale worktrees for structural/task, observability, C3 packet, full-pipeline packet, or L1 planning work. |
 | `codex/structural-task-s4-experiment-integration` | S4 future experiment metric-family integration | none after promotion | promoted/reference | Started from pushed `codex-track-handoff-context` tip `80086f9`, completed S4 docs/planning guidance, and fast-forwarded into `codex-track-handoff-context` at `f73ecb9`. No analyzer code, report builder, report output refresh, raw JSONL rewrite, output/artifact mutation, result schema, dependency, lockfile, Modal/GPU/generation, n=5, n=20, paper-scale, profiler, timing, speedup, benchmark, or execution authorization is in scope. |
 | `codex/structural-task-s0-terminology` | S0 docs terminology acceptance | none after S1 branch creation | accepted/reference | Records G2/S0 terminology acceptance, docs/17 as executable S1 contract, S1 analyzer-metadata-only unblock scope, S2/S3 blocked state, and `audits/structural_task_s0_terminology_acceptance_report.md`. No analyzer code, tests, report builder, outputs, artifacts, dependencies, runtime, Modal, GPU, generation, n=5, n=20, paper-scale, performance, timing, profiler, or speedup work is authorized on this completed branch. |
 | `codex/analyzer-metric-registry` | S1 analyzer metric registry metadata | none after S2 branch creation | review passed / commit closeout | S1 analyzer-metadata review passed. Scope was additive analyzer metadata and focused analyzer tests only, plus minimal state/registry/audit records. No report builder, `outputs/`, `artifacts/`, result schemas, dependencies, lockfiles, Modal, GPU, generation, experiment runs, paper-scale work, profiler, timing, speedup, or benchmark work is authorized. |
@@ -450,7 +451,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 | G4 analyzer/report metadata compatibility stable | S0-S4 promoted/closed | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.4 records S0-S4. S1 implemented additive analyzer metadata and focused tests; S2 consumed S1 metadata when present and recorded a legacy fallback path when current analyzer JSON lacks S1 metadata. S3 refreshed derived preliminary-report data/ignored HTML previews from existing local inputs and verified that the current payload shows `legacy_metadata_unavailable` plus separated structural/code-surface, task/functional, mixed diagnostic, and future benchmarkable/performance groups. S4 adds future packet metric-family guidance only and was fast-forwarded into `codex-track-handoff-context` at `f73ecb9`; generated HTML/data remain ignored unless a future review approves force-add. |
 | G5 agentic prompt core stable | satisfied with baseline-venv caveat | `audits/agentic_transcript_v1_a1_prompt_core_report.md` v1.0.0 records pure prompt-core implementation, typed local errors, policy config validation, public evidence/source models, deterministic anchor ranking, canonical renderer, prompt/history hashes, budget behavior, fixture manifest, prompt-injection fixture, legacy C/P byte-invariance snapshots, import isolation, focused tests, and no forbidden-surface changes. |
 | G6 agentic integration stable | promoted to handoff trunk with run gate caveat | A2 C-loop integration, A3 P-loop integration, A4 P-to-C isolation proof, A5 analyzer grouping/quarantine, and A6 run-packet gate planning are present in promoted A6 commit `4a84600`; future agentic execution remains blocked pending signed run approval and required pre-run checks. |
-| G7 development run readiness | blocked pending fresh signed approval packet | Phase 14e matrix is frozen; the C3 n20 metric-family-gated packet review passed as draft/non-authorizing planning only and defines prerequisites for a future launch. Full Pipeline Launch Packet v1 now recommends a fresh 8-cell G/C/P factorial with L1 smoke/dev before any L2 n20 paper-scale attempt. A6 provides the agentic template and one `DRAFT_NOT_APPROVED` next-run packet, but no active run packet is approved. Any broader development-scale, all-condition, diagnostic, or paper-readiness run needs a signed approval packet. |
+| G7 development run readiness | blocked pending fresh signed approval packet and grammar-mode support proof | Phase 14e matrix is frozen; the C3 n20 metric-family-gated packet review passed as draft/non-authorizing planning only and defines prerequisites for a future launch. Full Pipeline Launch Packet v1 now selects the 12-cell `grammar_mode x C x P` design with L1a n=1 before L1b n=5 and L2 n20. The L1a authorization packet is a `DRAFT_NOT_APPROVED` planning artifact only, and execution remains blocked until explicit approval plus grammar-mode support/mapping proof. A6 provides the agentic template and one `DRAFT_NOT_APPROVED` next-run packet, but no active run packet is approved. Any broader development-scale, all-condition, diagnostic, or paper-readiness run needs a signed approval packet. |
 | G8 paper-scale readiness | blocked | No `n=20` execution or paper-scale work. The C3 n20 packet is not a launch approval and does not authorize paper-scale claims. |
 
 ## Approved Run Packets
@@ -462,10 +463,21 @@ Current draft packet:
 - `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md`
 - Status: `DRAFT_NOT_APPROVED`
 - `AUTHORIZES_EXECUTION: NO`
-- Selects future fresh 8-cell G/C/P factorial and L1 smoke/dev before L2 n20.
+- Selects future fresh 12-cell `grammar_mode x C x P` design with L1a n=1
+  before L1b n=5 and L2 n20.
 - Does not authorize Modal execution, GPU work, generation, experiments,
-  output mutation, MLflow runtime writes, billing queries, n=5, n=20,
+  output mutation, MLflow runtime writes, billing queries, n=1 execution, n=5, n=20,
   paper-scale work, benchmark, profiler, timing, speedup, or dependency changes.
+
+- `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md`
+- Status: `DRAFT_NOT_APPROVED`
+- `AUTHORIZES_EXECUTION: NO`
+- Unsigned L1a n=1 authorization draft for the 12-cell design.
+- Blocked pending explicit approval and grammar-mode support/mapping proof.
+- Does not authorize Modal execution, GPU work, generation, experiments,
+  output mutation, MLflow runtime writes, billing queries, n=1 execution, n=5,
+  n=20, paper-scale work, benchmark, profiler, timing, speedup, or dependency
+  changes.
 
 - `docs/handoff/agentic_transcript_v1_next_run_packet.md`
 - Status: `DRAFT_NOT_APPROVED`
@@ -617,13 +629,13 @@ Historical context:
 
 Allowed without run approval:
 
-1. Push `codex-track-handoff-context` after the Full Pipeline Launch Packet v1
-   promotion audit commit if remote publication is desired. Treat the promotion
-   as packet-only: validation must confirm no analyzer/report builder, report
-   artifact refresh, raw JSONL rewrite, output/artifact/mlruns mutation, result
-   schema, dependency, lockfile, Modal/GPU/generation, experiment, benchmark,
-   profiler, timing, speedup, billing query, MLflow runtime write, or
-   paper-scale authorization occurred.
+1. Review and commit the docs-only 12-cell launch-packet patch on
+   `codex/full-pipeline-l1-smoke-dev-approval-packet` after validation confirms
+   no analyzer/report builder, report artifact refresh, raw JSONL rewrite,
+   output/artifact/mlruns mutation, result schema, dependency, lockfile,
+   Modal/GPU/generation, experiment, benchmark, profiler, timing, speedup,
+   billing query, MLflow runtime write, n=1 execution, n=5, n=20, or paper-scale
+   authorization occurred.
 2. Retry O5c live billing collection only after the Modal workspace billing
    report rate limit clears, using a separate explicit billing approval packet.
    Prefer daily resolution for multi-day windows and hourly resolution only for
@@ -632,11 +644,13 @@ Allowed without run approval:
    historical sidecar migration, analyzer/economic metrics,
    cost-per-success/pass@k cost, or paper-scale economic/performance claims
    without a new signed packet.
-4. After review, prepare a separate L1 smoke/dev approval packet only if the
-   user explicitly authorizes it. The packet must name exact command, branch,
-   commit, condition matrix, output paths, observability IDs, repair-history
-   policy, model/revision/decoding config, stop/spend limits, analyzer/report
-   plan, and MLflow post-hoc indexing proof.
+4. Review the unsigned L1a n=1 authorization packet draft only after the
+   patched launch packet wording reflects the 12-cell `grammar_mode x C x P`
+   design. Do not create or run an L1a execution packet until a later explicit
+   approval supplies exact command, branch, commit, condition matrix, output
+   paths, observability IDs, grammar-mode mapping/proof, repair-history policy,
+   model/revision/decoding config, stop/spend limits, analyzer/report plan, and
+   MLflow post-hoc indexing proof.
 5. Keep ignored derived report previews
    `docs/preliminary_report/_report_data.json`,
    `docs/preliminary_report/index.html`, and
@@ -1530,7 +1544,8 @@ status: promoted into A6 handoff trunk at 4a84600; reference/history only
 | R3 Phase 14c run | `codex/cluster3-phase14c-g-plus-c-plus-p-n5` | complete | G7 plus approval | registered diagnostic artifact | Completed elsewhere; insufficient repair signal. |
 | R4 Phase 14d G+P reuse decision | `codex/cluster3-phase14d-gp-reuse` | complete | Phase 14c audit | reuse decision registered | Existing Phase 12 G+P n=5 artifact reused as matrix cell. |
 | R5 Phase 14e matrix freeze | `codex/cluster3-phase14e-freeze` | complete | four cells present | matrix frozen with warnings | Development-scale condition coverage only; no P/C repair signal. |
-| Full Pipeline Launch Packet v1 | `codex/full-pipeline-launch-packet-v1` then `codex-track-handoff-context` | promoted/audit complete | Phase 14e freeze, C3 n20 metric-family packet, S4 metric-family guidance, O0-O6 observability state, A6 repair-memory gate, and MLflow tracking policy | FULL_PIPELINE_LAUNCH_PACKET_V1_PROMOTION_COMPLETE | Creates `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md`, `audits/full_pipeline_launch_packet_v1_report.md`, and `audits/full_pipeline_launch_packet_v1_promotion_audit_report.md`; selects future fresh 8-cell G/C/P factorial, recommends L1 smoke/dev before L2 n20, defines MLflow post-hoc indexing and namespace policy, preserves all execution flags as NO, passed review without protected-scope mutation or execution authorization leakage, and was fast-forward promoted into `codex-track-handoff-context` at `5cc6326`. |
+| Full Pipeline Launch Packet v1 12-cell patch and L1a authorization draft | `codex/full-pipeline-l1-smoke-dev-approval-packet` | docs-only patch active | Phase 14e freeze, C3 n20 metric-family packet, S4 metric-family guidance, O0-O6 observability state, A6 repair-memory gate, MLflow tracking policy, and promoted launch packet baseline `0cc43c1` | FULL_PIPELINE_LAUNCH_PACKET_12CELL_PATCH_BLOCKED_CODE_SUPPORT_AMBIGUITY | Patches `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md` from the superseded 8-cell plan to the selected 12-cell `grammar_mode x C x P` design, adds `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md` as an unsigned/non-authorizing L1a n=1 draft, adds `audits/full_pipeline_launch_packet_v1_12cell_patch_report.md`, defines fresh `full_pipeline_grammar_mode_cp_factorial_v1` namespaces, preserves all execution flags as NO, and blocks L1a execution pending explicit approval plus grammar-mode support/mapping proof. No protected-scope mutation, output/artifact/mlruns mutation, or execution authorization is in scope. |
+| Full Pipeline Launch Packet v1 original promotion | `codex/full-pipeline-launch-packet-v1` then `codex-track-handoff-context` | promoted/audit complete; original 8-cell design superseded for future execution | Phase 14e freeze, C3 n20 metric-family packet, S4 metric-family guidance, O0-O6 observability state, A6 repair-memory gate, and MLflow tracking policy | FULL_PIPELINE_LAUNCH_PACKET_V1_PROMOTION_COMPLETE | Created `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md`, `audits/full_pipeline_launch_packet_v1_report.md`, and `audits/full_pipeline_launch_packet_v1_promotion_audit_report.md`; selected a future fresh 8-cell plan before the 12-cell patch, recommended L1 smoke/dev before L2 n20, defined MLflow post-hoc indexing and namespace policy, preserved all execution flags as NO, passed review without protected-scope mutation or execution authorization leakage, and was fast-forward promoted into `codex-track-handoff-context` at `5cc6326`. |
 | C3 n20 metric-family-gated packet | `codex/c3-n20-metric-family-gated-packet` | committed/reference | Phase 14e freeze plus S4 metric-family guidance | reviewed packet committed into handoff trunk | Creates `docs/experiment_packets/c3_n20_metric_family_gated_packet.md` and `audits/c3_n20_metric_family_gated_packet_report.md`; defines metric-family declarations, denominator/eligibility policy, claim boundaries, sidecar policy, fail-closed rules, and future launch prerequisites only. No Modal/GPU/generation/experiment/output/paper-scale work is authorized. |
 | R6 paper-scale readiness or future run spec | `codex/cluster3-paper-readiness-plan` | not started | Phase 14e freeze plus reviewed C3 n20 packet and relevant specs | run/go-no-go packet ready | Spec only; no Modal run without approval. The C3 n20 packet can be used only as a reviewed non-authorizing prerequisite before any future launch approval uses it. |
 
