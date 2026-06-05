@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.31.0
+Version: 1.33.0
 Date: 2026-06-05
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -59,6 +59,7 @@ treated as report-facing.
 | Agentic transcript run-packet template | `docs/handoff/agentic_transcript_v1_run_packet_template.md` |
 | Agentic transcript next-run packet draft | `docs/handoff/agentic_transcript_v1_next_run_packet.md` |
 | C3 n20 metric-family-gated experiment packet | `docs/experiment_packets/c3_n20_metric_family_gated_packet.md` |
+| Full Pipeline G/C/P launch packet v1 | `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md` |
 | Experiment change orchestration state | `docs/handoff/experiment_change_orchestration_state.md` |
 | Current artifact identities and caveats | `docs/05_artifacts_and_results_registry.md` |
 | Current Cluster 3/P methodology | `docs/04_methodology_cluster3.md` |
@@ -133,7 +134,16 @@ work. The current Cluster 3 n20 metric-family-gated packet draft is
 `docs/experiment_packets/c3_n20_metric_family_gated_packet.md`; packet review
 passed under `C3_N20_PACKET_REVIEW_PASS_COMMIT_ALLOWED`, and it still does not
 authorize execution, output mutation, analyzer/report refresh, or paper-scale
-claims. Agentic repair-memory implementation agents must also read
+claims. The current full-pipeline launch packet draft is
+`docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md`; it
+passed review under
+`FULL_PIPELINE_LAUNCH_PACKET_V1_REVIEW_PASS_COMMIT_ALLOWED`, selects a future
+fresh 8-cell G/C/P factorial, recommends L1 smoke/dev before L2 n20, and defines
+MLflow post-hoc indexing plus observability, repair-memory, structural/task,
+namespace, billing, and stop/spend policy. It is also non-authorizing and does
+not approve Modal/GPU/generation, output mutation, MLflow runtime writes,
+billing queries, n=5, n=20, paper-scale, timing, speedup, profiler, or benchmark
+work. Agentic repair-memory implementation agents must also read
 `docs/18_agentic_transcript_v1_implementation_spec.md` before starting A0-A6
 work. Before any future `agentic_transcript_v1` Modal, generation, n=5, n=20,
 paper-scale, or output-mutating work, agents must also read
@@ -148,6 +158,9 @@ broader matrix analysis, paper-scale readiness decision, Modal run, n=20,
 all-condition, generation, experiment, or profiling work requires a fresh
 approval packet with scope, artifact paths, stop conditions, and claim
 boundaries.
+Do not create MLflow runs, start an MLflow server, write to `mlruns/`, query
+billing, or process raw billing reports unless a later approval packet
+explicitly authorizes the exact operation.
 
 ## Issue Pull Sets
 
