@@ -1,6 +1,6 @@
 # Experiment Change Orchestration State
 
-- Version: 1.5.44
+- Version: 1.5.46
 - Date: 2026-06-05
 - Status: active live state record
 - Owner: current orchestration agent
@@ -375,11 +375,11 @@ reason. Do not backfill missing provenance silently after execution.
 
 | Field | Value |
 |---|---|
-| Git baseline commit | `f73ecb9 Add S4 experiment metric family guidance` |
-| Git branch | `codex-track-handoff-context` after fast-forward promotion from `codex/structural-task-s4-experiment-integration` |
-| Git status at latest reconciliation | S4 docs/planning-only future experiment integration reviewed and fast-forwarded into `codex-track-handoff-context` at `f73ecb9`; this promotion audit closeout records the final local S4 gate. Ignored preliminary-report previews remain local generated files and were not force-added. No additional Modal/GPU/generation/benchmark/billing run, output mutation, raw JSONL rewrite, analyzer output refresh, report artifact refresh, or profiler work is authorized. |
+| Git baseline commit | `d015862 Audit structural task S4 promotion` |
+| Git branch | `codex/c3-n20-metric-family-gated-packet` from `codex-track-handoff-context` |
+| Git status at latest reconciliation | C3 n20 metric-family-gated packet review passed under `C3_N20_PACKET_REVIEW_PASS_COMMIT_ALLOWED` as a draft/non-authorizing experiment packet. The packet declares structural/code-surface, task/functional, mixed diagnostic, planned-deferred, future-only, and benchmarkable/performance metric handling for a possible future Cluster 3 n20 launch. No Modal/GPU/generation/benchmark/billing run, output mutation, raw JSONL rewrite, analyzer output refresh, report artifact refresh, result schema, dependency, lockfile, timing, speedup, profiler, or paper-scale work is authorized. |
 | Orchestration contract version | `docs/15_experiment_change_orchestration_contract.md` v1.0.13 |
-| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.81.0 |
+| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.83.0 |
 | Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.6 |
 | Structural/task analyzer metadata spec version | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.4 |
 | MLflow tracking policy version | `.contracts/research/mlflow_tracking_policy.md` v1.0.0 |
@@ -394,9 +394,9 @@ reason. Do not backfill missing provenance silently after execution.
 | Agentic transcript A5 analyzer grouping/quarantine | promoted into A6 handoff trunk by commit `4a84600`; `audits/agentic_transcript_v1_a5_analyzer_grouping_report.md` v1.0.0 remains the evidence snapshot; no Modal/output/generation work performed |
 | Agentic transcript A6 run-packet gate planning | promoted into handoff trunk at commit `4a84600`; `audits/agentic_transcript_v1_a6_run_packet_gate_report.md` v1.0.0 remains the evidence snapshot; `docs/handoff/agentic_transcript_v1_next_run_packet.md` is `DRAFT_NOT_APPROVED` and authorizes no Modal/output/generation/n=5/n=20/paper-scale work |
 | Observability O0-O6b package | O0-O4 promoted into handoff trunk at commit `309c451`; O5-Prep/O5a accepted locally through `c41a5bc`; O5b committed at `cf63de8`; O5c adapter-ready blocked state committed at `dc48782`; O6a Level-4 performance contract scaffolding committed at `d966ad0`; O6b smoke sidecar committed at `403cfea`; final O5b/O5c/O6a/O6b promotion audit passed with caveats |
-| Structural/task reporting S0-S4 package | S0 terminology accepted at `d9bbdb2`; S1 analyzer metric registry metadata committed at `ff876d2`; S2 report metadata consumption committed at `a7b0cdb`; S3 report refresh docs-only record committed at `f1058eb`; S0-S3 promotion audit committed at `80086f9`; S4 future experiment metric-family guidance committed at `f73ecb9` and fast-forwarded into `codex-track-handoff-context`. Generated preliminary-report previews remain ignored local outputs unless a future explicit force-add publication decision is made. |
-| Current Cluster 3 gate | Phase 14e four-cell n=5 development matrix frozen with warnings; no broader run without explicit approval packet |
-| Paper-scale status | blocked; no Cluster 3 `n=20` until Gate G8 |
+| Structural/task reporting S0-S4 package | S0 terminology accepted at `d9bbdb2`; S1 analyzer metric registry metadata committed at `ff876d2`; S2 report metadata consumption committed at `a7b0cdb`; S3 report refresh docs-only record committed at `f1058eb`; S0-S3 promotion audit committed at `80086f9`; S4 future experiment metric-family guidance committed at `f73ecb9`, fast-forwarded into `codex-track-handoff-context`, and promotion-audited at `d015862`. Generated preliminary-report previews remain ignored local outputs unless a future explicit force-add publication decision is made. |
+| Current Cluster 3 gate | Phase 14e four-cell n=5 development matrix frozen with warnings; C3 n20 metric-family-gated experiment packet review passed as draft/non-authorizing planning only; no broader run without explicit approval packet |
+| Paper-scale status | blocked; no Cluster 3 `n=20` launch or paper-scale claim until a later signed launch approval satisfies Gate G8 |
 
 Important repository note: on the handoff trunk, `docs/`, `audits/`, and
 `.contracts/agentic/**` are intentionally trackable. Raw outputs and MLflow
@@ -407,7 +407,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Worktree | Branch | Commit | State ownership |
 |---|---|---|---|
-| `/Users/alexeidelgado/Desktop/TritonGen` | `codex-track-handoff-context` | S4 promoted at `f73ecb9` plus this promotion-audit closeout | S4 review and promotion are complete locally. Scope was future experiment metric-family declaration guidance in the orchestration contract/spec/state/registry plus S4 audit evidence. Refreshed `docs/preliminary_report/_report_data.json`, `docs/preliminary_report/index.html`, and `docs/preliminary_report/index.es.html` remain ignored local preview outputs unless a later review explicitly force-adds report deliverables; no analyzer code, report builder, analyzer semantic change, raw JSONL rewrite, experiment run, analyzer output refresh, report artifact refresh, `outputs/` tracked mutation, `artifacts/`, result schema, dependency, lockfile, Modal, GPU, generation, n=5, n=20, paper-scale, profiler, timing, speedup, or benchmark work is authorized |
+| `/Users/alexeidelgado/Desktop/TritonGen` | `codex/c3-n20-metric-family-gated-packet` | draft packet from `d015862` | Current packet-only branch; review passed under `C3_N20_PACKET_REVIEW_PASS_COMMIT_ALLOWED`. Scope is `docs/experiment_packets/c3_n20_metric_family_gated_packet.md`, handoff routing records, and `audits/c3_n20_metric_family_gated_packet_report.md`. Refreshed `docs/preliminary_report/_report_data.json`, `docs/preliminary_report/index.html`, and `docs/preliminary_report/index.es.html` remain ignored local preview outputs unless a later review explicitly force-adds report deliverables; no analyzer code, report builder, analyzer semantic change, raw JSONL rewrite, experiment run, analyzer output refresh, report artifact refresh, `outputs/` tracked mutation, `artifacts/`, result schema, dependency, lockfile, Modal, GPU, generation, n=5, n=20, paper-scale, profiler, timing, speedup, or benchmark work is authorized |
 | `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `4a84600` | reference/history worktree only; same A6 commit as the promoted handoff trunk and not the place for observability work |
 | `/Users/alexeidelgado/Desktop/TritonGen/.claude/worktrees/intelligent-pasteur-72d92f` | `claude/intelligent-pasteur-72d92f` | `b0085c1` | external/unknown to this orchestration state; reconcile before relying on it |
 
@@ -415,7 +415,8 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Branch | Stream/package | Worktree | Status | Notes |
 |---|---|---|---|---|
-| `codex-track-handoff-context` | promoted handoff trunk | `/Users/alexeidelgado/Desktop/TritonGen` | S4 promoted locally; promotion audit recorded | Local handoff trunk includes MLflow integration ancestry, A2-A6 repair-memory ancestry, O0-O6b observability metadata features, the final O5c operational billing caveat, structural/task S0-S3 promoted through `80086f9`, and S4 future experiment guidance at `f73ecb9`. Do not use `main`, `ml_migration`, or stale worktrees for structural/task or observability work. |
+| `codex/c3-n20-metric-family-gated-packet` | C3 packet / metric-family-gated future experiment planning | `/Users/alexeidelgado/Desktop/TritonGen` | review passed / commit allowed | Created from `d015862 Audit structural task S4 promotion`. Scope is a non-authorizing Cluster 3 n20 experiment packet plus handoff registry/audit routing. No analyzer/report code, report output refresh, raw JSONL rewrite, output/artifact mutation, result schema, dependency, lockfile, Modal/GPU/generation, n=5, n=20, paper-scale, profiler, timing, speedup, benchmark, or execution authorization is in scope. |
+| `codex-track-handoff-context` | promoted handoff trunk | none while packet branch is checked out | S4 promoted and pushed; packet baseline | Handoff trunk includes MLflow integration ancestry, A2-A6 repair-memory ancestry, O0-O6b observability metadata features, the final O5c operational billing caveat, structural/task S0-S3 promoted through `80086f9`, S4 future experiment guidance at `f73ecb9`, and S4 promotion audit at `d015862`. Do not use `main`, `ml_migration`, or stale worktrees for structural/task, observability, or C3 packet work. |
 | `codex/structural-task-s4-experiment-integration` | S4 future experiment metric-family integration | none after promotion | promoted/reference | Started from pushed `codex-track-handoff-context` tip `80086f9`, completed S4 docs/planning guidance, and fast-forwarded into `codex-track-handoff-context` at `f73ecb9`. No analyzer code, report builder, report output refresh, raw JSONL rewrite, output/artifact mutation, result schema, dependency, lockfile, Modal/GPU/generation, n=5, n=20, paper-scale, profiler, timing, speedup, benchmark, or execution authorization is in scope. |
 | `codex/structural-task-s0-terminology` | S0 docs terminology acceptance | none after S1 branch creation | accepted/reference | Records G2/S0 terminology acceptance, docs/17 as executable S1 contract, S1 analyzer-metadata-only unblock scope, S2/S3 blocked state, and `audits/structural_task_s0_terminology_acceptance_report.md`. No analyzer code, tests, report builder, outputs, artifacts, dependencies, runtime, Modal, GPU, generation, n=5, n=20, paper-scale, performance, timing, profiler, or speedup work is authorized on this completed branch. |
 | `codex/analyzer-metric-registry` | S1 analyzer metric registry metadata | none after S2 branch creation | review passed / commit closeout | S1 analyzer-metadata review passed. Scope was additive analyzer metadata and focused analyzer tests only, plus minimal state/registry/audit records. No report builder, `outputs/`, `artifacts/`, result schemas, dependencies, lockfiles, Modal, GPU, generation, experiment runs, paper-scale work, profiler, timing, speedup, or benchmark work is authorized. |
@@ -448,8 +449,8 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 | G4 analyzer/report metadata compatibility stable | S0-S4 promoted/closed | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.4 records S0-S4. S1 implemented additive analyzer metadata and focused tests; S2 consumed S1 metadata when present and recorded a legacy fallback path when current analyzer JSON lacks S1 metadata. S3 refreshed derived preliminary-report data/ignored HTML previews from existing local inputs and verified that the current payload shows `legacy_metadata_unavailable` plus separated structural/code-surface, task/functional, mixed diagnostic, and future benchmarkable/performance groups. S4 adds future packet metric-family guidance only and was fast-forwarded into `codex-track-handoff-context` at `f73ecb9`; generated HTML/data remain ignored unless a future review approves force-add. |
 | G5 agentic prompt core stable | satisfied with baseline-venv caveat | `audits/agentic_transcript_v1_a1_prompt_core_report.md` v1.0.0 records pure prompt-core implementation, typed local errors, policy config validation, public evidence/source models, deterministic anchor ranking, canonical renderer, prompt/history hashes, budget behavior, fixture manifest, prompt-injection fixture, legacy C/P byte-invariance snapshots, import isolation, focused tests, and no forbidden-surface changes. |
 | G6 agentic integration stable | promoted to handoff trunk with run gate caveat | A2 C-loop integration, A3 P-loop integration, A4 P-to-C isolation proof, A5 analyzer grouping/quarantine, and A6 run-packet gate planning are present in promoted A6 commit `4a84600`; future agentic execution remains blocked pending signed run approval and required pre-run checks. |
-| G7 development run readiness | blocked pending fresh signed approval packet | Phase 14e matrix is frozen; A6 provides the template and one `DRAFT_NOT_APPROVED` next-run packet, but no active run packet is approved. Any broader development-scale, all-condition, diagnostic, or paper-readiness run needs a signed approval packet. |
-| G8 paper-scale readiness | blocked | No `n=20` or paper-scale work. |
+| G7 development run readiness | blocked pending fresh signed approval packet | Phase 14e matrix is frozen; the C3 n20 metric-family-gated packet review passed as draft/non-authorizing planning only and defines prerequisites for a future launch. A6 provides the agentic template and one `DRAFT_NOT_APPROVED` next-run packet, but no active run packet is approved. Any broader development-scale, all-condition, diagnostic, or paper-readiness run needs a signed approval packet. |
+| G8 paper-scale readiness | blocked | No `n=20` execution or paper-scale work. The C3 n20 packet is not a launch approval and does not authorize paper-scale claims. |
 
 ## Approved Run Packets
 
@@ -607,10 +608,12 @@ Historical context:
 
 Allowed without run approval:
 
-1. Review and commit S4 only if validation confirms no analyzer/report builder,
-   report artifact refresh, raw JSONL rewrite, output/artifact mutation,
-   result schema, dependency, lockfile, Modal/GPU/generation, experiment,
-   benchmark, profiler, timing, speedup, or paper-scale authorization occurred.
+1. Commit the reviewed C3 n20 metric-family-gated packet on
+   `codex/c3-n20-metric-family-gated-packet` if validation remains clean. Treat
+   it as packet-only: validation must confirm no analyzer/report builder,
+   report artifact refresh, raw JSONL rewrite, output/artifact mutation, result
+   schema, dependency, lockfile, Modal/GPU/generation, experiment, benchmark,
+   profiler, timing, speedup, or paper-scale authorization occurred.
 2. Retry O5c live billing collection only after the Modal workspace billing
    report rate limit clears, using a separate explicit billing approval packet.
    Prefer daily resolution for multi-day windows and hourly resolution only for
@@ -1513,7 +1516,8 @@ status: promoted into A6 handoff trunk at 4a84600; reference/history only
 | R3 Phase 14c run | `codex/cluster3-phase14c-g-plus-c-plus-p-n5` | complete | G7 plus approval | registered diagnostic artifact | Completed elsewhere; insufficient repair signal. |
 | R4 Phase 14d G+P reuse decision | `codex/cluster3-phase14d-gp-reuse` | complete | Phase 14c audit | reuse decision registered | Existing Phase 12 G+P n=5 artifact reused as matrix cell. |
 | R5 Phase 14e matrix freeze | `codex/cluster3-phase14e-freeze` | complete | four cells present | matrix frozen with warnings | Development-scale condition coverage only; no P/C repair signal. |
-| R6 paper-scale readiness or future run spec | `codex/cluster3-paper-readiness-plan` | not started | Phase 14e freeze plus relevant specs | run/go-no-go packet ready | Spec only; no Modal run without approval. |
+| C3 n20 metric-family-gated packet | `codex/c3-n20-metric-family-gated-packet` | review passed / commit allowed | Phase 14e freeze plus S4 metric-family guidance | commit reviewed packet | Creates `docs/experiment_packets/c3_n20_metric_family_gated_packet.md` and `audits/c3_n20_metric_family_gated_packet_report.md`; defines metric-family declarations, denominator/eligibility policy, claim boundaries, sidecar policy, fail-closed rules, and future launch prerequisites only. No Modal/GPU/generation/experiment/output/paper-scale work is authorized. |
+| R6 paper-scale readiness or future run spec | `codex/cluster3-paper-readiness-plan` | not started | Phase 14e freeze plus reviewed C3 n20 packet and relevant specs | run/go-no-go packet ready | Spec only; no Modal run without approval. The C3 n20 packet can be used only as a reviewed non-authorizing prerequisite before any future launch approval uses it. |
 
 ## Validation Matrix
 

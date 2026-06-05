@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.29.0
+Version: 1.31.0
 Date: 2026-06-05
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -58,6 +58,7 @@ treated as report-facing.
 | Agentic transcript implementation spec | `docs/18_agentic_transcript_v1_implementation_spec.md` |
 | Agentic transcript run-packet template | `docs/handoff/agentic_transcript_v1_run_packet_template.md` |
 | Agentic transcript next-run packet draft | `docs/handoff/agentic_transcript_v1_next_run_packet.md` |
+| C3 n20 metric-family-gated experiment packet | `docs/experiment_packets/c3_n20_metric_family_gated_packet.md` |
 | Experiment change orchestration state | `docs/handoff/experiment_change_orchestration_state.md` |
 | Current artifact identities and caveats | `docs/05_artifacts_and_results_registry.md` |
 | Current Cluster 3/P methodology | `docs/04_methodology_cluster3.md` |
@@ -128,7 +129,11 @@ guidance: it requires metric-family, gate, denominator, evidence-source, and
 claim-boundary declarations before future experiments, but authorizes no
 Modal/GPU/generation, output mutation, analyzer output refresh, report artifact
 refresh, raw JSONL rewrite, benchmark, profiler, timing, speedup, or paper-scale
-work. Agentic repair-memory implementation agents must also read
+work. The current Cluster 3 n20 metric-family-gated packet draft is
+`docs/experiment_packets/c3_n20_metric_family_gated_packet.md`; packet review
+passed under `C3_N20_PACKET_REVIEW_PASS_COMMIT_ALLOWED`, and it still does not
+authorize execution, output mutation, analyzer/report refresh, or paper-scale
+claims. Agentic repair-memory implementation agents must also read
 `docs/18_agentic_transcript_v1_implementation_spec.md` before starting A0-A6
 work. Before any future `agentic_transcript_v1` Modal, generation, n=5, n=20,
 paper-scale, or output-mutating work, agents must also read
