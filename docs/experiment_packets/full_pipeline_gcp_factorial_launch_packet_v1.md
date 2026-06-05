@@ -110,23 +110,28 @@ labels the caveat.
 Allowed planned values:
 
 - `grammar_off`: no grammar-constrained decoding.
-- `primary_grammar`: the current primary grammar path, if available and
-  confirmed in code/config before execution.
-- `task_agnostic_grammar`: the task-agnostic grammar path.
+- `template_upper_bound`: diagnostic template-upper-bound grammar using
+  `cluster1/grammar/triton_kernel.gbnf`.
+- `task_agnostic`: primary task-agnostic grammar using
+  `cluster1/grammar/triton_kernel_agnostic.gbnf`.
 
-Current code-support caveat:
+Current local support status:
 
-- Repo evidence currently records `task_agnostic` as the report-facing primary
-  grammar variant and `template_upper_bound` as diagnostic/non-primary.
-- `shared/generation_metadata.py` exposes `template_upper_bound` and
-  `task_agnostic` grammar variants, while `cluster3/experiments/run_cluster3_modal.py`
-  exposes a `grammar_variant` field rather than a first-class three-level
-  `grammar_mode` selector.
-- Therefore 12-cell L1a execution is blocked until the future authorization
-  packet confirms whether `primary_grammar` is distinct from
-  `task_agnostic_grammar`, maps each active mode to exact grammar paths and
-  hashes, and proves the Cluster 3 path can label/analyze `grammar_mode` per
-  row.
+- Local code-support implementation now exposes exactly these three
+  `grammar_mode` values through `shared/factors/grammar_modes.py`.
+- The local 12-cell planner, Cluster 3 row/schema labeling, and shared analyzer
+  grouping can represent and validate `grammar_off`, `template_upper_bound`,
+  and `task_agnostic` without running generation.
+- `primary_grammar` and `task_agnostic_grammar` are not executable selectors in
+  the repo. Earlier `primary_grammar` wording maps only to
+  `template_upper_bound` when it refers to the diagnostic template-upper-bound
+  grammar.
+- MLflow post-hoc indexing by `grammar_mode` remains deferred to a future
+  tracking patch. JSONL row metadata and analyzer diagnostics remain the
+  scientific source of truth for local representability.
+- Therefore 12-cell L1a execution remains blocked until a future signed
+  authorization packet supplies exact runtime command/config, grammar file hash
+  evidence, output paths, stop/spend limits, and MLflow indexing disposition.
 
 ## Design Choice
 
@@ -143,14 +148,14 @@ feedback. That design is no longer the active future-execution plan.
 | `grammar_off__c_on__p_off` | `grammar_off` | on | off | `agentic_transcript_v1` when C loop is enabled | C effect without grammar and without P |
 | `grammar_off__c_off__p_on` | `grammar_off` | off | on | `agentic_transcript_v1` when P loop is enabled | P effect without grammar and without C |
 | `grammar_off__c_on__p_on` | `grammar_off` | on | on | `agentic_transcript_v1` when C/P loops are enabled | C/P interaction without grammar |
-| `primary_grammar__c_off__p_off` | `primary_grammar` | off | off | `not_applicable` | Grammar-mode baseline for primary grammar |
-| `primary_grammar__c_on__p_off` | `primary_grammar` | on | off | `agentic_transcript_v1` when C loop is enabled | C effect under primary grammar |
-| `primary_grammar__c_off__p_on` | `primary_grammar` | off | on | `agentic_transcript_v1` when P loop is enabled | P effect under primary grammar |
-| `primary_grammar__c_on__p_on` | `primary_grammar` | on | on | `agentic_transcript_v1` when C/P loops are enabled | C/P interaction under primary grammar |
-| `task_agnostic_grammar__c_off__p_off` | `task_agnostic_grammar` | off | off | `not_applicable` | Grammar-mode baseline for task-agnostic grammar |
-| `task_agnostic_grammar__c_on__p_off` | `task_agnostic_grammar` | on | off | `agentic_transcript_v1` when C loop is enabled | C effect under task-agnostic grammar |
-| `task_agnostic_grammar__c_off__p_on` | `task_agnostic_grammar` | off | on | `agentic_transcript_v1` when P loop is enabled | P effect under task-agnostic grammar |
-| `task_agnostic_grammar__c_on__p_on` | `task_agnostic_grammar` | on | on | `agentic_transcript_v1` when C/P loops are enabled | C/P interaction under task-agnostic grammar |
+| `template_upper_bound__c_off__p_off` | `template_upper_bound` | off | off | `not_applicable` | Grammar-mode baseline for diagnostic template-upper-bound grammar |
+| `template_upper_bound__c_on__p_off` | `template_upper_bound` | on | off | `agentic_transcript_v1` when C loop is enabled | C effect under diagnostic template-upper-bound grammar |
+| `template_upper_bound__c_off__p_on` | `template_upper_bound` | off | on | `agentic_transcript_v1` when P loop is enabled | P effect under diagnostic template-upper-bound grammar |
+| `template_upper_bound__c_on__p_on` | `template_upper_bound` | on | on | `agentic_transcript_v1` when C/P loops are enabled | C/P interaction under diagnostic template-upper-bound grammar |
+| `task_agnostic__c_off__p_off` | `task_agnostic` | off | off | `not_applicable` | Grammar-mode baseline for task-agnostic grammar |
+| `task_agnostic__c_on__p_off` | `task_agnostic` | on | off | `agentic_transcript_v1` when C loop is enabled | C effect under task-agnostic grammar |
+| `task_agnostic__c_off__p_on` | `task_agnostic` | off | on | `agentic_transcript_v1` when P loop is enabled | P effect under task-agnostic grammar |
+| `task_agnostic__c_on__p_on` | `task_agnostic` | on | on | `agentic_transcript_v1` when C/P loops are enabled | C/P interaction under task-agnostic grammar |
 
 ## Execution Ladder
 
@@ -453,14 +458,14 @@ outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__
 outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_off_n1_fp32_elementwise_relu_<run_id>.jsonl
 outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_on_n1_fp32_elementwise_relu_<run_id>.jsonl
 outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_on_n1_fp32_elementwise_relu_<run_id>.jsonl
-outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/primary_grammar__c_off__p_off_n1_fp32_elementwise_relu_<run_id>.jsonl
-outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/primary_grammar__c_on__p_off_n1_fp32_elementwise_relu_<run_id>.jsonl
-outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/primary_grammar__c_off__p_on_n1_fp32_elementwise_relu_<run_id>.jsonl
-outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/primary_grammar__c_on__p_on_n1_fp32_elementwise_relu_<run_id>.jsonl
-outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic_grammar__c_off__p_off_n1_fp32_elementwise_relu_<run_id>.jsonl
-outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic_grammar__c_on__p_off_n1_fp32_elementwise_relu_<run_id>.jsonl
-outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic_grammar__c_off__p_on_n1_fp32_elementwise_relu_<run_id>.jsonl
-outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic_grammar__c_on__p_on_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_off_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_off_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_on_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_on_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_off_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_off_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_on_n1_fp32_elementwise_relu_<run_id>.jsonl
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_on_n1_fp32_elementwise_relu_<run_id>.jsonl
 ```
 
 ## Sidecar Namespace Reservation
@@ -663,10 +668,14 @@ L1a remains blocked until a later signed authorization packet supplies:
 - exact observability IDs and paths;
 - exact model/revision/decoding policy;
 - exact `grammar_mode` mapping;
-- exact grammar file/path or activation config for `primary_grammar`;
-- exact grammar file/path or activation config for `task_agnostic_grammar`;
-- proof that both active grammar modes are supported and distinct or an
-  explicit approved decision that they are intentionally aliased;
+- exact grammar file/path, activation config, and hash evidence for
+  `template_upper_bound`;
+- exact grammar file/path, activation config, and hash evidence for
+  `task_agnostic`;
+- proof that both active grammar modes are supported, distinct, and analyzable
+  as separate `grammar_mode` values;
+- proof that no launch/execution packet uses unsupported labels such as
+  `primary_grammar` or `task_agnostic_grammar` as selected grammar modes;
 - exact repair-history policy config;
 - exact stop/spend limits;
 - exact validation commands;

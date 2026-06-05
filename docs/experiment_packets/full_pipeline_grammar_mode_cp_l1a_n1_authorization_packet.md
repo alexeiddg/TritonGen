@@ -9,6 +9,7 @@ baseline_commit: `0cc43c1 Audit full pipeline launch packet promotion`
 launch_packet: `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md`
 created_at: 2026-06-05
 status: `DRAFT_NOT_APPROVED`
+code_support_status: `LOCAL_REPRESENTABILITY_READY`
 AUTHORIZES_EXECUTION: NO
 
 Execution authorization flags:
@@ -45,7 +46,9 @@ It must not be converted into an execution packet unless:
 - the old 8-cell design remains superseded for future execution;
 - the output namespace uses
   `full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/`;
-- grammar-mode support and mapping proof are supplied.
+- local grammar-mode representability proof remains present on the target
+  branch, including the 12-cell planner, row labeling, and analyzer grouping
+  fixture tests.
 
 ## Intended L1a Scope
 
@@ -78,37 +81,42 @@ paper_evidence: no
 | `grammar_off__c_on__p_off` | `grammar_off` | on | off |
 | `grammar_off__c_off__p_on` | `grammar_off` | off | on |
 | `grammar_off__c_on__p_on` | `grammar_off` | on | on |
-| `primary_grammar__c_off__p_off` | `primary_grammar` | off | off |
-| `primary_grammar__c_on__p_off` | `primary_grammar` | on | off |
-| `primary_grammar__c_off__p_on` | `primary_grammar` | off | on |
-| `primary_grammar__c_on__p_on` | `primary_grammar` | on | on |
-| `task_agnostic_grammar__c_off__p_off` | `task_agnostic_grammar` | off | off |
-| `task_agnostic_grammar__c_on__p_off` | `task_agnostic_grammar` | on | off |
-| `task_agnostic_grammar__c_off__p_on` | `task_agnostic_grammar` | off | on |
-| `task_agnostic_grammar__c_on__p_on` | `task_agnostic_grammar` | on | on |
+| `template_upper_bound__c_off__p_off` | `template_upper_bound` | off | off |
+| `template_upper_bound__c_on__p_off` | `template_upper_bound` | on | off |
+| `template_upper_bound__c_off__p_on` | `template_upper_bound` | off | on |
+| `template_upper_bound__c_on__p_on` | `template_upper_bound` | on | on |
+| `task_agnostic__c_off__p_off` | `task_agnostic` | off | off |
+| `task_agnostic__c_on__p_off` | `task_agnostic` | on | off |
+| `task_agnostic__c_off__p_on` | `task_agnostic` | off | on |
+| `task_agnostic__c_on__p_on` | `task_agnostic` | on | on |
 
-## Required Grammar-Mode Mapping Before Approval
+## Grammar-Mode Mapping
 
-The execution approval line must remain unsigned until all fields below are
-filled with exact values:
+Local representability now uses the repo-supported vocabulary. The execution
+approval line remains unsigned until a future signer also supplies exact
+runtime command/config, output paths, stop/spend limits, and preflight results.
 
 | grammar_mode | required mapping before execution |
 |---|---|
-| `grammar_off` | explicit no-constrained-decoding config and proof that rows will label `grammar_mode=grammar_off` |
-| `primary_grammar` | exact grammar file/path, activation config, grammar hash, claim scope, and proof that this mode is distinct from or intentionally aliased to `task_agnostic_grammar` |
-| `task_agnostic_grammar` | exact task-agnostic grammar file/path, activation config, grammar hash, and claim scope |
+| `grammar_off` | `grammar_active=false`; `grammar_variant=null`; grammar file/hash/scope absent; rows label `grammar_mode=grammar_off` |
+| `template_upper_bound` | `grammar_active=true`; `grammar_variant=template_upper_bound`; `grammar_path=cluster1/grammar/triton_kernel.gbnf`; claim scope `diagnostic_non_primary` |
+| `task_agnostic` | `grammar_active=true`; `grammar_variant=task_agnostic`; `grammar_path=cluster1/grammar/triton_kernel_agnostic.gbnf`; claim scope `primary` |
 
-Current blocker:
+Local code-support proof:
 
-- `shared/generation_metadata.py` exposes `template_upper_bound` and
-  `task_agnostic` variants.
-- `cluster3/experiments/run_cluster3_modal.py` exposes `grammar_variant`, not a
-  first-class three-level `grammar_mode` selector.
-- Current docs record `task_agnostic` as the report-facing primary grammar and
-  `template_upper_bound` as diagnostic/non-primary.
-- Therefore this packet is blocked for execution until the future signer
-  confirms the exact two active grammar modes and how each row/analyzer output
-  will carry `grammar_mode`.
+- `shared/factors/grammar_modes.py` defines the accepted values
+  `grammar_off`, `template_upper_bound`, and `task_agnostic` and fail-closed
+  binding checks against legacy `grammar_active`/`grammar_variant` metadata.
+- `cluster3/planning/grammar_mode_matrix.py` returns exactly 12 local L1a
+  cell specs with unique condition names and output namespace suffixes.
+- `cluster3/results/dataclass.py` and `shared/eval/schema.py` can carry
+  `grammar_mode` while preserving existing `grammar_active` fields.
+- `shared/analysis/factorial.py` can normalize/group explicit
+  `grammar_mode` values and distinguishes `template_upper_bound` from
+  `task_agnostic`.
+- `primary_grammar` is not an executable selector in this repo. Earlier
+  wording maps to `template_upper_bound` only when referring to the diagnostic
+  template-upper-bound grammar, not to the primary task-agnostic grammar.
 
 ## Required Runtime Fields Before Approval
 
@@ -173,7 +181,7 @@ rg -n "MODAL_AUTHORIZED: YES|GPU_AUTHORIZED: YES|GENERATION_AUTHORIZED: YES|EXPE
 
 Additional required proof before approval:
 
-- exact command/config supports all 12 `grammar_mode`/C/P cells;
+- exact command/config is authorized for all 12 `grammar_mode`/C/P cells;
 - every planned row will carry `grammar_mode`;
 - active grammar rows will carry grammar file/path and grammar hash or matching
   sidecar evidence where supported;
@@ -206,7 +214,9 @@ Stop before or during any future approved L1a execution if:
 - the launch packet no longer selects the 12-cell `grammar_mode x C x P` design;
 - any target path already exists without an approved resume/append/archive
   policy;
-- `primary_grammar` and `task_agnostic_grammar` mapping is unresolved;
+- any packet uses unsupported grammar-mode names such as `primary_grammar` or
+  `task_agnostic_grammar` instead of `template_upper_bound` and
+  `task_agnostic`;
 - the runner cannot label rows with `grammar_mode`;
 - grammar file/path/hash evidence is missing for an active grammar mode;
 - C fires outside F2;

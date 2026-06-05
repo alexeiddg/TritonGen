@@ -2310,6 +2310,7 @@ def _generation_grammar_metadata_from_payload(
 ) -> dict[str, Any]:
     if condition not in {"G+P", "G+C+P"}:
         return {
+            "grammar_mode": "grammar_off",
             "grammar_variant": None,
             "grammar_path": None,
             "grammar_sha": None,
@@ -2328,6 +2329,7 @@ def _generation_grammar_metadata_from_payload(
     generation_identity = payload.get("generation_identity") if isinstance(payload, Mapping) else None
     grammar_variant = _field(generation_identity, "grammar_variant") or config.grammar_variant
     return {
+        "grammar_mode": grammar_variant,
         "grammar_variant": grammar_variant,
         "grammar_path": GRAMMAR_PATHS_BY_VARIANT[grammar_variant],
         "grammar_sha": _field(generation_identity, "grammar_sha"),

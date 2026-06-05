@@ -41,6 +41,12 @@ from shared.eval.constants import (
     SIGNIFICANCE_ALPHA,
 )
 from shared.eval.reporting.grammar_language import grammar_condition_label_for_variants
+from shared.factors.grammar_modes import (
+    GRAMMAR_MODE_VALUES,
+    grammar_mode_from_active_variant,
+    normalize_grammar_mode,
+    validate_grammar_mode_binding,
+)
 from shared.repair_history.policies import (
     AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1,
     LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1,
@@ -438,6 +444,38 @@ def normalize_result_rows(
             source_path=source_path,
             row_index=row_index,
         )
+        grammar_variant = _first_present(
+            payload,
+            "grammar_variant",
+            nested=generated_metadata,
+            default=None,
+        )
+        grammar_claim_scope = _first_present(
+            payload,
+            "grammar_claim_scope",
+            nested=generated_metadata,
+            default=None,
+        )
+        grammar_path = _first_present(
+            payload,
+            "grammar_path",
+            nested=generated_metadata,
+            default=None,
+        )
+        grammar_active = _grammar_active_for_row(
+            payload,
+            generated_metadata=generated_metadata,
+            condition=condition,
+        )
+        grammar_mode, grammar_mode_source = _normalize_grammar_mode_for_row(
+            payload,
+            generated_metadata=generated_metadata,
+            condition=condition,
+            grammar_active=grammar_active,
+            grammar_variant=grammar_variant,
+            grammar_path=grammar_path,
+            grammar_claim_scope=grammar_claim_scope,
+        )
         repair_history_metadata = _repair_history_metadata_from_payload(
             payload,
             generated_metadata=generated_metadata,
@@ -487,18 +525,11 @@ def normalize_result_rows(
                 RAW_SCALE_TIER_EXPLICIT_COLUMN: raw_scale_tier_explicit,
                 SCALE_TIER_SOURCE_COLUMN: scale_tier_source,
                 REQUESTED_SCALE_TIER_COLUMN: requested_scale_tier,
-                "grammar_variant": _first_present(
-                    payload,
-                    "grammar_variant",
-                    nested=generated_metadata,
-                    default=None,
-                ),
-                "grammar_claim_scope": _first_present(
-                    payload,
-                    "grammar_claim_scope",
-                    nested=generated_metadata,
-                    default=None,
-                ),
+                "grammar_active": grammar_active,
+                "grammar_mode": grammar_mode,
+                "grammar_mode_source": grammar_mode_source,
+                "grammar_variant": grammar_variant,
+                "grammar_claim_scope": grammar_claim_scope,
                 "grammar_valid": _bool_or_none(
                     _first_present(
                         payload,
@@ -1050,6 +1081,7 @@ def _p_nullable_pair_key_columns(pair_key_columns: Sequence[str]) -> tuple[str, 
 
 
 P_PAIR_GRAMMAR_METADATA_COLUMNS: tuple[str, ...] = (
+    "grammar_mode",
     "grammar_variant",
     "grammar_claim_scope",
     "grammar_sha",
@@ -1758,6 +1790,67 @@ def _condition_factors(condition: str) -> dict[str, bool]:
         "perf_feedback_active": "P" in parts,
         "compile_feedback_active": "P" in parts,
     }
+
+
+def _grammar_active_for_row(
+    payload: Mapping[str, Any],
+    *,
+    generated_metadata: Mapping[str, Any],
+    condition: str,
+) -> bool:
+    condition_value = _condition_factors(condition)["grammar_active"]
+    explicit = _first_present(
+        payload,
+        "grammar_active",
+        nested=generated_metadata,
+        default=None,
+    )
+    if explicit is None or _is_missing_value(explicit):
+        return condition_value
+    explicit_value = bool(explicit)
+    if explicit_value is not condition_value:
+        raise ValueError("grammar_active must match condition G factor")
+    return explicit_value
+
+
+def _normalize_grammar_mode_for_row(
+    payload: Mapping[str, Any],
+    *,
+    generated_metadata: Mapping[str, Any],
+    condition: str,
+    grammar_active: bool,
+    grammar_variant: str | None,
+    grammar_path: str | None,
+    grammar_claim_scope: str | None,
+) -> tuple[str | None, str]:
+    del condition
+    explicit = _first_present(
+        payload,
+        "grammar_mode",
+        nested=generated_metadata,
+        default=None,
+    )
+    if explicit is not None and not _is_missing_value(explicit):
+        mode = normalize_grammar_mode(str(explicit))
+        validate_grammar_mode_binding(
+            grammar_mode=mode,
+            grammar_active=grammar_active,
+            grammar_variant=grammar_variant,
+            grammar_path=grammar_path,
+            grammar_claim_scope=grammar_claim_scope,
+        )
+        return mode, "explicit"
+    if grammar_variant is not None and not _is_missing_value(grammar_variant):
+        return (
+            grammar_mode_from_active_variant(
+                grammar_active=grammar_active,
+                grammar_variant=str(grammar_variant),
+            ),
+            "derived_from_grammar_variant",
+        )
+    if not grammar_active:
+        return "grammar_off", "derived_from_inactive_grammar"
+    return None, "legacy_missing_grammar_mode"
 
 
 def _factors_to_condition(factors: Mapping[str, bool]) -> str:
@@ -4299,7 +4392,7 @@ def _diagnostics(
     global_flags: Sequence[str],
 ) -> dict[str, Any]:
     mode_collapse_rows = df[_mode_collapse_mask(df)]
-    return {
+    diagnostics = {
         "analysis_scope": scope,
         "response_variable": response_variable,
         "rows_loaded": int(len(df)),
@@ -4327,6 +4420,10 @@ def _diagnostics(
             MODE_COLLAPSE_TEXT if not mode_collapse_rows.empty else None
         ),
     }
+    grammar_mode_summary = _grammar_mode_summary(df)
+    if grammar_mode_summary is not None:
+        diagnostics["grammar_mode_summary"] = grammar_mode_summary
+    return diagnostics
 
 
 def _f3_and_coverage_metadata(df: pd.DataFrame) -> dict[str, Any]:
@@ -4539,6 +4636,52 @@ def _grammar_acceptance_summary(df: pd.DataFrame) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def _grammar_mode_summary(df: pd.DataFrame) -> dict[str, Any] | None:
+    if "grammar_mode" not in df.columns:
+        return None
+    sources = (
+        set(str(value) for value in df["grammar_mode_source"].dropna().tolist())
+        if "grammar_mode_source" in df.columns
+        else set()
+    )
+    if not sources and df["grammar_mode"].notna().any():
+        sources = {"explicit"}
+    if "explicit" not in sources and "legacy_missing_grammar_mode" not in sources:
+        return None
+    groups: list[dict[str, Any]] = []
+    subset = df[df["grammar_mode"].notna()]
+    if not subset.empty:
+        for grammar_mode, group in subset.groupby("grammar_mode", sort=True):
+            groups.append(
+                {
+                    "grammar_mode": str(grammar_mode),
+                    "n_rows": int(len(group)),
+                    "conditions": sorted(
+                        str(value) for value in set(group["condition"])
+                    ),
+                    "grammar_active_values": sorted(
+                        bool(value)
+                        for value in set(group["grammar_active"].dropna().tolist())
+                    ),
+                    "grammar_variants": sorted(
+                        str(value)
+                        for value in set(group["grammar_variant"].dropna().tolist())
+                    ),
+                }
+            )
+    return {
+        "status": (
+            "legacy_missing_grammar_mode"
+            if "legacy_missing_grammar_mode" in sources
+            else "explicit_grammar_mode"
+        ),
+        "grouping_policy": "group_by_grammar_mode_without_binary_G_collapse",
+        "supported_grammar_modes": list(GRAMMAR_MODE_VALUES),
+        "groups": groups,
+        "missing_grammar_mode_rows": int(df["grammar_mode"].isna().sum()),
+    }
 
 
 def _nullable_bool_mean(df: pd.DataFrame, column: str) -> float | None:

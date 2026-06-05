@@ -1351,6 +1351,47 @@ def test_template_upper_bound_condition_label_is_reference() -> None:
     assert g_summary["condition_label"] == "template G reference"
 
 
+def test_analyzer_groups_explicit_grammar_mode_without_binary_collapse() -> None:
+    rows = _four_cell_rows()
+    for row in rows:
+        condition = row["condition"]
+        if condition in {"none", "C"}:
+            row["grammar_mode"] = "grammar_off"
+        elif condition == "G":
+            row["grammar_mode"] = "template_upper_bound"
+            row["grammar_variant"] = "template_upper_bound"
+            row["grammar_claim_scope"] = "diagnostic_non_primary"
+        elif condition == "G+C":
+            row["grammar_mode"] = "task_agnostic"
+            row["grammar_variant"] = "task_agnostic"
+            row["grammar_claim_scope"] = "primary"
+
+    result = analyze_factorial(rows, bootstrap_samples=100)
+    summary = result["diagnostics"]["grammar_mode_summary"]
+
+    assert summary["status"] == "explicit_grammar_mode"
+    assert summary["grouping_policy"] == (
+        "group_by_grammar_mode_without_binary_G_collapse"
+    )
+    groups = {row["grammar_mode"]: row for row in summary["groups"]}
+    assert set(groups) == {"grammar_off", "template_upper_bound", "task_agnostic"}
+    assert groups["grammar_off"]["conditions"] == ["C", "none"]
+    assert groups["template_upper_bound"]["conditions"] == ["G"]
+    assert groups["task_agnostic"]["conditions"] == ["G+C"]
+
+
+def test_analyzer_rejects_explicit_grammar_mode_condition_mismatch() -> None:
+    rows = _four_cell_rows()
+    for row in rows:
+        if row["condition"] == "G":
+            row["grammar_mode"] = "grammar_off"
+            row["grammar_variant"] = None
+            row["grammar_claim_scope"] = None
+
+    with pytest.raises(ValueError, match="grammar_mode|grammar_active"):
+        analyze_factorial(rows, bootstrap_samples=100)
+
+
 def test_missing_optional_interpretation_columns_do_not_crash() -> None:
     rows = _four_cell_rows()
     for row in rows:

@@ -1573,6 +1573,72 @@ def test_generated_row_accepts_explicit_initial_terminal_prompt_provenance() -> 
     assert row.terminal_prompt_hash_source == "initial_prompt"
 
 
+def test_generated_row_labels_grammar_off_mode() -> None:
+    row = _row(condition="P")
+
+    assert row.grammar_mode == "grammar_off"
+    assert row.generated_metadata is not None
+    assert row.generated_metadata.grammar_mode is None
+
+
+def test_generated_row_emits_explicit_task_agnostic_grammar_mode() -> None:
+    baseline = _row(condition="G+P")
+    row = generated_row(
+        condition="G+P",
+        attempt_index=baseline.attempt_index,
+        kernel_class=baseline.kernel_class,
+        kernel_name=baseline.kernel_name,
+        dtype=baseline.dtype,
+        base_seed=baseline.base_seed,
+        source_hash=baseline.source_hash,
+        functional_success=baseline.functional_success,
+        repair_set_success=baseline.repair_set_success,
+        eval_set_success=baseline.eval_set_success,
+        failure_code=baseline.failure_code,
+        trace_summary=baseline.trace_summary,
+        c3_generation_hashes=GEN_HASHES,
+        generation_seed=baseline.terminal_generation_seed,
+        initial_failure_code=baseline.initial_failure_code,
+        terminal_prompt_hash=baseline.terminal_prompt_hash,
+        terminal_prompt_hash_source=baseline.terminal_prompt_hash_source,
+        grammar_variant="task_agnostic",
+        grammar_path="cluster1/grammar/triton_kernel_agnostic.gbnf",
+        grammar_claim_scope="primary",
+    )
+
+    assert row.grammar_mode == "task_agnostic"
+    assert row.generated_metadata is not None
+    assert row.generated_metadata.grammar_mode == "task_agnostic"
+
+
+def test_generated_row_rejects_grammar_mode_variant_mismatch() -> None:
+    baseline = _row(condition="G+P")
+    with pytest.raises(ValueError, match="grammar_mode"):
+        generated_row(
+            condition="G+P",
+            attempt_index=baseline.attempt_index,
+            kernel_class=baseline.kernel_class,
+            kernel_name=baseline.kernel_name,
+            dtype=baseline.dtype,
+            base_seed=baseline.base_seed,
+            source_hash=baseline.source_hash,
+            functional_success=baseline.functional_success,
+            repair_set_success=baseline.repair_set_success,
+            eval_set_success=baseline.eval_set_success,
+            failure_code=baseline.failure_code,
+            trace_summary=baseline.trace_summary,
+            c3_generation_hashes=GEN_HASHES,
+            generation_seed=baseline.terminal_generation_seed,
+            initial_failure_code=baseline.initial_failure_code,
+            terminal_prompt_hash=baseline.terminal_prompt_hash,
+            terminal_prompt_hash_source=baseline.terminal_prompt_hash_source,
+            grammar_mode="template_upper_bound",
+            grammar_variant="task_agnostic",
+            grammar_path="cluster1/grammar/triton_kernel_agnostic.gbnf",
+            grammar_claim_scope="primary",
+        )
+
+
 def test_cluster3_generated_metadata_rejects_invalid_grammar_variant() -> None:
     with pytest.raises(ValueError, match="grammar_variant"):
         Cluster3GeneratedRowMetadata(

@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.36.0
+Version: 1.37.1
 Date: 2026-06-05
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -62,6 +62,7 @@ treated as report-facing.
 | Full Pipeline grammar-mode x C x P launch packet v1 | `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md` |
 | Full Pipeline L1a n=1 authorization packet draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md` |
 | Grammar-mode code-support audit for L1a readiness | `audits/grammar_mode_code_support_audit_report.md` |
+| Grammar-mode support implementation report | `audits/grammar_mode_support_implementation_report.md` |
 | Experiment change orchestration state | `docs/handoff/experiment_change_orchestration_state.md` |
 | Current artifact identities and caveats | `docs/05_artifacts_and_results_registry.md` |
 | Current Cluster 3/P methodology | `docs/04_methodology_cluster3.md` |
@@ -148,15 +149,22 @@ active future design is the 12-cell `grammar_mode x C x P` matrix. The old
 8-cell plan is superseded for future execution. The L1a n=1 authorization packet
 draft is
 `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md`;
-it is unsigned, non-authorizing, and blocked pending explicit approval plus
-grammar-mode support/mapping proof. The grammar-mode code-support audit is
-`audits/grammar_mode_code_support_audit_report.md` and classifies current
-readiness as `GRAMMAR_MODE_CODE_SUPPORT_AUDIT_BLOCKED_IMPLEMENTATION_REQUIRED`:
-current code lacks first-class `grammar_mode` selection, per-row grammar-mode
-labels, analyzer/report grouping by grammar mode, and full 12-cell launch
-expressibility. Future L1a authorization review must start from that audit and
-must not draft or run an execution packet until a local implementation patch and
-fixture proof close the support gaps. The patched launch packet defines MLflow
+it is unsigned and non-authorizing. Local representability support now uses the
+repo-supported grammar-mode values `grammar_off`, `template_upper_bound`, and
+`task_agnostic`; see
+`audits/grammar_mode_support_implementation_report.md` for
+`GRAMMAR_MODE_SUPPORT_IMPLEMENTATION_PARTIAL_TRACKING_DEFERRED`. MLflow
+post-hoc grammar-mode indexing remains deferred, and no execution packet is
+approved. The earlier code-support audit
+`audits/grammar_mode_code_support_audit_report.md` remains historical evidence
+for the blocker that this implementation branch addresses. Future L1a
+authorization review must start from the implementation report and must not
+draft or run an execution packet until a separate explicit approval supplies the
+exact command, branch, commit, target paths, observability IDs, grammar-mode
+mapping, repair-history policy, model/revision/decoding config, stop/spend
+limits, analyzer/report plan, and MLflow post-hoc indexing proof. The patched
+launch packet now uses the same repo-supported grammar-mode vocabulary and
+defines MLflow
 post-hoc indexing plus observability, repair-memory, structural/task,
 namespace, billing, stop/spend, old-run comparability, and grammar-mode policy.
 It is also non-authorizing and does not approve Modal/GPU/generation, output

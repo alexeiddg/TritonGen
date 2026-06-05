@@ -49,6 +49,10 @@ from shared.generation_metadata import (
     is_stable_modal_image_identifier,
     modal_image_provenance_digest,
 )
+from shared.factors.grammar_modes import (
+    grammar_mode_from_active_variant,
+    validate_grammar_mode_binding,
+)
 
 
 CLUSTER3_RESULTS_SCHEMA_VERSION: int = 1
@@ -114,6 +118,7 @@ class Cluster3GeneratedRowMetadata:
     p_repair_history_error_code: str | None = None
     c_loop_fired: bool | None = None
     c_loop_source: CTraceSource | None = None
+    grammar_mode: str | None = None
     grammar_variant: str | None = None
     grammar_path: str | None = None
     grammar_sha: str | None = None
@@ -305,6 +310,7 @@ class Cluster3EvalRow:
     terminal_prompt_hash: str | None
     terminal_prompt_hash_source: PromptHashSource
     terminal_source_matches_row_source: bool
+    grammar_mode: str | None = None
 
     def __post_init__(self) -> None:
         condition = normalize_cluster3_condition(self.condition)
@@ -780,7 +786,36 @@ class Cluster3EvalRow:
                 or self.generated_metadata.grammar_claim_scope is not None
             ):
                 raise ValueError("non-G Cluster 3 rows must remain grammar-free")
+        self._validate_grammar_mode_binding()
         self._validate_optional_metadata_binding()
+
+    def _validate_grammar_mode_binding(self) -> None:
+        metadata = self.generated_metadata
+        assert metadata is not None
+        derived_mode = grammar_mode_from_active_variant(
+            grammar_active=self.grammar_active,
+            grammar_variant=metadata.grammar_variant,
+        )
+        if self.grammar_mode is None:
+            object.__setattr__(self, "grammar_mode", derived_mode)
+        else:
+            validate_grammar_mode_binding(
+                grammar_mode=self.grammar_mode,
+                grammar_active=self.grammar_active,
+                grammar_variant=metadata.grammar_variant,
+                grammar_path=metadata.grammar_path,
+                grammar_claim_scope=metadata.grammar_claim_scope,
+            )
+        if metadata.grammar_mode is not None:
+            validate_grammar_mode_binding(
+                grammar_mode=metadata.grammar_mode,
+                grammar_active=self.grammar_active,
+                grammar_variant=metadata.grammar_variant,
+                grammar_path=metadata.grammar_path,
+                grammar_claim_scope=metadata.grammar_claim_scope,
+            )
+            if self.grammar_mode != metadata.grammar_mode:
+                raise ValueError("generated_metadata.grammar_mode must match row")
 
     def _validate_optional_metadata_binding(self) -> None:
         metadata = self.generated_metadata
@@ -1056,6 +1091,7 @@ def generated_row(
     trace_summary: Cluster3TraceSummary,
     c3_generation_hashes: dict[str, str],
     grammar_active: bool | None = None,
+    grammar_mode: str | None = None,
     compile_success: bool | None = None,
     repair_trace: Sequence[TraceSummary] | None = None,
     generation_seed: int | None = None,
@@ -1121,6 +1157,16 @@ def generated_row(
         functional_success=functional_success,
         failure_code=failure_code,
     )
+    metadata_payload = dict(metadata_overrides)
+    metadata_payload.setdefault(
+        "grammar_mode",
+        grammar_mode_from_active_variant(
+            grammar_active=resolved_grammar_active,
+            grammar_variant=metadata_payload.get("grammar_variant"),
+        ),
+    )
+    if grammar_mode is not None and metadata_payload["grammar_mode"] != grammar_mode:
+        raise ValueError("grammar_mode must match metadata grammar_mode")
     return Cluster3EvalRow(
         condition=normalized,
         source_class=GENERATED_SOURCE_CLASS,
@@ -1166,7 +1212,7 @@ def generated_row(
             p_repair_history_error_code=p_repair_history_error_code,
             c_loop_fired=c_loop_fired,
             c_loop_source=c_loop_source,
-            **metadata_overrides,
+            **metadata_payload,
         ),
         repair_trace=None if repair_trace is None else tuple(repair_trace),
         initial_failure_code=initial_failure_code,
@@ -1194,6 +1240,7 @@ def generated_row(
         terminal_prompt_hash=terminal_prompt_hash,
         terminal_prompt_hash_source=terminal_prompt_hash_source,
         terminal_source_matches_row_source=terminal_source_matches_row_source,
+        grammar_mode=grammar_mode,
     )
 
 

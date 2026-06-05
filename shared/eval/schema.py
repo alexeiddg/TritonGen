@@ -70,6 +70,7 @@ class EvalResult:
     failure_code: str | None
 
     grammar_active: bool | None = None
+    grammar_mode: str | None = None
     grammar_variant: str | None = None
     grammar_sha: str | None = None
     grammar_path: str | None = None
