@@ -1,9 +1,10 @@
 # Experiment Change Orchestration Contract
 
-- Version: 1.0.12
+- Version: 1.0.13
 - Status: orchestration contract / no code changes authorized by itself
-- Scope: sequencing, branch ownership, parallel-work boundaries, gates, and run
-  controls for the planned changes in docs 12 through 14
+- Scope: sequencing, branch ownership, parallel-work boundaries, gates, run
+  controls, and future experiment metric-family declarations for the planned
+  changes in docs 12 through 14
 - Component implementation specs: `docs/16_observability_sidecar_implementation_spec.md`,
   `docs/17_structural_task_analyzer_metadata_implementation_spec.md`, and
   `docs/18_agentic_transcript_v1_implementation_spec.md`
@@ -36,7 +37,7 @@ This contract coordinates the following planning documents:
 | `docs/13_agentic_repair_memory_strategy.md` | Repair-memory policy source. This contract controls default policy, branch isolation, and rerun gates. |
 | `docs/14_structural_vs_task_outcome_reporting_plan.md` | Reporting terminology and analyzer-labeling source. This contract controls when analyzer/report changes may land. |
 | `docs/16_observability_sidecar_implementation_spec.md` | Observability implementation contract for O0-O4. |
-| `docs/17_structural_task_analyzer_metadata_implementation_spec.md` | Structural/task analyzer metadata implementation contract for S0-S3. |
+| `docs/17_structural_task_analyzer_metadata_implementation_spec.md` | Structural/task analyzer, report metadata, and future experiment packet contract record for S0-S4. |
 | `docs/18_agentic_transcript_v1_implementation_spec.md` | Agentic repair-memory implementation contract for A0-A6. |
 | `audits/cluster3_phase14_n5_condition_matrix_plan.md` | Current optional Cluster 3 n=5 planning source. This contract preserves its one-cell-at-a-time approval rule. |
 
@@ -114,6 +115,7 @@ Primary work packages:
 | S1 analyzer metadata | Add additive metric registry and feedback-activation diagnostics. | Serialized owner only. |
 | S2 report builder/dashboard | Use analyzer metadata for report sections and labels. | Starts after S1 metadata shape is stable. |
 | S3 optional analyzer output rerun | Write new analyzer output or documented metadata-only rerun. | Serialized, after S1 and S2. |
+| S4 future experiment integration | Require future packets to declare metric families, gates, denominators, evidence sources, and claim boundaries before new evidence or paper-readiness work. | Docs/planning only; no analyzer/output/report refresh. |
 
 ### Stream O: Observability Sidecars
 
@@ -210,6 +212,7 @@ baseline freeze
   -> S0 docs terminology
   -> S1 analyzer metadata
   -> S2 report/report-builder labels
+  -> S4 future experiment metric-family declarations
 
 baseline freeze
   -> this orchestration contract
@@ -232,12 +235,14 @@ baseline freeze
 Future Cluster 3 run or paper-scale readiness packet
   requires baseline freeze
   requires Phase 14e audit/registry state to remain valid
+  requires S4 metric-family declarations
   requires explicit user approval
   should wait for O0/O1/O3/O4 if observability is required for the run
   must wait for A5 if agentic_transcript_v1 is enabled
 
 R6 n=20 paper-scale
   requires S1/S2 stable
+  requires S4 metric-family declaration guidance
   requires O0/O1 stable, and preferably O2/O3/O4
   requires A5 stable if any repair-history policy changes are in scope
   requires clean n=5 development audits
@@ -799,6 +804,96 @@ Approval is scoped to the packet exactly as written. Any command expansion,
 condition expansion, output-path change, overwrite, retry, resume, or
 paper-scale promotion requires a new approval.
 
+## Future Experiment Metric-Family Declarations
+
+Future launch packets, run approval packets, and paper-readiness packets must
+declare which metrics contribute to structural/code-surface, task/functional,
+mixed diagnostic, planned-deferred, future-only, and
+benchmarkable/performance families before any new experiment, analyzer refresh,
+output mutation, or paper-scale claim is approved.
+
+The declaration does not authorize execution. It is a planning requirement that
+keeps the S0-S3 analyzer/report separation attached to future experiments.
+
+Required packet section:
+
+```text
+metric_family_declarations:
+  - metric_name:
+    outcome_family:
+    level_gate:
+    metric_gate:
+    reportability:
+    current_status:
+    evidence_source:
+    denominator_policy:
+    claim_boundary:
+```
+
+Allowed `outcome_family` values for current structural/task reporting are:
+
+```text
+structural_code_surface
+task_functional
+mixed_diagnostic
+benchmarkable_performance
+```
+
+Planned and future metrics must use `current_status=planned_deferred` or
+`current_status=future_only`; they must not be presented as current values.
+Benchmarkable/performance metrics must also state whether the evidence is
+sidecar-only and whether performance sidecar authorization exists.
+
+Every future experiment packet must also include:
+
+```text
+condition matrix:
+primary response variable:
+secondary response variables:
+diagnostic response variables:
+denominator policy:
+attempt-collapse policy:
+gate eligibility policy:
+feedback activation policy:
+metric_registry compatibility expectation:
+planned/future metric handling:
+output mutation authorization status:
+paper-scale claim authorization status:
+performance sidecar authorization status:
+```
+
+Contribution-attribution guidance:
+
+- Ask whether a condition changed structural/code-surface quality separately
+  from task/functional correctness.
+- Ask whether an observed change is only gate reach, denominator movement,
+  feedback eligibility, or feedback activation.
+- Distinguish rows that fail before Level 2 from rows that reach Level 2 and
+  fail the task harness.
+- Treat C feedback as activated only on its eligible Level 2/F2 set and P
+  feedback as activated only on eligible `F1_COMPILE` rows.
+- Keep performance, timing, speedup, profiler, and benchmark values in
+  benchmarkable/performance sidecars unless a later packet explicitly promotes
+  them.
+
+This declaration enables attribution by metric family and gate. It does not by
+itself prove causality. Causal claims still require a compatible factorial
+design, fixed budgets, compatible denominators, same shapes, dtypes, and
+devices, preregistered metrics, and a signed packet that authorizes the claim
+scope.
+
+Future report or analyzer consumers must fail closed, or mark the affected
+metric diagnostic-only, when:
+
+- an unknown `metric_registry` major schema is encountered;
+- `outcome_family` is missing;
+- `reportability` is missing;
+- `current_status` or `reportability` conflicts with computed values;
+- `planned_deferred` or `future_only` metrics are presented as current;
+- compile-only evidence is presented as task/functional correctness;
+- benchmarkable/performance claims are requested without an approved
+  performance sidecar evidence source.
+
 ## Merge And Promotion Protocol
 
 Merges should happen through a narrow promotion sequence rather than by merging
@@ -972,6 +1067,8 @@ Required before any optional n=5 run:
 Required before any `n=20` Cluster 3 or rerun-scale work:
 
 - G2 through G7 are satisfied for the selected policy;
+- future experiment metric-family declarations are present and compatible with
+  S1/S2 `metric_registry` metadata or an explicit legacy fallback;
 - n=5 development cells are audited and not just generated;
 - observability summaries exist or are explicitly marked unavailable with
   reasons;
@@ -1087,6 +1184,13 @@ Contract rule:
    - write a new output path or document the metadata-only rerun;
    - never rewrite raw JSONL artifacts;
    - update registry/audit only after validation.
+5. S4 future experiment integration:
+   - update packet guidance so future experiments declare metric families,
+     gates, denominators, evidence sources, and claim boundaries;
+   - require planned-deferred, future-only, and benchmarkable/performance
+     metrics to remain non-current unless explicitly authorized;
+   - do not run experiments, refresh analyzer outputs, rewrite raw JSONL, or
+     mutate generated report assets.
 
 ### Stream O Plan
 
@@ -1265,9 +1369,10 @@ Recommended merge order:
 7. A2/A3 C/P opt-in integration, one loop owner at a time;
 8. A5 analyzer policy grouping;
 9. S2 report builder labels;
-10. optional future run branch only after explicit approval;
-11. later development or paper-readiness cells after audited gates;
-12. no R6 paper-scale until G8.
+10. S4 future experiment metric-family declaration guidance;
+11. optional future run branch only after explicit approval;
+12. later development or paper-readiness cells after audited gates;
+13. no R6 paper-scale until G8.
 
 ## Contract Freeze And Amendment Policy
 

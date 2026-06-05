@@ -1,7 +1,7 @@
 # Structural/Task Analyzer Metadata Implementation Spec
 
-- Version: 0.1.3
-- Date: 2026-06-04
+- Version: 0.1.4
+- Date: 2026-06-05
 - Status: implementation specification / no code changes, output mutation, Modal
   runs, n=5 runs, n=20 runs, paper-scale work, profiler, timing, speedup, or
   benchmark work authorized by itself
@@ -103,6 +103,7 @@ This spec resolves the metric decisions that were open in the live state file.
 | S1 analyzer metadata | Add metric registry, outcome families, level reach, and feedback activation metadata. | No `outputs/` write unless S3 is explicitly authorized. | No runs. |
 | S2 report builder/dashboard | Use S1 analyzer metadata for report labels and sections. | May update docs report assets only when scoped; no raw JSONL rewrite. | No runs. |
 | S3 analyzer output rerun | Optional metadata-only analyzer output refresh. | Requires explicit output-mutation approval packet. | No Modal/generation runs. |
+| S4 future experiment integration | Require future experiment packets to declare metric families, gates, denominators, evidence sources, and claim boundaries. | No analyzer output refresh, raw JSONL rewrite, report artifact refresh, or output mutation. | No runs. |
 
 ## Package Boundaries
 
@@ -1081,12 +1082,32 @@ S3 is complete only when:
   input artifacts unless a new lineage was explicitly introduced;
 - artifact registry or audit notes are updated as required.
 
+S4 is complete only when:
+
+- future experiment packet guidance requires `metric_name`, `outcome_family`,
+  `level_gate`, `metric_gate`, `reportability`, `current_status`,
+  `evidence_source`, `denominator_policy`, and `claim_boundary`;
+- packet guidance separates primary task/functional metrics, secondary
+  structural/code-surface metrics, mixed diagnostics, `planned_deferred`
+  metrics, `future_only` metrics, and benchmarkable/performance metrics;
+- contribution-attribution language distinguishes structural/code-surface
+  change, task/functional correctness change, gate reach, and feedback
+  activation without claiming causality by itself;
+- fail-closed rules cover unknown `metric_registry` major versions, missing
+  family/reportability, status/value conflicts, deferred/future metrics
+  presented as current, compile-only correctness claims, and missing
+  performance sidecar evidence;
+- no analyzer code, report builder, report output, raw JSONL, `outputs/`,
+  `artifacts/`, result schema, dependency, lockfile, Modal, GPU, generation,
+  experiment, benchmark, timing, speedup, profiler, or paper-scale work is
+  touched or authorized.
+
 ## Agent Launch Packet Addendum
 
 Any S1 implementation launch packet must include:
 
 ```text
-component spec: docs/17_structural_task_analyzer_metadata_implementation_spec.md v0.1.2
+component spec: docs/17_structural_task_analyzer_metadata_implementation_spec.md v0.1.4
 serialized surface: analyzer_metric_registry
 required decisions: D-MET-01 resolved, D-MET-02 resolved, D-MET-03 resolved
 allowed output mutation: no

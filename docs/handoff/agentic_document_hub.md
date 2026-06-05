@@ -1,7 +1,7 @@
 # Agentic Documentation Hub
 
-Version: 1.28.0
-Date: 2026-06-04
+Version: 1.29.0
+Date: 2026-06-05
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
 Citation status: routing document only; do not cite as methodology
@@ -120,9 +120,15 @@ cost-per-success, pass@k cost, ROI, economic lift, benchmark economics,
 performance/profiler/timing work, result-row schema mutation, analyzer/economic
 metric changes, output mutation, dependency changes, Modal execution, or
 generation.
-Structural/task analyzer and report-metadata agents must also read
+Structural/task analyzer, report-metadata, and future experiment packet agents
+must also read
 `docs/17_structural_task_analyzer_metadata_implementation_spec.md` before
-starting S0-S3 work. Agentic repair-memory implementation agents must also read
+starting S0-S4 work. S4 future experiment integration is planning-only packet
+guidance: it requires metric-family, gate, denominator, evidence-source, and
+claim-boundary declarations before future experiments, but authorizes no
+Modal/GPU/generation, output mutation, analyzer output refresh, report artifact
+refresh, raw JSONL rewrite, benchmark, profiler, timing, speedup, or paper-scale
+work. Agentic repair-memory implementation agents must also read
 `docs/18_agentic_transcript_v1_implementation_spec.md` before starting A0-A6
 work. Before any future `agentic_transcript_v1` Modal, generation, n=5, n=20,
 paper-scale, or output-mutating work, agents must also read
