@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.35.0
+Version: 1.36.0
 Date: 2026-06-05
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -61,6 +61,7 @@ treated as report-facing.
 | C3 n20 metric-family-gated experiment packet | `docs/experiment_packets/c3_n20_metric_family_gated_packet.md` |
 | Full Pipeline grammar-mode x C x P launch packet v1 | `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md` |
 | Full Pipeline L1a n=1 authorization packet draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md` |
+| Grammar-mode code-support audit for L1a readiness | `audits/grammar_mode_code_support_audit_report.md` |
 | Experiment change orchestration state | `docs/handoff/experiment_change_orchestration_state.md` |
 | Current artifact identities and caveats | `docs/05_artifacts_and_results_registry.md` |
 | Current Cluster 3/P methodology | `docs/04_methodology_cluster3.md` |
@@ -148,7 +149,14 @@ active future design is the 12-cell `grammar_mode x C x P` matrix. The old
 draft is
 `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md`;
 it is unsigned, non-authorizing, and blocked pending explicit approval plus
-grammar-mode support/mapping proof. The patched launch packet defines MLflow
+grammar-mode support/mapping proof. The grammar-mode code-support audit is
+`audits/grammar_mode_code_support_audit_report.md` and classifies current
+readiness as `GRAMMAR_MODE_CODE_SUPPORT_AUDIT_BLOCKED_IMPLEMENTATION_REQUIRED`:
+current code lacks first-class `grammar_mode` selection, per-row grammar-mode
+labels, analyzer/report grouping by grammar mode, and full 12-cell launch
+expressibility. Future L1a authorization review must start from that audit and
+must not draft or run an execution packet until a local implementation patch and
+fixture proof close the support gaps. The patched launch packet defines MLflow
 post-hoc indexing plus observability, repair-memory, structural/task,
 namespace, billing, stop/spend, old-run comparability, and grammar-mode policy.
 It is also non-authorizing and does not approve Modal/GPU/generation, output
