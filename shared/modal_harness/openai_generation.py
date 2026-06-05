@@ -6,6 +6,7 @@ only in the Modal image and imported inside the remote function.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 from shared.modal_harness.app import app
@@ -52,6 +53,8 @@ def remote_openai_generate_one(req_dict: dict[str, Any]) -> dict[str, Any]:
         "source": _extract_response_text(response),
         "usage": _usage_dict(response),
         "model": getattr(response, "model", None) or req_dict["model"],
+        "response_id": getattr(response, "id", None),
+        "request_id": getattr(response, "_request_id", None),
         "modal_function_call_id": call_id,
         "modal_input_id": input_id,
         "api_surface": "openai_responses",
@@ -92,8 +95,16 @@ def _usage_dict(response: Any) -> dict[str, int | None]:
     if usage is None:
         return {}
 
+    input_details = getattr(usage, "input_tokens_details", None)
+    output_details = getattr(usage, "output_tokens_details", None)
     return {
         "input_tokens": getattr(usage, "input_tokens", None),
         "output_tokens": getattr(usage, "output_tokens", None),
         "total_tokens": getattr(usage, "total_tokens", None),
+        "cached_input_tokens": getattr(input_details, "cached_tokens", None),
+        "reasoning_tokens": getattr(output_details, "reasoning_tokens", None),
     }
+
+
+def sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()

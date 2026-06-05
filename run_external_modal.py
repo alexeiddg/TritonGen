@@ -27,6 +27,7 @@ from shared.modal_harness.app import app
 from shared.modal_harness.openai_generation import (
     DEFAULT_OPENAI_MODEL,
     remote_openai_generate_one,
+    sha256_text,
 )
 
 from run_external_baselines import (
@@ -76,6 +77,9 @@ def _call_openai_modal(
             usage["api_surface"] = payload.get("api_surface")
             usage["modal_function_call_id"] = payload.get("modal_function_call_id")
             usage["modal_input_id"] = payload.get("modal_input_id")
+            usage["response_id"] = payload.get("response_id")
+            usage["request_id"] = payload.get("request_id")
+            usage["provider_model_snapshot"] = payload.get("model")
             return str(payload.get("source", "")), usage
         except Exception as exc:
             last_exc = exc
@@ -134,7 +138,10 @@ def run_openai_modal(
                 except Exception as exc:
                     print(f"→ ERROR: {exc}")
                     source = ""
-                    usage = {}
+                    usage = {
+                        "provider_error_type": type(exc).__name__,
+                        "provider_error_msg": str(exc)[:500],
+                    }
 
                 row = _build_row(
                     spec=spec,
@@ -147,6 +154,20 @@ def run_openai_modal(
                     prompt=prompt,
                 )
                 row["provider"] = "openai"
+                row["provider_api"] = "responses"
+                row["provider_model_id"] = model
+                row["provider_model_snapshot"] = usage.get("provider_model_snapshot")
+                row["reasoning_effort"] = reasoning_effort
+                row["response_id"] = usage.get("response_id")
+                row["request_id"] = usage.get("request_id")
+                row["input_tokens"] = usage.get("input_tokens")
+                row["output_tokens"] = usage.get("output_tokens")
+                row["cached_input_tokens"] = usage.get("cached_input_tokens")
+                row["reasoning_tokens"] = usage.get("reasoning_tokens")
+                row["provider_error_type"] = usage.get("provider_error_type")
+                row["provider_error_msg"] = usage.get("provider_error_msg")
+                row["response_sha256"] = sha256_text(source)
+                row["source_sha256"] = row["unique_solution_hash"]
                 row["condition"] = "external_openai_baseline"
                 row["api_surface"] = "openai_responses"
                 _append_row(output_path, row)

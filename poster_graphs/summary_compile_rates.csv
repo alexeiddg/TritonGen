@@ -1,0 +1,7 @@
+condition,n,compile_success,compile_rate
+none,180,0,0.000000
+G,177,3,0.016949
+C,180,0,0.000000
+G+C,177,4,0.022599
+Claude,180,87,0.483333
+Gemini,180,0,0.000000

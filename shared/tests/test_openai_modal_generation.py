@@ -7,6 +7,7 @@ from shared.modal_harness.openai_generation import (
     _build_responses_kwargs,
     _extract_response_text,
     _usage_dict,
+    sha256_text,
 )
 
 
@@ -70,11 +71,25 @@ def test_usage_dict_handles_absent_usage() -> None:
 
 def test_usage_dict_extracts_token_counts() -> None:
     response = SimpleNamespace(
-        usage=SimpleNamespace(input_tokens=11, output_tokens=22, total_tokens=33)
+        usage=SimpleNamespace(
+            input_tokens=11,
+            output_tokens=22,
+            total_tokens=33,
+            input_tokens_details=SimpleNamespace(cached_tokens=4),
+            output_tokens_details=SimpleNamespace(reasoning_tokens=5),
+        )
     )
 
     assert _usage_dict(response) == {
         "input_tokens": 11,
         "output_tokens": 22,
         "total_tokens": 33,
+        "cached_input_tokens": 4,
+        "reasoning_tokens": 5,
     }
+
+
+def test_sha256_text_is_stable() -> None:
+    assert sha256_text("source") == (
+        "41cf6794ba4200b839c53531555f0f3998df4cbb01a4d5cb0b94e3ca5e23947d"
+    )

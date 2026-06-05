@@ -57,6 +57,14 @@ modal run -m eval_external_modal --model openai
 These external API rows are experimental baseline artifacts until explicitly
 registered in `docs/05_artifacts_and_results_registry.md`.
 
+OpenAI rows additionally preserve provider metadata such as `provider_api`,
+`provider_model_id`, `provider_model_snapshot`, `response_id`, `request_id`,
+`cached_input_tokens`, `reasoning_tokens`, `response_sha256`, and
+`source_sha256` where available. These fields account for Responses API
+differences from the Claude/Gemini SDK response objects while preserving the
+shared evaluator-facing fields (`source`, `model_name`, `usage`,
+`compile_success`, and `failure_code`).
+
 ## 4. Modal's Role By Cluster
 
 | Cluster/condition | Modal role | Current artifacts |
