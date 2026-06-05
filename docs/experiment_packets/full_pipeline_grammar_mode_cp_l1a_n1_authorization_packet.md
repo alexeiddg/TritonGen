@@ -3,11 +3,16 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1`
+packet_version: `0.2.1`
 packet_type: draft authorization packet; not an execution packet
-branch: `codex/full-pipeline-l1-smoke-dev-approval-packet`
-baseline_commit: `0cc43c1 Audit full pipeline launch packet promotion`
+branch: `codex/l1a-packet-baseline-pin`
+baseline_commit: `9aeb3c1 Audit grammar mode support promotion`
+planning_baseline_commit: `9aeb3c1 Audit grammar mode support promotion`
+code_support_commit: `c24fbaa Add local grammar-mode support for 12-cell L1a`
+superseded_baseline_commit: `0cc43c1 Audit full pipeline launch packet promotion`
 launch_packet: `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md`
 created_at: 2026-06-05
+baseline_pinned_at: 2026-06-05
 status: `DRAFT_NOT_APPROVED`
 code_support_status: `LOCAL_REPRESENTABILITY_READY`
 AUTHORIZES_EXECUTION: NO
@@ -33,6 +38,12 @@ This packet is a draft authorization artifact for review. It is not signed and
 does not authorize Modal, GPU work, generation, experiments, output mutation,
 analyzer output refresh, report artifact refresh, MLflow runtime writes,
 billing queries, dependency changes, lockfile changes, or paper-scale claims.
+
+The active planning baseline is the promoted handoff/audit commit
+`9aeb3c1`. The executable local grammar-mode support required for the 12-cell
+design is pinned separately to `c24fbaa`. The older `0cc43c1` baseline is
+historical context only and is not sufficient for L1a authorization because it
+predates the local grammar-mode support proof.
 
 ## Launch-Packet Dependency
 
@@ -123,22 +134,29 @@ Local code-support proof:
 ```text
 approval_source: not_approved
 approval_timestamp: not_applicable
-target_branch: codex/full-pipeline-l1-smoke-dev-approval-packet
+target_branch: unavailable_until_approval
 target_commit: unavailable_until_review_commit
 command: not_authorized
 working_directory: /Users/alexeidelgado/Desktop/TritonGen
+exact_condition_list: unavailable_until_approval_must_match_twelve_cell_matrix
+output_jsonl_paths: unavailable_until_approval
+observability_sidecar_paths: unavailable_until_approval
+content_hash_sidecar_paths: unavailable_until_approval
 model_id: unavailable_until_approval
 model_revision: unavailable_until_approval
 tokenizer_revision: unavailable_until_approval
 decoding_config: unavailable_until_approval
+seed_policy: unavailable_until_approval
 kernel_class: elementwise_relu_or_explicit_future_value
 problem_ids: unavailable_until_approval
 dtype: fp32_or_explicit_future_value
 shape_policy: unavailable_until_approval
 repair_history_policy: agentic_transcript_v1_for_C_or_P_cells
+grammar_file_hash_lock: unavailable_until_approval
 observability_mode: best_effort_or_required_until_approval
 observability_experiment_id: full_pipeline_grammar_mode_cp_factorial_v1
 observability_run_id: unavailable_until_approval
+mlflow_disposition: post_hoc_non_authoritative_unavailable_until_approval
 max_rows: 12
 max_generation_attempts: unavailable_until_approval
 max_repair_attempts_per_row: unavailable_until_approval
@@ -147,6 +165,7 @@ max_estimated_cost: unavailable_until_approval
 stop_on_first_infrastructure_failure: yes
 overwrite_policy: fail_if_any_target_path_exists
 resume_policy: no_resume_unless_explicitly_approved
+post_run_validation_commands: unavailable_until_approval
 ```
 
 ## Planned Namespaces
@@ -176,7 +195,7 @@ git status --short --branch
 git log --oneline --decorate -12
 git diff --check
 git diff --name-only -- outputs artifacts mlruns docs/preliminary_report shared/tracking shared/analysis shared/tests cluster1 cluster2 cluster3 shared/modal_harness pyproject.toml requirements.txt requirements-dev.txt uv.lock poetry.lock Pipfile.lock
-rg -n "MODAL_AUTHORIZED: YES|GPU_AUTHORIZED: YES|GENERATION_AUTHORIZED: YES|EXPERIMENT_EXECUTION_AUTHORIZED: YES|BENCHMARK_AUTHORIZED: YES|PROFILER_AUTHORIZED: YES|OUTPUT_MUTATION_AUTHORIZED: YES|PAPER_SCALE_AUTHORIZED: YES|MLFLOW_TRACKING_EXECUTION_AUTHORIZED: YES|AUTHORIZES_EXECUTION: YES" docs audits .contracts --glob '!docs/preliminary_report/index*.html' --glob '!docs/preliminary_report/_report_data.json'
+positive-authorization scan over docs, audits, and .contracts, excluding generated preliminary-report previews
 ```
 
 Additional required proof before approval:
