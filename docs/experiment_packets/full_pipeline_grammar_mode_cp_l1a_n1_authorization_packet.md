@@ -3,7 +3,7 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1`
-packet_version: `0.4.0`
+packet_version: `0.4.1`
 packet_type: completed review packet for possible future authorization; not an execution packet until signed
 branch: `codex/grammar-mode-12cell-launcher-support`
 baseline_commit: `d172e02 Pin L1a packet to grammar mode support baseline`
@@ -12,6 +12,7 @@ code_support_commit: `c24fbaa Add local grammar-mode support for 12-cell L1a`
 baseline_pin_commit: `d172e02 Pin L1a packet to grammar mode support baseline`
 launcher_support_branch: `codex/grammar-mode-12cell-launcher-support`
 launcher_support_status: `LOCAL_DRY_PLAN_SELECTOR_READY`
+preflight_estimator_status: `LOCAL_ADVISORY_ESTIMATOR_REQUIRED_BEFORE_SIGNATURE`
 superseded_baseline_commit: `0cc43c1 Audit full pipeline launch packet promotion`
 launch_packet: `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md`
 created_at: 2026-06-05
@@ -59,6 +60,14 @@ selector, `--condition grammar_mode_cp_12cell --dry-plan`, that can select all
 selector emits deterministic plan metadata only; it does not invoke Modal,
 generation, correctness evaluation, output writing, artifact writing, or MLflow
 tracking.
+
+Any future signed execution packet must include an advisory preflight estimate
+for the exact target scope before launch. The local utility
+`cluster3/planning/modal_preflight_estimator.py` can estimate L1a/L1b/L2 row
+counts, execution-shape envelopes, and larger-GPU breakeven requirements from
+explicit user-supplied pricing and timing inputs. That estimate remains
+planning-only: it does not authorize execution, does not replace billing
+reconciliation, and does not constitute experimental evidence.
 
 ## Launch-Packet Dependency
 
@@ -187,6 +196,7 @@ max_generation_attempts: one initial generation per executable cell plus approve
 max_repair_attempts_per_row: P=5 when P is enabled; C=5 when C is enabled; 0 otherwise
 max_wall_clock: pending_user_signature_required
 max_estimated_cost: pending_user_signature_required
+preflight_estimate: required_before_signature; advisory_only; pricing_must_be_reverified
 stop_on_first_infrastructure_failure: yes
 overwrite_policy: fail_if_any_target_path_exists
 resume_policy: no_resume_unless_explicitly_approved
@@ -258,6 +268,10 @@ positive-authorization scan over docs, audits, and .contracts, excluding generat
 Additional required proof before approval:
 
 - exact command/config is authorized for all 12 `grammar_mode`/C/P cells;
+- an advisory preflight estimate is attached for the exact packet scope,
+  including pricing re-verification status, stage-timing source
+  (`measured` or `estimated`), execution-shape comparison, and stop/spend
+  envelope;
 - every planned row will carry `grammar_mode`;
 - active grammar rows will carry grammar file/path and grammar hash or matching
   sidecar evidence where supported;
@@ -303,6 +317,8 @@ Stop before or during any future approved L1a execution if:
 - observability required-mode validation fails;
 - private-eval, raw prompt/source, token ID, billing secret, credential,
   performance, timing, speedup, profiler, or benchmark leakage appears.
+- no advisory preflight estimate is attached to the signed packet, or the
+  estimate exceeds the packet's approved wall-clock or spend limits.
 
 ## Explicit Approval
 

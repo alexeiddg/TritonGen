@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.8
+Version: 1.37.9
 Date: 2026-06-05
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -66,6 +66,7 @@ treated as report-facing.
 | Full Pipeline L1a baseline pin audit | `audits/l1a_packet_baseline_pin_report.md` |
 | Grammar-mode 12-cell launcher support report | `audits/grammar_mode_12cell_launcher_support_report.md` |
 | Modal full-factorial optimization plan | `docs/19_modal_full_factorial_optimization_plan.md` |
+| Modal preflight cost/time estimator report | `audits/modal_preflight_cost_time_estimator_report.md` |
 | Modal optimization intake review | `audits/modal_optimization_intake_review_report.md` |
 | Sidecar stage timing pre-L1a report | `audits/sidecar_stage_timing_pre_l1a_report.md` |
 | Sidecar stage timing promotion audit | `audits/sidecar_stage_timing_promotion_audit_report.md` |
@@ -224,6 +225,17 @@ correctness evaluation, P repair, C repair, and row append where those stages
 are active. It is local-only, sidecar-only, and non-authorizing; L1a remains
 unsigned and no Modal/GPU/generation/output/mlruns/billing/benchmark or MLflow
 runtime work is approved.
+
+Modal preflight cost/time estimator work is active on
+`codex/modal-preflight-cost-time-estimator` from the promoted handoff baseline
+`76310b5`. The planned evidence surface is
+`audits/modal_preflight_cost_time_estimator_report.md`; the code surface is
+`cluster3/planning/modal_preflight_estimator.py`. This branch is local-only and
+advisory: it estimates row counts, execution-shape envelopes, caller-supplied
+cost/time inputs, warning flags, and larger-GPU breakeven requirements before
+any future L1a/L1b/L2 packet. It does not authorize Modal/GPU/generation,
+experiments, output/artifact/mlruns mutation, billing queries, dependency
+changes, lockfile changes, benchmark execution, or MLflow runtime writes.
 
 Do not run Modal, n=5, n=20, paper-scale work, generation, experiments, or
 output mutation from this freeze state without separate explicit approval. Any

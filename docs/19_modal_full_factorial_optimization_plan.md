@@ -155,23 +155,33 @@ until the launcher submits independent work concurrently and generation
 
 ### O0: Preflight Estimator
 
-Add or require a local estimator before any signed execution packet:
+The local estimator is now represented by
+`cluster3/planning/modal_preflight_estimator.py`. It is a pure planning utility:
+it imports no Modal package, calls no billing API, performs no network request,
+writes no files by default, and does not inspect or mutate `outputs/`,
+`artifacts/`, or `mlruns/`.
+
+Require a local estimator result before any signed execution packet:
 
 - count target cells, kernel classes, dtypes, seeds, and max repair attempts;
 - estimate worst-case generation calls and correctness calls;
-- load prior observability sidecars when available and compute p50/p95 per
-  stage;
-- output a spend envelope using current pricing constants captured in the
-  approval packet;
+- use measured sidecar stage timings only when a future authorized run has
+  produced them; otherwise label timing inputs as estimates;
+- output a spend envelope using user-supplied or packet-captured pricing inputs;
 - fail closed if the estimated spend or wall time exceeds the packet limit.
 
-This can run locally and does not require Modal credentials.
+This can run locally and does not require Modal credentials. Pricing must still
+be re-verified against the official Modal pricing source before signed
+execution or spend approval. Estimator output is advisory and does not replace
+post-run billing reconciliation, JSONL rows, content-hash sidecars,
+observability sidecars, analyzer outputs, or signed packet stop conditions.
 
 Acceptance gate:
 
 - estimator output is committed or attached to the approval packet;
 - estimates distinguish logical rows from repair attempts;
-- no network pricing fetch is performed during local tests.
+- no network pricing fetch is performed during local tests;
+- estimates are not used as experimental evidence.
 
 ### O1: Sharded 12-Cell Launcher
 
@@ -329,7 +339,7 @@ benchmark clarify whether the current backend is truly the blocker.
 
 | Priority | Package | Change | Scope |
 |---|---|---|---|
-| P0 | estimator | Add local full-factorial cardinality/runtime/cost estimator | local-only, no Modal |
+| P0 | estimator | Local full-factorial cardinality/runtime/cost estimator represented by `cluster3/planning/modal_preflight_estimator.py` | local-only, no Modal |
 | P0 | launcher | Add dry-run shard manifest for 12-cell L1a/L1b/L2 paths | local-only, no Modal |
 | P1 | launcher | Add shard executor that writes one result file per shard | execution-gated |
 | P1 | merge | Add deterministic shard merge and validation command | local after execution |
@@ -357,6 +367,8 @@ Any future executable packet should include:
   `scaledown_window`, timeout, and any dynamic Modal options;
 - estimated logical row count, max generation calls, max correctness calls, wall
   time envelope, and spend envelope;
+- preflight estimator input bundle and advisory output, including pricing
+  re-verification status and whether stage timings are measured or estimated;
 - stop conditions for timeout, failure rate, spend cap, rate limits, or missing
   sidecars;
 - billing collection disposition: no billing, delayed manual billing, or
@@ -384,6 +396,7 @@ Local code and docs:
 
 - `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md`
 - `cluster3/planning/grammar_mode_matrix.py`
+- `cluster3/planning/modal_preflight_estimator.py`
 - `cluster3/experiments/run_cluster3_modal.py`
 - `cluster2/modal/generation.py`
 - `cluster2/modal/correctness.py`
