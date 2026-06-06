@@ -16,10 +16,26 @@ from cluster2.constants import (
 )
 
 
-Cluster3Condition: TypeAlias = Literal["P", "G+P", "C+P", "G+C+P"]
+Cluster3Condition: TypeAlias = Literal[
+    "none",
+    "G",
+    "C",
+    "G+C",
+    "P",
+    "G+P",
+    "C+P",
+    "G+C+P",
+]
 
-CLUSTER3_CONDITIONS: tuple[str, ...] = ("P", "G+P", "C+P", "G+C+P")
-P_GENERATION_CONDITIONS: tuple[str, ...] = CLUSTER3_CONDITIONS
+CLUSTER3_NO_P_CONTROL_CONDITIONS: tuple[str, ...] = ("none", "G", "C", "G+C")
+CLUSTER3_P_ACTIVE_CONDITIONS: tuple[str, ...] = ("P", "G+P", "C+P", "G+C+P")
+CLUSTER3_C_ACTIVE_CONDITIONS: tuple[str, ...] = ("C", "G+C", "C+P", "G+C+P")
+CLUSTER3_G_ACTIVE_CONDITIONS: tuple[str, ...] = ("G", "G+C", "G+P", "G+C+P")
+CLUSTER3_CONDITIONS: tuple[str, ...] = (
+    *CLUSTER3_NO_P_CONTROL_CONDITIONS,
+    *CLUSTER3_P_ACTIVE_CONDITIONS,
+)
+P_GENERATION_CONDITIONS: tuple[str, ...] = CLUSTER3_P_ACTIVE_CONDITIONS
 
 DEFAULT_P_REPAIR_BUDGET: int = 5
 P_ELIGIBLE_FAILURE_CODES: frozenset[str] = frozenset({"F1_COMPILE"})
@@ -40,14 +56,20 @@ P_REPAIR_STOP_REASONS: frozenset[str] = frozenset(
 )
 
 _CLUSTER3_TO_CLUSTER2_GENERATION: dict[str, str] = {
+    "none": "C",
+    "C": "C",
     "P": "C",
     "C+P": "C",
+    "G": "G+C",
+    "G+C": "G+C",
     "G+P": "G+C",
     "G+C+P": "G+C",
 }
 
 _CLUSTER3_TO_CLUSTER2_REPAIR: dict[str, str] = {
+    "C": "C",
     "C+P": "C",
+    "G+C": "G+C",
     "G+C+P": "G+C",
 }
 

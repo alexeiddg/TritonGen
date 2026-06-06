@@ -20,11 +20,20 @@ def test_generation_adapter_maps_p_to_c_and_gp_to_gc() -> None:
     assert {
         condition: cluster3_to_cluster2_generation_condition(condition)
         for condition in constants.CLUSTER3_CONDITIONS
-    } == {"P": "C", "C+P": "C", "G+P": "G+C", "G+C+P": "G+C"}
+    } == {
+        "none": "C",
+        "C": "C",
+        "P": "C",
+        "C+P": "C",
+        "G": "G+C",
+        "G+C": "G+C",
+        "G+P": "G+C",
+        "G+C+P": "G+C",
+    }
 
 
 def test_generation_adapter_rejects_unknown_condition() -> None:
-    for condition in ("none", "C", "G", "G+C", "X"):
+    for condition in ("X",):
         with pytest.raises(ValueError):
             cluster3_to_cluster2_generation_condition(condition)
 
@@ -37,12 +46,14 @@ def test_eval_adapter_matches_generation_adapter() -> None:
 
 
 def test_repair_adapter_maps_cp_and_gcp() -> None:
+    assert cluster3_to_cluster2_repair_condition("C") == "C"
     assert cluster3_to_cluster2_repair_condition("C+P") == "C"
+    assert cluster3_to_cluster2_repair_condition("G+C") == "G+C"
     assert cluster3_to_cluster2_repair_condition("G+C+P") == "G+C"
 
 
-def test_repair_adapter_rejects_p_and_gp() -> None:
-    for condition in ("P", "G+P"):
+def test_repair_adapter_rejects_c_inactive_conditions() -> None:
+    for condition in ("none", "G", "P", "G+P"):
         with pytest.raises(ValueError):
             cluster3_to_cluster2_repair_condition(condition)
 
@@ -65,4 +76,3 @@ def test_restamp_cluster3_condition_overwrites_returned_payload() -> None:
     assert payload["source_identity"]["condition"] == "P"
     assert payload["eval_identity"]["condition"] == "P"
     assert payload["correctness_result"]["identity"]["condition"] == "P"
-

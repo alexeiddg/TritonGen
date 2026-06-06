@@ -22,7 +22,10 @@ from cluster2.constants import (
 from cluster2.feedback.trace import TraceSummary
 from cluster2.results.dataclass import Cluster2ReplayRowMetadata
 from cluster3.constants import (
+    CLUSTER3_C_ACTIVE_CONDITIONS,
     CLUSTER3_CONDITIONS,
+    CLUSTER3_G_ACTIVE_CONDITIONS,
+    CLUSTER3_P_ACTIVE_CONDITIONS,
     DEFAULT_P_REPAIR_BUDGET,
     P_FEEDBACK_FORMAT_V1,
     P_HISTORY_POLICY_V1,
@@ -59,7 +62,7 @@ CLUSTER3_RESULTS_SCHEMA_VERSION: int = 1
 
 TerminalSourceStage = Literal["initial", "p_attempt", "c_attempt"]
 
-_C_LOOP_CONDITIONS: frozenset[str] = frozenset({"C+P", "G+C+P"})
+_C_LOOP_CONDITIONS: frozenset[str] = frozenset(CLUSTER3_C_ACTIVE_CONDITIONS)
 _C_LOOP_SOURCES: frozenset[str] = frozenset({"none", "initial_f2", "post_p_f2"})
 _TERMINAL_SOURCE_STAGES: frozenset[str] = frozenset(
     {"initial", "p_attempt", "c_attempt"}
@@ -316,7 +319,7 @@ class Cluster3EvalRow:
         condition = normalize_cluster3_condition(self.condition)
         object.__setattr__(self, "condition", condition)
         self._validate_core_fields(condition)
-        self._validate_p_policy()
+        self._validate_p_policy(condition)
         self._validate_c_policy(condition)
         self._validate_row_failure_code_binding()
         self._validate_terminal_provenance()
@@ -367,11 +370,11 @@ class Cluster3EvalRow:
         )
         if self.functional_success and self.failure_code is not None:
             raise ValueError("failure_code must be None when functional_success is True")
-        expected_grammar_active = condition in {"G+P", "G+C+P"}
+        expected_grammar_active = condition in CLUSTER3_G_ACTIVE_CONDITIONS
         if self.grammar_active is not expected_grammar_active:
             raise ValueError("grammar_active must match Cluster 3 condition")
 
-    def _validate_p_policy(self) -> None:
+    def _validate_p_policy(self, condition: str) -> None:
         _require_bool(self.p_repair_attempted, "p_repair_attempted")
         _require_bool(
             self.p_compile_repair_succeeded,
@@ -417,6 +420,8 @@ class Cluster3EvalRow:
             self._validate_inactive_p_policy()
             return
 
+        if condition not in CLUSTER3_P_ACTIVE_CONDITIONS:
+            raise ValueError("active P rows require a P-active Cluster 3 condition")
         if self.p_initial_failure_code != "F1_COMPILE":
             raise ValueError("active P rows require p_initial_failure_code F1_COMPILE")
         if self.initial_failure_code != self.p_initial_failure_code:
@@ -554,7 +559,7 @@ class Cluster3EvalRow:
             return
 
         if condition not in _C_LOOP_CONDITIONS:
-            raise ValueError("c_loop_fired requires a C+P or G+C+P condition")
+            raise ValueError("c_loop_fired requires a C-active Cluster 3 condition")
         if self.c_loop_source not in {"initial_f2", "post_p_f2"}:
             raise ValueError("c_loop_fired requires initial_f2 or post_p_f2 source")
         if self.repair_trace is None:
@@ -767,7 +772,7 @@ class Cluster3EvalRow:
             Cluster3ReplayRowMetadata,
         ):
             raise TypeError("replay_metadata must be Cluster3ReplayRowMetadata or None")
-        if condition in {"G+P", "G+C+P"}:
+        if condition in CLUSTER3_G_ACTIVE_CONDITIONS:
             if (
                 self.generated_metadata.grammar_variant is None
                 or self.generated_metadata.grammar_path is None
@@ -1140,7 +1145,7 @@ def generated_row(
 
     normalized = normalize_cluster3_condition(condition)
     resolved_grammar_active = (
-        normalized in {"G+P", "G+C+P"}
+        normalized in CLUSTER3_G_ACTIVE_CONDITIONS
         if grammar_active is None
         else grammar_active
     )

@@ -9,7 +9,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from cluster3.constants import CLUSTER3_CONDITIONS, normalize_cluster3_condition
+from cluster3.constants import (
+    CLUSTER3_P_ACTIVE_CONDITIONS,
+    normalize_cluster3_condition,
+)
 
 
 NO_P_PAIR_MANIFEST_SCHEMA_VERSION = "cluster3.no_p_pair_manifest.v1"
@@ -191,6 +194,8 @@ def pair_for_condition(p_condition: str) -> str:
     """Return the no-P control condition paired with a Cluster 3 P condition."""
 
     condition = normalize_cluster3_condition(p_condition)
+    if condition not in CLUSTER3_P_ACTIVE_CONDITIONS:
+        raise ValueError("p_condition must be one of the Cluster 3 P-active conditions")
     return _PAIR_FOR_CONDITION[condition]
 
 
@@ -202,8 +207,8 @@ def validate_pair_identity(p_row: Any, control_row: Any) -> None:
     _require_source_hash_matches_available_source(control_row)
 
     p_condition = _field(p_row, "condition")
-    if p_condition not in CLUSTER3_CONDITIONS:
-        raise ValueError("p_row condition must be one of the Cluster 3 conditions")
+    if p_condition not in CLUSTER3_P_ACTIVE_CONDITIONS:
+        raise ValueError("p_row condition must be one of the Cluster 3 P-active conditions")
     expected_control = pair_for_condition(str(p_condition))
     observed_control = _field(control_row, "condition")
     if observed_control != expected_control:
@@ -270,8 +275,8 @@ def resolve_no_p_control(
 
     loaded_manifest = _coerce_manifest(manifest)
     p_condition = _field(p_row, "condition")
-    if p_condition not in CLUSTER3_CONDITIONS:
-        raise ValueError("p_row condition must be one of the Cluster 3 conditions")
+    if p_condition not in CLUSTER3_P_ACTIVE_CONDITIONS:
+        raise ValueError("p_row condition must be one of the Cluster 3 P-active conditions")
     expected_control = pair_for_condition(str(p_condition))
 
     kernel_class = _required_row_field(p_row, "kernel_class")

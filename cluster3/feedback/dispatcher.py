@@ -32,8 +32,6 @@ def dispatch(
 
     normalized_condition = constants.normalize_cluster3_condition(condition)
     p_active, c_active = _active_factors(normalized_condition)
-    if not p_active:
-        raise ValueError(f"Cluster 3 condition {condition!r} must activate P")
 
     _validate_failure_code(failure_code)
     _validate_level_reached(level_reached)
@@ -62,9 +60,15 @@ def dispatch(
         )
 
     if failure_code == "F1_COMPILE":
+        if p_active:
+            return DispatchDecision(
+                route="p_loop",
+                reason="p_eligible",
+                failure_code=failure_code,
+            )
         return DispatchDecision(
-            route="p_loop",
-            reason="p_eligible",
+            route="terminate",
+            reason="f1_compile_terminal_no_p",
             failure_code=failure_code,
         )
 
@@ -106,8 +110,9 @@ def is_p_eligible(failure_code: str | None) -> bool:
 
 
 def _active_factors(condition: str) -> tuple[bool, bool]:
-    c_active = condition in {"C+P", "G+C+P"}
-    return True, c_active
+    p_active = condition in constants.CLUSTER3_P_ACTIVE_CONDITIONS
+    c_active = condition in constants.CLUSTER3_C_ACTIVE_CONDITIONS
+    return p_active, c_active
 
 
 def _validate_failure_code(failure_code: str | None) -> None:

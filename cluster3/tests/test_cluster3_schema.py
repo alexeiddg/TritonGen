@@ -67,7 +67,7 @@ def _generated_metadata(
     c_loop_source: str = "none",
 ) -> Cluster3GeneratedRowMetadata:
     grammar_fields = {}
-    if condition in {"G+P", "G+C+P"}:
+    if condition in {"G", "G+C", "G+P", "G+C+P"}:
         grammar_fields = {
             "grammar_variant": "task_agnostic",
             "grammar_path": "cluster1/grammar/triton_kernel_agnostic.gbnf",
@@ -304,11 +304,11 @@ def _row(**overrides: object) -> Cluster3EvalRow:
     values["generation_mode"] = overrides.get(
         "generation_mode",
         generation_mode_for_cluster3_condition(condition)
-        if condition in {"P", "G+P", "C+P", "G+C+P"}
-        else "invalid",
+            if condition in {"none", "G", "C", "G+C", "P", "G+P", "C+P", "G+C+P"}
+            else "invalid",
     )
     if "grammar_active" not in overrides:
-        values["grammar_active"] = condition in {"G+P", "G+C+P"}
+        values["grammar_active"] = condition in {"G", "G+C", "G+P", "G+C+P"}
     if values["c_loop_fired"] and c_attempt_count == 0:
         c_attempt_count = 1 if values["terminal_source_stage"] == "c_attempt" else 0
     if not trace_override_present:
@@ -548,9 +548,17 @@ def test_cluster3_row_accepts_p_condition() -> None:
 
 
 @pytest.mark.parametrize("condition", ["none", "G", "C", "G+C"])
-def test_cluster3_row_rejects_none_g_c_gc(condition: str) -> None:
-    with pytest.raises(ValueError):
-        _row(condition=condition)
+def test_cluster3_row_accepts_no_p_control_conditions(condition: str) -> None:
+    row = _row(condition=condition)
+
+    assert row.condition == condition
+    assert row.p_repair_attempted is False
+
+
+@pytest.mark.parametrize("condition", ["none", "G", "C", "G+C"])
+def test_no_p_control_rows_reject_active_p_trace(condition: str) -> None:
+    with pytest.raises(ValueError, match="P-active"):
+        _p_row(condition=condition)
 
 
 def test_cluster3_row_rejects_unknown_failure_code() -> None:

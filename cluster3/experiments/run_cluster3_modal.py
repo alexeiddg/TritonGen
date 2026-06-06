@@ -17,7 +17,7 @@ import sys
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -35,7 +35,10 @@ from cluster2.constants import (
 )
 from cluster2.modal.schemas import EvalIdentity
 from cluster3.constants import (
+    CLUSTER3_C_ACTIVE_CONDITIONS,
     CLUSTER3_CONDITIONS,
+    CLUSTER3_G_ACTIVE_CONDITIONS,
+    CLUSTER3_P_ACTIVE_CONDITIONS,
     DEFAULT_P_REPAIR_BUDGET,
     P_FEEDBACK_FORMAT_V1,
     P_HISTORY_POLICY_V1,
@@ -71,6 +74,7 @@ from cluster3.planning.grammar_mode_matrix import (
     L1A_OUTPUT_ROOT,
     L1A_OBSERVABILITY_ROOT,
     L1A_PATH_COLLISION_POLICY,
+    L1A_RUN_ID_PREFIX,
     GrammarModeLauncherCellPlan,
     build_l1a_launcher_dry_plan,
     build_l1a_launcher_executable_plan,
@@ -1118,8 +1122,9 @@ def main(argv: Sequence[str] | None = None) -> Cluster3RunResult | dict[str, Any
         payload = build_l1a_execution_plan_payload(config)
         print(json.dumps(payload, sort_keys=True))
         return payload
+    l1a_cells: tuple[GrammarModeLauncherCellPlan, ...] | None = None
     if config.condition == L1A_GRAMMAR_MODE_CP_SELECTOR:
-        _validate_l1a_runtime_authorization(config)
+        l1a_cells = _validate_l1a_runtime_authorization(config)
 
     # Seam A (Modal path): open an optional MLflow run around the local
     # orchestration. Modal returns records; the Cluster 3 JSONL writer's seam
@@ -1135,7 +1140,11 @@ def main(argv: Sequence[str] | None = None) -> Cluster3RunResult | dict[str, Any
         backend="modal",
         cluster="cluster3",
     ):
-        result = run_cluster3(config)
+        result = (
+            _run_signed_l1a_selector(config, cells=l1a_cells)
+            if l1a_cells is not None
+            else run_cluster3(config)
+        )
     print(
         json.dumps(
             {
@@ -1148,6 +1157,60 @@ def main(argv: Sequence[str] | None = None) -> Cluster3RunResult | dict[str, Any
         )
     )
     return result
+
+
+def _run_signed_l1a_selector(
+    config: Cluster3RunnerConfig,
+    *,
+    cells: tuple[GrammarModeLauncherCellPlan, ...],
+    dependencies: RunnerDependencies | None = None,
+) -> Cluster3RunResult:
+    """Expand the signed L1a selector into its 12 existing runner cells."""
+
+    if config.condition != L1A_GRAMMAR_MODE_CP_SELECTOR:
+        raise ValueError("signed L1a selector runner requires grammar_mode_cp_12cell")
+    if len(cells) != 12:
+        raise ValueError("signed L1a selector runner requires exactly 12 cells")
+
+    rows: list[Cluster3EvalRow] = []
+    audits: list[ConditionRouteAudit] = []
+    for cell in cells:
+        runtime_config = _l1a_cell_runtime_config(config, cell)
+        run_kwargs = {"dependencies": dependencies} if dependencies is not None else {}
+        cell_result = run_cluster3(runtime_config, **run_kwargs)
+        rows.extend(cell_result.rows)
+        audits.extend(cell_result.route_audit)
+    return Cluster3RunResult(
+        rows=tuple(rows),
+        route_audit=tuple(audits),
+        output=L1A_OUTPUT_ROOT,
+        write_mode=config.write_mode,
+    )
+
+
+def _l1a_cell_runtime_config(
+    config: Cluster3RunnerConfig,
+    cell: GrammarModeLauncherCellPlan,
+) -> Cluster3RunnerConfig:
+    """Build the per-cell runtime config after signed selector validation."""
+
+    grammar_variant = (
+        cell.grammar_variant
+        if cell.runner_condition in CLUSTER3_G_ACTIVE_CONDITIONS
+        else config.grammar_variant
+    )
+    return replace(
+        config,
+        condition=cell.runner_condition,
+        output=cell.output_path,
+        observability_mode="best_effort",
+        observability_experiment_id=cell.observability_experiment_id,
+        observability_run_id=f"{L1A_RUN_ID_PREFIX}__{cell.condition_id}",
+        observability_output=cell.observability_event_path,
+        grammar_variant=grammar_variant,
+        grammar_mode_cell="all",
+        signed_l1a_authorization=None,
+    )
 
 
 def _validate_l1a_runtime_authorization(
@@ -1428,7 +1491,7 @@ def run_cluster3(
     *,
     dependencies: RunnerDependencies | None = None,
 ) -> Cluster3RunResult:
-    """Run requested Cluster 3 P conditions and append deterministic rows."""
+    """Run requested Cluster 3 conditions and append deterministic rows."""
 
     if not isinstance(config, Cluster3RunnerConfig):
         raise TypeError("config must be Cluster3RunnerConfig")
@@ -1609,10 +1672,7 @@ def _open_observability_runtime(
         return _Cluster3ObservabilityRuntime(config=config, mode="off")
 
     try:
-        paths = resolve_observability_paths(
-            config.output,
-            event_path=config.observability_output,
-        )
+        paths = _resolve_runner_observability_paths(config)
         git_commit = _git_stdout("rev-parse", "HEAD").lower()
         branch = _git_stdout("branch", "--show-current") or "detached"
         modal_context = _resolve_observability_modal_context(config, deps)
@@ -1653,6 +1713,28 @@ def _open_observability_runtime(
             mode=config.observability_mode,
             disabled_reason=type(exc).__name__,
         )
+
+
+def _resolve_runner_observability_paths(
+    config: Cluster3RunnerConfig,
+) -> ObservabilityPaths:
+    return resolve_observability_paths(
+        config.output,
+        event_path=config.observability_output,
+        summary_path=_l1a_observability_summary_path(config),
+    )
+
+
+def _l1a_observability_summary_path(config: Cluster3RunnerConfig) -> Path | None:
+    if (
+        config.observability_experiment_id != L1A_EXPERIMENT_ID
+        or config.observability_output is None
+    ):
+        return None
+    output_stem = Path(config.output).stem
+    return Path(config.observability_output).with_name(
+        f"{output_stem}.observability.summary.json"
+    )
 
 
 def _resolve_observability_modal_context(
@@ -2001,7 +2083,7 @@ def _run_generated_cell(
         p_terminal_result = _terminal_p_result(p_result, p_runtime)
         if (
             p_result.status == "compile_repaired_f2_observed"
-            and condition in {"C+P", "G+C+P"}
+            and condition in CLUSTER3_C_ACTIVE_CONDITIONS
         ):
             c_result = _timed_call_c_loop(
                 observability=observability,
@@ -2524,7 +2606,7 @@ def _build_row(
         dtype=dtype,
         base_seed=base_seed,
         source_hash=_sha256(final_source),
-        grammar_active=condition in {"G+P", "G+C+P"},
+        grammar_active=condition in CLUSTER3_G_ACTIVE_CONDITIONS,
         compile_success=compile_success,
         functional_success=functional_success,
         repair_set_success=repair_set_success,
@@ -2968,7 +3050,7 @@ def _generation_grammar_metadata_from_payload(
     condition: str,
     config: Cluster3RunnerConfig,
 ) -> dict[str, Any]:
-    if condition not in {"G+P", "G+C+P"}:
+    if condition not in CLUSTER3_G_ACTIVE_CONDITIONS:
         return {
             "grammar_mode": "grammar_off",
             "grammar_variant": None,
@@ -3114,6 +3196,8 @@ def _replay_pair_id(
 
 
 def _metadata_replay_control_condition(condition: str) -> str | None:
+    if condition not in CLUSTER3_P_ACTIVE_CONDITIONS:
+        return None
     paired = pair_for_condition(condition)
     return paired if paired in {"none", "G"} else None
 

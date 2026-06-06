@@ -478,10 +478,9 @@ def test_runner_config_accepts_p_conditions(tmp_path: Path) -> None:
         assert _config(tmp_path, condition).condition == condition
 
 
-def test_runner_config_rejects_cluster2_conditions(tmp_path: Path) -> None:
+def test_runner_config_accepts_no_p_control_conditions(tmp_path: Path) -> None:
     for condition in ("none", "G", "C", "G+C"):
-        with pytest.raises(ValueError):
-            _config(tmp_path, condition)
+        assert _config(tmp_path, condition).condition == condition
 
 
 def test_runner_config_repair_budget_bounds(tmp_path: Path) -> None:
@@ -1830,17 +1829,78 @@ def test_l1a_12cell_signed_selector_passes_prelaunch_guard_without_modal(
         )
 
     monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
     monkeypatch.setattr(runner_mod, "run_cluster3", fake_run)
 
     result = runner_mod.main(_signed_l1a_selector_args())
     printed = json.loads(capsys.readouterr().out)
 
     assert isinstance(result, runner_mod.Cluster3RunResult)
-    assert len(calls) == 1
-    assert calls[0].condition == runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR
-    assert calls[0].signed_l1a_authorization == runner_mod.L1A_SIGNED_AUTHORIZATION_TOKEN
+    assert len(calls) == 12
+    assert {call.condition for call in calls} == set(runner_mod.CLUSTER3_CONDITIONS)
+    assert {call.signed_l1a_authorization for call in calls} == {None}
     assert printed["rows"] == 0
-    assert printed["output"] == runner_mod.L1A_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
+    assert printed["output"] == runner_mod.L1A_OUTPUT_ROOT
+
+
+def test_l1a_12cell_signed_selector_runs_all_cells_locally_with_fake_adapters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = parse_args(_signed_l1a_selector_args())
+    cells = runner_mod.build_l1a_launcher_executable_plan(
+        repair_history_policy="agentic_transcript_v1",
+        output_root=tmp_path / "outputs",
+        observability_root=tmp_path / "observability",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L1A_SIGNED_AUTHORIZATION_TOKEN,
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(*(_result(None) for _ in range(12)))
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    result = runner_mod._run_signed_l1a_selector(
+        config,
+        cells=cells,
+        dependencies=RunnerDependencies(
+            generation=generation,
+            correctness=correctness,
+        ),
+    )
+
+    assert len(result.rows) == 12
+    assert len(generation.calls) == 12
+    assert len(correctness.calls) == 12
+    assert {
+        (
+            row.grammar_mode,
+            "on" if row.condition in {"C", "G+C", "C+P", "G+C+P"} else "off",
+            "on" if row.condition in {"P", "G+P", "C+P", "G+C+P"} else "off",
+        )
+        for row in result.rows
+    } == {
+        (grammar_mode, c_state, p_state)
+        for grammar_mode in ("grammar_off", "template_upper_bound", "task_agnostic")
+        for c_state in ("off", "on")
+        for p_state in ("off", "on")
+    }
+    assert all(
+        row.p_repair_attempted is False
+        for row in result.rows
+        if "+P" not in row.condition and row.condition != "P"
+    )
+    for cell in cells:
+        output_path = Path(cell.output_path)
+        assert output_path.exists()
+        assert output_path.read_text(encoding="utf-8").count("\n") == 1
+        assert Path(cell.content_hash_sidecar_path).exists()
+        assert Path(cell.observability_event_path).exists()
+        assert Path(cell.observability_summary_path).exists()
+        assert Path(cell.observability_hash_path).exists()
 
 
 def test_l1a_12cell_selector_wrong_token_fails_prelaunch(
