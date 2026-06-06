@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -1834,6 +1835,7 @@ def test_l1a_12cell_signed_selector_passes_prelaunch_guard_without_modal(
         "_require_absent_target",
         lambda *_args, **_kwargs: None,
     )
+    monkeypatch.setattr(runner_mod, "_signed_l1a_modal_app_context", nullcontext)
     monkeypatch.setattr(runner_mod, "run_cluster3", fake_run)
 
     result = runner_mod.main(_signed_l1a_selector_args())

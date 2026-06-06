@@ -1141,7 +1141,7 @@ def main(argv: Sequence[str] | None = None) -> Cluster3RunResult | dict[str, Any
         cluster="cluster3",
     ):
         result = (
-            _run_signed_l1a_selector(config, cells=l1a_cells)
+            _run_signed_l1a_selector_with_modal_context(config, cells=l1a_cells)
             if l1a_cells is not None
             else run_cluster3(config)
         )
@@ -1157,6 +1157,27 @@ def main(argv: Sequence[str] | None = None) -> Cluster3RunResult | dict[str, Any
         )
     )
     return result
+
+
+def _run_signed_l1a_selector_with_modal_context(
+    config: Cluster3RunnerConfig,
+    *,
+    cells: tuple[GrammarModeLauncherCellPlan, ...],
+) -> Cluster3RunResult:
+    """Run the signed selector under a hydrated Modal app context."""
+
+    with _signed_l1a_modal_app_context():
+        return _run_signed_l1a_selector(config, cells=cells)
+
+
+def _signed_l1a_modal_app_context() -> Any:
+    """Return an app.run context with existing C2 Modal surfaces registered."""
+
+    import cluster2.modal.correctness  # noqa: F401
+    import cluster2.modal.generation  # noqa: F401
+    from shared.modal_harness.app import app as _modal_app
+
+    return _modal_app.run()
 
 
 def _run_signed_l1a_selector(
