@@ -1,6 +1,6 @@
 # Experiment Change Orchestration State
 
-- Version: 1.5.74
+- Version: 1.5.75
 - Date: 2026-06-06
 - Status: active live state record
 - Owner: current orchestration agent
@@ -407,7 +407,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Worktree | Branch | Commit | State ownership |
 |---|---|---|---|
-| `/Users/alexeidelgado/Desktop/TritonGen` | `codex-track-handoff-context` | promoted L2 selector/profile support through `27493c0` | Handoff trunk now includes local-only L2 n=20 selector/profile support and an unsigned packet that is command-surface-ready for signature review. The L2 runtime profile remains disabled. No L2, n=20, Modal/GPU/generation, paper-scale run, billing query, output/artifact/mlruns mutation, analyzer/report refresh, profiler, benchmark, speedup, economic claim, dependency, lockfile, preliminary-report, or MLflow runtime write is authorized |
+| `/Users/alexeidelgado/Desktop/TritonGen` | `codex-track-handoff-context` | promoted L2 selector/profile support through `27493c0` and final signature-readiness audit | Handoff trunk now includes local-only L2 n=20 selector/profile support, promotion audit, and final signature-readiness audit. The unsigned packet is command-surface-ready for signature review, but the L2 runtime profile remains disabled. No L2, n=20, Modal/GPU/generation, paper-scale run, billing query, output/artifact/mlruns mutation, analyzer/report refresh, profiler, benchmark, speedup, economic claim, dependency, lockfile, preliminary-report, or MLflow runtime write is authorized |
 | `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `4a84600` | reference/history worktree only; same A6 commit as the promoted handoff trunk and not the place for observability work |
 | `/Users/alexeidelgado/Desktop/TritonGen/.claude/worktrees/intelligent-pasteur-72d92f` | `claude/intelligent-pasteur-72d92f` | `b0085c1` | external/unknown to this orchestration state; reconcile before relying on it |
 
@@ -666,11 +666,12 @@ Historical context:
 
 Allowed without run approval:
 
-1. Prepare the final L2 n=20 signature-readiness audit against promoted
-   `codex-track-handoff-context` after the selector/profile support promotion.
-   The packet is command-surface-ready for signature review, but remains
-   unsigned and keeps `AUTHORIZES_EXECUTION: NO`; the L2 runtime profile remains
-   disabled.
+1. Prepare a final signed L2 n=20 authorization packet only if the human signer
+   accepts the promoted target baseline, command surface, stop limits, spend
+   limits, output/artifact namespaces, billing caveat, validation plan,
+   no-retry/no-resume policy, and runtime-gate enablement. The current packet
+   remains unsigned and keeps `AUTHORIZES_EXECUTION: NO`; the L2 runtime profile
+   remains disabled.
 2. If the L1b analyzer/report artifacts are cited, cite the development-scale
    caveat: they are not paper-scale or reportable paper evidence, and
    three-way interaction fields are diagnostic only.
@@ -1549,6 +1550,7 @@ status: promoted into A6 handoff trunk at 4a84600; reference/history only
 | Package | Suggested branch | Status | Entry gate | Exit gate | Notes |
 |---|---|---|---|---|---|
 | L2 n=20 selector/profile support | `codex/l2-n20-selector-profile-support` then `codex-track-handoff-context` | promoted/audit closeout | `3a21002 Audit L2 n20 packet draft promotion` | L2_N20_SELECTOR_PROFILE_SUPPORT_PROMOTION_COMPLETE | Adds local-only L2 selector/profile support for `grammar_mode_cp_12cell`, `scale_tier=paper`, `n=20`, 12 cells, 240 planned rows, signed-L2 command surfaces, packet update, and `audits/l2_n20_selector_profile_support_report.md`. Promoted support commit is `27493c0`; promotion audit is `audits/l2_n20_selector_profile_support_promotion_audit_report.md`. The L2 runtime profile remains disabled and `AUTHORIZES_EXECUTION: NO`; no Modal/GPU/generation/billing/output/artifact/mlruns mutation is authorized. |
+| L2 n=20 final signature-readiness audit | `codex-track-handoff-context` | audit complete / no execution | `48efad7 Audit L2 n20 selector profile support promotion` | L2_N20_SELECTOR_SUPPORT_PROMOTED_SIGNATURE_READY | Adds `audits/l2_n20_final_signature_readiness_report.md`, confirming the unsigned packet path exists, exact source-backed L2 n=20 command surfaces exist, 12 cells and 240 planned rows are recorded, proposed stop/spend limits and L2 namespaces are present, the billing UTC-window caveat is carried forward, post-run validation and analyzer/report audit requirements are present, no retry/no resume policy is present, and runtime execution remains disabled until a later final signature explicitly enables it. |
 | L2 n=20 authorization packet draft | `codex/l2-n20-authorization-packet` | promoted/reference | `134bcf9 Audit L1b n5 completion and analyzer boundary` | L2_N20_PACKET_DRAFT_PROMOTION_COMPLETE_SELECTOR_SUPPORT_REQUIRED | Adds `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md` and `audits/l2_n20_authorization_packet_draft_report.md`; fast-forward promoted into `codex-track-handoff-context` at `4ae7081` and promotion-audited at `3a21002`. The original command-surface blocker is now being addressed by the selector/profile support branch. |
 | S0 docs terminology | `codex/structural-task-s0-terminology` | accepted | G1 | G2 | Docs-only structural/task terminology gate closed. S0 accepted the existing vocabulary, confirmed `docs/17_structural_task_analyzer_metadata_implementation_spec.md` as the executable implementation contract, and added `audits/structural_task_s0_terminology_acceptance_report.md`. |
 | O-spec observability sidecar implementation spec | none | complete / tightened | G1 | spec routed | `docs/16_observability_sidecar_implementation_spec.md` v0.2.3. |

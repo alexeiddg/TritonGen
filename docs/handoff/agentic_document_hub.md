@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.22
+Version: 1.37.23
 Date: 2026-06-06
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -71,6 +71,7 @@ treated as report-facing.
 | Full Pipeline L2 n=20 authorization packet draft audit | `audits/l2_n20_authorization_packet_draft_report.md` |
 | Full Pipeline L2 n=20 selector/profile support audit | `audits/l2_n20_selector_profile_support_report.md` |
 | Full Pipeline L2 n=20 selector/profile support promotion audit | `audits/l2_n20_selector_profile_support_promotion_audit_report.md` |
+| Full Pipeline L2 n=20 final signature readiness report | `audits/l2_n20_final_signature_readiness_report.md` |
 | Full Pipeline L1a final signature packet report | `audits/l1a_final_signature_packet_report.md` |
 | Full Pipeline L1a executable 12-cell selector support audit | `audits/l1a_executable_12cell_selector_support_report.md` |
 | Full Pipeline L1a executable 12-cell selector support promotion audit | `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md` |
@@ -104,10 +105,12 @@ Post-L2-selector-support promotion update: the L2 n=20 packet draft now exists a
 with audits `audits/l2_n20_authorization_packet_draft_report.md` and
 `audits/l2_n20_selector_profile_support_report.md`, and the selector/profile
 support promotion is recorded in
-`audits/l2_n20_selector_profile_support_promotion_audit_report.md`. Promoted
-commit `27493c0 Add L2 n20 selector profile support` adds local-only
-selector/profile support for `grammar_mode_cp_12cell`, `scale_tier=paper`,
-`n=20`, and 240 planned rows. The packet now classifies the command surface as
+`audits/l2_n20_selector_profile_support_promotion_audit_report.md`. The final
+signature-readiness audit is recorded in
+`audits/l2_n20_final_signature_readiness_report.md`. Promoted commit `27493c0
+Add L2 n20 selector profile support` adds local-only selector/profile support
+for `grammar_mode_cp_12cell`, `scale_tier=paper`, `n=20`, and 240 planned rows.
+The packet now classifies the command surface as
 `L2_N20_SELECTOR_PROFILE_SUPPORT_READY_FOR_SIGNATURE_REVIEW`, but it remains
 unsigned and keeps `AUTHORIZES_EXECUTION: NO`. The L2 runtime profile is
 intentionally disabled until a later final signature branch explicitly enables
