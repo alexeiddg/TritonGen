@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.21
+Version: 1.37.22
 Date: 2026-06-06
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -70,6 +70,7 @@ treated as report-facing.
 | Full Pipeline L2 n=20 authorization packet draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md` |
 | Full Pipeline L2 n=20 authorization packet draft audit | `audits/l2_n20_authorization_packet_draft_report.md` |
 | Full Pipeline L2 n=20 selector/profile support audit | `audits/l2_n20_selector_profile_support_report.md` |
+| Full Pipeline L2 n=20 selector/profile support promotion audit | `audits/l2_n20_selector_profile_support_promotion_audit_report.md` |
 | Full Pipeline L1a final signature packet report | `audits/l1a_final_signature_packet_report.md` |
 | Full Pipeline L1a executable 12-cell selector support audit | `audits/l1a_executable_12cell_selector_support_report.md` |
 | Full Pipeline L1a executable 12-cell selector support promotion audit | `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md` |
@@ -98,13 +99,15 @@ treated as report-facing.
 
 ## Current Cluster 3 Planning Gate
 
-Post-L2-selector-support update: the L2 n=20 packet draft now exists at
+Post-L2-selector-support promotion update: the L2 n=20 packet draft now exists at
 `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md`
 with audits `audits/l2_n20_authorization_packet_draft_report.md` and
-`audits/l2_n20_selector_profile_support_report.md`. The current branch
-`codex/l2-n20-selector-profile-support` adds local-only selector/profile
-support for `grammar_mode_cp_12cell`, `scale_tier=paper`, `n=20`, and 240
-planned rows. The packet now classifies the command surface as
+`audits/l2_n20_selector_profile_support_report.md`, and the selector/profile
+support promotion is recorded in
+`audits/l2_n20_selector_profile_support_promotion_audit_report.md`. Promoted
+commit `27493c0 Add L2 n20 selector profile support` adds local-only
+selector/profile support for `grammar_mode_cp_12cell`, `scale_tier=paper`,
+`n=20`, and 240 planned rows. The packet now classifies the command surface as
 `L2_N20_SELECTOR_PROFILE_SUPPORT_READY_FOR_SIGNATURE_REVIEW`, but it remains
 unsigned and keeps `AUTHORIZES_EXECUTION: NO`. The L2 runtime profile is
 intentionally disabled until a later final signature branch explicitly enables
