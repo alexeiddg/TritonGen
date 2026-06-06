@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.3
+Version: 1.37.4
 Date: 2026-06-05
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -61,6 +61,7 @@ treated as report-facing.
 | C3 n20 metric-family-gated experiment packet | `docs/experiment_packets/c3_n20_metric_family_gated_packet.md` |
 | Full Pipeline grammar-mode x C x P launch packet v1 | `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md` |
 | Full Pipeline L1a n=1 authorization packet review draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md` |
+| Full Pipeline L1a authorization packet completion promotion audit | `audits/l1a_authorization_packet_completion_promotion_audit_report.md` |
 | Full Pipeline L1a authorization packet completion audit | `audits/l1a_authorization_packet_completion_report.md` |
 | Full Pipeline L1a baseline pin audit | `audits/l1a_packet_baseline_pin_report.md` |
 | Grammar-mode code-support audit for L1a readiness | `audits/grammar_mode_code_support_audit_report.md` |
@@ -155,8 +156,12 @@ Its baseline/provenance is now pinned to baseline-pin commit
 `d172e02 Pin L1a packet to grammar mode support baseline` and
 `code_support_commit: c24fbaa Add local grammar-mode support for 12-cell L1a`;
 see `audits/l1a_packet_baseline_pin_report.md` and
-`audits/l1a_authorization_packet_completion_report.md`. Local representability
-support uses the repo-supported grammar-mode values `grammar_off`,
+`audits/l1a_authorization_packet_completion_report.md`; the packet-completion
+commit `3771b73 Complete L1a authorization packet review draft` was
+fast-forward promoted into `codex-track-handoff-context` and promotion-audited
+in `audits/l1a_authorization_packet_completion_promotion_audit_report.md`.
+Local representability support uses the repo-supported grammar-mode values
+`grammar_off`,
 `template_upper_bound`, and `task_agnostic`; see
 `audits/grammar_mode_support_implementation_report.md` for
 `GRAMMAR_MODE_SUPPORT_IMPLEMENTATION_PARTIAL_TRACKING_DEFERRED`. MLflow
