@@ -3,12 +3,12 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1`
-packet_version: `0.6.0-expedited-preflight-blocked-digest`
-packet_type: expedited signature/preflight packet; not an execution packet until signed
-branch: `codex/l1a-expedited-signature-and-preflight`
+packet_version: `1.0.0-final-l1a-n1-execution-authorization-no-digest-fallback`
+packet_type: final L1a n=1 execution authorization packet; no-digest fallback accepted for L1a only
+branch: `codex/l1a-final-execution-authorization`
 target_branch: `codex-track-handoff-context`
 execution_code_target_commit: `31a097e3231e5b73a1402a26d18c660ba2f53d84 Audit L1a final signature packet promotion`
-approval_record_commit: `TO_BE_FILLED_AFTER_COMMIT`
+approval_record_commit: `TO_BE_FILLED_AFTER_FINAL_AUTH_COMMIT`
 target_commit_policy: `execution_code_target_commit_names_latest_promoted_code_bearing_baseline; approval_record_commit_names_docs_only_signed_packet_commit_after_commit`
 baseline_commit: `31a097e3231e5b73a1402a26d18c660ba2f53d84 Audit L1a final signature packet promotion`
 planning_baseline_commit: `59fa0d6 Audit L1a approval packet promotion`
@@ -41,36 +41,49 @@ human_signature_readiness_review_commit: `3318002 Review L1a human signature rea
 human_signature_readiness_review_status: `REVIEW_ONLY_INPUT_NOT_EXECUTION_TARGET`
 expedited_signature_preflight_branch: `codex/l1a-expedited-signature-and-preflight`
 expedited_signature_preflight_at: 2026-06-06
-final_signature_packet_status: `EXPEDITED_PREFLIGHT_REVIEW_UNSIGNED_BLOCKED_REMOTE_IMAGE_DIGEST`
-status: `EXPEDITED_PREFLIGHT_BLOCKED_REMOTE_IMAGE_DIGEST`
-DRAFT_READY_FOR_USER_SIGNATURE: NO
+expedited_signature_preflight_commit: `d2ab0a9 Prepare expedited L1a signature and preflight evidence`
+expedited_signature_preflight_promotion_audit_commit: `8da7683 Audit L1a expedited signature preflight promotion`
+final_execution_authorization_branch: `codex/l1a-final-execution-authorization`
+final_execution_authorization_at: 2026-06-06
+final_signature_packet_status: `SIGNED_FOR_L1A_N1_ONLY_NO_DIGEST_FALLBACK_ACCEPTED`
+status: `L1A_FINAL_EXECUTION_AUTHORIZATION_READY`
+DRAFT_READY_FOR_USER_SIGNATURE: SIGNED_FOR_L1A_N1_ONLY
 code_support_status: `LOCAL_REPRESENTABILITY_DRY_PLAN_AND_EXECUTABLE_SELECTOR_PLAN_READY`
-execution_readiness_status: `BLOCKED_REMOTE_IMAGE_DIGEST_AND_HUMAN_SIGNATURE_UNSIGNED`
-AUTHORIZES_EXECUTION: NO
+execution_readiness_status: `AUTHORIZED_L1A_N1_ONLY_PENDING_USER_LAUNCH`
+AUTHORIZES_EXECUTION: YES_L1A_N1_ONLY
 
 Execution authorization flags:
 
 ```text
-MODAL_AUTHORIZED: YES_FOR_REMOTE_IMAGE_DIGEST_AND_CURRENT_PRICING_VERIFICATION_ONLY
-GPU_AUTHORIZED: YES_FOR_REMOTE_IMAGE_DIGEST_PREFLIGHT_VERIFICATION_ONLY_NO_FUNCTION_INVOCATION_PERFORMED
-GENERATION_AUTHORIZED: NO
-EXPERIMENT_EXECUTION_AUTHORIZED: NO
-OUTPUT_MUTATION_AUTHORIZED: NO
+MODAL_AUTHORIZED: YES_L1A_N1_ONLY
+GPU_AUTHORIZED: YES_L1A_N1_ONLY
+GENERATION_AUTHORIZED: YES_L1A_N1_ONLY
+EXPERIMENT_EXECUTION_AUTHORIZED: YES_L1A_N1_ONLY
+OUTPUT_MUTATION_AUTHORIZED: YES_L1A_NAMESPACES_ONLY
+ARTIFACT_MUTATION_AUTHORIZED: YES_L1A_NAMESPACES_ONLY
+MLFLOW_TRACKING_EXECUTION_AUTHORIZED: NO_RUNTIME_MLFLOW_NOT_REQUIRED_BY_LAUNCHER
+BILLING_QUERY_AUTHORIZED: YES_L1A_RECONCILIATION_ONLY
+POST_RUN_VALIDATION_AUTHORIZED: YES_LISTED_COMMANDS_ONLY
 PAPER_SCALE_AUTHORIZED: NO
+L1B_AUTHORIZED: NO
+L2_AUTHORIZED: NO
 PERFORMANCE_EXECUTION_AUTHORIZED: NO
 PROFILER_AUTHORIZED: NO
-MLFLOW_TRACKING_EXECUTION_AUTHORIZED: NO
-BILLING_QUERY_AUTHORIZED: YES_FOR_L1A_RECONCILIATION_ONLY_AFTER_RUN
-NETWORK_AUTHORIZED: YES_FOR_MODAL_IMAGE_DIGEST_AND_CURRENT_PRICING_VERIFICATION_ONLY
-CREDENTIAL_USE_AUTHORIZED: NO
+BENCHMARK_AUTHORIZED: NO
+RETRY_AUTHORIZED: NO
+RESUME_AUTHORIZED: NO
+NETWORK_AUTHORIZED: YES_L1A_MODAL_RUN_AND_L1A_BILLING_RECONCILIATION_ONLY
+CREDENTIAL_USE_AUTHORIZED: YES_EXISTING_MODAL_AUTH_CONTEXT_L1A_N1_ONLY
 DEPENDENCY_CHANGE_AUTHORIZED: NO
 ```
 
-This packet records the user's limited Modal/GPU authorization for remote image
-digest and pricing/preflight verification only. It is not signed and does not
-authorize generation, experiment execution, output mutation, analyzer output
-refresh, report artifact refresh, MLflow runtime writes, paper-scale claims,
-benchmarks, profilers, dependency changes, or lockfile changes.
+This packet records the user's final L1a n=1 authorization and explicitly
+accepts the no-digest fallback provenance policy below. It authorizes exactly
+one 12-cell `grammar_mode x C x P` L1a n=1 run and the listed post-run
+validation/billing reconciliation surfaces. It does not authorize L1b, L2,
+paper-scale runs, retry, resume, benchmarks, profilers, dependency changes,
+lockfile changes, runtime MLflow tracking, or claims about performance,
+speedup, cost reduction, throughput improvement, or paper-scale evidence.
 
 The active execution-code target is the latest promoted handoff trunk baseline
 `31a097e3231e5b73a1402a26d18c660ba2f53d84 Audit L1a final signature packet
@@ -83,28 +96,29 @@ signature packet promotion audit `31a097e`. Earlier signature review targets
 such as `59fa0d6`, `e96f70a`, `0cc43c1`, `d172e02`, and `c05e111` are
 historical context only unless explicitly named as selector support evidence.
 
-Execution remains blocked even after local launcher support because this packet
-is unsigned and still lacks a remote image digest. The current Cluster 3 CLI now exposes local
-dry-plan and executable-plan selector surfaces for
+Execution authorization is now scoped to L1a n=1 only. The remote image digest
+blocker is waived only by the signed alternative provenance policy in this
+packet. The current Cluster 3 CLI exposes local dry-plan and executable-plan
+selector surfaces for
 `--condition grammar_mode_cp_12cell`. Both can select all 12
 `grammar_mode x C x P` cells, including the six no-P control cells. The
 executable-plan surface constructs exact per-cell future command strings with
-target paths and a signed-authorization placeholder; it does not invoke Modal,
-generation, correctness evaluation, output writing, artifact writing, tracking,
-or MLflow.
+target paths and a signed-authorization token. The planning surface itself does
+not invoke Modal, generation, correctness evaluation, output writing, artifact
+writing, tracking, or MLflow.
 
 This packet now includes a pricing-verified advisory preflight estimate for
 the exact target scope. The local utility
-`cluster3/planning/modal_preflight_estimator.py` can estimate L1a/L1b/L2 row
-counts, execution-shape envelopes, and larger-GPU breakeven requirements from
-explicit user-supplied pricing and timing inputs. That estimate remains
+`cluster3/planning/modal_preflight_estimator.py` can estimate row counts,
+execution-shape envelopes, and larger-GPU breakeven requirements from explicit
+user-supplied pricing and timing inputs, but this packet authorizes only L1a
+n=1 and does not authorize L1b or L2. That estimate remains
 planning-only: it does not authorize execution, does not replace billing
 reconciliation, and does not constitute experimental evidence.
 
 Modal pricing was re-verified against the official Modal pricing page on
 2026-06-06 for this expedited preflight. The numeric stop/spend limits below
-are ready for human signature, but they are not active until a final signed
-packet replaces the unsigned approval block and records the approval commit.
+are signed for L1a n=1 only.
 
 ## Final Approval Surface Summary
 
@@ -115,7 +129,7 @@ approval_record_commit: TO_BE_FILLED_AFTER_COMMIT
 exact_promoted_selector_commit: e9f180a Add executable planning for 12-cell L1a selector
 exact_selector_support_promotion_audit_commit: c05e111 Audit L1a executable selector support promotion
 final_signature_packet_promotion_audit_commit: 31a097e Audit L1a final signature packet promotion
-packet_completion_branch: codex/l1a-expedited-signature-and-preflight
+packet_completion_branch: codex/l1a-final-execution-authorization
 experiment_name: full_pipeline_grammar_mode_cp_factorial_v1
 level: L1a
 scale_tier: smoke/dev
@@ -125,7 +139,7 @@ design: grammar_mode x C x P
 dry_plan_selector: --condition grammar_mode_cp_12cell --dry-plan
 dry_plan_verification_command: .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --dry-plan
 executable_plan_verification_command: .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --execution-plan
-exact_intended_execution_command: .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite
+exact_intended_execution_command: TRITONGEN_MLFLOW=0 .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1 --overwrite
 output_root: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1
 observability_artifact_root: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1
 jsonl_path_pattern: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.jsonl
@@ -133,43 +147,120 @@ content_hash_sidecar_path_pattern: outputs/cluster3/full_pipeline_grammar_mode_c
 observability_event_sidecar_path_pattern: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.observability.jsonl
 observability_summary_sidecar_path_pattern: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.observability.summary.json
 observability_hash_sidecar_path_pattern: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.observability.jsonl.hashes.json
-AUTHORIZES_EXECUTION: NO
-DRAFT_READY_FOR_USER_SIGNATURE: NO_REMOTE_IMAGE_DIGEST_BLOCKED
+AUTHORIZES_EXECUTION: YES_L1A_N1_ONLY
+DRAFT_READY_FOR_USER_SIGNATURE: SIGNED_FOR_L1A_N1_ONLY
 ```
 
 The exact intended execution command surface is now source-backed locally by
 `cluster3/experiments/run_cluster3_modal.py` and
-`cluster3/planning/grammar_mode_matrix.py`, but it is not signed and is not a
-launch command. The signed-authorization placeholder
-`SIGNED_L1A_PACKET_ID_REQUIRED` must be replaced by a later explicit human
-approval, and the current branch still refuses runtime selector execution before
-tracking, generation, Modal, output writers, or observability writers. This
-packet does not provide execution authorization.
+`cluster3/planning/grammar_mode_matrix.py`. The signed-authorization token for
+the approved L1a n=1 run is
+`FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1`. This packet
+provides execution authorization only for that scope and token.
+
+## Signed No-Digest Fallback Provenance Policy
+
+remote_image_digest_status:
+`WAIVED_BY_SIGNED_ALTERNATIVE_PROVENANCE_POLICY_FOR_L1A_ONLY`
+
+Reason:
+
+Modal 1.4.2 did not expose a stable Docker digest, `sha256:` digest, or stable
+`im-...` image id through no-generation inspection. Direct image hydration was
+blocked by the Modal client, and ephemeral app registration exposed
+app/function/class handles but not image digest metadata. The signer accepts
+this fallback policy for L1a n=1 only.
+
+Replacement evidence:
+
+```text
+execution_code_target_commit: 31a097e3231e5b73a1402a26d18c660ba2f53d84 Audit L1a final signature packet promotion
+approval_record_commit: TO_BE_FILLED_AFTER_FINAL_AUTH_COMMIT
+preflight_evidence_commit: d2ab0a9 Prepare expedited L1a signature and preflight evidence
+preflight_promotion_audit_commit: 8da7683 Audit L1a expedited signature preflight promotion
+modal_app_name: tritongen-gpu-harness
+modal_client_version: 1.4.2
+modal_preflight_app_id: ap-oAbxWPcEyrDGyEfaBRWXqk
+modal_preflight_class_id: cs-OBgdIK0FxYbUuKFMpHNjFQ
+modal_preflight_generation_class_function_id: fu-Y1J87H1D2noHuthWzEPYB1
+modal_preflight_correctness_function_id: fu-6W0frnq4Q6GvPN2Vwyq64z
+modal_digest_status: BLOCKED_REMOTE_IMAGE_DIGEST_NOT_EXPOSED_WITHOUT_BROADER_MODAL_APP_PATH
+pricing_source: official Modal pricing page https://modal.com/pricing retrieved 2026-06-06
+```
+
+Image/runtime source files and hashes:
+
+```text
+shared/modal_harness/app.py sha256=bcf0a38f81f516187be3d7d1fb41d513f253eff16b3e480295ccd5f7ad54061c
+shared/modal_harness/images.py sha256=5acc6cff0991542dcba118081d499a6a51c03264d11c63d89fcbffadb95ad61c
+cluster2/modal/generation.py sha256=2b811d2c34de00f89d9b0c704f539a7093f5740e5e672d9c7b4e08c3d9c49cb9
+cluster2/modal/correctness.py sha256=f3b6dac0f413395c71ae3af240fd73d403c602ac00b84bf06e1aa440f1154260
+cluster3/experiments/run_cluster3_modal.py sha256=ed3db24711ed2750b26765a668d871e77fa0c09d2ec4a3ed6f0581a5ff0f2631
+cluster3/planning/grammar_mode_matrix.py sha256=33f6b1c5cba6abca430da97fb348244e27b0da9b9d4160af71f8b79d415de139
+```
+
+Dependency and lockfile hashes:
+
+```text
+pyproject.toml sha256=3ed8159e4b71e05172b8d0716ea5d9f3057a0cd8989425d60389a60d0623d908
+requirements.txt sha256=1671d73f1d747cc64fae787bdf657ed20f14974292d8c71dcde2c88f20c30df3
+requirements-dev.txt absent
+uv.lock absent
+poetry.lock absent
+Pipfile.lock absent
+```
+
+Post-run requirement:
+
+Capture all available Modal run, image, app, class, function, container,
+region, GPU, timing, attempt-status, preemption-status, and billing metadata into the L1a
+observability/provenance sidecar and/or the signed L1a audit artifacts without
+changing JSONL scientific rows.
+
+Scope:
+
+This fallback policy is valid only for one L1a n=1 12-cell smoke/dev run using
+the exact execution-code target and command bundle in this packet.
+
+Not valid for:
+
+- L1b;
+- L2;
+- paper-scale runs;
+- reruns;
+- retries;
+- resume;
+- performance claims;
+- speedup claims;
+- cost-reduction claims;
+- any future packet that changes runtime code, dependencies, image sources,
+  scientific semantics, sampling/model settings, repair policy, grammar
+  semantics, or pass/fail definitions.
 
 ## Signature Readiness Gap Closure Addendum
 
-This addendum closes repo-local signature-readiness gaps where possible without
-authorizing execution. Unresolved execution-critical fields remain explicitly
-classified and must still be completed by a future human signature.
+This addendum records the now-signed L1a n=1 approval surface. The approval
+record commit remains `TO_BE_FILLED_AFTER_FINAL_AUTH_COMMIT` until this
+docs-only packet commit is created.
 
 Resolved or narrowed fields:
 
 | Field | Status | Source-backed value or classification |
 |---|---|---|
-| execution code target commit | `RESOLVED_CURRENT_PROMOTED_TARGET_NOT_SIGNED` | Future signed target must name `codex-track-handoff-context` at `31a097e3231e5b73a1402a26d18c660ba2f53d84 Audit L1a final signature packet promotion`, which contains selector support commit `e9f180a`, selector-support promotion audit `c05e111`, final signature packet commit `316723a`, and final signature packet promotion audit `31a097e` |
-| approval record commit | `TO_BE_FILLED_AFTER_COMMIT` | The eventual signed packet commit may be newer and docs-only; it is not required to be the execution-code target |
-| executable command | `RESOLVED_LOCAL_COMMAND_SURFACE_NOT_SIGNED` | selector-level future command: `.venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite`; per-cell commands are emitted by `--execution-plan` |
-| observability run id convention | `PROPOSED_NOT_SIGNED` | global run id convention: `full_pipeline_grammar_mode_cp_factorial_v1_l1a_n1__target_<short_commit>__signed_<YYYYMMDDTHHMMSSZ>`; per-cell join key convention: `<run_id>__<condition_id>` |
+| execution code target commit | `SIGNED_L1A_N1_ONLY` | `codex-track-handoff-context` at `31a097e3231e5b73a1402a26d18c660ba2f53d84 Audit L1a final signature packet promotion`, which contains selector support commit `e9f180a`, selector-support promotion audit `c05e111`, final signature packet commit `316723a`, and final signature packet promotion audit `31a097e` |
+| approval record commit | `TO_BE_FILLED_AFTER_FINAL_AUTH_COMMIT` | The signed packet commit is newer and docs-only; it is not the execution-code target |
+| executable command | `SIGNED_L1A_N1_ONLY` | selector-level command: `TRITONGEN_MLFLOW=0 .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1 --overwrite`; per-cell commands are emitted by `--execution-plan` |
+| observability run id convention | `SIGNED_L1A_N1_ONLY` | global run id convention: `full_pipeline_grammar_mode_cp_factorial_v1_l1a_n1__target_31a097e__signed_<YYYYMMDDTHHMMSSZ>`; per-cell join key convention: `<run_id>__<condition_id>` |
 | current dry-plan observability join key | `RESOLVED_PLANNING_METADATA` | `cluster3/planning/grammar_mode_matrix.py` emits `full_pipeline_grammar_mode_cp_factorial_v1_l1a_n1__<condition_id>` join keys |
 | Modal app name | `RESOLVED_REPO_LOCAL` | `tritongen-gpu-harness` from `shared/modal_harness/app.py` |
 | Modal image definitions | `RESOLVED_REPO_LOCAL_SOURCE_ONLY` | `shared/modal_harness/images.py` defines `llm_generation_image` and `triton_compile_image`; L1a uses `cluster2.modal.generation.c2_generation_image` and `cluster2.modal.correctness.c2_correctness_image` through the shared `tritongen-gpu-harness` app |
-| Modal image digest | `BLOCKED_REMOTE_IMAGE_DIGEST_NOT_EXPOSED_WITHOUT_BROADER_MODAL_APP_PATH` | Modal 1.4.2 refused direct image hydration; ephemeral app registration hydrated function/class handles with zero tasks and no function invocations but did not expose a Docker digest or stable image id in CLI-visible metadata |
-| advisory preflight estimate | `SIGNABLE_ADVISORY_PRICING_VERIFIED_TIMING_ESTIMATED` | local estimator run with official Modal pricing and conservative estimated timing inputs; billing reconciliation remains authoritative |
-| numeric stop/spend limits | `READY_FOR_SIGNATURE_NOT_ACTIVE_UNTIL_HUMAN_SIGNOFF` | candidate limits are listed below for human approval only |
-| billing reconciliation plan | `READY_FOR_SIGNATURE_L1A_RECONCILIATION_ONLY_AFTER_APPROVED_RUN` | post-run billing is authoritative for actual spend; billing query authorization is scoped to L1a reconciliation after the signed run window exists |
-| validation bundle | `READY_FOR_SIGNATURE_REQUIRES_POST_RUN_ARTIFACTS` | exact local command surfaces are listed below; analyzer/report writes remain inactive until signed and artifacts exist |
+| Modal image digest | `WAIVED_BY_SIGNED_ALTERNATIVE_PROVENANCE_POLICY_FOR_L1A_ONLY` | Modal 1.4.2 refused direct image hydration; ephemeral app registration hydrated function/class handles with zero tasks and no function invocations but did not expose a Docker digest or stable image id in CLI-visible metadata |
+| advisory preflight estimate | `SIGNED_ADVISORY_PRICING_VERIFIED_TIMING_ESTIMATED` | local estimator run with official Modal pricing and conservative estimated timing inputs; billing reconciliation remains authoritative |
+| numeric stop/spend limits | `SIGNED_L1A_N1_ONLY` | limits are listed below and accepted for one L1a n=1 run |
+| billing reconciliation plan | `SIGNED_L1A_RECONCILIATION_ONLY_AFTER_APPROVED_RUN` | post-run billing is authoritative for actual spend; billing query authorization is scoped to L1a reconciliation after the signed run window exists |
+| validation bundle | `SIGNED_LISTED_COMMANDS_ONLY_AFTER_L1A_ARTIFACTS_EXIST` | exact local command surfaces are listed below; analyzer/report writes are scoped to listed L1a artifacts only |
 
-Synthetic advisory estimate placeholder:
+Signed advisory estimate:
 
 ```text
 estimate_status: SIGNABLE_ADVISORY_PRICING_VERIFIED_TIMING_ESTIMATED
@@ -189,28 +280,33 @@ wall_clock_cap_recommendation: 4 hours
 estimated_cost_cap_recommendation: USD 25
 reconciled_billing_cap_recommendation: USD 50
 warning_flags: advisory_only_not_experimental_evidence, stage_timing_inputs_estimated_not_measured
-signability_status: SIGNABLE_ADVISORY for L1a n=1 after human accepts estimated timing inputs; actual billing reconciliation remains authoritative
+signability_status: SIGNED_ADVISORY for L1a n=1; actual billing reconciliation remains authoritative
 ```
 
-Proposed unsigned stop/spend limits:
+Signed stop/spend limits:
 
 ```text
 max_rows: 12
-max_generation_attempts: READY_FOR_SIGNATURE_72_total_initial_plus_C_and_P_repair_attempt_ceiling
-max_repair_attempts_per_row: READY_FOR_SIGNATURE_P_5_when_enabled_C_5_when_enabled_0_otherwise
-max_correctness_calls: READY_FOR_SIGNATURE_72_total_attempt_ceiling
-max_wall_clock: READY_FOR_SIGNATURE_4_hours
-max_estimated_cost: READY_FOR_SIGNATURE_USD_25_pricing_verified_2026_06_06
-max_reconciled_billing_cost: READY_FOR_SIGNATURE_USD_50_billing_reconciliation_authoritative
-max_modal_invocations: READY_FOR_SIGNATURE_execution_shape_planning_bound_12_cell_selector
-stop_on_first_infrastructure_failure: READY_FOR_SIGNATURE_yes
-retry_policy: READY_FOR_SIGNATURE_no_retry_no_resume_unless_explicitly_signed
+max_generation_attempts: 72_total_initial_plus_C_and_P_repair_attempt_ceiling
+max_repair_attempts_per_row: P_5_when_enabled_C_5_when_enabled_0_otherwise
+max_correctness_calls: 72_total_attempt_ceiling
+max_wall_clock: 4_hours
+max_estimated_cost: USD_25_pricing_verified_2026_06_06
+max_reconciled_billing_cost: USD_50_billing_reconciliation_authoritative
+max_modal_invocations: execution_shape_planning_bound_12_cell_selector
+stop_on_first_infrastructure_failure: yes
+retry_policy: no_retry_no_resume
+resume_policy: no_resume
+fail_if_any_target_path_exists: true
+abort_if_unexpected_output_namespace_is_requested: true
+abort_if_row_count_exceeds_12: true
+abort_if_command_attempts_L1b_L2_or_paper_scale: true
 ```
 
 Billing reconciliation plan:
 
 ```text
-billing_reconciliation_status: READY_FOR_SIGNATURE_L1A_RECONCILIATION_ONLY_AFTER_APPROVED_RUN
+billing_reconciliation_status: SIGNED_L1A_RECONCILIATION_ONLY_AFTER_APPROVED_RUN
 authoritative_actual_spend_source: post-run reconciled Modal billing artifact
 required_after_approved_run: signed start/end UTC window; signed experiment_id; signed run_id; redacted billing report path; redacted report sha256; reconciliation dry-run result; reconciliation write authorization if any sidecar mutation is requested
 future_collection_command_status: AUTHORIZED_ONLY_AFTER_SIGNED_L1A_RUN_WINDOW_AND_REDACTED_OUTPUT_PATH_EXIST
@@ -280,8 +376,8 @@ paper_evidence: no
 ## Grammar-Mode Mapping
 
 Local representability now uses the repo-supported vocabulary. The execution
-approval line remains unsigned until a future signer also supplies exact
-runtime command/config, output paths, stop/spend limits, and preflight results.
+approval line is signed below for the exact runtime command/config, output
+paths, stop/spend limits, and preflight results in this packet.
 
 | grammar_mode | required mapping before execution |
 |---|---|
@@ -311,20 +407,20 @@ Local code-support proof:
   wording maps to `template_upper_bound` only when referring to the diagnostic
   template-upper-bound grammar, not to the primary task-agnostic grammar.
 
-## Required Runtime Fields Before Approval
+## Signed Runtime Fields For L1a n=1
 
 ```text
-approval_source: not_approved
-approval_timestamp: not_applicable
+approval_source: user_message_and_current_prompt
+approval_timestamp: 2026-06-06
 target_branch: codex-track-handoff-context
 execution_code_target_commit: 31a097e3231e5b73a1402a26d18c660ba2f53d84 Audit L1a final signature packet promotion
-approval_record_commit: TO_BE_FILLED_AFTER_COMMIT
+approval_record_commit: TO_BE_FILLED_AFTER_FINAL_AUTH_COMMIT
 exact_promoted_selector_commit: e9f180a Add executable planning for 12-cell L1a selector
 exact_selector_support_promotion_audit_commit: c05e111 Audit L1a executable selector support promotion
 final_signature_packet_promotion_audit_commit: 31a097e Audit L1a final signature packet promotion
-packet_completion_branch: codex/l1a-expedited-signature-and-preflight
-command: .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite
-command_manifest_status: LOCAL_EXECUTABLE_SELECTOR_COMMAND_BUNDLE_PRESENT_EXECUTION_UNSIGNED
+packet_completion_branch: codex/l1a-final-execution-authorization
+command: TRITONGEN_MLFLOW=0 .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1 --overwrite
+command_manifest_status: LOCAL_EXECUTABLE_SELECTOR_COMMAND_BUNDLE_PRESENT_SIGNED_L1A_N1_ONLY
 working_directory: /Users/alexeidelgado/Desktop/TritonGen
 exact_condition_list: twelve-cell matrix in this packet
 output_root: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1
@@ -349,72 +445,75 @@ grammar_file_paths: grammar_off=not_applicable_no_grammar; template_upper_bound=
 grammar_file_hash_lock: grammar_off=not_applicable_no_grammar; template_upper_bound=0f875b88ea80d7bc9573793f2cfb81bd75523af5ef5c0416466bc07d3eaf9b82; task_agnostic=7896a1befca10f68ab6aa4521681fa2577eba6fb669e87daf622c15691a22e32
 observability_mode: best_effort
 observability_experiment_id: full_pipeline_grammar_mode_cp_factorial_v1
-observability_run_id: PROPOSED_NOT_SIGNED full_pipeline_grammar_mode_cp_factorial_v1_l1a_n1__target_<short_commit>__signed_<YYYYMMDDTHHMMSSZ>
+observability_run_id: full_pipeline_grammar_mode_cp_factorial_v1_l1a_n1__target_31a097e__signed_<YYYYMMDDTHHMMSSZ>
 observability_join_key_convention: <observability_run_id>__<condition_id>
-mlflow_disposition: post_hoc_non_authoritative; runtime MLflow writes remain unauthorized; grammar-mode indexing patch remains deferred
+mlflow_disposition: runtime_mlflow_tracking_disabled_with_TRITONGEN_MLFLOW_0; post_hoc_non_authoritative_indexing_deferred_until_after_artifacts_exist_and_separate_command_is_signed
 max_rows: 12
-max_generation_attempts: READY_FOR_SIGNATURE_72_total_initial_plus_C_and_P_repair_attempt_ceiling
-max_repair_attempts_per_row: READY_FOR_SIGNATURE_P_5_when_enabled_C_5_when_enabled_0_otherwise
-max_wall_clock: READY_FOR_SIGNATURE_4_hours
-max_estimated_cost: READY_FOR_SIGNATURE_USD_25_pricing_verified_2026_06_06
-max_reconciled_billing_cost: READY_FOR_SIGNATURE_USD_50_billing_reconciliation_authoritative
-preflight_estimate: SIGNABLE_ADVISORY_PRICING_VERIFIED_TIMING_ESTIMATED
-stop_on_first_infrastructure_failure: READY_FOR_SIGNATURE_yes
+max_generation_attempts: 72_total_initial_plus_C_and_P_repair_attempt_ceiling
+max_repair_attempts_per_row: P_5_when_enabled_C_5_when_enabled_0_otherwise
+max_correctness_calls: 72_total_attempt_ceiling
+max_wall_clock: 4_hours
+max_estimated_cost: USD_25_pricing_verified_2026_06_06
+max_reconciled_billing_cost: USD_50_billing_reconciliation_authoritative
+preflight_estimate: SIGNED_ADVISORY_PRICING_VERIFIED_TIMING_ESTIMATED
+stop_on_first_infrastructure_failure: yes
 overwrite_policy: fail_if_any_target_path_exists
-retry_policy: READY_FOR_SIGNATURE_no_retry_no_resume_unless_explicitly_signed
-resume_policy: READY_FOR_SIGNATURE_no_resume_unless_explicitly_signed
-billing_reconciliation_requirement: ready_for_signature_post_run_modal_billing_reconciliation_required; estimates_do_not_replace_billing
+retry_policy: no_retry
+resume_policy: no_resume
+billing_reconciliation_requirement: signed_post_run_modal_billing_reconciliation_required; estimates_do_not_replace_billing
 modal_app_name: tritongen-gpu-harness
 modal_image_sources: c2_generation_image from cluster2/modal/generation.py using shared llm_generation_image; c2_correctness_image from cluster2/modal/correctness.py using shared triton_compile_image
-modal_image_digest: BLOCKED_REMOTE_IMAGE_DIGEST_NOT_EXPOSED_WITHOUT_BROADER_MODAL_APP_PATH
-post_run_validation_commands: READY_FOR_SIGNATURE required list in Post-Run Validation and Analyzer Command Surface sections
+remote_image_digest_status: WAIVED_BY_SIGNED_ALTERNATIVE_PROVENANCE_POLICY_FOR_L1A_ONLY
+modal_image_digest: WAIVED_BY_SIGNED_ALTERNATIVE_PROVENANCE_POLICY_FOR_L1A_ONLY
+post_run_validation_commands: SIGNED_LISTED_COMMANDS_ONLY in Post-Run Validation and Analyzer Command Surface sections
 ```
 
 ## Preflight Estimate And Limit Requirements
 
-This unsigned packet now attaches a signable advisory preflight estimate with
-official Modal pricing verified on 2026-06-06. It still uses conservative
-estimated timing inputs rather than measured L1a timing inputs. The estimate
-is planning evidence only; actual post-run billing reconciliation remains
-authoritative.
+This signed packet attaches an advisory preflight estimate with official Modal
+pricing verified on 2026-06-06. It uses conservative estimated timing inputs
+rather than measured L1a timing inputs. The signer accepts those inputs for one
+L1a n=1 smoke/dev run only. The estimate is planning evidence only; actual
+post-run billing reconciliation remains authoritative.
 
-Still required before a future signature:
+Signed policy:
 
-- obtain a remote Modal image digest or explicitly sign an alternative stable
-  Modal image/object provenance policy;
-- human-accept the estimated timing inputs or replace them with measured
-  timing inputs;
-- record the final `approval_record_commit` after commit;
-- record the exact signed run id and signed billing time-window policy;
-- state that estimates are not experimental evidence and do not replace JSONL
-  rows, content-hash sidecars, observability sidecars, analyzer outputs, or
-  billing reconciliation.
+- the remote Modal image digest is waived by the signed alternative provenance
+  policy above for L1a n=1 only;
+- conservative estimated timing inputs are accepted for L1a n=1 only;
+- the final `approval_record_commit` must be recorded after this docs-only
+  commit exists;
+- the exact signed run id and signed billing time-window must be recorded in
+  the post-run audit;
+- estimates are not experimental evidence and do not replace JSONL rows,
+  content-hash sidecars, observability sidecars, analyzer outputs, or billing
+  reconciliation.
 
 The promoted sidecar stage-timing instrumentation may be used only as
 instrumentation. This packet does not claim speedup, reduced runtime, reduced
 cost, completed optimization, throughput improvement, or any performance
 result.
 
-## L1a Command Manifest For Review
+## L1a Command Manifest
 
-No command in this section is authorized. The manifest records the exact
-condition-level intent and the current dry-plan/executable-plan selector
-support status.
+The commands in this section are authorized only within the signed L1a n=1
+scope. The manifest records the exact condition-level intent and the current
+dry-plan/executable-plan selector support status.
 
 | condition_id | runner selector | grammar argument | output JSONL | support status |
 |---|---|---|---|---|
-| `grammar_off__c_off__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell grammar_off__c_off__p_off` | none | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_off.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
-| `grammar_off__c_on__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell grammar_off__c_on__p_off` | none | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_off.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
-| `grammar_off__c_off__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell grammar_off__c_off__p_on` | none | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_on.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
-| `grammar_off__c_on__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell grammar_off__c_on__p_on` | none | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_on.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
-| `template_upper_bound__c_off__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell template_upper_bound__c_off__p_off` | `--grammar-variant template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_off.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
-| `template_upper_bound__c_on__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell template_upper_bound__c_on__p_off` | `--grammar-variant template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_off.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
-| `template_upper_bound__c_off__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell template_upper_bound__c_off__p_on` | `--grammar-variant template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_on.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
-| `template_upper_bound__c_on__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell template_upper_bound__c_on__p_on` | `--grammar-variant template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_on.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
-| `task_agnostic__c_off__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell task_agnostic__c_off__p_off` | `--grammar-variant task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_off.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
-| `task_agnostic__c_on__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell task_agnostic__c_on__p_off` | `--grammar-variant task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_off.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
-| `task_agnostic__c_off__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell task_agnostic__c_off__p_on` | `--grammar-variant task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_on.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
-| `task_agnostic__c_on__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell task_agnostic__c_on__p_on` | `--grammar-variant task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_on.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
+| `grammar_off__c_off__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell grammar_off__c_off__p_off` | none | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_off.jsonl` | `SIGNED_L1A_N1_CONTROL_CELL` |
+| `grammar_off__c_on__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell grammar_off__c_on__p_off` | none | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_off.jsonl` | `SIGNED_L1A_N1_CONTROL_CELL` |
+| `grammar_off__c_off__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell grammar_off__c_off__p_on` | none | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_on.jsonl` | `SIGNED_L1A_N1_CELL` |
+| `grammar_off__c_on__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell grammar_off__c_on__p_on` | none | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_on.jsonl` | `SIGNED_L1A_N1_CELL` |
+| `template_upper_bound__c_off__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell template_upper_bound__c_off__p_off` | `--grammar-variant template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_off.jsonl` | `SIGNED_L1A_N1_CONTROL_CELL` |
+| `template_upper_bound__c_on__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell template_upper_bound__c_on__p_off` | `--grammar-variant template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_off.jsonl` | `SIGNED_L1A_N1_CONTROL_CELL` |
+| `template_upper_bound__c_off__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell template_upper_bound__c_off__p_on` | `--grammar-variant template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_on.jsonl` | `SIGNED_L1A_N1_CELL` |
+| `template_upper_bound__c_on__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell template_upper_bound__c_on__p_on` | `--grammar-variant template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_on.jsonl` | `SIGNED_L1A_N1_CELL` |
+| `task_agnostic__c_off__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell task_agnostic__c_off__p_off` | `--grammar-variant task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_off.jsonl` | `SIGNED_L1A_N1_CONTROL_CELL` |
+| `task_agnostic__c_on__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell task_agnostic__c_on__p_off` | `--grammar-variant task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_off.jsonl` | `SIGNED_L1A_N1_CONTROL_CELL` |
+| `task_agnostic__c_off__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell task_agnostic__c_off__p_on` | `--grammar-variant task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_on.jsonl` | `SIGNED_L1A_N1_CELL` |
+| `task_agnostic__c_on__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell task_agnostic__c_on__p_on` | `--grammar-variant task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_on.jsonl` | `SIGNED_L1A_N1_CELL` |
 
 Local dry-plan command preview:
 
@@ -432,17 +531,16 @@ Local executable-plan command preview:
 
 The executable-plan preview emits one `executable_command` per selected cell.
 Each emitted command records `--signed-l1a-authorization
-SIGNED_L1A_PACKET_ID_REQUIRED`, the planned output JSONL path, the planned
+FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1`, the planned output JSONL path, the planned
 observability event path, `--overwrite`, `path_collision_policy:
 fail_if_any_target_path_exists`, and support status
-`EXECUTABLE_SELECTOR_PRESENT_AUTHORIZATION_REQUIRED_NO_EXECUTION`. Active
+`SIGNED_L1A_N1_ONLY`. Active
 grammar cells include the required `--grammar-variant`; `grammar_off` cells do
 not include a grammar argument.
 
 The six no-P cells are now selectable by the local dry-plan and executable-plan
-manifests. They still must not be executed or materialized without a later
-signed execution packet that approves exact runtime commands, target commit,
-target paths, stop/spend limits, and output mutation.
+manifests. They are signed as L1a n=1 controls only and must not be used as P
+evidence.
 
 ## Exact Execution Command Surface
 
@@ -455,7 +553,7 @@ Current exact dry-plan verification command:
 Current exact intended execution command:
 
 ```text
-.venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite
+TRITONGEN_MLFLOW=0 .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1 --overwrite
 ```
 
 Current source-backed per-cell command bundle surface:
@@ -469,39 +567,36 @@ all 12 cells, including `--output`, `--observability-mode best_effort`,
 `--observability-experiment-id`, `--observability-run-id`,
 `--observability-output`, `--grammar-mode-cell`, any required
 `--grammar-variant`, `--signed-l1a-authorization
-SIGNED_L1A_PACKET_ID_REQUIRED`, and `--overwrite`. It was inspected as source
-surface only in this packet-prep phase and must not be executed as launch
-authorization.
+FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1`, and
+`--overwrite`. The execution-plan verification command is local-only and may be
+used to confirm command expansion before launch.
 
-This command is not approved. It is a source-backed command surface for future
-signature review only. On this branch, `--condition grammar_mode_cp_12cell`
-without local planning mode still refuses before tracking setup, runtime
-generation, Modal, output writers, or observability writers. A future signature
-must replace `SIGNED_L1A_PACKET_ID_REQUIRED`, name the exact target commit,
-attach signable preflight and stop/spend limits, and explicitly approve output
-mutation before this command can be used.
+The intended execution command is approved only for the 12-cell L1a n=1 scope,
+with `TRITONGEN_MLFLOW=0`, the exact target commit, the signed preflight
+estimate, the signed stop/spend limits, fail-if-existing output policy, and the
+output/artifact namespaces listed below.
 
-## Planned Namespaces
+## Authorized L1a Namespaces
 
-These are reserved planning namespaces only. This packet does not create,
-overwrite, append, or validate them.
+These namespaces are authorized for the single signed L1a n=1 run and listed
+post-run validation commands only. `mlruns/` mutation and runtime MLflow
+tracking remain unauthorized.
 
 ```text
 outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/
 artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/
 artifacts/analysis/full_pipeline_grammar_mode_cp_factorial_v1/
 artifacts/reports/full_pipeline_grammar_mode_cp_factorial_v1/
-artifacts/mlflow_index/full_pipeline_grammar_mode_cp_factorial_v1/
 artifacts/billing/full_pipeline_grammar_mode_cp_factorial_v1/
 ```
 
-Any future execution packet must prove all target output and sidecar paths do
-not exist before launch unless an explicit resume/append/archive policy is
-approved.
+Before launch, all target output and sidecar paths must be absent. If any
+target path exists, the run must stop; retry, resume, append, and archive
+policies are not authorized by this packet.
 
-## Pre-Approval Validation Required
+## Pre-Execution Validation Required
 
-A future signer must record exact pass/fail results for:
+The operator must record exact pass/fail results before launch for:
 
 ```text
 git status --short --branch
@@ -511,7 +606,7 @@ git diff --name-only -- outputs artifacts mlruns docs/preliminary_report shared/
 positive-authorization scan over docs, audits, and .contracts, excluding generated preliminary-report previews
 ```
 
-Additional required proof before approval:
+Additional required proof before launch:
 
 - exact command/config is authorized for all 12 `grammar_mode`/C/P cells;
 - an advisory preflight estimate is attached for the exact packet scope,
@@ -524,12 +619,13 @@ Additional required proof before approval:
 - analyzer grouping is by `grammar_mode`;
 - C/P interactions are analyzed conditional on `grammar_mode`;
 - derived active-grammar summaries are diagnostic only;
-- MLflow indexing remains post-hoc and non-authoritative.
+- MLflow indexing remains post-hoc and non-authoritative, and runtime MLflow is
+  disabled for the execution command.
 
-## Post-Run Validation Required After Any Future Approved Run
+## Post-Run Validation Required After Approved L1a Run
 
-If a later signed execution packet authorizes L1a and artifacts are created, the
-post-run audit must include these exact validation classes:
+After the signed L1a run creates artifacts, the post-run audit must include
+these exact validation classes:
 
 - row-count validation for 12 expected rows or explicit stop-condition
   disposition;
@@ -546,28 +642,26 @@ post-run audit must include these exact validation classes:
 Exact command bundle status:
 
 ```text
-post_run_schema_validation_command: READY_FOR_SIGNATURE see exact command below
-post_run_content_hash_validation_command: READY_FOR_SIGNATURE see exact command below
-post_run_observability_sidecar_validation_command: READY_FOR_SIGNATURE see exact command below
-post_run_grammar_mode_consistency_command: READY_FOR_SIGNATURE see exact command below
-post_run_analyzer_report_command: READY_FOR_SIGNATURE see exact command below
-post_run_billing_reconciliation_command: READY_FOR_SIGNATURE_AFTER_SIGNED_RUN_WINDOW_AND_REDACTED_REPORT_PATH
+post_run_schema_validation_command: SIGNED_LISTED_COMMAND_ONLY see exact command below
+post_run_content_hash_validation_command: SIGNED_LISTED_COMMAND_ONLY see exact command below
+post_run_observability_sidecar_validation_command: SIGNED_LISTED_COMMAND_ONLY see exact command below
+post_run_grammar_mode_consistency_command: SIGNED_LISTED_COMMAND_ONLY see exact command below
+post_run_analyzer_report_command: SIGNED_LISTED_COMMAND_ONLY see exact command below
+post_run_billing_reconciliation_command: SIGNED_AFTER_L1A_RUN_WINDOW_AND_REDACTED_REPORT_PATH
 ```
 
-The analyzer/report command surface must be signed before use. The expected
-shape is:
+The analyzer/report command surface is signed for the exact L1a n=1 artifact
+paths only. The expected shape is:
 
 ```text
 TRITONGEN_MLFLOW=0 .venv/bin/python -m shared.analysis.factorial --inputs outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_off.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_off.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_on.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_on.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_off.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_off.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_on.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_on.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_off.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_off.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_on.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_on.jsonl --analysis-scope l1a_grammar_mode_cp_smoke --scale-tier smoke --output artifacts/analysis/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1_factorial.json --markdown-output artifacts/reports/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1_factorial.md --bootstrap-samples 10000 --bootstrap-seed 13013
 ```
 
-The exact 12 input paths must be expanded before signature rather than supplied
-through an unchecked shell glob. The analyzer output and markdown report paths
-are planned post-run artifacts only; this packet does not authorize writing
-them. Runtime MLflow writes remain disabled unless a later signed packet
-separately authorizes MLflow tracking.
+The exact 12 input paths are expanded rather than supplied through an unchecked
+shell glob. The analyzer output and markdown report paths are authorized
+post-run L1a artifacts only. Runtime MLflow writes remain disabled.
 
-Exact local validation command surfaces for a future approved run:
+Exact local validation command surfaces for the approved L1a run:
 
 ```text
 .venv/bin/python -c 'import json; from pathlib import Path; from cluster3.results.dataclass import Cluster3EvalRow; paths=[Path(p) for p in ["outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_on.jsonl"]]; rows=[]; [rows.extend(Cluster3EvalRow.from_json(line) for line in path.read_text(encoding="utf-8").splitlines() if line) for path in paths]; assert len(rows)==12, len(rows); print("schema_and_row_count_valid", len(rows))'
@@ -578,28 +672,28 @@ Exact local validation command surfaces for a future approved run:
 
 ## Go/No-Go Checklist
 
-All items below must be true before any future signature:
+All items below must be true before launch:
 
 - target branch is `codex-track-handoff-context`;
 - execution code target commit is
   `31a097e3231e5b73a1402a26d18c660ba2f53d84`;
-- approval record commit is filled after the signed packet commit;
+- approval record commit policy is preserved and the final authorization commit
+  is reported after commit;
 - launch packet still selects the 12-cell `grammar_mode x C x P` design;
 - dry-plan verification succeeds for all 12 cells;
 - exact intended execution command or exact per-cell command bundle is supplied;
-- all target JSONL, content-hash, observability, analyzer, report, billing, and
-  optional MLflow paths are absent or have a signed archive/resume policy;
+- all target JSONL, content-hash, observability, analyzer, report, and billing
+  paths are absent;
 - advisory preflight estimate is attached for the exact L1a scope;
 - official Modal pricing is re-verified on the approval date;
 - numeric stop limits are supplied and accepted;
 - numeric spend limits are supplied and accepted;
-- remote Modal image digest is recorded or an alternative stable provenance
-  policy is explicitly signed;
+- alternative stable provenance policy is explicitly signed for L1a n=1 only;
 - billing reconciliation plan is approved;
 - post-run validation command bundle is supplied and approved;
 - no-P cells are classified as controls and not as P evidence;
-- MLflow remains post-hoc/non-authoritative unless separately approved;
-- signature block below is completed by the user.
+- runtime MLflow remains disabled with `TRITONGEN_MLFLOW=0`;
+- signature block below is complete.
 
 ## Stop Conditions
 
@@ -626,46 +720,52 @@ Stop before or during any future approved L1a execution if:
 
 ## Explicit Approval
 
-Not signable as-is because the remote Modal image digest/provenance field is
-still blocked. No execution is approved.
+The user signed this packet for exactly one L1a n=1 12-cell run and explicitly
+accepted the no-digest fallback provenance policy for L1a only.
 
 ```text
-AUTHORIZES_EXECUTION: NO
-DRAFT_READY_FOR_USER_SIGNATURE: NO_REMOTE_IMAGE_DIGEST_BLOCKED
+AUTHORIZES_EXECUTION: YES_L1A_N1_ONLY
+DRAFT_READY_FOR_USER_SIGNATURE: SIGNED_FOR_L1A_N1_ONLY
 
-signature_status: UNSIGNED
-signer_name: REQUIRED_BEFORE_SIGNATURE_blank_or_unsigned
-date_time: REQUIRED_BEFORE_SIGNATURE_blank_or_unsigned
-approval_scope: REQUIRED_BEFORE_SIGNATURE
+signature_status: SIGNED_FOR_L1A_N1_ONLY
+signer: user
+signer_name: user
+date_time: 2026-06-06 America/Mexico_City
+authorization_source: User message: 'i explictly authorize modal and gpu... i have 48 hours max to get them all done.'; current user message: 'promote d2ab0a9, then create a final execution-authorization packet that explicitly accepts the no-digest fallback.'
+approval_scope: L1a n=1, 12 cells only
+execution_scope: L1a n=1, 12 cells only
 exact_target_branch: codex-track-handoff-context
 execution_code_target_commit: 31a097e3231e5b73a1402a26d18c660ba2f53d84 Audit L1a final signature packet promotion
-approval_record_commit: TO_BE_FILLED_AFTER_COMMIT
+approval_record_commit: TO_BE_FILLED_AFTER_FINAL_AUTH_COMMIT
 exact_promoted_selector_commit: e9f180a Add executable planning for 12-cell L1a selector
 exact_selector_support_promotion_audit_commit: c05e111 Audit L1a executable selector support promotion
 final_signature_packet_promotion_audit_commit: 31a097e Audit L1a final signature packet promotion
-exact_intended_execution_command: READY_FOR_SIGNATURE .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite
-exact_per_cell_command_bundle: READY_FOR_SIGNATURE emitted by .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --execution-plan
-numeric_stop_limits: READY_FOR_SIGNATURE; signer must approve or replace
-numeric_spend_limits: READY_FOR_SIGNATURE; signer must approve or replace
-spend_cap: READY_FOR_SIGNATURE_USD_25_estimated_USD_50_reconciled
-stop_limits: READY_FOR_SIGNATURE_rows_12_generation_attempts_72_correctness_calls_72_wall_clock_4h_stop_on_first_infrastructure_failure
+preflight_evidence_commit: d2ab0a9 Prepare expedited L1a signature and preflight evidence
+preflight_promotion_audit_commit: 8da7683 Audit L1a expedited signature preflight promotion
+exact_intended_execution_command: TRITONGEN_MLFLOW=0 .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1 --overwrite
+exact_execution_plan_verification_command: .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --execution-plan
+exact_dry_plan_verification_command: .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --dry-plan
+numeric_stop_limits: SIGNED_rows_12_generation_attempts_72_correctness_calls_72_wall_clock_4h_stop_on_first_infrastructure_failure_fail_if_existing_paths_no_retry_no_resume
+numeric_spend_limits: SIGNED_USD_25_estimated_USD_50_reconciled
+spend_cap: USD_25_estimated_USD_50_reconciled
+approved_spend_cap: USD_50_reconciled_billing_cap
+approved_wall_clock_cap: 4h
+stop_limits: rows_12_generation_attempts_72_correctness_calls_72_wall_clock_4h_stop_on_first_infrastructure_failure_fail_if_existing_paths
 modal_pricing_recheck_completed: YES_2026_06_06_OFFICIAL_MODAL_PRICING_PAGE
-preflight_estimate_attachment: SIGNABLE_ADVISORY_PRICING_VERIFIED_TIMING_ESTIMATED
+preflight_estimate_attachment: SIGNED_ADVISORY_PRICING_VERIFIED_TIMING_ESTIMATED
 advisory_estimate_attached: YES
-remote_image_digest_recorded: NO_BLOCKED_NOT_EXPOSED_BY_MODAL_1_4_2_NO_INVOCATION_PATH
-modal_image_digest: BLOCKED_REMOTE_IMAGE_DIGEST_NOT_EXPOSED_WITHOUT_BROADER_MODAL_APP_PATH
-billing_reconciliation_plan: READY_FOR_SIGNATURE_L1A_RECONCILIATION_ONLY_AFTER_SIGNED_RUN_WINDOW
-billing_reconciliation_plan_accepted: READY_FOR_SIGNATURE_yes_no
-post_run_validation_bundle: READY_FOR_SIGNATURE_COMMANDS_LISTED_ABOVE
-post_run_validation_bundle_accepted: READY_FOR_SIGNATURE_yes_no
-authorization_statement: REQUIRED_BEFORE_SIGNATURE_explicit_human_statement_required
-authorization_statement_status: UNSIGNED_no_execution_authorization
-
-NOT APPROVED. A future user approval must replace this unsigned block with a
-signed L1a approval that names this packet, the exact target branch,
-execution_code_target_commit, approval_record_commit, the full 12-cell launcher
-support proof, the output and sidecar paths, stop/spend limits, advisory
-preflight estimate, billing reconciliation plan, post-run validation command
-bundle, and a remote image digest or explicitly signed alternative Modal image
-provenance policy.
+remote_image_digest_recorded: WAIVED_BY_SIGNED_ALTERNATIVE_PROVENANCE_POLICY_FOR_L1A_ONLY
+remote_digest_policy: WAIVED_BY_SIGNED_ALTERNATIVE_PROVENANCE_POLICY_FOR_L1A_ONLY
+modal_image_digest: WAIVED_BY_SIGNED_ALTERNATIVE_PROVENANCE_POLICY_FOR_L1A_ONLY
+billing_reconciliation_plan: SIGNED_L1A_RECONCILIATION_ONLY_AFTER_SIGNED_RUN_WINDOW
+billing_reconciliation_plan_accepted: yes
+billing_query_authorized: YES_L1A_RECONCILIATION_ONLY
+post_run_validation_bundle: SIGNED_COMMANDS_LISTED_ABOVE_ONLY
+post_run_validation_bundle_accepted: yes
+output_mutation_scope: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1 only
+artifact_mutation_scope: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1 plus listed L1a analysis/report/billing artifacts only
+mlruns_mutation_scope: none; runtime MLflow disabled with TRITONGEN_MLFLOW=0
+not_authorized: L1b, L2, paper-scale, retry, resume, benchmark, profiler, performance claims, speedup claims, dependency changes, lockfile changes, runtime MLflow tracking
+authorization_statement: I authorize exactly one L1a n=1 12-cell Modal/GPU generation run using this packet, the exact command above, the signed stop/spend limits above, and the signed no-digest fallback provenance policy above. I do not authorize L1b, L2, paper-scale, retry, resume, performance work, benchmarks, profilers, runtime MLflow tracking, or any output outside the listed L1a namespaces.
+authorization_statement_status: SIGNED_L1A_N1_ONLY
 ```
