@@ -538,6 +538,25 @@ class _Cluster3ObservabilityRuntime:
         row: Cluster3EvalRow,
         monotonic_ns: int,
     ) -> None:
+        self.record_stage_started_for_identity(
+            stage=stage,
+            row_index=row_index,
+            row_identity=_observability_row_identity_from_row(row),
+            attempt=_observability_attempt_identity_from_row(row),
+            condition=row.condition,
+            monotonic_ns=monotonic_ns,
+        )
+
+    def record_stage_started_for_identity(
+        self,
+        *,
+        stage: str,
+        row_index: int,
+        row_identity: ObservabilityRowIdentity,
+        attempt: ObservabilityAttemptIdentity,
+        condition: str,
+        monotonic_ns: int,
+    ) -> None:
         if not self.enabled:
             return
         self._append(
@@ -546,11 +565,11 @@ class _Cluster3ObservabilityRuntime:
             status="started",
             stage=stage,
             monotonic_ns=monotonic_ns,
-            row_identity=_observability_row_identity_from_row(row),
-            attempt=_observability_attempt_identity_from_row(row),
+            row_identity=row_identity,
+            attempt=attempt,
             attributes={
                 "row_index": row_index,
-                "condition": row.condition,
+                "condition": condition,
                 "stage": stage,
             },
         )
@@ -564,6 +583,27 @@ class _Cluster3ObservabilityRuntime:
         start_monotonic_ns: int,
         end_monotonic_ns: int,
     ) -> None:
+        self.record_stage_completed_for_identity(
+            stage=stage,
+            row_index=row_index,
+            row_identity=_observability_row_identity_from_row(row),
+            attempt=_observability_attempt_identity_from_row(row),
+            condition=row.condition,
+            start_monotonic_ns=start_monotonic_ns,
+            end_monotonic_ns=end_monotonic_ns,
+        )
+
+    def record_stage_completed_for_identity(
+        self,
+        *,
+        stage: str,
+        row_index: int,
+        row_identity: ObservabilityRowIdentity,
+        attempt: ObservabilityAttemptIdentity,
+        condition: str,
+        start_monotonic_ns: int,
+        end_monotonic_ns: int,
+    ) -> None:
         if not self.enabled:
             return
         self._append(
@@ -574,11 +614,11 @@ class _Cluster3ObservabilityRuntime:
             monotonic_ns=end_monotonic_ns,
             start_monotonic_ns=start_monotonic_ns,
             end_monotonic_ns=end_monotonic_ns,
-            row_identity=_observability_row_identity_from_row(row),
-            attempt=_observability_attempt_identity_from_row(row),
+            row_identity=row_identity,
+            attempt=attempt,
             attributes={
                 "row_index": row_index,
-                "condition": row.condition,
+                "condition": condition,
                 "stage": stage,
             },
         )
@@ -593,6 +633,29 @@ class _Cluster3ObservabilityRuntime:
         start_monotonic_ns: int,
         end_monotonic_ns: int,
     ) -> None:
+        self.record_stage_failed_for_identity(
+            stage=stage,
+            row_index=row_index,
+            row_identity=_observability_row_identity_from_row(row),
+            attempt=_observability_attempt_identity_from_row(row),
+            condition=row.condition,
+            error=error,
+            start_monotonic_ns=start_monotonic_ns,
+            end_monotonic_ns=end_monotonic_ns,
+        )
+
+    def record_stage_failed_for_identity(
+        self,
+        *,
+        stage: str,
+        row_index: int,
+        row_identity: ObservabilityRowIdentity,
+        attempt: ObservabilityAttemptIdentity,
+        condition: str,
+        error: BaseException,
+        start_monotonic_ns: int,
+        end_monotonic_ns: int,
+    ) -> None:
         if not self.enabled:
             return
         self._append(
@@ -603,8 +666,8 @@ class _Cluster3ObservabilityRuntime:
             monotonic_ns=end_monotonic_ns,
             start_monotonic_ns=start_monotonic_ns,
             end_monotonic_ns=end_monotonic_ns,
-            row_identity=_observability_row_identity_from_row(row),
-            attempt=_observability_attempt_identity_from_row(row),
+            row_identity=row_identity,
+            attempt=attempt,
             error_summary={
                 "public_failure_code": "stage_failed",
                 "bounded_public_error_class": type(error).__name__,
@@ -612,7 +675,7 @@ class _Cluster3ObservabilityRuntime:
             },
             attributes={
                 "row_index": row_index,
-                "condition": row.condition,
+                "condition": condition,
                 "stage": stage,
             },
         )
@@ -1191,6 +1254,7 @@ def run_cluster3(
                                 kernel_name=kernel_name,
                                 dtype=dtype,
                                 base_seed=base_seed,
+                                row_index=row_index,
                                 config=config,
                                 run_id=run_id,
                                 generation=generation,
@@ -1200,6 +1264,7 @@ def run_cluster3(
                                 c_loop_runner=c_loop_runner,
                                 c3_hashes=hashes_by_condition[condition],
                                 stats=stats,
+                                observability=observability,
                             )
                             control_row = _resolve_control_row(
                                 deps.no_p_control_resolver,
@@ -1465,6 +1530,7 @@ def _run_generated_cell(
     kernel_name: str,
     dtype: str,
     base_seed: int,
+    row_index: int,
     config: Cluster3RunnerConfig,
     run_id: str,
     generation: GenerationAdapter,
@@ -1474,35 +1540,80 @@ def _run_generated_cell(
     c_loop_runner: CLoopRunnerCallable,
     c3_hashes: dict[str, str],
     stats: _ConditionRunStats,
+    observability: _Cluster3ObservabilityRuntime,
 ) -> Cluster3EvalRow:
     c2_generation_condition = cluster3_to_cluster2_generation_condition(condition)
     base_prompt = _build_base_prompt(kernel_class, dtype)
     prompt_hash = _sha256(base_prompt)
     initial_seed = base_seed
+    initial_attempt = ObservabilityAttemptIdentity(
+        attempt_index=0,
+        condition=condition,
+    )
+    initial_row_identity = _observability_row_identity(
+        condition=condition,
+        kernel_class=kernel_class,
+        kernel_name=kernel_name,
+        dtype=dtype,
+        base_seed=base_seed,
+        generation_seed=initial_seed,
+        attempt_index=0,
+    )
     diagnostic_source = _read_diagnostic_seed_source(config)
     if diagnostic_source is None:
-        generation_payload = generation(
-            identity=_c2_generation_identity(
-                run_id=run_id,
-                condition=c2_generation_condition,
-                kernel_class=kernel_class,
-                kernel_name=kernel_name,
-                dtype=dtype,
-                base_seed=base_seed,
-                sample_index=base_seed,
-                attempt_index=0,
-            ),
-            prompt=base_prompt,
-            model_id=config.model_id,
-            model_revision=config.model_revision,
-            tokenizer_revision=config.tokenizer_revision,
-            generation_seed=initial_seed,
-            temperature=config.temperature,
-            max_new_tokens=config.max_new_tokens,
-            grammar_variant=(
-                config.grammar_variant if c2_generation_condition == "G+C" else None
-            ),
-            modal_generation_gpu=config.modal_generation_gpu,
+        generation_start_monotonic_ns = time.perf_counter_ns()
+        observability.record_stage_started_for_identity(
+            stage="generation",
+            row_index=row_index,
+            row_identity=initial_row_identity,
+            attempt=initial_attempt,
+            condition=condition,
+            monotonic_ns=generation_start_monotonic_ns,
+        )
+        try:
+            generation_payload = generation(
+                identity=_c2_generation_identity(
+                    run_id=run_id,
+                    condition=c2_generation_condition,
+                    kernel_class=kernel_class,
+                    kernel_name=kernel_name,
+                    dtype=dtype,
+                    base_seed=base_seed,
+                    sample_index=base_seed,
+                    attempt_index=0,
+                ),
+                prompt=base_prompt,
+                model_id=config.model_id,
+                model_revision=config.model_revision,
+                tokenizer_revision=config.tokenizer_revision,
+                generation_seed=initial_seed,
+                temperature=config.temperature,
+                max_new_tokens=config.max_new_tokens,
+                grammar_variant=(
+                    config.grammar_variant if c2_generation_condition == "G+C" else None
+                ),
+                modal_generation_gpu=config.modal_generation_gpu,
+            )
+        except BaseException as exc:
+            observability.record_stage_failed_for_identity(
+                stage="generation",
+                row_index=row_index,
+                row_identity=initial_row_identity,
+                attempt=initial_attempt,
+                condition=condition,
+                error=exc,
+                start_monotonic_ns=generation_start_monotonic_ns,
+                end_monotonic_ns=time.perf_counter_ns(),
+            )
+            raise
+        observability.record_stage_completed_for_identity(
+            stage="generation",
+            row_index=row_index,
+            row_identity=initial_row_identity,
+            attempt=initial_attempt,
+            condition=condition,
+            start_monotonic_ns=generation_start_monotonic_ns,
+            end_monotonic_ns=time.perf_counter_ns(),
         )
         stats.generation_calls += 1
         initial_source = _extract_generated_source(generation_payload)
@@ -1522,8 +1633,49 @@ def _run_generated_cell(
         sample_index=base_seed,
         attempt_index=0,
     )
-    initial_payload = correctness(
-        Cluster3CorrectnessRequest(identity=initial_identity, source=initial_source)
+    correctness_row_identity = _observability_row_identity(
+        condition=condition,
+        kernel_class=kernel_class,
+        kernel_name=kernel_name,
+        dtype=dtype,
+        base_seed=base_seed,
+        generation_seed=initial_seed,
+        attempt_index=0,
+        source_hash=_sha256(initial_source),
+    )
+    correctness_start_monotonic_ns = time.perf_counter_ns()
+    observability.record_stage_started_for_identity(
+        stage="correctness_eval",
+        row_index=row_index,
+        row_identity=correctness_row_identity,
+        attempt=initial_attempt,
+        condition=condition,
+        monotonic_ns=correctness_start_monotonic_ns,
+    )
+    try:
+        initial_payload = correctness(
+            Cluster3CorrectnessRequest(identity=initial_identity, source=initial_source)
+        )
+    except BaseException as exc:
+        observability.record_stage_failed_for_identity(
+            stage="correctness_eval",
+            row_index=row_index,
+            row_identity=correctness_row_identity,
+            attempt=initial_attempt,
+            condition=condition,
+            error=exc,
+            start_monotonic_ns=correctness_start_monotonic_ns,
+            end_monotonic_ns=time.perf_counter_ns(),
+        )
+        raise
+    observability.record_stage_completed_for_identity(
+        stage="correctness_eval",
+        row_index=row_index,
+        row_identity=correctness_row_identity,
+        attempt=initial_attempt,
+        condition=condition,
+        start_monotonic_ns=correctness_start_monotonic_ns,
+        end_monotonic_ns=time.perf_counter_ns(),
     )
     stats.correctness_calls += 1
     initial_result = _augment_result_identity(
@@ -1545,7 +1697,11 @@ def _run_generated_cell(
     c_result: Cluster3CLoopResult | None = None
 
     if decision.route == "c_loop":
-        c_result = _call_c_loop(
+        c_result = _timed_call_c_loop(
+            observability=observability,
+            row_index=row_index,
+            row_identity=correctness_row_identity,
+            attempt=initial_attempt,
             c_loop_runner=c_loop_runner,
             condition=condition,
             c_loop_source="initial_f2",
@@ -1583,7 +1739,11 @@ def _run_generated_cell(
             prompt_hash=prompt_hash,
             evaluation_result=initial_result,
         )
-        p_result = _run_p_loop(
+        p_result = _timed_run_p_loop(
+            observability=observability,
+            row_index=row_index,
+            row_identity=correctness_row_identity,
+            attempt=initial_attempt,
             p_repair_loop=p_repair_loop,
             condition=condition,
             c2_generation_condition=c2_generation_condition,
@@ -1606,7 +1766,11 @@ def _run_generated_cell(
             p_result.status == "compile_repaired_f2_observed"
             and condition in {"C+P", "G+C+P"}
         ):
-            c_result = _call_c_loop(
+            c_result = _timed_call_c_loop(
+                observability=observability,
+                row_index=row_index,
+                row_identity=correctness_row_identity,
+                attempt=initial_attempt,
                 c_loop_runner=c_loop_runner,
                 condition=condition,
                 c_loop_source="post_p_f2",
@@ -1674,6 +1838,81 @@ class _PRuntime:
             self.prompt_hash_by_attempt = {}
         if self.result_by_attempt is None:
             self.result_by_attempt = {}
+
+
+def _timed_run_p_loop(
+    *,
+    observability: _Cluster3ObservabilityRuntime,
+    row_index: int,
+    row_identity: ObservabilityRowIdentity,
+    attempt: ObservabilityAttemptIdentity,
+    p_repair_loop: PRepairLoopCallable,
+    condition: str,
+    c2_generation_condition: str,
+    base_prompt: str,
+    base_seed: int,
+    sample_index: int,
+    kernel_class: str,
+    kernel_name: str,
+    dtype: str,
+    config: Cluster3RunnerConfig,
+    run_id: str,
+    generation: GenerationAdapter,
+    correctness: CorrectnessAdapter,
+    seed_attempt: PSeedAttempt,
+    runtime: _PRuntime,
+    stats: _ConditionRunStats,
+) -> PRepairLoopResult:
+    start_monotonic_ns = time.perf_counter_ns()
+    observability.record_stage_started_for_identity(
+        stage="p_repair",
+        row_index=row_index,
+        row_identity=row_identity,
+        attempt=attempt,
+        condition=condition,
+        monotonic_ns=start_monotonic_ns,
+    )
+    try:
+        result = _run_p_loop(
+            p_repair_loop=p_repair_loop,
+            condition=condition,
+            c2_generation_condition=c2_generation_condition,
+            base_prompt=base_prompt,
+            base_seed=base_seed,
+            sample_index=sample_index,
+            kernel_class=kernel_class,
+            kernel_name=kernel_name,
+            dtype=dtype,
+            config=config,
+            run_id=run_id,
+            generation=generation,
+            correctness=correctness,
+            seed_attempt=seed_attempt,
+            runtime=runtime,
+            stats=stats,
+        )
+    except BaseException as exc:
+        observability.record_stage_failed_for_identity(
+            stage="p_repair",
+            row_index=row_index,
+            row_identity=row_identity,
+            attempt=attempt,
+            condition=condition,
+            error=exc,
+            start_monotonic_ns=start_monotonic_ns,
+            end_monotonic_ns=time.perf_counter_ns(),
+        )
+        raise
+    observability.record_stage_completed_for_identity(
+        stage="p_repair",
+        row_index=row_index,
+        row_identity=row_identity,
+        attempt=attempt,
+        condition=condition,
+        start_monotonic_ns=start_monotonic_ns,
+        end_monotonic_ns=time.perf_counter_ns(),
+    )
+    return result
 
 
 def _run_p_loop(
@@ -1765,6 +2004,87 @@ def _run_p_loop(
         repair_budget=config.p_repair_budget,
         repair_history_config=config.repair_history_config,
     )
+
+
+def _timed_call_c_loop(
+    *,
+    observability: _Cluster3ObservabilityRuntime,
+    row_index: int,
+    row_identity: ObservabilityRowIdentity,
+    attempt: ObservabilityAttemptIdentity,
+    c_loop_runner: CLoopRunnerCallable,
+    condition: str,
+    c_loop_source: str,
+    base_prompt: str,
+    base_seed: int,
+    sample_index: int,
+    kernel_class: str,
+    kernel_name: str,
+    dtype: str,
+    seed_candidate_source: str,
+    seed_candidate_generation_seed: int,
+    seed_candidate_prompt_hash: str | None,
+    seed_candidate_prompt_hash_source: str,
+    seed_candidate_evaluation: Mapping[str, Any],
+    repair_budget: int,
+    model_config: Mapping[str, Any],
+    repair_history_config: RepairHistoryConfig,
+    provenance_base: Mapping[str, Any],
+    stats: _ConditionRunStats,
+) -> Cluster3CLoopResult:
+    start_monotonic_ns = time.perf_counter_ns()
+    observability.record_stage_started_for_identity(
+        stage="c_repair",
+        row_index=row_index,
+        row_identity=row_identity,
+        attempt=attempt,
+        condition=condition,
+        monotonic_ns=start_monotonic_ns,
+    )
+    try:
+        result = _call_c_loop(
+            c_loop_runner=c_loop_runner,
+            condition=condition,
+            c_loop_source=c_loop_source,
+            base_prompt=base_prompt,
+            base_seed=base_seed,
+            sample_index=sample_index,
+            kernel_class=kernel_class,
+            kernel_name=kernel_name,
+            dtype=dtype,
+            seed_candidate_source=seed_candidate_source,
+            seed_candidate_generation_seed=seed_candidate_generation_seed,
+            seed_candidate_prompt_hash=seed_candidate_prompt_hash,
+            seed_candidate_prompt_hash_source=seed_candidate_prompt_hash_source,
+            seed_candidate_evaluation=seed_candidate_evaluation,
+            repair_budget=repair_budget,
+            model_config=model_config,
+            repair_history_config=repair_history_config,
+            provenance_base=provenance_base,
+            stats=stats,
+        )
+    except BaseException as exc:
+        observability.record_stage_failed_for_identity(
+            stage="c_repair",
+            row_index=row_index,
+            row_identity=row_identity,
+            attempt=attempt,
+            condition=condition,
+            error=exc,
+            start_monotonic_ns=start_monotonic_ns,
+            end_monotonic_ns=time.perf_counter_ns(),
+        )
+        raise
+    observability.record_stage_completed_for_identity(
+        stage="c_repair",
+        row_index=row_index,
+        row_identity=row_identity,
+        attempt=attempt,
+        condition=condition,
+        start_monotonic_ns=start_monotonic_ns,
+        end_monotonic_ns=time.perf_counter_ns(),
+    )
+    return result
 
 
 def _call_c_loop(

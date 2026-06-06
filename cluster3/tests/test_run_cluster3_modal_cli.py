@@ -379,6 +379,15 @@ def _identity_dict(identity: Any) -> dict[str, Any]:
     return dict(identity)
 
 
+def _completed_stages(event_path: Path) -> list[str]:
+    return [
+        event.stage
+        for event in load_observability_events(event_path)
+        if event.event_type == "stage_completed"
+        and event.stage is not None
+    ]
+
+
 def _run_with_results(
     tmp_path: Path,
     condition: str,
@@ -1857,6 +1866,10 @@ def test_observability_required_writes_valid_sidecars_in_tmp_path(
         "row_started",
         "stage_started",
         "stage_completed",
+        "stage_started",
+        "stage_completed",
+        "stage_started",
+        "stage_completed",
         "row_completed",
         "run_completed",
     ]
@@ -1864,12 +1877,18 @@ def test_observability_required_writes_valid_sidecars_in_tmp_path(
     assert {event.run_id for event in events} == {"run-required"}
     assert events[1].row_identity.cluster == "cluster3"
     assert events[1].row_identity.condition == "P"
-    assert events[4].row_identity.row_sha256 is not None
+    assert events[8].row_identity.row_sha256 is not None
     result_lines = Path(config.output).read_text(encoding="utf-8").splitlines()
-    assert events[4].row_identity.row_sha256 == _sha(result_lines[0])
-    assert events[3].stage == "row_append"
+    assert events[8].row_identity.row_sha256 == _sha(result_lines[0])
+    assert [events[index].stage for index in (3, 5, 7)] == [
+        "generation",
+        "correctness_eval",
+        "row_append",
+    ]
     assert events[3].duration_ns is not None
     assert events[5].duration_ns is not None
+    assert events[7].duration_ns is not None
+    assert events[9].duration_ns is not None
     assert {event.modal_context is not None for event in events} == {True}
     assert {
         event.modal_context.modal_context_available
@@ -1954,15 +1973,17 @@ def test_observability_required_writes_valid_sidecars_in_tmp_path(
     assert summary.event_counts == {
         "run_started": 1,
         "row_started": 1,
-        "stage_started": 1,
-        "stage_completed": 1,
+        "stage_started": 3,
+        "stage_completed": 3,
         "row_completed": 1,
         "run_completed": 1,
     }
-    assert summary.stage_durations_ns["row_append"] == events[3].duration_ns
+    assert summary.stage_durations_ns["generation"] == events[3].duration_ns
+    assert summary.stage_durations_ns["correctness_eval"] == events[5].duration_ns
+    assert summary.stage_durations_ns["row_append"] == events[7].duration_ns
     assert summary.token_totals == {
         "token_count_status": "unavailable",
-        "events_with_token_counts": 6,
+        "events_with_token_counts": 10,
         "events_with_available_token_counts": 0,
         "prompt_tokens": 0,
         "generated_tokens": 0,
@@ -1972,12 +1993,164 @@ def test_observability_required_writes_valid_sidecars_in_tmp_path(
     assert summary.estimated_cost_summary == _unavailable_cost_summary()
     assert summary.modal_context_summary == {
         "context_status": "unavailable",
-        "events_with_modal_context": 6,
+        "events_with_modal_context": 10,
         "events_with_available_context": 0,
         "modal_context_sources": ["unavailable"],
     }
     assert summary.source_event_sha256 == file_sha256(event_path)
     assert default_observability_hash_path(event_path).exists()
+
+
+def test_observability_stage_timing_omits_repair_stages_when_not_active(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "success-stage-timing.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="cluster3-stage-timing",
+        observability_run_id="run-success",
+        observability_output=str(event_path),
+    )
+
+    run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+        ),
+    )
+
+    assert _completed_stages(event_path) == [
+        "generation",
+        "correctness_eval",
+        "row_append",
+    ]
+
+
+def test_observability_stage_timing_records_p_repair_only_when_p_path_active(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "p-repair-stage-timing.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="cluster3-stage-timing",
+        observability_run_id="run-p-repair",
+        observability_output=str(event_path),
+    )
+
+    run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_f1_result(), _result(None)),
+        ),
+    )
+
+    assert _completed_stages(event_path) == [
+        "generation",
+        "correctness_eval",
+        "p_repair",
+        "row_append",
+    ]
+
+
+def test_observability_stage_timing_records_c_repair_only_when_c_path_active(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "c-repair-stage-timing.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "C+P",
+        observability_mode="required",
+        observability_experiment_id="cluster3-stage-timing",
+        observability_run_id="run-c-repair",
+        observability_output=str(event_path),
+    )
+
+    run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_f2_result()),
+            c_loop_runner=CLoopRecorder(),
+        ),
+    )
+
+    assert _completed_stages(event_path) == [
+        "generation",
+        "correctness_eval",
+        "c_repair",
+        "row_append",
+    ]
+
+
+def test_observability_stage_timing_omits_generation_for_diagnostic_seed(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "diagnostic-seed-stage-timing.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "G+P",
+        diagnostic_seed_source=F1_DIAGNOSTIC_FIXTURE,
+        diagnostic_expected_initial_failure="F1_COMPILE",
+        observability_mode="required",
+        observability_experiment_id="cluster3-stage-timing",
+        observability_run_id="run-diagnostic-seed",
+        observability_output=str(event_path),
+    )
+
+    run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_f1_result(), _result(None)),
+        ),
+    )
+
+    assert _completed_stages(event_path) == [
+        "correctness_eval",
+        "p_repair",
+        "row_append",
+    ]
+
+
+def test_observability_stage_timing_does_not_change_scientific_row_payload(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "stable-row.jsonl"
+    event_path = tmp_path / "stable-row.observability.jsonl"
+    base_config = _config(tmp_path, "P", output=str(output))
+
+    run_cluster3(
+        base_config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+        ),
+    )
+    row_without_observability = output.read_text(encoding="utf-8")
+
+    config_with_observability = replace(
+        base_config,
+        observability_mode="required",
+        observability_experiment_id="cluster3-stage-timing",
+        observability_run_id="run-row-stability",
+        observability_output=str(event_path),
+    )
+    run_cluster3(
+        config_with_observability,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+        ),
+    )
+
+    assert output.read_text(encoding="utf-8") == row_without_observability
+
 
 @pytest.mark.parametrize("mode", ["best_effort", "required"])
 def test_observability_enabled_modes_include_supplied_safe_modal_context(
@@ -2004,7 +2177,7 @@ def test_observability_enabled_modes_include_supplied_safe_modal_context(
     )
 
     events = load_observability_events(event_path)
-    assert len(events) == 6
+    assert len(events) == 10
     assert {
         event.modal_context.function_call_id
         for event in events
@@ -2021,8 +2194,8 @@ def test_observability_enabled_modes_include_supplied_safe_modal_context(
     )
     assert summary.modal_context_summary == {
         "context_status": "available",
-        "events_with_modal_context": 6,
-        "events_with_available_context": 6,
+        "events_with_modal_context": 10,
+        "events_with_available_context": 10,
         "modal_context_sources": ["runner_config"],
     }
 
@@ -2059,8 +2232,8 @@ def test_observability_enabled_modes_include_supplied_safe_token_counts(
     )
 
     events = load_observability_events(event_path)
-    assert len(events) == 6
-    assert len(provider_contexts) == 6
+    assert len(events) == 10
+    assert len(provider_contexts) == 10
     assert {tuple(sorted(context)) for context in provider_contexts} == {
         ("condition", "event_sequence", "event_type", "stage", "status")
     }
@@ -2079,7 +2252,7 @@ def test_observability_enabled_modes_include_supplied_safe_token_counts(
     )
     assert summary.token_totals == {
         "token_count_status": "available",
-        "events_with_token_counts": 6,
+        "events_with_token_counts": 10,
         "events_with_available_token_counts": 1,
         "prompt_tokens": 2,
         "generated_tokens": 3,
@@ -2120,8 +2293,8 @@ def test_observability_enabled_modes_include_supplied_safe_cost_estimates(
     )
 
     events = load_observability_events(event_path)
-    assert len(events) == 6
-    assert len(provider_contexts) == 6
+    assert len(events) == 10
+    assert len(provider_contexts) == 10
     assert {tuple(sorted(context)) for context in provider_contexts} == {
         ("condition", "event_sequence", "event_type", "stage", "status")
     }
