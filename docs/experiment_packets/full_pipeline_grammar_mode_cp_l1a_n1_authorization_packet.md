@@ -3,13 +3,14 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1`
-packet_version: `0.5.0`
+packet_version: `0.5.1`
 packet_type: completed review packet for possible future authorization; not an execution packet until signed
-branch: `codex/l1a-final-approval-packet`
+branch: `codex/l1a-signature-readiness-gap-closure`
 target_branch: `codex-track-handoff-context`
-target_commit: `c256af5 Audit Modal preflight estimator promotion`
-baseline_commit: `c256af5 Audit Modal preflight estimator promotion`
-planning_baseline_commit: `c256af5 Audit Modal preflight estimator promotion`
+target_commit: `59fa0d6 Audit L1a approval packet promotion`
+baseline_commit: `59fa0d6 Audit L1a approval packet promotion`
+planning_baseline_commit: `59fa0d6 Audit L1a approval packet promotion`
+previous_execution_planning_baseline_commit: `c256af5 Audit Modal preflight estimator promotion`
 code_support_commit: `c24fbaa Add local grammar-mode support for 12-cell L1a`
 baseline_pin_commit: `d172e02 Pin L1a packet to grammar mode support baseline`
 launcher_support_branch: `codex/grammar-mode-12cell-launcher-support`
@@ -18,16 +19,17 @@ launcher_support_promotion_audit_commit: `76ede6a Audit 12-cell launcher support
 launcher_support_status: `LOCAL_DRY_PLAN_SELECTOR_READY`
 preflight_estimator_commit: `bd89e67 Add local Modal preflight cost time estimator`
 preflight_estimator_promotion_audit_commit: `c256af5 Audit Modal preflight estimator promotion`
-preflight_estimator_status: `LOCAL_ADVISORY_ESTIMATOR_REQUIRED_BEFORE_SIGNATURE`
+preflight_estimator_status: `LOCAL_ADVISORY_SYNTHETIC_PLACEHOLDER_ATTACHED_NOT_SIGNABLE`
 superseded_baseline_commit: `0cc43c1 Audit full pipeline launch packet promotion`
 launch_packet: `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md`
 created_at: 2026-06-05
 baseline_pinned_at: 2026-06-05
 packet_completed_at: 2026-06-06
+signature_readiness_gap_closure_at: 2026-06-06
 status: `DRAFT_READY_FOR_USER_SIGNATURE`
 DRAFT_READY_FOR_USER_SIGNATURE: YES
 code_support_status: `LOCAL_REPRESENTABILITY_AND_DRY_PLAN_SELECTOR_READY`
-execution_readiness_status: `BLOCKED_PENDING_SIGNATURE_STOP_SPEND_AND_EXECUTION_PACKET`
+execution_readiness_status: `BLOCKED_EXECUTABLE_SELECTOR_MISSING_AND_SIGNATURE_UNSIGNED`
 AUTHORIZES_EXECUTION: NO
 
 Execution authorization flags:
@@ -53,8 +55,9 @@ output mutation, analyzer output refresh, report artifact refresh, MLflow
 runtime writes, billing queries, dependency changes, lockfile changes, or
 paper-scale claims.
 
-The active planning baseline is the promoted handoff trunk commit `c256af5`.
-That baseline includes local grammar-mode support (`c24fbaa`), 12-cell
+The active signature-readiness baseline is the promoted handoff trunk commit
+`59fa0d6`. Its executable-code support descends from `c256af5`, which includes
+local grammar-mode support (`c24fbaa`), 12-cell
 dry-plan launcher support (`e914557`), sidecar-only stage timing
 instrumentation, and the local advisory Modal preflight estimator (`bd89e67`).
 The older `0cc43c1` and `d172e02` baselines are historical context only and
@@ -79,15 +82,16 @@ planning-only: it does not authorize execution, does not replace billing
 reconciliation, and does not constitute experimental evidence.
 
 Pricing must be re-verified against official Modal documentation before any
-future signature. Exact numeric stop limits and exact numeric spend limits are
-also `REQUIRED_BEFORE_SIGNATURE`.
+future signature. Human-approved numeric stop limits and numeric spend limits
+are also `REQUIRED_BEFORE_SIGNATURE`; the candidate limits in this packet are
+`PROPOSED_NOT_SIGNED`.
 
 ## Final Approval Surface Summary
 
 ```text
 target_branch: codex-track-handoff-context
-target_commit: c256af5 Audit Modal preflight estimator promotion
-packet_completion_branch: codex/l1a-final-approval-packet
+target_commit: 59fa0d6 Audit L1a approval packet promotion
+packet_completion_branch: codex/l1a-signature-readiness-gap-closure
 experiment_name: full_pipeline_grammar_mode_cp_factorial_v1
 level: L1a
 scale_tier: smoke/dev
@@ -96,7 +100,7 @@ cell_count: 12
 design: grammar_mode x C x P
 dry_plan_selector: --condition grammar_mode_cp_12cell --dry-plan
 dry_plan_verification_command: .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --dry-plan
-exact_intended_execution_command: REQUIRED_BEFORE_SIGNATURE_current_selector_is_dry_plan_only
+exact_intended_execution_command: REQUIRED_BEFORE_SIGNATURE_EXECUTABLE_SELECTOR_MISSING_current_selector_is_dry_plan_only
 output_root: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1
 observability_artifact_root: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1
 jsonl_path_pattern: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.jsonl
@@ -108,13 +112,77 @@ AUTHORIZES_EXECUTION: NO
 DRAFT_READY_FOR_USER_SIGNATURE: YES
 ```
 
-The exact intended execution command is still `REQUIRED_BEFORE_SIGNATURE`
-because the current `grammar_mode_cp_12cell` selector is explicitly
-dry-plan-only in `cluster3/experiments/run_cluster3_modal.py`. A future signer
-must either approve a code-supported executable 12-cell launcher command or
-provide an exact per-cell command bundle that maps each `grammar_mode`/C/P cell
-to supported runner conditions without changing row semantics. This packet does
+The exact intended execution command is still
+`REQUIRED_BEFORE_SIGNATURE_EXECUTABLE_SELECTOR_MISSING` because the current
+`grammar_mode_cp_12cell` selector is explicitly dry-plan-only in
+`cluster3/experiments/run_cluster3_modal.py`. A future signer must either
+approve a code-supported executable 12-cell launcher command or provide an
+exact per-cell command bundle that maps each `grammar_mode`/C/P cell to
+supported runner conditions without changing row semantics. This packet does
 not provide that authorization and must not be used as a launch command.
+
+## Signature Readiness Gap Closure Addendum
+
+This addendum closes repo-local signature-readiness gaps where possible without
+authorizing execution. Unresolved execution-critical fields remain explicitly
+classified and must still be completed by a future human signature.
+
+Resolved or narrowed fields:
+
+| Field | Status | Source-backed value or classification |
+|---|---|---|
+| target commit | `RESOLVED_FOR_SIGNATURE_REVIEW` | `59fa0d6 Audit L1a approval packet promotion` |
+| executable command | `REQUIRED_BEFORE_SIGNATURE_EXECUTABLE_SELECTOR_MISSING` | `grammar_mode_cp_12cell` remains dry-plan-only; no executable 12-cell selector exists locally |
+| observability run id convention | `PROPOSED_NOT_SIGNED` | global run id convention: `full_pipeline_grammar_mode_cp_factorial_v1_l1a_n1__target_<short_commit>__signed_<YYYYMMDDTHHMMSSZ>`; per-cell join key convention: `<run_id>__<condition_id>` |
+| current dry-plan observability join key | `RESOLVED_PLANNING_METADATA` | `cluster3/planning/grammar_mode_matrix.py` emits `full_pipeline_grammar_mode_cp_factorial_v1_l1a_n1__<condition_id>` join keys |
+| Modal app name | `RESOLVED_REPO_LOCAL` | `tritongen-gpu-harness` from `shared/modal_harness/app.py` |
+| Modal image definitions | `RESOLVED_REPO_LOCAL_SOURCE_ONLY` | `shared/modal_harness/images.py` defines `llm_generation_image` and `triton_compile_image` |
+| Modal image digest | `REQUIRED_BEFORE_SIGNATURE_REMOTE_IMAGE_DIGEST_UNKNOWN` | no Modal or remote image inspection is authorized in this phase |
+| advisory preflight estimate | `NOT_SIGNABLE_SYNTHETIC_PLACEHOLDER_ATTACHED` | pure local estimator run with synthetic pricing/timing inputs; official Modal pricing and measured/approved timing remain required |
+| numeric stop/spend limits | `PROPOSED_NOT_SIGNED` | candidate limits are listed below for human approval only |
+| billing reconciliation plan | `RESOLVED_PLAN_ONLY` | post-run billing is authoritative for actual spend; no billing query is authorized now |
+| validation bundle | `PROPOSED_NOT_SIGNED_REQUIRES_POST_RUN_ARTIFACTS` | exact local command surfaces are listed below; analyzer/report writes remain unauthorized until signed |
+
+Synthetic advisory estimate placeholder:
+
+```text
+estimate_status: NOT_SIGNABLE_SYNTHETIC_PLACEHOLDER
+estimator: cluster3/planning/modal_preflight_estimator.py
+inputs: cell_count=12; n_per_cell=1; gpu_label=L4_SYNTHETIC_NOT_SIGNABLE; price_per_gpu_second=0.01; cold_start_seconds=10.0; model_load_seconds=20.0; generation_seconds_per_row=2.0; compile_correctness_seconds_per_row=3.0; repair_overhead_seconds_per_activated_repair=4.0; expected_p_activation_rate=0.25; expected_c_activation_rate=0.5; fanout_limit=4; safety_multiplier=1.0; fixed_overhead_seconds=5.0; pricing_source=synthetic_fixture_not_modal_pricing; pricing_verified=false; stage_timing_source=estimated
+total_planned_rows: 12
+recommended_shape_name: bounded_fanout_across_cells_seeds
+estimated_parallel_wall_clock_seconds: 59.0
+estimated_gpu_seconds: 221.0
+estimated_cost: 2.21
+warning_flags: advisory_only_not_experimental_evidence, pricing_reverification_required, stage_timing_inputs_estimated_not_measured
+signability_status: NOT_SIGNABLE until official Modal pricing is re-verified, timing inputs are approved, and the estimate is attached to a signed packet
+```
+
+Proposed unsigned stop/spend limits:
+
+```text
+max_rows: 12
+max_generation_attempts: PROPOSED_NOT_SIGNED_72_total_initial_plus_C_and_P_repair_attempt_ceiling
+max_repair_attempts_per_row: PROPOSED_NOT_SIGNED_P_5_when_enabled_C_5_when_enabled_0_otherwise
+max_correctness_calls: PROPOSED_NOT_SIGNED_72_total_attempt_ceiling
+max_wall_clock: PROPOSED_NOT_SIGNED_4_hours
+max_estimated_cost: PROPOSED_NOT_SIGNED_USD_25_requires_official_pricing_reverification
+max_reconciled_billing_cost: PROPOSED_NOT_SIGNED_USD_50_billing_reconciliation_authoritative
+max_modal_invocations: PROPOSED_NOT_SIGNED_REQUIRES_EXECUTION_SHAPE_SELECTION
+stop_on_first_infrastructure_failure: PROPOSED_NOT_SIGNED_yes
+retry_policy: PROPOSED_NOT_SIGNED_no_retry_no_resume_unless_explicitly_signed
+```
+
+Billing reconciliation plan:
+
+```text
+billing_reconciliation_status: PLAN_ONLY_NO_BILLING_QUERY_AUTHORIZED
+authoritative_actual_spend_source: post-run reconciled Modal billing artifact
+required_after_approved_run: signed start/end UTC window; signed experiment_id; signed run_id; redacted billing report path; redacted report sha256; reconciliation dry-run result; reconciliation write authorization if any sidecar mutation is requested
+future_collection_command_status: REQUIRED_BEFORE_SIGNATURE_BILLING_QUERY_AUTHORIZATION_TIME_WINDOW_AND_REDACTED_OUTPUT_PATH_MISSING
+future_collection_command_shape: .venv/bin/python -m modal billing report --start <YYYY-MM-DD> --end <YYYY-MM-DD> --resolution d --tag-names project,experiment_id,run_id,cluster,phase --json
+local_reconciliation_surface: shared/observability/billing_reconciliation.py dry_run_reconciliation(...)
+```
 
 ## Launch-Packet Dependency
 
@@ -214,9 +282,9 @@ Local code-support proof:
 approval_source: not_approved
 approval_timestamp: not_applicable
 target_branch: codex-track-handoff-context
-target_commit: c256af5 Audit Modal preflight estimator promotion
-packet_completion_branch: codex/l1a-final-approval-packet
-command: REQUIRED_BEFORE_SIGNATURE_current_12cell_selector_is_dry_plan_only
+target_commit: 59fa0d6 Audit L1a approval packet promotion
+packet_completion_branch: codex/l1a-signature-readiness-gap-closure
+command: REQUIRED_BEFORE_SIGNATURE_EXECUTABLE_SELECTOR_MISSING_current_12cell_selector_is_dry_plan_only
 command_manifest_status: LOCAL_DRY_PLAN_SELECTOR_PRESENT_EXECUTION_COMMAND_REQUIRED_BEFORE_SIGNATURE
 working_directory: /Users/alexeidelgado/Desktop/TritonGen
 exact_condition_list: twelve-cell matrix in this packet
@@ -242,28 +310,32 @@ grammar_file_paths: grammar_off=not_applicable_no_grammar; template_upper_bound=
 grammar_file_hash_lock: grammar_off=not_applicable_no_grammar; template_upper_bound=0f875b88ea80d7bc9573793f2cfb81bd75523af5ef5c0416466bc07d3eaf9b82; task_agnostic=7896a1befca10f68ab6aa4521681fa2577eba6fb669e87daf622c15691a22e32
 observability_mode: best_effort
 observability_experiment_id: full_pipeline_grammar_mode_cp_factorial_v1
-observability_run_id: REQUIRED_BEFORE_SIGNATURE_exact_run_id
+observability_run_id: PROPOSED_NOT_SIGNED full_pipeline_grammar_mode_cp_factorial_v1_l1a_n1__target_<short_commit>__signed_<YYYYMMDDTHHMMSSZ>
+observability_join_key_convention: <observability_run_id>__<condition_id>
 mlflow_disposition: post_hoc_non_authoritative; runtime MLflow writes remain unauthorized; grammar-mode indexing patch remains deferred
 max_rows: 12
-max_generation_attempts: REQUIRED_BEFORE_SIGNATURE_exact_total_attempt_ceiling
-max_repair_attempts_per_row: P=5 when P is enabled; C=5 when C is enabled; 0 otherwise
-max_wall_clock: REQUIRED_BEFORE_SIGNATURE_numeric_limit
-max_estimated_cost: REQUIRED_BEFORE_SIGNATURE_numeric_spend_limit
-max_reconciled_billing_cost: REQUIRED_BEFORE_SIGNATURE_numeric_spend_limit
-preflight_estimate: REQUIRED_BEFORE_SIGNATURE_advisory_only_pricing_must_be_reverified
-stop_on_first_infrastructure_failure: yes
+max_generation_attempts: PROPOSED_NOT_SIGNED_72_total_initial_plus_C_and_P_repair_attempt_ceiling
+max_repair_attempts_per_row: PROPOSED_NOT_SIGNED_P_5_when_enabled_C_5_when_enabled_0_otherwise
+max_wall_clock: PROPOSED_NOT_SIGNED_4_hours
+max_estimated_cost: PROPOSED_NOT_SIGNED_USD_25_requires_official_pricing_reverification
+max_reconciled_billing_cost: PROPOSED_NOT_SIGNED_USD_50_billing_reconciliation_authoritative
+preflight_estimate: NOT_SIGNABLE_SYNTHETIC_PLACEHOLDER_advisory_only_pricing_and_timing_must_be_reverified
+stop_on_first_infrastructure_failure: PROPOSED_NOT_SIGNED_yes
 overwrite_policy: fail_if_any_target_path_exists
-retry_policy: no_retry_no_resume_unless_explicitly_approved_in_signed_packet
-resume_policy: no_resume_unless_explicitly_approved
+retry_policy: PROPOSED_NOT_SIGNED_no_retry_no_resume_unless_explicitly_signed
+resume_policy: PROPOSED_NOT_SIGNED_no_resume_unless_explicitly_signed
 billing_reconciliation_requirement: approved_post_run_modal_billing_reconciliation_required; estimates_do_not_replace_billing
-modal_app_name: REQUIRED_BEFORE_SIGNATURE
-modal_image_digest: REQUIRED_BEFORE_SIGNATURE
+modal_app_name: tritongen-gpu-harness
+modal_image_sources: llm_generation_image and triton_compile_image in shared/modal_harness/images.py
+modal_image_digest: REQUIRED_BEFORE_SIGNATURE_REMOTE_IMAGE_DIGEST_UNKNOWN
 post_run_validation_commands: required list in Post-Run Validation and Analyzer Command Surface sections
 ```
 
 ## Preflight Estimate And Limit Requirements
 
-No advisory preflight estimate is attached to this unsigned packet.
+No signable advisory preflight estimate is attached to this unsigned packet.
+Only the synthetic `NOT_SIGNABLE` placeholder in the gap-closure addendum is
+present.
 
 Required before a future signature:
 
@@ -412,18 +484,19 @@ post-run audit must include these exact validation classes:
 Exact command bundle status:
 
 ```text
-post_run_schema_validation_command: REQUIRED_BEFORE_SIGNATURE
-post_run_content_hash_validation_command: REQUIRED_BEFORE_SIGNATURE
-post_run_observability_sidecar_validation_command: REQUIRED_BEFORE_SIGNATURE
-post_run_grammar_mode_consistency_command: REQUIRED_BEFORE_SIGNATURE
-post_run_billing_reconciliation_command: REQUIRED_BEFORE_SIGNATURE
+post_run_schema_validation_command: PROPOSED_NOT_SIGNED see exact command below
+post_run_content_hash_validation_command: PROPOSED_NOT_SIGNED see exact command below
+post_run_observability_sidecar_validation_command: PROPOSED_NOT_SIGNED see exact command below
+post_run_grammar_mode_consistency_command: PROPOSED_NOT_SIGNED see exact command below
+post_run_analyzer_report_command: PROPOSED_NOT_SIGNED see exact command below
+post_run_billing_reconciliation_command: REQUIRED_BEFORE_SIGNATURE_BILLING_QUERY_TIME_WINDOW_AND_REDACTED_REPORT_PATH_MISSING
 ```
 
 The analyzer/report command surface must be signed before use. The expected
 shape is:
 
 ```text
-TRITONGEN_MLFLOW=0 .venv/bin/python -m shared.analysis.factorial --inputs <12 explicit L1a JSONL paths> --analysis-scope l1a_grammar_mode_cp_smoke --scale-tier smoke --output artifacts/analysis/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1_factorial.json --markdown-output artifacts/reports/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1_factorial.md --bootstrap-samples 10000 --bootstrap-seed 13013
+TRITONGEN_MLFLOW=0 .venv/bin/python -m shared.analysis.factorial --inputs outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_off.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_off.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_on.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_on.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_off.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_off.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_on.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_on.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_off.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_off.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_on.jsonl outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_on.jsonl --analysis-scope l1a_grammar_mode_cp_smoke --scale-tier smoke --output artifacts/analysis/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1_factorial.json --markdown-output artifacts/reports/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1_factorial.md --bootstrap-samples 10000 --bootstrap-seed 13013
 ```
 
 The exact 12 input paths must be expanded before signature rather than supplied
@@ -431,6 +504,15 @@ through an unchecked shell glob. The analyzer output and markdown report paths
 are planned post-run artifacts only; this packet does not authorize writing
 them. Runtime MLflow writes remain disabled unless a later signed packet
 separately authorizes MLflow tracking.
+
+Exact local validation command surfaces for a future approved run:
+
+```text
+.venv/bin/python -c 'import json; from pathlib import Path; from cluster3.results.dataclass import Cluster3EvalRow; paths=[Path(p) for p in ["outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_on.jsonl"]]; rows=[]; [rows.extend(Cluster3EvalRow.from_json(line) for line in path.read_text(encoding="utf-8").splitlines() if line) for path in paths]; assert len(rows)==12, len(rows); print("schema_and_row_count_valid", len(rows))'
+.venv/bin/python -c 'from pathlib import Path; from cluster3.results.dataclass import Cluster3EvalRow; from cluster3.results.logger import load_content_hash_sidecar, validate_content_hash_sidecar_for_rows; paths=[Path(p) for p in ["outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_on.jsonl"]]; [validate_content_hash_sidecar_for_rows(tuple(Cluster3EvalRow.from_json(line) for line in path.read_text(encoding="utf-8").splitlines() if line), load_content_hash_sidecar(f"{path}.hashes.json")) for path in paths]; print("content_hash_sidecars_valid", len(paths))'
+.venv/bin/python -c 'from pathlib import Path; from shared.observability.logger import file_sha256, load_observability_events; from shared.observability.schema import ObservabilityHashSidecar, ObservabilitySummary; base=Path("artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1"); ids=["grammar_off__c_off__p_off","grammar_off__c_on__p_off","grammar_off__c_off__p_on","grammar_off__c_on__p_on","template_upper_bound__c_off__p_off","template_upper_bound__c_on__p_off","template_upper_bound__c_off__p_on","template_upper_bound__c_on__p_on","task_agnostic__c_off__p_off","task_agnostic__c_on__p_off","task_agnostic__c_off__p_on","task_agnostic__c_on__p_on"]; [load_observability_events(base / f"{cid}.observability.jsonl") for cid in ids]; [ObservabilitySummary.model_validate_json((base / f"{cid}.observability.summary.json").read_text(encoding="utf-8")) for cid in ids]; sidecars=[ObservabilityHashSidecar.model_validate_json((base / f"{cid}.observability.jsonl.hashes.json").read_text(encoding="utf-8")) for cid in ids]; [(_ for _ in ()).throw(AssertionError(cid)) for cid, sc in zip(ids, sidecars) if sc.event_jsonl_sha256 != file_sha256(base / f"{cid}.observability.jsonl")]; print("observability_sidecars_valid", len(ids))'
+.venv/bin/python -c 'from pathlib import Path; from cluster3.results.dataclass import Cluster3EvalRow; expected={"grammar_off":"grammar_off","template_upper_bound":"template_upper_bound","task_agnostic":"task_agnostic"}; paths=[Path(p) for p in ["outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_off.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_on.jsonl","outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_on.jsonl"]]; rows=[Cluster3EvalRow.from_json(line) for path in paths for line in path.read_text(encoding="utf-8").splitlines() if line]; [(_ for _ in ()).throw(AssertionError(row.grammar_mode)) for row in rows if row.grammar_mode not in expected]; print("grammar_mode_consistency_valid", len(rows))'
+```
 
 ## Go/No-Go Checklist
 
@@ -478,7 +560,9 @@ Stop before or during any future approved L1a execution if:
 
 ## Explicit Approval
 
-Ready for user signature but unsigned. No execution is approved.
+Ready for human signature review, but not signable until the required fields
+below are replaced or explicitly approved by the user. No execution is
+approved.
 
 ```text
 AUTHORIZES_EXECUTION: NO
@@ -489,13 +573,18 @@ signer: REQUIRED_BEFORE_SIGNATURE
 signed_at: REQUIRED_BEFORE_SIGNATURE
 approval_scope: REQUIRED_BEFORE_SIGNATURE
 exact_target_branch: codex-track-handoff-context
-exact_target_commit: c256af5 Audit Modal preflight estimator promotion
-exact_intended_execution_command: REQUIRED_BEFORE_SIGNATURE
-numeric_stop_limits: REQUIRED_BEFORE_SIGNATURE
-numeric_spend_limits: REQUIRED_BEFORE_SIGNATURE
-preflight_estimate_attachment: REQUIRED_BEFORE_SIGNATURE
-billing_reconciliation_plan: REQUIRED_BEFORE_SIGNATURE
-post_run_validation_bundle: REQUIRED_BEFORE_SIGNATURE
+exact_target_commit: 59fa0d6 Audit L1a approval packet promotion
+exact_intended_execution_command: REQUIRED_BEFORE_SIGNATURE_EXECUTABLE_SELECTOR_MISSING
+numeric_stop_limits: PROPOSED_NOT_SIGNED; signer must approve or replace
+numeric_spend_limits: PROPOSED_NOT_SIGNED; signer must approve or replace
+spend_cap: PROPOSED_NOT_SIGNED_USD_25_estimated_USD_50_reconciled
+stop_limits: PROPOSED_NOT_SIGNED_rows_12_generation_attempts_72_correctness_calls_72_wall_clock_4h_stop_on_first_infrastructure_failure
+modal_pricing_recheck_completed: REQUIRED_BEFORE_SIGNATURE_yes_no
+preflight_estimate_attachment: NOT_SIGNABLE_SYNTHETIC_PLACEHOLDER_ATTACHED; signer must attach signable estimate
+advisory_estimate_attached: REQUIRED_BEFORE_SIGNATURE_yes_no
+billing_reconciliation_plan: PLAN_ONLY_REQUIRES_SIGNED_TIME_WINDOW_AND_BILLING_QUERY_AUTHORIZATION
+post_run_validation_bundle: PROPOSED_NOT_SIGNED_COMMANDS_LISTED_ABOVE
+authorization_statement: REQUIRED_BEFORE_SIGNATURE_explicit_human_statement_required
 
 NOT APPROVED. A future user approval must replace this unsigned block with a
 signed L1a approval that names this packet, the exact target branch and commit,

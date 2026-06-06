@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.11
+Version: 1.37.12
 Date: 2026-06-06
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -61,6 +61,7 @@ treated as report-facing.
 | C3 n20 metric-family-gated experiment packet | `docs/experiment_packets/c3_n20_metric_family_gated_packet.md` |
 | Full Pipeline grammar-mode x C x P launch packet v1 | `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md` |
 | Full Pipeline L1a n=1 authorization packet review draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md` |
+| Full Pipeline L1a signature-readiness gap closure audit | `audits/l1a_signature_readiness_gap_closure_report.md` |
 | Full Pipeline L1a final approval packet promotion audit | `audits/l1a_final_approval_packet_promotion_audit_report.md` |
 | Full Pipeline L1a final approval packet completion audit | `audits/l1a_final_approval_packet_completion_report.md` |
 | Full Pipeline L1a authorization packet completion promotion audit | `audits/l1a_authorization_packet_completion_promotion_audit_report.md` |
@@ -160,10 +161,17 @@ active future design is the 12-cell `grammar_mode x C x P` matrix. The old
 packet review draft is
 `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md`;
 it is unsigned, non-authorizing, completed as the final approval surface for
-later human signature, and promoted into `codex-track-handoff-context` at
-`e348c2c Complete L1a final approval packet draft`. Its execution-planning
-target remains `codex-track-handoff-context` at `c256af5 Audit Modal preflight
-estimator promotion`. Earlier baseline/provenance includes baseline-pin commit
+later human signature, promoted into `codex-track-handoff-context` at
+`e348c2c Complete L1a final approval packet draft`, and now patched on
+`codex/l1a-signature-readiness-gap-closure` for signature-readiness gap
+closure. The gap-closure packet targets `codex-track-handoff-context` at
+`59fa0d6 Audit L1a approval packet promotion`, records a deterministic
+observability run-id convention, repo-local Modal app/source-image identity, a
+synthetic `NOT_SIGNABLE` estimator placeholder, unsigned proposed stop/spend
+limits, plan-only billing reconciliation, and exact validation command
+surfaces. It still keeps `AUTHORIZES_EXECUTION: NO`, and the exact executable
+command remains `REQUIRED_BEFORE_SIGNATURE_EXECUTABLE_SELECTOR_MISSING`.
+Earlier baseline/provenance includes baseline-pin commit
 `d172e02 Pin L1a packet to grammar mode support baseline` and
 `code_support_commit: c24fbaa Add local grammar-mode support for 12-cell L1a`;
 see `audits/l1a_packet_baseline_pin_report.md`,
@@ -171,7 +179,9 @@ see `audits/l1a_packet_baseline_pin_report.md`,
 `audits/l1a_authorization_packet_completion_promotion_audit_report.md`, and
 the final approval completion and promotion audits
 `audits/l1a_final_approval_packet_completion_report.md` and
-`audits/l1a_final_approval_packet_promotion_audit_report.md`.
+`audits/l1a_final_approval_packet_promotion_audit_report.md`, plus
+`audits/l1a_signature_readiness_gap_closure_report.md` for the current
+gap-closure branch.
 Local representability support uses the repo-supported grammar-mode values
 `grammar_off`,
 `template_upper_bound`, and `task_agnostic`; see
@@ -191,11 +201,11 @@ The earlier
 code-support audit
 `audits/grammar_mode_code_support_audit_report.md` remains historical evidence
 for the launcher blocker that this implementation addresses. Future L1a
-authorization review must start from the promoted final approval surface and
-must not draft or run an execution packet until exact executable commands,
-numeric stop/spend limits, an advisory preflight estimate, a billing
-reconciliation plan, a post-run validation bundle, and a separate explicit
-approval are signed. The
+authorization review must start from the gap-closure packet surface and must
+not draft or run an execution packet until an executable selector or per-cell
+command bundle, signed numeric stop/spend limits, a signable advisory preflight
+estimate, billing reconciliation authorization, post-run validation
+authorization, and a separate explicit approval are signed. The
 patched
 launch packet now uses the same repo-supported grammar-mode vocabulary and
 defines MLflow
