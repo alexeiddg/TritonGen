@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.14
+Version: 1.37.15
 Date: 2026-06-06
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -62,6 +62,7 @@ treated as report-facing.
 | Full Pipeline grammar-mode x C x P launch packet v1 | `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md` |
 | Full Pipeline L1a n=1 authorization packet review draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md` |
 | Full Pipeline L1a executable 12-cell selector support audit | `audits/l1a_executable_12cell_selector_support_report.md` |
+| Full Pipeline L1a executable 12-cell selector support promotion audit | `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md` |
 | Full Pipeline L1a signature-readiness gap closure promotion audit | `audits/l1a_signature_readiness_gap_closure_promotion_audit_report.md` |
 | Full Pipeline L1a signature-readiness gap closure audit | `audits/l1a_signature_readiness_gap_closure_report.md` |
 | Full Pipeline L1a final approval packet promotion audit | `audits/l1a_final_approval_packet_promotion_audit_report.md` |
@@ -171,10 +172,14 @@ closure. The gap-closure packet targets `codex-track-handoff-context` at
 observability run-id convention, repo-local Modal app/source-image identity, a
 synthetic `NOT_SIGNABLE` estimator placeholder, unsigned proposed stop/spend
 limits, plan-only billing reconciliation, and exact validation command
-surfaces. The active local branch
-`codex/l1a-executable-12cell-selector-support` patches the packet and runner
-with source-backed `--execution-plan` command construction for all 12 cells,
-including no-P controls, and records the evidence in
+surfaces. Executable 12-cell selector support is promoted into
+`codex-track-handoff-context` at
+`e9f180a Add executable planning for 12-cell L1a selector` and is
+promotion-audited in
+`audits/l1a_executable_12cell_selector_support_promotion_audit_report.md`.
+It patches the packet and runner with source-backed `--execution-plan` command
+construction for all 12 cells, including no-P controls, and records the
+implementation evidence in
 `audits/l1a_executable_12cell_selector_support_report.md`. The packet still
 keeps `AUTHORIZES_EXECUTION: NO`, and runtime selector execution remains
 fail-closed until later explicit human signature.
@@ -205,19 +210,18 @@ controls, and records deterministic output, content-hash sidecar,
 observability sidecar, grammar hash/scope, repair-policy, and no-overwrite
 planning metadata; see `audits/grammar_mode_12cell_launcher_support_report.md`
 and `audits/grammar_mode_12cell_launcher_support_promotion_audit_report.md`.
-The active executable-selector support branch extends that surface with
-local-only `--execution-plan` per-cell command construction while preserving
-fail-closed execution behavior.
+Promoted executable-selector support extends that surface with local-only
+`--execution-plan` per-cell command construction while preserving fail-closed
+execution behavior.
 The earlier
 code-support audit
 `audits/grammar_mode_code_support_audit_report.md` remains historical evidence
 for the launcher blocker that this implementation addresses. Future L1a
-authorization review must start from the gap-closure packet surface and must
-not draft or run an execution packet until the executable-selector support is
-reviewed/promoted and signed numeric stop/spend limits, a signable advisory
-preflight estimate, billing reconciliation authorization, post-run validation
-authorization, exact target commit, and a separate explicit approval are
-signed. The
+authorization review must start from the promoted packet surface and must not
+draft or run an execution packet until signed numeric stop/spend limits, a
+signable advisory preflight estimate, billing reconciliation authorization,
+post-run validation authorization, exact target commit, and a separate explicit
+approval are signed. The
 patched
 launch packet now uses the same repo-supported grammar-mode vocabulary and
 defines MLflow
