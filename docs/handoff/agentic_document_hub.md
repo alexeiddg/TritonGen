@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.23
+Version: 1.37.24
 Date: 2026-06-06
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -67,11 +67,12 @@ treated as report-facing.
 | Full Pipeline L1b n=5 completion audit | `audits/l1b_n5_execution_completion_report.md` |
 | Full Pipeline L1b analyzer development-scope patch audit | `audits/l1b_n5_analyzer_dev_scope_patch_report.md` |
 | Full Pipeline L1b completion/analyzer boundary audit | `audits/l1b_n5_completion_and_analyzer_boundary_audit.md` |
-| Full Pipeline L2 n=20 authorization packet draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md` |
+| Full Pipeline L2 n=20 final authorization packet | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md` |
 | Full Pipeline L2 n=20 authorization packet draft audit | `audits/l2_n20_authorization_packet_draft_report.md` |
 | Full Pipeline L2 n=20 selector/profile support audit | `audits/l2_n20_selector_profile_support_report.md` |
 | Full Pipeline L2 n=20 selector/profile support promotion audit | `audits/l2_n20_selector_profile_support_promotion_audit_report.md` |
 | Full Pipeline L2 n=20 final signature readiness report | `audits/l2_n20_final_signature_readiness_report.md` |
+| Full Pipeline L2 n=20 final authorization report | `audits/l2_n20_final_authorization_report.md` |
 | Full Pipeline L1a final signature packet report | `audits/l1a_final_signature_packet_report.md` |
 | Full Pipeline L1a executable 12-cell selector support audit | `audits/l1a_executable_12cell_selector_support_report.md` |
 | Full Pipeline L1a executable 12-cell selector support promotion audit | `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md` |
@@ -100,25 +101,28 @@ treated as report-facing.
 
 ## Current Cluster 3 Planning Gate
 
-Post-L2-selector-support promotion update: the L2 n=20 packet draft now exists at
+Post-L2-final-authorization update: the L2 n=20 authorization packet now exists at
 `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md`
 with audits `audits/l2_n20_authorization_packet_draft_report.md` and
 `audits/l2_n20_selector_profile_support_report.md`, and the selector/profile
 support promotion is recorded in
 `audits/l2_n20_selector_profile_support_promotion_audit_report.md`. The final
 signature-readiness audit is recorded in
-`audits/l2_n20_final_signature_readiness_report.md`. Promoted commit `27493c0
-Add L2 n20 selector profile support` adds local-only selector/profile support
-for `grammar_mode_cp_12cell`, `scale_tier=paper`, `n=20`, and 240 planned rows.
-The packet now classifies the command surface as
-`L2_N20_SELECTOR_PROFILE_SUPPORT_READY_FOR_SIGNATURE_REVIEW`, but it remains
-unsigned and keeps `AUTHORIZES_EXECUTION: NO`. The L2 runtime profile is
-intentionally disabled until a later final signature branch explicitly enables
-execution. Do not run L2, n=20, paper-scale, additional Modal/GPU generation,
-billing queries beyond an explicit packet, output/artifact mutation outside
-authorized namespaces, MLflow runtime writes, analyzer/report refresh,
-performance profiling, speedup analysis, cost-per-success analysis, or economic
-claims without a separate signed packet.
+`audits/l2_n20_final_signature_readiness_report.md`, and the final
+authorization report is recorded in `audits/l2_n20_final_authorization_report.md`.
+Promoted commit `27493c0 Add L2 n20 selector profile support` adds local-only
+selector/profile support for `grammar_mode_cp_12cell`, `scale_tier=paper`,
+`n=20`, and 240 planned rows. The packet is now signed as
+`L2_N20_FINAL_AUTHORIZATION_READY` with `AUTHORIZES_EXECUTION: YES_L2_N20_ONLY`,
+but this docs-only branch did not execute L2 or change runtime
+launcher behavior. The target baseline still keeps the L2 runtime profile
+disabled/fail-closed in code, so a later execution-readiness step must verify or
+enable only that signed L2 n=20 runtime gate before any launch. Do not run L2,
+n=20, paper-scale, additional Modal/GPU generation, billing queries outside the
+post-run L2 reconciliation scope, output/artifact mutation outside authorized
+L2 n=20 namespaces, MLflow runtime writes, analyzer/report refresh before valid
+L2 outputs, performance profiling, speedup analysis, cost-per-success analysis,
+or economic claims outside this signed packet.
 
 Cluster 3 diagnostic evidence is provenance-frozen through
 `audits/cluster3_phase13b_commit_provenance_freeze_report.md`. Phase 14e froze

@@ -1,50 +1,55 @@
-# Full Pipeline Grammar-Mode x C x P L2 n=20 Authorization Packet Draft
+# Full Pipeline Grammar-Mode x C x P L2 n=20 Final Authorization Packet
 
 ## Packet Identity
 
-packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L2_N20_AUTHORIZATION_PACKET_DRAFT_V1`
-packet_version: `0.2.0-selector-profile-support-ready-for-signature-review`
-packet_type: L2 n=20 authorization packet draft; not an execution packet
-branch: `codex/l2-n20-selector-profile-support`
+packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L2_N20_AUTHORIZATION_PACKET_V1`
+packet_version: `1.0.0-final-signed-l2-n20-only`
+packet_type: final bounded L2 n=20 authorization packet
+branch: `codex/l2-n20-final-authorization`
 target_branch: `codex-track-handoff-context`
-execution_code_target_commit: `pending selector support commit on codex/l2-n20-selector-profile-support`
-baseline_commit: `3a21002 Audit L2 n20 packet draft promotion`
-status: `UNSIGNED_SELECTOR_PROFILE_SUPPORT_READY_FOR_SIGNATURE_REVIEW`
-signature_status: `UNSIGNED`
-AUTHORIZES_EXECUTION: NO
+execution_code_target_commit:
+`182db35ccc4fd0dd57c0c258bb3c35645c511004`
+baseline_commit: `182db35 Review L2 n20 final signature readiness`
+status: `SIGNED_FOR_L2_N20_ONLY`
+signature_status: `SIGNED_FOR_L2_N20_ONLY`
+AUTHORIZES_EXECUTION: YES_L2_N20_ONLY
 
 Execution authorization flags:
 
 ```text
-MODAL_AUTHORIZED: NO
-GPU_AUTHORIZED: NO
-GENERATION_AUTHORIZED: NO
-EXPERIMENT_EXECUTION_AUTHORIZED: NO
-OUTPUT_MUTATION_AUTHORIZED: NO
-ARTIFACT_MUTATION_AUTHORIZED: NO
-BILLING_QUERY_AUTHORIZED: NO
+MODAL_AUTHORIZED: YES_L2_N20_ONLY
+GPU_AUTHORIZED: YES_L2_N20_ONLY
+GENERATION_AUTHORIZED: YES_L2_N20_ONLY
+EXPERIMENT_EXECUTION_AUTHORIZED: YES_L2_N20_ONLY
+OUTPUT_MUTATION_AUTHORIZED: YES_L2_N20_NAMESPACES_ONLY
+ARTIFACT_MUTATION_AUTHORIZED: YES_L2_N20_NAMESPACES_ONLY
+BILLING_QUERY_AUTHORIZED: YES_L2_N20_RECONCILIATION_ONLY_AFTER_RUN
+POST_RUN_VALIDATION_AUTHORIZED: YES_LISTED_COMMANDS_ONLY
 MLFLOW_TRACKING_EXECUTION_AUTHORIZED: NO
-L2_AUTHORIZED: NO
-N20_AUTHORIZED: NO
+L2_AUTHORIZED: YES_L2_N20_ONLY
+N20_AUTHORIZED: YES_L2_N20_ONLY
 PAPER_SCALE_CLAIMS_AUTHORIZED: NO
 RETRY_AUTHORIZED: NO
 RESUME_AUTHORIZED: NO
+L3_AUTHORIZED: NO
 ```
 
-This packet drafts the bounded approval surface for a future L2 n=20 run of the
-12-cell `grammar_mode x C x P` matrix. It records target baseline, proposed
-commands, stop limits, spend limits, artifact namespaces, validation surfaces,
-and signature fields. It does not authorize Modal, GPU use, generation,
-experiment execution, output mutation, artifact mutation, billing queries,
-runtime MLflow writes, retry, resume, analyzer/report artifact refresh, or
-paper-scale claims.
+This packet records the bounded approval surface for one future L2 n=20 run of
+the 12-cell `grammar_mode x C x P` matrix at target commit
+`182db35ccc4fd0dd57c0c258bb3c35645c511004`. It signs the exact command bundle,
+stop limits, spend limits, artifact namespaces, billing caveat, post-run
+validation bundle, no-retry/no-resume policy, and forbidden scope listed below.
 
-The current repo can now represent the L2 n=20 selector profile locally for
-dry-plan and execution-plan review. The launcher includes a `paper/n=20`
-profile, L2 output and observability roots, a signed-L2 CLI option for future
-signature review, and deterministic 12-cell planning with 240 expected rows.
-Runtime L2 execution remains intentionally disabled in the L2 profile until a
-later final signature branch explicitly authorizes execution.
+This packet does not itself execute L2, run Modal, run GPU work, run
+generation, query billing, mutate outputs/artifacts/`mlruns`, refresh analyzer
+or report artifacts, change launcher behavior, change scientific semantics,
+change dependencies, or authorize paper conclusions. Runtime MLflow remains
+disabled with `TRITONGEN_MLFLOW=0`.
+
+Target-baseline caveat: the current target commit still records the L2 selector
+profile with `runtime_execution_enabled=false`. This packet authorizes only the
+bounded L2 n=20 execution surface and exact future command; it does not modify
+the runtime gate in this docs-only branch.
 
 ## Readiness Evidence
 
@@ -67,8 +72,10 @@ L1b evidence:
 - `audits/l1b_n5_completion_and_analyzer_boundary_audit.md`
 
 The L1b boundary audit classifies the current baseline as
-`L1B_N5_AUDIT_PASS_L2_READY` for separate L2 n=20 packet drafting and review
-only. It does not authorize L2 execution.
+`L1B_N5_AUDIT_PASS_L2_READY` for separate L2 n=20 packet drafting and review.
+This final packet is the first L2 n=20 authorization surface, but it still does
+not permit paper conclusions until post-run validation and analyzer/report audit
+pass on valid L2 output.
 
 ## L2 Scope
 
@@ -142,7 +149,7 @@ fail_if_any_target_path_exists: true
 Current command-surface classification:
 
 ```text
-L2_N20_SELECTOR_PROFILE_SUPPORT_READY_FOR_SIGNATURE_REVIEW
+L2_N20_FINAL_AUTHORIZATION_COMMAND_BUNDLE_SIGNED
 ```
 
 Source-backed support:
@@ -157,9 +164,11 @@ Source-backed support:
   for `--condition grammar_mode_cp_12cell` without invoking Modal,
   generation, correctness execution, output writes, artifact writes, or
   `mlruns`.
-- `--signed-l2-authorization` exists as a future signed-selector option, but
-  the L2 runtime profile keeps execution disabled until a later signed packet
-  deliberately enables it.
+- `--signed-l2-authorization` exists as the signed-selector option for this
+  packet.
+- The target baseline still keeps the L2 runtime profile disabled in code; this
+  packet authorizes the bounded L2 n=20 surface but does not change launcher
+  behavior in this branch.
 
 ```text
 dry-plan cells: 12
@@ -167,6 +176,8 @@ dry-plan planned_rows: 240
 execution-plan cells: 12
 execution-plan planned_rows: 240
 runtime_execution_enabled: false for L2
+runtime_gate_note: current target baseline blocks runtime until a separate
+  execution step enables only this signed L2 profile
 ```
 
 Resolved implementation requirements:
@@ -180,17 +191,19 @@ Resolved implementation requirements:
 - Grammar-mode mapping, no-P controls, P-eligible cells, and C-eligible cells
   are represented in deterministic matrix order.
 
-Remaining signature requirement:
+Remaining post-run evidence requirement:
 
 - prove paper-scale analyzer/report strictness on actual valid L2 outputs
-  without using L1a smoke or L1b development pair-skip scopes.
+  without using L1a smoke or L1b development pair-skip scopes before making
+  graph, report, paper-scale, or paper-conclusion claims.
 
 ## Future Command Surfaces
 
-These commands are source-backed for local planning. They are not authorized by
-this draft and do not permit Modal, GPU use, generation, output mutation,
-artifact mutation, billing queries, runtime MLflow writes, retry, resume, or
-paper-scale claims.
+These commands are source-backed. Planning commands remain local/no-execution.
+The future execution command is authorized only for the L2 n=20 scope, target
+baseline, stop limits, spend limits, and namespaces in this packet. It does not
+authorize runtime MLflow writes, retry, resume, profiler/benchmark work,
+paper-scale conclusions, or any namespace outside the L2 n=20 paths below.
 
 Dry-plan command, local no-execution planning only:
 
@@ -204,22 +217,21 @@ Execution-plan command, local no-execution planning only:
 TRITONGEN_MLFLOW=0 .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier paper --n 20 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --execution-plan
 ```
 
-Future execution command surface, still blocked until a later final signature
-explicitly authorizes execution and enables the L2 runtime gate:
+Exact future execution command, signed for L2 n=20 only:
 
 ```bash
 TRITONGEN_MLFLOW=0 .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier paper --n 20 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l2-authorization FULL_PIPELINE_GRAMMAR_MODE_CP_L2_N20_AUTHORIZATION_PACKET_V1 --overwrite
 ```
 
-Post-run analyzer/report command, blocked until valid L2 outputs exist and
-paper-scale analyzer strictness is satisfied:
+Post-run analyzer/report command, authorized only after valid L2 outputs exist
+and paper-scale analyzer strictness is satisfied:
 
 ```bash
 TRITONGEN_MLFLOW=0 .venv/bin/python -m shared.analysis.factorial --inputs outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20/*.jsonl --analysis-scope primary_functional --scale-tier paper --output artifacts/analysis/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20_factorial.json --markdown-output artifacts/reports/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20_factorial.md
 ```
 
-Post-run billing reconciliation command template, blocked until a signed billing
-query window exists:
+Post-run billing reconciliation command template, authorized only after the L2
+run completes and a UTC window is selected for the completed run:
 
 ```bash
 .venv/bin/python -m modal billing report --start <YYYY-MM-DD> --end <YYYY-MM-DD> --resolution h --tag-names project,experiment_id,run_id,cluster,phase --json
@@ -233,7 +245,7 @@ artifacts/billing/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20_billing_repo
 
 ## Stop Limits
 
-Proposed limits; not signed:
+Signed L2 n=20 stop limits:
 
 ```text
 max_rows: 240
@@ -246,6 +258,8 @@ resume_policy: no resume
 overwrite_policy: only if all target L2 paths are absent before launch
 abort_if_row_count_exceeds: 240
 abort_if_command_requests_l1a_l1b_l3_or_non_l2_scope: true
+abort_if_target_namespace_outside_l2_n20: true
+abort_if_runtime_mlflow_tracking_enabled: true
 ```
 
 Rationale:
@@ -255,8 +269,7 @@ Rationale:
 - L2 n=20 is four times the L1b row count, so the conservative per-row cap
   scales to 1440 generation attempts and 1440 correctness calls.
 - The L1b authorization used a 6h wall-clock cap for 60 rows. Scaling that cap
-  by four yields a proposed 24h L2 cap. The exact cap should be refreshed from
-  available L1b observability timing before final signature.
+  by four yields the signed 24h L2 cap.
 
 Stop immediately on:
 
@@ -278,10 +291,10 @@ Stop immediately on:
 
 ## Spend Limits
 
-Proposed limits; not signed:
+Signed L2 n=20 spend limits:
 
 ```text
-pricing_status: must be re-verified before final signature
+pricing_status: advisory; accepted without live re-verification in this packet
 l1b_utc_window_cost_usd: 2.13879534
 l1b_billing_attribution: UTC-window-only because Modal tags were empty
 l2_row_scale_factor_from_l1b: 4
@@ -354,42 +367,64 @@ three_way_interaction.reportable: true only if the analyzer marks the full L2 ou
 
 ## Human Signature Block
 
-All fields are unsigned.
-
 ```text
-target_commit_accepted:
-command_bundle_accepted:
-stop_limits_accepted:
-spend_limits_accepted:
-output_artifact_mutation_accepted:
-billing_reconciliation_accepted:
-post_run_validation_accepted:
-modal_gpu_generation_accepted:
-no_retry_no_resume_accepted:
-no_digest_or_digest_policy_accepted:
-signature_status: UNSIGNED
-AUTHORIZES_EXECUTION: NO
+target_commit_accepted: 182db35ccc4fd0dd57c0c258bb3c35645c511004
+target_branch_accepted: codex-track-handoff-context
+condition_accepted: grammar_mode_cp_12cell
+kernel_class_accepted: elementwise
+scale_tier_accepted: paper
+n_accepted: 20
+dtypes_accepted: fp32
+repair_history_policy_accepted: agentic_transcript_v1
+runtime_mlflow_accepted: disabled with TRITONGEN_MLFLOW=0
+matrix_accepted: 12 cells, 20 rows per cell, 240 rows total
+command_bundle_accepted: YES_L2_N20_ONLY
+stop_limits_accepted: YES_L2_N20_ONLY
+spend_limits_accepted: YES_L2_N20_ONLY
+output_artifact_mutation_accepted: YES_L2_N20_NAMESPACES_ONLY
+billing_reconciliation_accepted: YES_L2_N20_RECONCILIATION_ONLY_AFTER_RUN
+post_run_validation_accepted: YES_LISTED_COMMANDS_ONLY
+modal_gpu_generation_accepted: YES_L2_N20_ONLY
+runtime_gate_status_at_target_baseline: DISABLED_FAIL_CLOSED
+runtime_gate_enablement_accepted: YES_L2_N20_ONLY_SEPARATE_CODE_STEP_REQUIRED
+no_retry_no_resume_accepted: YES
+no_digest_or_digest_policy_accepted: YES_NO_REMOTE_IMAGE_DIGEST_REQUIRED_FOR_THIS_PACKET
+AUTHORIZES_EXECUTION: YES_L2_N20_ONLY
+MODAL_AUTHORIZED: YES_L2_N20_ONLY
+GPU_AUTHORIZED: YES_L2_N20_ONLY
+GENERATION_AUTHORIZED: YES_L2_N20_ONLY
+EXPERIMENT_EXECUTION_AUTHORIZED: YES_L2_N20_ONLY
+OUTPUT_MUTATION_AUTHORIZED: YES_L2_N20_NAMESPACES_ONLY
+ARTIFACT_MUTATION_AUTHORIZED: YES_L2_N20_NAMESPACES_ONLY
+BILLING_QUERY_AUTHORIZED: YES_L2_N20_RECONCILIATION_ONLY_AFTER_RUN
+POST_RUN_VALIDATION_AUTHORIZED: YES_LISTED_COMMANDS_ONLY
+RETRY_AUTHORIZED: NO
+RESUME_AUTHORIZED: NO
+L3_AUTHORIZED: NO
+SIGNATURE_STATUS: SIGNED_FOR_L2_N20_ONLY
 ```
 
-## Remaining Blockers
+## Remaining Execution Preconditions
 
-1. Final human signature is missing.
-2. L2 runtime execution is intentionally disabled in the selector profile until
-   a later final signature branch enables it.
-3. Paper-scale analyzer strictness must be proven for valid 12-cell selector
-   output without using non-paper L1a/L1b pair-skip scopes.
-4. Pricing must be re-verified before signature.
-5. Spend and wall-clock caps must be human-signed.
-6. Billing query window and billing artifact write must be separately signed.
-7. Output/artifact mutation must remain blocked until final signature.
+1. No execution is performed by this packet preparation branch.
+2. The target baseline still has the L2 runtime selector profile disabled in
+   code. Executing against the target baseline without a separate runtime-gate
+   enablement step will fail closed before generation.
+3. Any runtime-gate enablement must be limited to this exact signed L2 n=20
+   profile and command surface.
+4. Paper-scale analyzer strictness must be proven for valid 12-cell selector
+   output without using non-paper L1a/L1b pair-skip scopes before any
+   graph/report/paper conclusion is made.
+5. Billing reconciliation is authorized only after the run and only for the
+   selected UTC window and L2 billing namespace.
 
 ## Classification
 
-`L2_N20_SELECTOR_PROFILE_SUPPORT_READY_FOR_SIGNATURE_REVIEW`
+`L2_N20_FINAL_AUTHORIZATION_READY`
 
 ## Next-Step Recommendation
 
-Review and promote the local-only L2 selector/profile support branch. After
-promotion, prepare a separate final signature-readiness pass that fills any
-remaining human signature fields and deliberately decides whether to enable L2
-runtime execution. Do not execute L2 from this packet draft.
+Do not execute from this packet-preparation branch. The next operational step,
+if explicitly requested, is a separate execution-readiness step that verifies or
+enables only the L2 n=20 runtime gate and then runs exactly the signed command
+above under the signed stop, spend, namespace, billing, and validation limits.

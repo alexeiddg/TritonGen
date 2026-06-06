@@ -1,6 +1,6 @@
 # Experiment Change Orchestration State
 
-- Version: 1.5.75
+- Version: 1.5.76
 - Date: 2026-06-06
 - Status: active live state record
 - Owner: current orchestration agent
@@ -375,11 +375,11 @@ reason. Do not backfill missing provenance silently after execution.
 
 | Field | Value |
 |---|---|
-| Git baseline commit | `3a21002 Audit L2 n20 packet draft promotion` before the L2 n=20 selector/profile support branch |
-| Git branch | `codex/l2-n20-selector-profile-support` |
-| Git status at latest reconciliation | L2 n=20 selector/profile support is active on `codex/l2-n20-selector-profile-support`. The branch adds local-only `paper/n=20` profile support for `grammar_mode_cp_12cell`, 12 cells, 240 planned rows, L2 namespaces, and signed-L2 command surfaces while keeping the L2 runtime profile disabled. The packet `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md` keeps `AUTHORIZES_EXECUTION: NO` and now classifies the command surface as `L2_N20_SELECTOR_PROFILE_SUPPORT_READY_FOR_SIGNATURE_REVIEW`. No L2, n=20, Modal/GPU/generation, billing query, output/artifact/mlruns mutation, analyzer/report refresh, benchmark, profiler, speedup, cost-per-success, dependency, lockfile, preliminary-report, or MLflow runtime mutation is authorized. |
+| Git baseline commit | `182db35 Review L2 n20 final signature readiness` before the L2 n=20 final authorization branch |
+| Git branch | `codex/l2-n20-final-authorization` |
+| Git status at latest reconciliation | L2 n=20 final authorization is active on `codex/l2-n20-final-authorization`. The packet `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md` now signs `AUTHORIZES_EXECUTION: YES_L2_N20_ONLY` for the exact 12-cell, 240-row L2 n=20 command surface, signed stop/spend limits, L2 output/artifact namespaces, post-run validation commands, and post-run billing reconciliation scope. This packet-preparation branch did not run L2, invoke Modal/GPU/generation, query billing, mutate outputs/artifacts/mlruns, refresh analyzer/report artifacts, change runtime code, change dependencies/lockfiles, or refresh preliminary reports. The target baseline still keeps the L2 runtime profile disabled/fail-closed in code; execution requires a later execution-readiness step that verifies or enables only the signed L2 profile. |
 | Orchestration contract version | `docs/15_experiment_change_orchestration_contract.md` v1.0.13 |
-| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.110.0 |
+| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.113.0 |
 | Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.6 |
 | Structural/task analyzer metadata spec version | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.4 |
 | MLflow tracking policy version | `.contracts/research/mlflow_tracking_policy.md` v1.0.0 |
@@ -395,8 +395,8 @@ reason. Do not backfill missing provenance silently after execution.
 | Agentic transcript A6 run-packet gate planning | promoted into handoff trunk at commit `4a84600`; `audits/agentic_transcript_v1_a6_run_packet_gate_report.md` v1.0.0 remains the evidence snapshot; `docs/handoff/agentic_transcript_v1_next_run_packet.md` is `DRAFT_NOT_APPROVED` and authorizes no Modal/output/generation/n=5/n=20/paper-scale work |
 | Observability O0-O6b package | O0-O4 promoted into handoff trunk at commit `309c451`; O5-Prep/O5a accepted locally through `c41a5bc`; O5b committed at `cf63de8`; O5c adapter-ready blocked state committed at `dc48782`; O6a Level-4 performance contract scaffolding committed at `d966ad0`; O6b smoke sidecar committed at `403cfea`; final O5b/O5c/O6a/O6b promotion audit passed with caveats |
 | Structural/task reporting S0-S4 package | S0 terminology accepted at `d9bbdb2`; S1 analyzer metric registry metadata committed at `ff876d2`; S2 report metadata consumption committed at `a7b0cdb`; S3 report refresh docs-only record committed at `f1058eb`; S0-S3 promotion audit committed at `80086f9`; S4 future experiment metric-family guidance committed at `f73ecb9`, fast-forwarded into `codex-track-handoff-context`, and promotion-audited at `d015862`. Generated preliminary-report previews remain ignored local outputs unless a future explicit force-add publication decision is made. |
-| Current Cluster 3 gate | L1b n=5 for the 12-cell `grammar_mode x C x P` design completed and was boundary-audited as `L1B_N5_AUDIT_PASS_L2_READY` for packet drafting/review only. The L2 n=20 authorization packet draft now exists at `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md` with audits `audits/l2_n20_authorization_packet_draft_report.md` and `audits/l2_n20_selector_profile_support_report.md`. Local-only L2 selector/profile support now represents `grammar_mode_cp_12cell`, `scale_tier=paper`, `n=20`, 12 cells, and 240 planned rows; the packet is classified as `L2_N20_SELECTOR_PROFILE_SUPPORT_READY_FOR_SIGNATURE_REVIEW`. The L2 packet is unsigned, keeps `AUTHORIZES_EXECUTION: NO`, and the L2 runtime profile remains disabled; no L2 n20, paper-scale run, benchmark, profiler, speedup, cost-per-success, output/artifact mutation, billing query, dependency, lockfile, preliminary-report, analyzer/report refresh, or MLflow runtime write is authorized. |
-| Paper-scale status | blocked; no Cluster 3 `n=20` launch or paper-scale claim until a later signed launch approval satisfies Gate G8 |
+| Current Cluster 3 gate | L1b n=5 for the 12-cell `grammar_mode x C x P` design completed and was boundary-audited as `L1B_N5_AUDIT_PASS_L2_READY`. The L2 n=20 packet exists at `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md` with audits `audits/l2_n20_authorization_packet_draft_report.md`, `audits/l2_n20_selector_profile_support_report.md`, `audits/l2_n20_selector_profile_support_promotion_audit_report.md`, `audits/l2_n20_final_signature_readiness_report.md`, and `audits/l2_n20_final_authorization_report.md`. The packet signs `L2_N20_FINAL_AUTHORIZATION_READY` and `AUTHORIZES_EXECUTION: YES_L2_N20_ONLY` for the exact L2 n=20 command surface, 12 cells, 240 rows, stop/spend limits, L2 namespaces, post-run validation commands, and post-run billing reconciliation scope. This branch did not execute L2 and did not change runtime code; the target baseline still keeps the L2 runtime profile disabled/fail-closed until a later execution-readiness step verifies or enables only the signed L2 profile. |
+| Paper-scale status | L2 n=20 execution authorization packet is signed but no Cluster 3 `n=20` output exists yet; graph/report/paper claims remain blocked until successful L2 execution, output validation, analyzer/report strictness audit, and billing reconciliation pass |
 
 Important repository note: on the handoff trunk, `docs/`, `audits/`, and
 `.contracts/agentic/**` are intentionally trackable. Raw outputs and MLflow
@@ -407,7 +407,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Worktree | Branch | Commit | State ownership |
 |---|---|---|---|
-| `/Users/alexeidelgado/Desktop/TritonGen` | `codex-track-handoff-context` | promoted L2 selector/profile support through `27493c0` and final signature-readiness audit | Handoff trunk now includes local-only L2 n=20 selector/profile support, promotion audit, and final signature-readiness audit. The unsigned packet is command-surface-ready for signature review, but the L2 runtime profile remains disabled. No L2, n=20, Modal/GPU/generation, paper-scale run, billing query, output/artifact/mlruns mutation, analyzer/report refresh, profiler, benchmark, speedup, economic claim, dependency, lockfile, preliminary-report, or MLflow runtime write is authorized |
+| `/Users/alexeidelgado/Desktop/TritonGen` | `codex/l2-n20-final-authorization` | final L2 n=20 authorization packet preparation from `182db35` | Active docs-only packet-preparation branch. The packet signs L2 n=20 only, but no execution, Modal/GPU/generation, billing query, output/artifact/mlruns mutation, analyzer/report refresh, runtime code change, profiler, benchmark, speedup, economic claim, dependency, lockfile, preliminary-report, or MLflow runtime write occurred in this branch. The target baseline still keeps the L2 runtime profile disabled/fail-closed in code. |
 | `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `4a84600` | reference/history worktree only; same A6 commit as the promoted handoff trunk and not the place for observability work |
 | `/Users/alexeidelgado/Desktop/TritonGen/.claude/worktrees/intelligent-pasteur-72d92f` | `claude/intelligent-pasteur-72d92f` | `b0085c1` | external/unknown to this orchestration state; reconcile before relying on it |
 
@@ -415,6 +415,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Branch | Stream/package | Worktree | Status | Notes |
 |---|---|---|---|---|
+| `codex/l2-n20-final-authorization` | L2 n=20 final authorization packet | `/Users/alexeidelgado/Desktop/TritonGen` | active/docs-only | Created from `codex-track-handoff-context` at `182db35`. Updates the L2 packet to `SIGNED_FOR_L2_N20_ONLY`, signs `AUTHORIZES_EXECUTION: YES_L2_N20_ONLY`, records the exact L2 command bundle, 12-cell and 240-row expectation, signed stop/spend limits, L2 namespaces, post-run validation authorization, post-run billing reconciliation authorization, and adds `audits/l2_n20_final_authorization_report.md`. No L2 execution, Modal/GPU/generation, billing query, output/artifact/mlruns mutation, analyzer/report refresh, runtime code change, dependency/lockfile, preliminary-report refresh, profiler, benchmark, speedup, cost-per-success, paper conclusion, or MLflow runtime work occurred in this branch. Runtime L2 remains fail-closed in the target code until a later execution-readiness step verifies or enables only this signed profile. |
 | `codex/l2-n20-selector-profile-support` | L2 n=20 selector/profile support | none after promotion | promoted/audit closeout | Created from pushed handoff baseline `3a21002` and fast-forwarded into `codex-track-handoff-context` at `27493c0`. Adds L2 `paper/n=20` profile support for the 12-cell `grammar_mode x C x P` selector, 240 planned rows, signed-L2 command surfaces, L2 namespaces, fail-closed runtime profile behavior, focused local tests, packet update, and `audits/l2_n20_selector_profile_support_report.md`. Promotion audit is `audits/l2_n20_selector_profile_support_promotion_audit_report.md`. `AUTHORIZES_EXECUTION: NO`; no L2/n20 execution, Modal/GPU/generation, output/artifact/mlruns mutation, billing query, analyzer/report refresh, dependency, lockfile, benchmark, profiler, speedup, cost-per-success, or paper-scale claim is authorized. |
 | `codex/l2-n20-authorization-packet` | L2 n=20 authorization packet draft | none after promotion | promoted/reference | Created from `codex-track-handoff-context` at `134bcf9`, then fast-forward promoted into `codex-track-handoff-context` at `4ae7081` and promotion-audited at `3a21002`. Adds the unsigned L2 n=20 packet and packet-draft audit for the 12-cell `grammar_mode x C x P` matrix. The original packet recorded the command-surface blocker that is now addressed locally on `codex/l2-n20-selector-profile-support`. `AUTHORIZES_EXECUTION: NO`; no execution, output/artifact/mlruns mutation, Modal/GPU/generation, billing query, dependency, lockfile, analyzer/report refresh, benchmark, profiler, speedup, cost-per-success, or paper-scale claim is authorized. |
 | `codex-track-handoff-context` | L1b n=5 12-cell completion | `/Users/alexeidelgado/Desktop/TritonGen` | completed/local evidence preservation | Runs exactly the authorized L1b n=5 12-cell selector command from support commit `a52d64a`, validates 60 rows and all sidecars, records development-scale analyzer/report output, records UTC-window-only billing with empty Modal tags, and adds `audits/l1b_n5_execution_completion_report.md` plus `audits/l1b_n5_analyzer_dev_scope_patch_report.md`. No L2/n20/paper-scale/profiler/benchmark/speedup/economic-claim or MLflow runtime work is authorized. |
@@ -464,14 +465,16 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 | G4 analyzer/report metadata compatibility stable | S0-S4 promoted/closed | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.4 records S0-S4. S1 implemented additive analyzer metadata and focused tests; S2 consumed S1 metadata when present and recorded a legacy fallback path when current analyzer JSON lacks S1 metadata. S3 refreshed derived preliminary-report data/ignored HTML previews from existing local inputs and verified that the current payload shows `legacy_metadata_unavailable` plus separated structural/code-surface, task/functional, mixed diagnostic, and future benchmarkable/performance groups. S4 adds future packet metric-family guidance only and was fast-forwarded into `codex-track-handoff-context` at `f73ecb9`; generated HTML/data remain ignored unless a future review approves force-add. |
 | G5 agentic prompt core stable | satisfied with baseline-venv caveat | `audits/agentic_transcript_v1_a1_prompt_core_report.md` v1.0.0 records pure prompt-core implementation, typed local errors, policy config validation, public evidence/source models, deterministic anchor ranking, canonical renderer, prompt/history hashes, budget behavior, fixture manifest, prompt-injection fixture, legacy C/P byte-invariance snapshots, import isolation, focused tests, and no forbidden-surface changes. |
 | G6 agentic integration stable | promoted to handoff trunk with run gate caveat | A2 C-loop integration, A3 P-loop integration, A4 P-to-C isolation proof, A5 analyzer grouping/quarantine, and A6 run-packet gate planning are present in promoted A6 commit `4a84600`; future agentic execution remains blocked pending signed run approval and required pre-run checks. |
-| G7 development run readiness | blocked pending fresh signed approval packet | Phase 14e matrix is frozen; the C3 n20 metric-family-gated packet review passed as draft/non-authorizing planning only and defines prerequisites for a future launch. Full Pipeline Launch Packet v1 selects the 12-cell `grammar_mode x C x P` design with L1a n=1 before L1b n=5 and L2 n20. The L1a authorization packet final approval surface is promoted into `codex-track-handoff-context` at `e348c2c`; signature-readiness gap closure is promoted at `616ae01`; executable 12-cell selector support is promoted at `e9f180a` and promotion-audited at `c05e111`; the current final signature packet surface on `codex/l1a-final-signature-packet` targets `codex-track-handoff-context` at `c05e111`, records exact selector provenance, local representability support for `grammar_off`, `template_upper_bound`, and `task_agnostic`, `code_support_commit: c24fbaa`, grammar hash locks, output/sidecar path templates, dry-plan and execution-plan command surfaces, deterministic run-id convention, repo-local Modal app identity, synthetic `NOT_SIGNABLE` estimator placeholder, unsigned proposed limits, plan-only billing reconciliation, and exact validation command surfaces. `audits/grammar_mode_support_implementation_report.md` classifies the implementation as `GRAMMAR_MODE_SUPPORT_IMPLEMENTATION_PARTIAL_TRACKING_DEFERRED`, `audits/l1a_packet_baseline_pin_report.md` records the baseline-pin patch, `audits/l1a_authorization_packet_completion_report.md` records the earlier packet completion, launcher support for all 12 cells including six no-P controls is promoted through `e914557` and `76ede6a`, Modal preflight estimator support is promoted through `bd89e67` and `c256af5`, final approval promotion is audited in `audits/l1a_final_approval_packet_promotion_audit_report.md`, and final signature preparation is recorded in `audits/l1a_final_signature_packet_report.md`. Execution remains blocked because no approval is signed and signed numeric stop/spend limits, signable advisory preflight estimate, remote image digest, billing reconciliation authorization, post-run validation authorization, output/artifact/mlruns mutation authorization, and execution-packet authorization are not signed. A6 provides the agentic template and one `DRAFT_NOT_APPROVED` next-run packet, but no active run packet is approved. Any broader development-scale, all-condition, diagnostic, or paper-readiness run needs a separate signed approval packet. |
-| G8 paper-scale readiness | blocked | No `n=20` execution or paper-scale work. The C3 n20 packet is not a launch approval and does not authorize paper-scale claims. |
+| G7 development run readiness | L2 final authorization packet signed; runtime gate still fail-closed | Phase 14e matrix is frozen; the C3 n20 metric-family-gated packet review passed as draft/non-authorizing planning only and defines prerequisites for a future launch. Full Pipeline Launch Packet v1 selects the 12-cell `grammar_mode x C x P` design with L1a n=1 before L1b n=5 and L2 n20. L1a n=1 and L1b n=5 are completed/audited. The L2 n=20 packet now targets `182db35`, signs `AUTHORIZES_EXECUTION: YES_L2_N20_ONLY`, records exact commands, signed stop/spend limits, output/artifact namespaces, billing caveat, post-run validation, no retry/no resume, and adds `audits/l2_n20_final_authorization_report.md`. This packet-preparation branch did not execute L2 and did not change runtime code. The target baseline still keeps the L2 runtime selector profile fail-closed; a later execution-readiness step must verify or enable only the signed L2 n=20 profile before launch. Any broader development-scale, all-condition, diagnostic, L3, profiler, benchmark, speedup, cost-per-success, or paper-claim work needs a separate signed packet. |
+| G8 paper-scale readiness | blocked pending successful L2 output and analyzer audit | The L2 n=20 authorization packet is signed, but no new `n=20` output exists yet. Paper-scale graph/report claims remain blocked until exact signed execution completes, 240 rows and 12 cells validate, analyzer/report strictness passes, and billing reconciliation is audited. |
 
 ## Approved Run Packets
 
-No active run packet is approved by this state record.
+One L2 n=20 authorization packet is signed by this state record. It did not
+execute in this branch, and the target baseline still keeps the L2 runtime gate
+disabled/fail-closed in code.
 
-Current draft packet:
+Current packet records:
 
 - `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md`
 - Status: `DRAFT_NOT_APPROVED`
@@ -501,20 +504,23 @@ Current draft packet:
   changes.
 
 - `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md`
-- Status: `UNSIGNED_SELECTOR_PROFILE_SUPPORT_READY_FOR_SIGNATURE_REVIEW`
-- `AUTHORIZES_EXECUTION: NO`
-- Unsigned L2 n=20 packet draft for the 12-cell design, promoted at `4ae7081`
-  and updated on `codex/l2-n20-selector-profile-support`. It records the
-  240-row matrix, source-backed dry-plan and execution-plan command surfaces,
-  proposed stop/spend limits, future namespaces, billing caveat carry-forward,
-  analyzer/report validation plan, and human signature fields.
-- Execution remains blocked because the packet is unsigned and the L2 runtime
-  profile is intentionally disabled until a later final signature branch
-  explicitly enables it.
-- Does not authorize Modal execution, GPU work, generation, experiments,
-  output mutation, artifact mutation, MLflow runtime writes, billing queries,
-  n=20 execution, paper-scale claims, benchmark, profiler, timing, speedup,
-  analyzer/report refresh, runtime code change, or dependency changes.
+- Status: `SIGNED_FOR_L2_N20_ONLY`
+- `AUTHORIZES_EXECUTION: YES_L2_N20_ONLY`
+- Signed L2 n=20 packet for the 12-cell design at target baseline `182db35`.
+  It records the exact 240-row matrix, dry-plan, execution-plan, future
+  execution command, analyzer/report command, post-run billing template,
+  signed stop/spend limits, future L2 namespaces, billing caveat carry-forward,
+  post-run validation plan, no retry/no resume, forbidden scope, and signature
+  fields.
+- Execution did not occur in this branch. The target baseline still keeps the
+  L2 runtime profile disabled/fail-closed in code, so a later
+  execution-readiness step must verify or enable only this signed L2 profile
+  before launch.
+- Does not authorize L3, additional kernels, extra dtypes, runtime MLflow
+  writes, paper conclusions before post-run audit, benchmark, profiler, timing,
+  speedup, cost-per-success, preliminary-report refresh, dependency changes,
+  lockfile changes, or output/artifact mutation outside the signed L2 n=20
+  namespaces.
 
 - `docs/handoff/agentic_transcript_v1_next_run_packet.md`
 - Status: `DRAFT_NOT_APPROVED`
@@ -664,32 +670,27 @@ Historical context:
 
 ## Next Allowed Actions
 
-Allowed without run approval:
+Allowed next actions:
 
-1. Prepare a final signed L2 n=20 authorization packet only if the human signer
-   accepts the promoted target baseline, command surface, stop limits, spend
-   limits, output/artifact namespaces, billing caveat, validation plan,
-   no-retry/no-resume policy, and runtime-gate enablement. The current packet
-   remains unsigned and keeps `AUTHORIZES_EXECUTION: NO`; the L2 runtime profile
-   remains disabled.
-2. If the L1b analyzer/report artifacts are cited, cite the development-scale
+1. Review, commit, and if requested promote/push the final L2 n=20
+   authorization packet branch. This action is docs-only and does not execute
+   L2.
+2. If execution is requested after this commit, perform a separate
+   execution-readiness step first: verify the signed packet, verify protected
+   paths are absent, verify `TRITONGEN_MLFLOW=0`, and verify or enable only the
+   signed L2 n=20 runtime gate before running the exact signed command. Do not
+   broaden the signed scope.
+3. If the L1b analyzer/report artifacts are cited, cite the development-scale
    caveat: they are not paper-scale or reportable paper evidence, and
    three-way interaction fields are diagnostic only.
-3. Retry O5c live billing collection only after the Modal workspace billing
+4. Retry O5c live billing collection only after the Modal workspace billing
    report rate limit clears, using a separate explicit billing approval packet.
    Prefer daily resolution for multi-day windows and hourly resolution only for
    windows of 7 days or less, or after explicit approval.
-4. Do not run any additional O6b/O6c performance benchmark, output mutation,
+5. Do not run any additional O6b/O6c performance benchmark, output mutation,
    historical sidecar migration, analyzer/economic metrics,
    cost-per-success/pass@k cost, or paper-scale economic/performance claims
    without a new signed packet.
-5. Do not create or run an L2/n=20/paper-scale execution packet until L2
-   selector/profile support is reviewed/promoted, and a later explicit
-   final signature supplies exact executable command(s), branch, commit, condition
-   matrix, output paths, observability IDs, grammar-mode mapping/proof,
-   repair-history policy, model/revision/decoding config, numeric stop/spend
-   limits, advisory preflight estimate, billing reconciliation plan,
-   analyzer/report plan, and MLflow post-hoc indexing proof.
 6. Keep ignored derived report previews
    `docs/preliminary_report/_report_data.json`,
    `docs/preliminary_report/index.html`, and
@@ -1549,6 +1550,7 @@ status: promoted into A6 handoff trunk at 4a84600; reference/history only
 
 | Package | Suggested branch | Status | Entry gate | Exit gate | Notes |
 |---|---|---|---|---|---|
+| L2 n=20 final authorization packet | `codex/l2-n20-final-authorization` | active/docs-only | `182db35 Review L2 n20 final signature readiness` | L2_N20_FINAL_AUTHORIZATION_READY | Updates `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md` to v1.0.0 signed status, adds `audits/l2_n20_final_authorization_report.md`, signs `AUTHORIZES_EXECUTION: YES_L2_N20_ONLY`, records exact commands, 12 cells, 240 rows, signed stop/spend limits, L2 namespaces, post-run validation authorization, post-run billing reconciliation authorization, no retry/no resume, and forbidden scope. No L2 execution, Modal/GPU/generation, billing query, output/artifact/mlruns mutation, analyzer/report refresh, runtime code change, dependency/lockfile, preliminary-report refresh, profiler, benchmark, speedup, cost-per-success, paper conclusion, or MLflow runtime work occurred. The target baseline still keeps runtime L2 fail-closed until a later execution-readiness step verifies or enables only this signed profile. |
 | L2 n=20 selector/profile support | `codex/l2-n20-selector-profile-support` then `codex-track-handoff-context` | promoted/audit closeout | `3a21002 Audit L2 n20 packet draft promotion` | L2_N20_SELECTOR_PROFILE_SUPPORT_PROMOTION_COMPLETE | Adds local-only L2 selector/profile support for `grammar_mode_cp_12cell`, `scale_tier=paper`, `n=20`, 12 cells, 240 planned rows, signed-L2 command surfaces, packet update, and `audits/l2_n20_selector_profile_support_report.md`. Promoted support commit is `27493c0`; promotion audit is `audits/l2_n20_selector_profile_support_promotion_audit_report.md`. The L2 runtime profile remains disabled and `AUTHORIZES_EXECUTION: NO`; no Modal/GPU/generation/billing/output/artifact/mlruns mutation is authorized. |
 | L2 n=20 final signature-readiness audit | `codex-track-handoff-context` | audit complete / no execution | `48efad7 Audit L2 n20 selector profile support promotion` | L2_N20_SELECTOR_SUPPORT_PROMOTED_SIGNATURE_READY | Adds `audits/l2_n20_final_signature_readiness_report.md`, confirming the unsigned packet path exists, exact source-backed L2 n=20 command surfaces exist, 12 cells and 240 planned rows are recorded, proposed stop/spend limits and L2 namespaces are present, the billing UTC-window caveat is carried forward, post-run validation and analyzer/report audit requirements are present, no retry/no resume policy is present, and runtime execution remains disabled until a later final signature explicitly enables it. |
 | L2 n=20 authorization packet draft | `codex/l2-n20-authorization-packet` | promoted/reference | `134bcf9 Audit L1b n5 completion and analyzer boundary` | L2_N20_PACKET_DRAFT_PROMOTION_COMPLETE_SELECTOR_SUPPORT_REQUIRED | Adds `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md` and `audits/l2_n20_authorization_packet_draft_report.md`; fast-forward promoted into `codex-track-handoff-context` at `4ae7081` and promotion-audited at `3a21002`. The original command-surface blocker is now being addressed by the selector/profile support branch. |
