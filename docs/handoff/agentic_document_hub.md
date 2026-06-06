@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.10
+Version: 1.37.11
 Date: 2026-06-06
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -61,6 +61,7 @@ treated as report-facing.
 | C3 n20 metric-family-gated experiment packet | `docs/experiment_packets/c3_n20_metric_family_gated_packet.md` |
 | Full Pipeline grammar-mode x C x P launch packet v1 | `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md` |
 | Full Pipeline L1a n=1 authorization packet review draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md` |
+| Full Pipeline L1a final approval packet promotion audit | `audits/l1a_final_approval_packet_promotion_audit_report.md` |
 | Full Pipeline L1a final approval packet completion audit | `audits/l1a_final_approval_packet_completion_report.md` |
 | Full Pipeline L1a authorization packet completion promotion audit | `audits/l1a_authorization_packet_completion_promotion_audit_report.md` |
 | Full Pipeline L1a authorization packet completion audit | `audits/l1a_authorization_packet_completion_report.md` |
@@ -158,18 +159,19 @@ active future design is the 12-cell `grammar_mode x C x P` matrix. The old
 8-cell plan is superseded for future execution. The L1a n=1 authorization
 packet review draft is
 `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md`;
-it is unsigned, non-authorizing, and now being completed as the final approval
-surface for later human signature on `codex/l1a-final-approval-packet`. Its
-current target is `codex-track-handoff-context` at
-`c256af5 Audit Modal preflight estimator promotion`. Earlier
-baseline/provenance includes baseline-pin commit
+it is unsigned, non-authorizing, completed as the final approval surface for
+later human signature, and promoted into `codex-track-handoff-context` at
+`e348c2c Complete L1a final approval packet draft`. Its execution-planning
+target remains `codex-track-handoff-context` at `c256af5 Audit Modal preflight
+estimator promotion`. Earlier baseline/provenance includes baseline-pin commit
 `d172e02 Pin L1a packet to grammar mode support baseline` and
 `code_support_commit: c24fbaa Add local grammar-mode support for 12-cell L1a`;
 see `audits/l1a_packet_baseline_pin_report.md`,
 `audits/l1a_authorization_packet_completion_report.md`,
 `audits/l1a_authorization_packet_completion_promotion_audit_report.md`, and
-the current completion audit
-`audits/l1a_final_approval_packet_completion_report.md`.
+the final approval completion and promotion audits
+`audits/l1a_final_approval_packet_completion_report.md` and
+`audits/l1a_final_approval_packet_promotion_audit_report.md`.
 Local representability support uses the repo-supported grammar-mode values
 `grammar_off`,
 `template_upper_bound`, and `task_agnostic`; see
@@ -189,7 +191,7 @@ The earlier
 code-support audit
 `audits/grammar_mode_code_support_audit_report.md` remains historical evidence
 for the launcher blocker that this implementation addresses. Future L1a
-authorization review must start from the completed final approval surface and
+authorization review must start from the promoted final approval surface and
 must not draft or run an execution packet until exact executable commands,
 numeric stop/spend limits, an advisory preflight estimate, a billing
 reconciliation plan, a post-run validation bundle, and a separate explicit
