@@ -3,12 +3,12 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1`
-packet_version: `0.5.1`
+packet_version: `0.5.2`
 packet_type: completed review packet for possible future authorization; not an execution packet until signed
-branch: `codex/l1a-signature-readiness-gap-closure`
+branch: `codex/l1a-executable-12cell-selector-support`
 target_branch: `codex-track-handoff-context`
-target_commit: `59fa0d6 Audit L1a approval packet promotion`
-baseline_commit: `59fa0d6 Audit L1a approval packet promotion`
+target_commit: `REQUIRED_AFTER_SELECTOR_SUPPORT_REVIEW_COMMIT_AND_PROMOTION`
+baseline_commit: `e96f70a Audit L1a signature readiness gap closure promotion`
 planning_baseline_commit: `59fa0d6 Audit L1a approval packet promotion`
 previous_execution_planning_baseline_commit: `c256af5 Audit Modal preflight estimator promotion`
 code_support_commit: `c24fbaa Add local grammar-mode support for 12-cell L1a`
@@ -26,10 +26,14 @@ created_at: 2026-06-05
 baseline_pinned_at: 2026-06-05
 packet_completed_at: 2026-06-06
 signature_readiness_gap_closure_at: 2026-06-06
+signature_readiness_gap_closure_commit: `616ae01 Close L1a signature readiness gaps`
+signature_readiness_gap_closure_promotion_audit_commit: `e96f70a Audit L1a signature readiness gap closure promotion`
+executable_selector_support_branch: `codex/l1a-executable-12cell-selector-support`
+executable_selector_support_status: `LOCAL_EXECUTABLE_SELECTOR_COMMAND_BUNDLE_READY_NO_EXECUTION`
 status: `DRAFT_READY_FOR_USER_SIGNATURE`
 DRAFT_READY_FOR_USER_SIGNATURE: YES
-code_support_status: `LOCAL_REPRESENTABILITY_AND_DRY_PLAN_SELECTOR_READY`
-execution_readiness_status: `BLOCKED_EXECUTABLE_SELECTOR_MISSING_AND_SIGNATURE_UNSIGNED`
+code_support_status: `LOCAL_REPRESENTABILITY_DRY_PLAN_AND_EXECUTABLE_SELECTOR_PLAN_READY`
+execution_readiness_status: `BLOCKED_SIGNATURE_UNSIGNED_LIMITS_PREFLIGHT_IMAGE_BILLING_VALIDATION`
 AUTHORIZES_EXECUTION: NO
 
 Execution authorization flags:
@@ -56,22 +60,25 @@ runtime writes, billing queries, dependency changes, lockfile changes, or
 paper-scale claims.
 
 The active signature-readiness baseline is the promoted handoff trunk commit
-`59fa0d6`. Its executable-code support descends from `c256af5`, which includes
-local grammar-mode support (`c24fbaa`), 12-cell
-dry-plan launcher support (`e914557`), sidecar-only stage timing
-instrumentation, and the local advisory Modal preflight estimator (`bd89e67`).
-The older `0cc43c1` and `d172e02` baselines are historical context only and
-are not sufficient as the current L1a target because they predate later
-launcher and estimator support.
+`e96f70a`, which includes gap-closure commit `616ae01`. The earlier signature
+review packet target `59fa0d6` is historical context for v0.5.1 and predates
+the executable selector support added on this branch. Any future signed
+execution target must be a reviewed and promoted descendant that includes the
+selector support commit. The older `0cc43c1` and `d172e02` baselines are
+historical context only and are not sufficient as the current L1a target
+because they predate later launcher and estimator support.
 
 Execution remains blocked even after local launcher support because this packet
-is unsigned and still lacks approved numeric stop/spend limits and a signed
-execution command bundle. The current Cluster 3 CLI now exposes a local dry-plan
-selector, `--condition grammar_mode_cp_12cell --dry-plan`, that can select all
-12 `grammar_mode x C x P` cells, including the six no-P control cells. That
-selector emits deterministic plan metadata only; it does not invoke Modal,
-generation, correctness evaluation, output writing, artifact writing, or MLflow
-tracking.
+is unsigned and still lacks approved numeric stop/spend limits, a signable
+preflight estimate, remote image digest, billing-query authorization, and
+post-run validation authorization. The current Cluster 3 CLI now exposes local
+dry-plan and executable-plan selector surfaces for
+`--condition grammar_mode_cp_12cell`. Both can select all 12
+`grammar_mode x C x P` cells, including the six no-P control cells. The
+executable-plan surface constructs exact per-cell future command strings with
+target paths and a signed-authorization placeholder; it does not invoke Modal,
+generation, correctness evaluation, output writing, artifact writing, tracking,
+or MLflow.
 
 Any future signed execution packet must include an advisory preflight estimate
 for the exact target scope before launch. The local utility
@@ -90,8 +97,8 @@ are also `REQUIRED_BEFORE_SIGNATURE`; the candidate limits in this packet are
 
 ```text
 target_branch: codex-track-handoff-context
-target_commit: 59fa0d6 Audit L1a approval packet promotion
-packet_completion_branch: codex/l1a-signature-readiness-gap-closure
+target_commit: REQUIRED_AFTER_SELECTOR_SUPPORT_REVIEW_COMMIT_AND_PROMOTION
+packet_completion_branch: codex/l1a-executable-12cell-selector-support
 experiment_name: full_pipeline_grammar_mode_cp_factorial_v1
 level: L1a
 scale_tier: smoke/dev
@@ -100,7 +107,8 @@ cell_count: 12
 design: grammar_mode x C x P
 dry_plan_selector: --condition grammar_mode_cp_12cell --dry-plan
 dry_plan_verification_command: .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --dry-plan
-exact_intended_execution_command: REQUIRED_BEFORE_SIGNATURE_EXECUTABLE_SELECTOR_MISSING_current_selector_is_dry_plan_only
+executable_plan_verification_command: .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --execution-plan
+exact_intended_execution_command: .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite
 output_root: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1
 observability_artifact_root: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1
 jsonl_path_pattern: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.jsonl
@@ -112,14 +120,14 @@ AUTHORIZES_EXECUTION: NO
 DRAFT_READY_FOR_USER_SIGNATURE: YES
 ```
 
-The exact intended execution command is still
-`REQUIRED_BEFORE_SIGNATURE_EXECUTABLE_SELECTOR_MISSING` because the current
-`grammar_mode_cp_12cell` selector is explicitly dry-plan-only in
-`cluster3/experiments/run_cluster3_modal.py`. A future signer must either
-approve a code-supported executable 12-cell launcher command or provide an
-exact per-cell command bundle that maps each `grammar_mode`/C/P cell to
-supported runner conditions without changing row semantics. This packet does
-not provide that authorization and must not be used as a launch command.
+The exact intended execution command surface is now source-backed locally by
+`cluster3/experiments/run_cluster3_modal.py` and
+`cluster3/planning/grammar_mode_matrix.py`, but it is not signed and is not a
+launch command. The signed-authorization placeholder
+`SIGNED_L1A_PACKET_ID_REQUIRED` must be replaced by a later explicit human
+approval, and the current branch still refuses runtime selector execution before
+tracking, generation, Modal, output writers, or observability writers. This
+packet does not provide execution authorization.
 
 ## Signature Readiness Gap Closure Addendum
 
@@ -131,8 +139,8 @@ Resolved or narrowed fields:
 
 | Field | Status | Source-backed value or classification |
 |---|---|---|
-| target commit | `RESOLVED_FOR_SIGNATURE_REVIEW` | `59fa0d6 Audit L1a approval packet promotion` |
-| executable command | `REQUIRED_BEFORE_SIGNATURE_EXECUTABLE_SELECTOR_MISSING` | `grammar_mode_cp_12cell` remains dry-plan-only; no executable 12-cell selector exists locally |
+| target commit | `REQUIRED_AFTER_SELECTOR_SUPPORT_REVIEW_COMMIT_AND_PROMOTION` | Future signed target must be a reviewed and promoted descendant containing executable selector support |
+| executable command | `RESOLVED_LOCAL_COMMAND_SURFACE_NOT_SIGNED` | selector-level future command: `.venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite`; per-cell commands are emitted by `--execution-plan` |
 | observability run id convention | `PROPOSED_NOT_SIGNED` | global run id convention: `full_pipeline_grammar_mode_cp_factorial_v1_l1a_n1__target_<short_commit>__signed_<YYYYMMDDTHHMMSSZ>`; per-cell join key convention: `<run_id>__<condition_id>` |
 | current dry-plan observability join key | `RESOLVED_PLANNING_METADATA` | `cluster3/planning/grammar_mode_matrix.py` emits `full_pipeline_grammar_mode_cp_factorial_v1_l1a_n1__<condition_id>` join keys |
 | Modal app name | `RESOLVED_REPO_LOCAL` | `tritongen-gpu-harness` from `shared/modal_harness/app.py` |
@@ -262,11 +270,12 @@ Local code-support proof:
   binding checks against legacy `grammar_active`/`grammar_variant` metadata.
 - `cluster3/planning/grammar_mode_matrix.py` returns exactly 12 local L1a
   cell specs with unique condition names and output namespace suffixes.
-- `cluster3/experiments/run_cluster3_modal.py` exposes the dry-plan-only
-  selector `grammar_mode_cp_12cell`, which expands to all 12 cells with
-  deterministic output paths, content-hash sidecar paths, observability sidecar
-  paths, grammar path/hash/scope metadata, repair-history policy, and
-  no-overwrite policy markers.
+- `cluster3/experiments/run_cluster3_modal.py` exposes dry-plan and
+  executable-plan surfaces for selector `grammar_mode_cp_12cell`, which expand
+  to all 12 cells with deterministic output paths, content-hash sidecar paths,
+  observability sidecar paths, grammar path/hash/scope metadata,
+  repair-history policy, per-cell future command strings, signed-authorization
+  placeholders, and no-overwrite policy markers.
 - `cluster3/results/dataclass.py` and `shared/eval/schema.py` can carry
   `grammar_mode` while preserving existing `grammar_active` fields.
 - `shared/analysis/factorial.py` can normalize/group explicit
@@ -282,10 +291,10 @@ Local code-support proof:
 approval_source: not_approved
 approval_timestamp: not_applicable
 target_branch: codex-track-handoff-context
-target_commit: 59fa0d6 Audit L1a approval packet promotion
-packet_completion_branch: codex/l1a-signature-readiness-gap-closure
-command: REQUIRED_BEFORE_SIGNATURE_EXECUTABLE_SELECTOR_MISSING_current_12cell_selector_is_dry_plan_only
-command_manifest_status: LOCAL_DRY_PLAN_SELECTOR_PRESENT_EXECUTION_COMMAND_REQUIRED_BEFORE_SIGNATURE
+target_commit: REQUIRED_AFTER_SELECTOR_SUPPORT_REVIEW_COMMIT_AND_PROMOTION
+packet_completion_branch: codex/l1a-executable-12cell-selector-support
+command: .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite
+command_manifest_status: LOCAL_EXECUTABLE_SELECTOR_COMMAND_BUNDLE_PRESENT_EXECUTION_UNSIGNED
 working_directory: /Users/alexeidelgado/Desktop/TritonGen
 exact_condition_list: twelve-cell matrix in this packet
 output_root: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1
@@ -362,7 +371,8 @@ result.
 ## L1a Command Manifest For Review
 
 No command in this section is authorized. The manifest records the exact
-condition-level intent and the current dry-plan selector support status.
+condition-level intent and the current dry-plan/executable-plan selector
+support status.
 
 | condition_id | runner selector | grammar argument | output JSONL | support status |
 |---|---|---|---|---|
@@ -386,10 +396,26 @@ Local dry-plan command preview:
 .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --dry-plan --grammar-mode-cell task_agnostic__c_on__p_off
 ```
 
-The six no-P cells are now selectable by the local dry-plan manifest. They still
-must not be executed or materialized without a later signed execution packet that
-approves exact runtime commands, target commit, target paths, stop/spend limits,
-and output mutation.
+Local executable-plan command preview:
+
+```text
+.venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --execution-plan
+.venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --execution-plan --grammar-mode-cell task_agnostic__c_on__p_off
+```
+
+The executable-plan preview emits one `executable_command` per selected cell.
+Each emitted command records `--signed-l1a-authorization
+SIGNED_L1A_PACKET_ID_REQUIRED`, the planned output JSONL path, the planned
+observability event path, `--overwrite`, `path_collision_policy:
+fail_if_any_target_path_exists`, and support status
+`EXECUTABLE_SELECTOR_PRESENT_AUTHORIZATION_REQUIRED_NO_EXECUTION`. Active
+grammar cells include the required `--grammar-variant`; `grammar_off` cells do
+not include a grammar argument.
+
+The six no-P cells are now selectable by the local dry-plan and executable-plan
+manifests. They still must not be executed or materialized without a later
+signed execution packet that approves exact runtime commands, target commit,
+target paths, stop/spend limits, and output mutation.
 
 ## Exact Execution Command Surface
 
@@ -402,22 +428,16 @@ Current exact dry-plan verification command:
 Current exact intended execution command:
 
 ```text
-REQUIRED_BEFORE_SIGNATURE
+.venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite
 ```
 
-Reason: `grammar_mode_cp_12cell` is dry-plan-only in the current local runner.
-The current code rejects `--condition grammar_mode_cp_12cell` unless
-`--dry-plan` is also present, and `--grammar-mode-cell` is supported only with
-dry-plan. A future signature must therefore name one of these exact command
-surfaces before execution:
-
-- a code-supported executable 12-cell launcher command on the target commit; or
-- an explicit per-cell Modal command bundle for all 12 condition IDs, with
-  target output, content-hash sidecar, observability event/summary/hash sidecar,
-  grammar-mode mapping, repair-history policy, stop/spend limits, and
-  fail-if-existing checks for each cell.
-
-Do not infer the executable command from the dry-plan selector.
+This command is not approved. It is a source-backed command surface for future
+signature review only. On this branch, `--condition grammar_mode_cp_12cell`
+without local planning mode still refuses before tracking setup, runtime
+generation, Modal, output writers, or observability writers. A future signature
+must replace `SIGNED_L1A_PACKET_ID_REQUIRED`, name the exact target commit,
+attach signable preflight and stop/spend limits, and explicitly approve output
+mutation before this command can be used.
 
 ## Planned Namespaces
 
@@ -573,8 +593,8 @@ signer: REQUIRED_BEFORE_SIGNATURE
 signed_at: REQUIRED_BEFORE_SIGNATURE
 approval_scope: REQUIRED_BEFORE_SIGNATURE
 exact_target_branch: codex-track-handoff-context
-exact_target_commit: 59fa0d6 Audit L1a approval packet promotion
-exact_intended_execution_command: REQUIRED_BEFORE_SIGNATURE_EXECUTABLE_SELECTOR_MISSING
+exact_target_commit: REQUIRED_AFTER_SELECTOR_SUPPORT_REVIEW_COMMIT_AND_PROMOTION
+exact_intended_execution_command: PROPOSED_NOT_SIGNED .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite
 numeric_stop_limits: PROPOSED_NOT_SIGNED; signer must approve or replace
 numeric_spend_limits: PROPOSED_NOT_SIGNED; signer must approve or replace
 spend_cap: PROPOSED_NOT_SIGNED_USD_25_estimated_USD_50_reconciled

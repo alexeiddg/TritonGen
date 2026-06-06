@@ -71,6 +71,7 @@ from cluster3.planning.grammar_mode_matrix import (
     L1A_OBSERVABILITY_ROOT,
     L1A_PATH_COLLISION_POLICY,
     build_l1a_launcher_dry_plan,
+    build_l1a_launcher_executable_plan,
     l1a_grammar_mode_cell_selector_choices,
 )
 from cluster3.replay.no_p_pairs import pair_for_condition
@@ -132,6 +133,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CLUSTER3_RUNNER_PATH = "cluster3/experiments/run_cluster3_modal.py"
 OBSERVABILITY_MODE_CHOICES: tuple[str, ...] = ("off", "best_effort", "required")
 L1A_DRY_PLAN_PLACEHOLDER_OUTPUT = f"{L1A_OUTPUT_ROOT}/__dry_plan__.jsonl"
+L1A_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT = f"{L1A_OUTPUT_ROOT}/__selector__.jsonl"
 DIAGNOSTIC_F1_SEED_CONDITIONS: tuple[str, ...] = ("P", "G+P")
 DIAGNOSTIC_F2_SEED_CONDITIONS: tuple[str, ...] = ("C+P", "G+C+P")
 DIAGNOSTIC_EXPECTED_INITIAL_FAILURES: tuple[str, ...] = (
@@ -185,7 +187,9 @@ class Cluster3RunnerConfig:
     grammar_variant: str = GRAMMAR_VARIANT_TASK_AGNOSTIC
     write_mode: str = "overwrite"
     dry_plan: bool = False
+    execution_plan: bool = False
     grammar_mode_cell: str = "all"
+    signed_l1a_authorization: str | None = None
     diagnostic_seed_source: str | None = None
     diagnostic_expected_initial_failure: str | None = None
 
@@ -196,16 +200,43 @@ class Cluster3RunnerConfig:
             l1a_grammar_mode_cell_selector_choices(),
             "grammar_mode_cell",
         )
-        if self.condition == L1A_GRAMMAR_MODE_CP_SELECTOR and not self.dry_plan:
+        if self.dry_plan and self.execution_plan:
+            raise ValueError("dry_plan and execution_plan are mutually exclusive")
+        if (
+            (self.dry_plan or self.execution_plan)
+            and self.condition != L1A_GRAMMAR_MODE_CP_SELECTOR
+        ):
             raise ValueError(
-                f"{L1A_GRAMMAR_MODE_CP_SELECTOR} is dry-plan only; pass --dry-plan"
+                "--dry-plan and --execution-plan are only supported for "
+                f"--condition {L1A_GRAMMAR_MODE_CP_SELECTOR}"
             )
-        if self.dry_plan and self.condition != L1A_GRAMMAR_MODE_CP_SELECTOR:
+        if self.condition != L1A_GRAMMAR_MODE_CP_SELECTOR:
+            if self.grammar_mode_cell != "all":
+                raise ValueError(
+                    "--grammar-mode-cell is only supported for "
+                    f"--condition {L1A_GRAMMAR_MODE_CP_SELECTOR}"
+                )
+            if self.signed_l1a_authorization is not None:
+                raise ValueError(
+                    "--signed-l1a-authorization is only supported for "
+                    f"--condition {L1A_GRAMMAR_MODE_CP_SELECTOR}"
+                )
+        if self.signed_l1a_authorization is not None:
+            _require_non_empty_str(
+                self.signed_l1a_authorization,
+                "signed_l1a_authorization",
+            )
+        if (
+            self.condition == L1A_GRAMMAR_MODE_CP_SELECTOR
+            and not self.dry_plan
+            and not self.execution_plan
+            and self.signed_l1a_authorization is None
+        ):
             raise ValueError(
-                f"--dry-plan is only supported for --condition {L1A_GRAMMAR_MODE_CP_SELECTOR}"
+                f"{L1A_GRAMMAR_MODE_CP_SELECTOR} execution requires "
+                "--signed-l1a-authorization; use --dry-plan or --execution-plan "
+                "for local no-execution planning"
             )
-        if not self.dry_plan and self.grammar_mode_cell != "all":
-            raise ValueError("--grammar-mode-cell is only supported with --dry-plan")
         _require_member(self.kernel_class, KERNEL_CLASS_SELECTOR_CHOICES, "kernel_class")
         _require_member(self.scale_tier, SCALE_TIER_CHOICES, "scale_tier")
         _require_positive_int(self.n, "n")
@@ -245,11 +276,21 @@ class Cluster3RunnerConfig:
         )
         _require_non_empty_str(self.output, "output")
         _reject_cluster1_cluster2_output(self.output)
-        _require_member(self.write_mode, ("overwrite", "resume", "dry_plan"), "write_mode")
+        _require_member(
+            self.write_mode,
+            ("overwrite", "resume", "dry_plan", "execution_plan"),
+            "write_mode",
+        )
         if self.dry_plan and self.write_mode != "dry_plan":
             raise ValueError("dry_plan configs require write_mode='dry_plan'")
+        if self.execution_plan and self.write_mode != "execution_plan":
+            raise ValueError(
+                "execution_plan configs require write_mode='execution_plan'"
+            )
         if not self.dry_plan and self.write_mode == "dry_plan":
             raise ValueError("write_mode='dry_plan' requires dry_plan=True")
+        if not self.execution_plan and self.write_mode == "execution_plan":
+            raise ValueError("write_mode='execution_plan' requires execution_plan=True")
         _validate_observability_config(self)
         _validate_diagnostic_seed_config(self)
 
@@ -285,7 +326,7 @@ class Cluster3RunnerConfig:
             tokenizer_revision=namespace.tokenizer_revision,
             max_new_tokens=namespace.max_new_tokens,
             temperature=namespace.temperature,
-            output=namespace.output or L1A_DRY_PLAN_PLACEHOLDER_OUTPUT,
+            output=_output_from_namespace(namespace),
             observability_mode=namespace.observability_mode,
             observability_experiment_id=namespace.observability_experiment_id,
             observability_run_id=namespace.observability_run_id,
@@ -298,12 +339,16 @@ class Cluster3RunnerConfig:
             write_mode=(
                 "dry_plan"
                 if namespace.dry_plan
+                else "execution_plan"
+                if namespace.execution_plan
                 else "resume"
                 if namespace.resume
                 else "overwrite"
             ),
             dry_plan=namespace.dry_plan,
+            execution_plan=namespace.execution_plan,
             grammar_mode_cell=namespace.grammar_mode_cell,
+            signed_l1a_authorization=namespace.signed_l1a_authorization or None,
             diagnostic_seed_source=namespace.diagnostic_seed_source or None,
             diagnostic_expected_initial_failure=(
                 namespace.diagnostic_expected_initial_failure or None
@@ -318,9 +363,20 @@ class Cluster3RunnerConfig:
                 "observability_experiment_id",
                 "observability_run_id",
                 "observability_output",
+                "signed_l1a_authorization",
             ):
                 payload.pop(key, None)
         return payload
+
+
+def _output_from_namespace(namespace: argparse.Namespace) -> str:
+    if namespace.output is not None:
+        return namespace.output
+    if namespace.dry_plan:
+        return L1A_DRY_PLAN_PLACEHOLDER_OUTPUT
+    if namespace.condition == L1A_GRAMMAR_MODE_CP_SELECTOR:
+        return L1A_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
+    return ""
 
 
 @dataclass(frozen=True)
@@ -947,10 +1003,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="all",
         choices=l1a_grammar_mode_cell_selector_choices(),
     )
+    parser.add_argument("--signed-l1a-authorization", default=None)
     mode = parser.add_mutually_exclusive_group(required=False)
     mode.add_argument("--overwrite", action="store_true")
     mode.add_argument("--resume", action="store_true")
     mode.add_argument("--dry-plan", action="store_true")
+    mode.add_argument("--execution-plan", action="store_true")
     return parser
 
 
@@ -965,12 +1023,24 @@ def _validate_cli_namespace(
     parser: argparse.ArgumentParser,
     namespace: argparse.Namespace,
 ) -> None:
-    if namespace.dry_plan:
+    if namespace.dry_plan or namespace.execution_plan:
         if namespace.output is not None:
-            parser.error("--output is not used with --dry-plan")
+            parser.error("--output is not used with --dry-plan or --execution-plan")
+        if namespace.signed_l1a_authorization is not None:
+            parser.error(
+                "--signed-l1a-authorization is not used with local planning modes"
+            )
         if namespace.condition != L1A_GRAMMAR_MODE_CP_SELECTOR:
             parser.error(
-                f"--dry-plan requires --condition {L1A_GRAMMAR_MODE_CP_SELECTOR}"
+                "--dry-plan and --execution-plan require "
+                f"--condition {L1A_GRAMMAR_MODE_CP_SELECTOR}"
+            )
+        return
+    if namespace.condition == L1A_GRAMMAR_MODE_CP_SELECTOR:
+        if not namespace.overwrite:
+            parser.error(
+                f"--condition {L1A_GRAMMAR_MODE_CP_SELECTOR} requires --overwrite "
+                "for future fail-if-existing execution planning"
             )
         return
     if namespace.output is None:
@@ -1004,12 +1074,51 @@ def build_l1a_dry_plan_payload(config: Cluster3RunnerConfig) -> dict[str, Any]:
     }
 
 
+def build_l1a_execution_plan_payload(config: Cluster3RunnerConfig) -> dict[str, Any]:
+    if not config.execution_plan:
+        raise ValueError(
+            "build_l1a_execution_plan_payload requires execution_plan=True"
+        )
+    cells = build_l1a_launcher_executable_plan(
+        repair_history_policy=config.repair_history_policy,
+        cell_selector=config.grammar_mode_cell,
+        repo_root=REPO_ROOT,
+    )
+    return {
+        "selector": L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "execution_plan_only": True,
+        "dry_plan_only": False,
+        "cell_selector": config.grammar_mode_cell,
+        "cell_count": len(cells),
+        "experiment_id": L1A_EXPERIMENT_ID,
+        "output_root": L1A_OUTPUT_ROOT,
+        "observability_root": L1A_OBSERVABILITY_ROOT,
+        "path_collision_policy": L1A_PATH_COLLISION_POLICY,
+        "execution_authorized": False,
+        "requires_signed_l1a_authorization": True,
+        "writes_outputs": False,
+        "writes_artifacts": False,
+        "writes_mlruns": False,
+        "cells": [cell.to_dict() for cell in cells],
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> Cluster3RunResult | dict[str, Any]:
     config = parse_args(argv)
     if config.dry_plan:
         payload = build_l1a_dry_plan_payload(config)
         print(json.dumps(payload, sort_keys=True))
         return payload
+    if config.execution_plan:
+        payload = build_l1a_execution_plan_payload(config)
+        print(json.dumps(payload, sort_keys=True))
+        return payload
+    if config.condition == L1A_GRAMMAR_MODE_CP_SELECTOR:
+        raise RuntimeError(
+            f"{L1A_GRAMMAR_MODE_CP_SELECTOR} execution is not enabled by this "
+            "local support branch; the selector remains fail-closed until a "
+            "separate signed execution packet authorizes launch"
+        )
 
     # Seam A (Modal path): open an optional MLflow run around the local
     # orchestration. Modal returns records; the Cluster 3 JSONL writer's seam
@@ -1206,6 +1315,15 @@ def run_cluster3(
         raise TypeError("config must be Cluster3RunnerConfig")
     if config.dry_plan:
         raise ValueError("dry_plan configs must be handled by main before run_cluster3")
+    if config.execution_plan:
+        raise ValueError(
+            "execution_plan configs must be handled by main before run_cluster3"
+        )
+    if config.condition == L1A_GRAMMAR_MODE_CP_SELECTOR:
+        raise RuntimeError(
+            f"{L1A_GRAMMAR_MODE_CP_SELECTOR} execution is not enabled by this "
+            "local support branch"
+        )
     deps = dependencies or RunnerDependencies()
     generation = deps.generation or _default_generation_call
     correctness = deps.correctness or _default_correctness_call
@@ -2981,7 +3099,7 @@ def _validate_observability_config(config: Cluster3RunnerConfig) -> None:
         OBSERVABILITY_MODE_CHOICES,
         "observability_mode",
     )
-    if config.dry_plan:
+    if config.dry_plan or config.execution_plan:
         return
     if config.observability_mode == "off":
         return

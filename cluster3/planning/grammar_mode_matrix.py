@@ -52,6 +52,10 @@ L1A_OBSERVABILITY_ROOT = (
 )
 L1A_RUN_ID_PREFIX = "full_pipeline_grammar_mode_cp_factorial_v1_l1a_n1"
 L1A_PATH_COLLISION_POLICY = "fail_if_any_target_path_exists"
+L1A_SIGNED_AUTHORIZATION_PLACEHOLDER = "SIGNED_L1A_PACKET_ID_REQUIRED"
+L1A_EXECUTABLE_SELECTOR_SUPPORT_STATUS = (
+    "EXECUTABLE_SELECTOR_PRESENT_AUTHORIZATION_REQUIRED_NO_EXECUTION"
+)
 
 
 @dataclass(frozen=True)
@@ -83,8 +87,11 @@ class GrammarModeLauncherCellPlan:
     observability_join_key: str
     path_collision_policy: str
     write_mode_required: str
+    command_mode: str
     command_selector: str
     command_grammar_argument: str | None
+    executable_command: str
+    signed_authorization_placeholder: str | None
     execution_role: str
     support_status: str
     expected_eligibility_notes: tuple[str, ...]
@@ -160,6 +167,48 @@ def build_l1a_launcher_dry_plan(
 ) -> tuple[GrammarModeLauncherCellPlan, ...]:
     """Return deterministic dry-plan entries for the 12-cell L1a selector."""
 
+    return _build_l1a_launcher_plan(
+        repair_history_policy=repair_history_policy,
+        cell_selector=cell_selector,
+        output_root=output_root,
+        observability_root=observability_root,
+        repo_root=repo_root,
+        command_mode="dry_plan",
+    )
+
+
+def build_l1a_launcher_executable_plan(
+    *,
+    repair_history_policy: str = P_HISTORY_POLICY_V1,
+    cell_selector: str = "all",
+    output_root: str | Path = L1A_OUTPUT_ROOT,
+    observability_root: str | Path = L1A_OBSERVABILITY_ROOT,
+    repo_root: str | Path | None = None,
+    signed_authorization_placeholder: str = L1A_SIGNED_AUTHORIZATION_PLACEHOLDER,
+) -> tuple[GrammarModeLauncherCellPlan, ...]:
+    """Return executable-selector command plans without running them."""
+
+    return _build_l1a_launcher_plan(
+        repair_history_policy=repair_history_policy,
+        cell_selector=cell_selector,
+        output_root=output_root,
+        observability_root=observability_root,
+        repo_root=repo_root,
+        command_mode="executable",
+        signed_authorization_placeholder=signed_authorization_placeholder,
+    )
+
+
+def _build_l1a_launcher_plan(
+    *,
+    repair_history_policy: str,
+    cell_selector: str,
+    output_root: str | Path,
+    observability_root: str | Path,
+    repo_root: str | Path | None,
+    command_mode: str,
+    signed_authorization_placeholder: str | None = None,
+) -> tuple[GrammarModeLauncherCellPlan, ...]:
     selected = _select_cells(
         build_l1a_grammar_mode_cp_matrix(repair_history_policy=repair_history_policy),
         cell_selector=cell_selector,
@@ -174,6 +223,8 @@ def build_l1a_launcher_dry_plan(
             output_base=output_base,
             observability_base=observability_base,
             repo_root=resolved_repo_root,
+            command_mode=command_mode,
+            signed_authorization_placeholder=signed_authorization_placeholder,
         )
         for cell in selected
     )
@@ -210,6 +261,8 @@ def _launcher_plan_for_cell(
     output_base: Path,
     observability_base: Path,
     repo_root: Path,
+    command_mode: str,
+    signed_authorization_placeholder: str | None,
 ) -> GrammarModeLauncherCellPlan:
     condition_id = cell.output_namespace_suffix
     output_path = output_base / f"{condition_id}.jsonl"
@@ -224,6 +277,25 @@ def _launcher_plan_for_cell(
         repair_history_policy
         if cell.correctness_feedback_active or cell.compile_feedback_active
         else "not_applicable"
+    )
+    command_grammar_argument = (
+        f"--grammar-variant {cell.grammar_variant}"
+        if cell.grammar_variant is not None
+        else None
+    )
+    command_selector = _command_selector_for_cell(
+        condition_id=condition_id,
+        command_mode=command_mode,
+        command_grammar_argument=command_grammar_argument,
+        output_path=output_path.as_posix(),
+        observability_event_path=observability_event_path.as_posix(),
+        repair_history_policy=repair_history_policy,
+        signed_authorization_placeholder=signed_authorization_placeholder,
+    )
+    support_status = (
+        "DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION"
+        if command_mode == "dry_plan"
+        else L1A_EXECUTABLE_SELECTOR_SUPPORT_STATUS
     )
     return GrammarModeLauncherCellPlan(
         selector=L1A_GRAMMAR_MODE_CP_SELECTOR,
@@ -250,24 +322,73 @@ def _launcher_plan_for_cell(
         observability_run_id_suffix=condition_id,
         observability_join_key=f"{L1A_RUN_ID_PREFIX}__{condition_id}",
         path_collision_policy=L1A_PATH_COLLISION_POLICY,
-        write_mode_required="fresh_overwrite_only_after_signed_approval",
-        command_selector=(
-            f"--condition {L1A_GRAMMAR_MODE_CP_SELECTOR} "
-            f"--dry-plan --grammar-mode-cell {condition_id}"
-        ),
-        command_grammar_argument=(
-            f"--grammar-variant {cell.grammar_variant}"
-            if cell.grammar_variant is not None
-            else None
-        ),
+        write_mode_required="fail_if_existing_before_signed_execution",
+        command_mode=command_mode,
+        command_selector=command_selector,
+        command_grammar_argument=command_grammar_argument,
+        executable_command=f".venv/bin/python -m cluster3.experiments.run_cluster3_modal {command_selector}",
+        signed_authorization_placeholder=signed_authorization_placeholder,
         execution_role=(
             "p_enabled_generated_cell"
             if cell.compile_feedback_active
             else "no_p_control_cell"
         ),
-        support_status="DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION",
+        support_status=support_status,
         expected_eligibility_notes=cell.expected_eligibility_notes,
     )
+
+
+def _command_selector_for_cell(
+    *,
+    condition_id: str,
+    command_mode: str,
+    command_grammar_argument: str | None,
+    output_path: str,
+    observability_event_path: str,
+    repair_history_policy: str,
+    signed_authorization_placeholder: str | None,
+) -> str:
+    if command_mode == "dry_plan":
+        return (
+            f"--condition {L1A_GRAMMAR_MODE_CP_SELECTOR} "
+            f"--dry-plan --grammar-mode-cell {condition_id}"
+        )
+    if command_mode != "executable":
+        raise ValueError(f"unsupported command_mode {command_mode!r}")
+    if not signed_authorization_placeholder:
+        raise ValueError("signed authorization placeholder is required")
+    parts = [
+        "--condition",
+        L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--grammar-mode-cell",
+        condition_id,
+        "--kernel-class",
+        "elementwise",
+        "--scale-tier",
+        "smoke",
+        "--n",
+        "1",
+        "--dtypes",
+        "fp32",
+        "--repair-history-policy",
+        repair_history_policy,
+        "--observability-mode",
+        "best_effort",
+        "--observability-experiment-id",
+        L1A_EXPERIMENT_ID,
+        "--observability-run-id",
+        f"{L1A_RUN_ID_PREFIX}__{condition_id}",
+        "--observability-output",
+        observability_event_path,
+        "--signed-l1a-authorization",
+        signed_authorization_placeholder,
+        "--output",
+        output_path,
+        "--overwrite",
+    ]
+    if command_grammar_argument is not None:
+        parts.extend(command_grammar_argument.split(" "))
+    return " ".join(parts)
 
 
 def _result_hash_path(result_path: Path) -> Path:

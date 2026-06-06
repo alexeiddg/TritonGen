@@ -1615,8 +1615,62 @@ def test_l1a_12cell_dry_plan_cli_selects_single_no_p_cell() -> None:
     )
 
 
+def test_l1a_12cell_execution_plan_cli_parses_without_output_or_write_mode() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--execution-plan",
+        ]
+    )
+
+    assert config.condition == runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR
+    assert config.execution_plan is True
+    assert config.dry_plan is False
+    assert config.write_mode == "execution_plan"
+    assert config.output == runner_mod.L1A_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
+    assert config.grammar_mode_cell == "all"
+
+
+def test_l1a_12cell_execution_plan_builds_executable_commands() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--grammar-mode-cell",
+            "grammar_off__c_on__p_off",
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--execution-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_execution_plan_payload(config)
+
+    assert payload["cell_count"] == 1
+    assert payload["execution_authorized"] is False
+    assert payload["requires_signed_l1a_authorization"] is True
+    assert payload["writes_outputs"] is False
+    assert payload["writes_artifacts"] is False
+    assert payload["writes_mlruns"] is False
+    cell = payload["cells"][0]
+    assert cell["condition_id"] == "grammar_off__c_on__p_off"
+    assert cell["command_mode"] == "executable"
+    assert cell["compile_feedback_active"] is False
+    assert cell["execution_role"] == "no_p_control_cell"
+    assert "--dry-plan" not in cell["command_selector"]
+    assert "--grammar-variant" not in cell["command_selector"]
+    assert "--signed-l1a-authorization" in cell["command_selector"]
+    assert "--output " + cell["output_path"] in cell["command_selector"]
+    assert (
+        "--observability-output " + cell["observability_event_path"]
+        in cell["command_selector"]
+    )
+
+
 def test_l1a_12cell_selector_rejects_execution_without_dry_plan(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="dry-plan only"):
+    with pytest.raises(ValueError, match="signed-l1a-authorization"):
         parse_args(
             [
                 "--condition",
@@ -1693,6 +1747,72 @@ def test_l1a_12cell_dry_plan_main_does_not_run_or_write(
     assert before == {path: path.exists() for path in watched_paths}
 
 
+def test_l1a_12cell_execution_plan_main_does_not_run_or_write(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    planned = runner_mod.build_l1a_launcher_executable_plan(
+        repair_history_policy="agentic_transcript_v1",
+        repo_root=runner_mod.REPO_ROOT,
+    )
+    watched_paths = {
+        Path(cell.output_path) for cell in planned
+    } | {
+        Path(cell.content_hash_sidecar_path) for cell in planned
+    } | {
+        Path(cell.observability_event_path) for cell in planned
+    } | {
+        Path(cell.observability_summary_path) for cell in planned
+    } | {
+        Path(cell.observability_hash_path) for cell in planned
+    } | {Path("mlruns")}
+    before = {path: path.exists() for path in watched_paths}
+
+    def fail_run(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("execution-plan must not call run_cluster3")
+
+    monkeypatch.setattr(runner_mod, "run_cluster3", fail_run)
+
+    payload = runner_mod.main(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--execution-plan",
+        ]
+    )
+    printed = json.loads(capsys.readouterr().out)
+
+    assert json.loads(json.dumps(payload, sort_keys=True)) == printed
+    assert printed["cell_count"] == 12
+    assert printed["execution_authorized"] is False
+    assert printed["writes_outputs"] is False
+    assert printed["writes_artifacts"] is False
+    assert printed["writes_mlruns"] is False
+    assert before == {path: path.exists() for path in watched_paths}
+
+
+def test_l1a_12cell_signed_selector_refuses_before_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_run(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("signed selector must still stop before run_cluster3")
+
+    monkeypatch.setattr(runner_mod, "run_cluster3", fail_run)
+
+    with pytest.raises(RuntimeError, match="not enabled"):
+        runner_mod.main(
+            [
+                "--condition",
+                runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+                "--signed-l1a-authorization",
+                "signed-test-placeholder",
+                "--overwrite",
+            ]
+        )
+
+
 def test_l1a_12cell_dry_plan_rejects_output_argument(tmp_path: Path) -> None:
     with pytest.raises(SystemExit):
         parse_args(
@@ -1702,6 +1822,19 @@ def test_l1a_12cell_dry_plan_rejects_output_argument(tmp_path: Path) -> None:
                 "--output",
                 str(tmp_path / "ignored.jsonl"),
                 "--dry-plan",
+            ]
+        )
+
+
+def test_l1a_12cell_execution_plan_rejects_output_argument(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "--condition",
+                runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+                "--output",
+                str(tmp_path / "ignored.jsonl"),
+                "--execution-plan",
             ]
         )
 
