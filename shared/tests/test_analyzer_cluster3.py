@@ -71,11 +71,22 @@ def test_analyzer_2x2_reproducible_without_cluster3_rows() -> None:
             "full_factorial_goal",
             "g_replay_coverage",
             "interpretation_flags",
+            "metric_aliases",
+            "metric_registry",
+            "metric_registry_schema_version",
             "normalized_scale_tiers",
+            "outcome_families",
+            "outcome_family_schema_version",
             "p_cell_status",
             "paired_primary_comparisons",
             "primary_response_variable",
             "raw_scale_tiers_before_annotation",
+            "registry_provenance",
+            "repair_history_group_columns",
+            "repair_history_groups",
+            "repair_history_policies",
+            "repair_history_policy_quarantine",
+            "repair_history_policy_states",
             "reportable",
             "requested_scale_tier",
             "response_variable",
@@ -153,11 +164,17 @@ def test_analyzer_2x2_reproducible_without_cluster3_rows() -> None:
             "discordant_control_only",
             "discordant_treatment_only",
             "interpretation_flags",
+            "level_gate",
+            "metric_current_status",
+            "metric_display_name",
+            "metric_gate",
             "metric_name",
+            "metric_reportability",
             "missing_control_pairs",
             "missing_treatment_pairs",
             "multiple_testing_method",
             "n_pairs",
+            "outcome_family",
             "p_value",
             "p_value_holm",
             "paired_analysis",
@@ -798,6 +815,30 @@ def test_analyzer_emits_additive_3way_interaction_when_all_eight_cells_populated
     assert result["metadata"]["three_way_interaction"]["reportable"] is True
 
 
+def test_smoke_full_eight_cells_do_not_report_three_way_claim() -> None:
+    rows = _all_eight_rows()
+    for row in rows:
+        row["scale_tier"] = "smoke"
+
+    result = analyze_factorial(
+        rows,
+        analysis_scope="l1a_grammar_mode_cp_smoke",
+        bootstrap_samples=20,
+    )
+
+    assert result["metadata"]["reportable"] is False
+    assert result["metadata"]["three_way_interaction"]["reportable"] is False
+    assert (
+        result["metadata"]["three_way_interaction"]["reason"]
+        == "requires_reportable_primary_paper_scale_output"
+    )
+    assert result["factorial_model"]["three_way_interaction_reportable"] is False
+    assert (
+        "three_way_interaction_requires_reportable_primary_paper_scale_output"
+        in result["factorial_model"]["warnings"]
+    )
+
+
 def test_analyzer_metadata_paired_pairs_extend_when_all_eight_cells_present() -> None:
     result = analyze_factorial(_all_eight_rows(), bootstrap_samples=20)
 
@@ -1104,8 +1145,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
       "condition": "C",
       "condition_label": "C",
       "interpretation_flags": [],
+      "level_gate": "level2_correctness",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 2 task/functional success rate",
+      "metric_gate": "functional_success",
       "metric_name": "level2_functional_success_rate",
+      "metric_reportability": "reportable_primary",
       "n_cells": 2,
+      "outcome_family": "task_functional",
       "response_variable": "functional_success",
       "scale_tier": "paper",
       "success_rate": 0.5,
@@ -1118,8 +1165,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
       "condition": "G",
       "condition_label": "task-agnostic G",
       "interpretation_flags": [],
+      "level_gate": "level2_correctness",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 2 task/functional success rate",
+      "metric_gate": "functional_success",
       "metric_name": "level2_functional_success_rate",
+      "metric_reportability": "reportable_primary",
       "n_cells": 2,
+      "outcome_family": "task_functional",
       "response_variable": "functional_success",
       "scale_tier": "paper",
       "success_rate": 0.5,
@@ -1132,8 +1185,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
       "condition": "G+C",
       "condition_label": "task-agnostic G + C",
       "interpretation_flags": [],
+      "level_gate": "level2_correctness",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 2 task/functional success rate",
+      "metric_gate": "functional_success",
       "metric_name": "level2_functional_success_rate",
+      "metric_reportability": "reportable_primary",
       "n_cells": 2,
+      "outcome_family": "task_functional",
       "response_variable": "functional_success",
       "scale_tier": "paper",
       "success_rate": 0.5,
@@ -1146,8 +1205,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
       "condition": "none",
       "condition_label": "none",
       "interpretation_flags": [],
+      "level_gate": "level2_correctness",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 2 task/functional success rate",
+      "metric_gate": "functional_success",
       "metric_name": "level2_functional_success_rate",
+      "metric_reportability": "reportable_primary",
       "n_cells": 2,
+      "outcome_family": "task_functional",
       "response_variable": "functional_success",
       "scale_tier": "paper",
       "success_rate": 0.5,
@@ -1162,8 +1227,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
       "dtype": "fp32",
       "interpretation_flags": [],
       "kernel_class": "elementwise",
+      "level_gate": "level2_correctness",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 2 task/functional success rate",
+      "metric_gate": "functional_success",
       "metric_name": "level2_functional_success_rate",
+      "metric_reportability": "reportable_primary",
       "n_cells": 2,
+      "outcome_family": "task_functional",
       "response_variable": "functional_success",
       "scale_tier": "paper",
       "success_rate": 0.5,
@@ -1178,8 +1249,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
       "dtype": "fp32",
       "interpretation_flags": [],
       "kernel_class": "elementwise",
+      "level_gate": "level2_correctness",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 2 task/functional success rate",
+      "metric_gate": "functional_success",
       "metric_name": "level2_functional_success_rate",
+      "metric_reportability": "reportable_primary",
       "n_cells": 2,
+      "outcome_family": "task_functional",
       "response_variable": "functional_success",
       "scale_tier": "paper",
       "success_rate": 0.5,
@@ -1194,8 +1271,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
       "dtype": "fp32",
       "interpretation_flags": [],
       "kernel_class": "elementwise",
+      "level_gate": "level2_correctness",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 2 task/functional success rate",
+      "metric_gate": "functional_success",
       "metric_name": "level2_functional_success_rate",
+      "metric_reportability": "reportable_primary",
       "n_cells": 2,
+      "outcome_family": "task_functional",
       "response_variable": "functional_success",
       "scale_tier": "paper",
       "success_rate": 0.5,
@@ -1210,8 +1293,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
       "dtype": "fp32",
       "interpretation_flags": [],
       "kernel_class": "elementwise",
+      "level_gate": "level2_correctness",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 2 task/functional success rate",
+      "metric_gate": "functional_success",
       "metric_name": "level2_functional_success_rate",
+      "metric_reportability": "reportable_primary",
       "n_cells": 2,
+      "outcome_family": "task_functional",
       "response_variable": "functional_success",
       "scale_tier": "paper",
       "success_rate": 0.5,
@@ -1227,8 +1316,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "diagnostic_only",
         "strict_surface_metric"
       ],
+      "level_gate": "level1_compile_launch",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 1 structural compile/launch success rate",
+      "metric_gate": "compile_success",
       "metric_name": "level1_compile_success_rate",
+      "metric_reportability": "reportable_secondary",
       "n_cells": 2,
+      "outcome_family": "structural_code_surface",
       "response_variable": "compile_success",
       "scale_tier": "paper",
       "success_rate": 1.0,
@@ -1244,8 +1339,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "diagnostic_only",
         "strict_surface_metric"
       ],
+      "level_gate": "level1_compile_launch",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 1 structural compile/launch success rate",
+      "metric_gate": "compile_success",
       "metric_name": "level1_compile_success_rate",
+      "metric_reportability": "reportable_secondary",
       "n_cells": 2,
+      "outcome_family": "structural_code_surface",
       "response_variable": "compile_success",
       "scale_tier": "paper",
       "success_rate": 1.0,
@@ -1261,8 +1362,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "diagnostic_only",
         "strict_surface_metric"
       ],
+      "level_gate": "level1_compile_launch",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 1 structural compile/launch success rate",
+      "metric_gate": "compile_success",
       "metric_name": "level1_compile_success_rate",
+      "metric_reportability": "reportable_secondary",
       "n_cells": 2,
+      "outcome_family": "structural_code_surface",
       "response_variable": "compile_success",
       "scale_tier": "paper",
       "success_rate": 1.0,
@@ -1278,8 +1385,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "diagnostic_only",
         "strict_surface_metric"
       ],
+      "level_gate": "level1_compile_launch",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 1 structural compile/launch success rate",
+      "metric_gate": "compile_success",
       "metric_name": "level1_compile_success_rate",
+      "metric_reportability": "reportable_secondary",
       "n_cells": 2,
+      "outcome_family": "structural_code_surface",
       "response_variable": "compile_success",
       "scale_tier": "paper",
       "success_rate": 1.0,
@@ -1297,8 +1410,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "strict_surface_metric"
       ],
       "kernel_class": "elementwise",
+      "level_gate": "level1_compile_launch",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 1 structural compile/launch success rate",
+      "metric_gate": "compile_success",
       "metric_name": "level1_compile_success_rate",
+      "metric_reportability": "reportable_secondary",
       "n_cells": 2,
+      "outcome_family": "structural_code_surface",
       "response_variable": "compile_success",
       "scale_tier": "paper",
       "success_rate": 1.0,
@@ -1316,8 +1435,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "strict_surface_metric"
       ],
       "kernel_class": "elementwise",
+      "level_gate": "level1_compile_launch",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 1 structural compile/launch success rate",
+      "metric_gate": "compile_success",
       "metric_name": "level1_compile_success_rate",
+      "metric_reportability": "reportable_secondary",
       "n_cells": 2,
+      "outcome_family": "structural_code_surface",
       "response_variable": "compile_success",
       "scale_tier": "paper",
       "success_rate": 1.0,
@@ -1335,8 +1460,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "strict_surface_metric"
       ],
       "kernel_class": "elementwise",
+      "level_gate": "level1_compile_launch",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 1 structural compile/launch success rate",
+      "metric_gate": "compile_success",
       "metric_name": "level1_compile_success_rate",
+      "metric_reportability": "reportable_secondary",
       "n_cells": 2,
+      "outcome_family": "structural_code_surface",
       "response_variable": "compile_success",
       "scale_tier": "paper",
       "success_rate": 1.0,
@@ -1354,8 +1485,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "strict_surface_metric"
       ],
       "kernel_class": "elementwise",
+      "level_gate": "level1_compile_launch",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 1 structural compile/launch success rate",
+      "metric_gate": "compile_success",
       "metric_name": "level1_compile_success_rate",
+      "metric_reportability": "reportable_secondary",
       "n_cells": 2,
+      "outcome_family": "structural_code_surface",
       "response_variable": "compile_success",
       "scale_tier": "paper",
       "success_rate": 1.0,
@@ -1453,11 +1590,321 @@ LEGACY_2X2_GOLDEN_JSON = r"""
     "analysis_label": "current 2\u00b2 subset analysis over G and C",
     "analysis_scope": "primary_functional",
     "current_status_scope": "This is a current-status scope statement, not a methodology realignment.",
+    "feedback_activation": [
+      {
+        "c_factor_active": false,
+        "c_feedback_eligibility_proxy_rows": 0,
+        "c_feedback_eligible_rows": 0,
+        "c_feedback_evidence_policy": "not_available",
+        "c_feedback_loop_fired_rows": 0,
+        "caveats": [],
+        "condition": "none",
+        "f0_rows": 0,
+        "f1_rows": 0,
+        "f2_rows": 0,
+        "f3_rows": 0,
+        "level1_compile_failure_rows": 0,
+        "level2_reached_rows": 1,
+        "n_rows": 2,
+        "p_factor_active": false,
+        "p_feedback_eligible_rows": 0,
+        "p_feedback_evidence_policy": "not_available",
+        "p_feedback_loop_fired_rows": 0
+      },
+      {
+        "c_factor_active": false,
+        "c_feedback_eligibility_proxy_rows": 0,
+        "c_feedback_eligible_rows": 0,
+        "c_feedback_evidence_policy": "not_available",
+        "c_feedback_loop_fired_rows": 0,
+        "caveats": [],
+        "condition": "G",
+        "f0_rows": 0,
+        "f1_rows": 0,
+        "f2_rows": 0,
+        "f3_rows": 0,
+        "level1_compile_failure_rows": 0,
+        "level2_reached_rows": 1,
+        "n_rows": 2,
+        "p_factor_active": false,
+        "p_feedback_eligible_rows": 0,
+        "p_feedback_evidence_policy": "not_available",
+        "p_feedback_loop_fired_rows": 0
+      },
+      {
+        "c_factor_active": true,
+        "c_feedback_eligibility_proxy_rows": 0,
+        "c_feedback_eligible_rows": 0,
+        "c_feedback_evidence_policy": "not_available",
+        "c_feedback_loop_fired_rows": 0,
+        "caveats": [
+          "C feedback eligibility = 0/2 unless explicit F2 initial-failure evidence exists."
+        ],
+        "condition": "C",
+        "f0_rows": 0,
+        "f1_rows": 0,
+        "f2_rows": 0,
+        "f3_rows": 0,
+        "level1_compile_failure_rows": 0,
+        "level2_reached_rows": 1,
+        "n_rows": 2,
+        "p_factor_active": false,
+        "p_feedback_eligible_rows": 0,
+        "p_feedback_evidence_policy": "not_available",
+        "p_feedback_loop_fired_rows": 0
+      },
+      {
+        "c_factor_active": true,
+        "c_feedback_eligibility_proxy_rows": 0,
+        "c_feedback_eligible_rows": 0,
+        "c_feedback_evidence_policy": "not_available",
+        "c_feedback_loop_fired_rows": 0,
+        "caveats": [
+          "C feedback eligibility = 0/2 unless explicit F2 initial-failure evidence exists."
+        ],
+        "condition": "G+C",
+        "f0_rows": 0,
+        "f1_rows": 0,
+        "f2_rows": 0,
+        "f3_rows": 0,
+        "level1_compile_failure_rows": 0,
+        "level2_reached_rows": 1,
+        "n_rows": 2,
+        "p_factor_active": false,
+        "p_feedback_eligible_rows": 0,
+        "p_feedback_evidence_policy": "not_available",
+        "p_feedback_loop_fired_rows": 0
+      }
+    ],
     "full_factorial_goal": "The full 2\u00b3 factorial over G, C, and P remains the defined project goal.",
     "grammar_acceptance_summary": [],
     "interpretation_flags": [
       "p_cells_not_populated"
     ],
+    "level_reach_rates": [
+      {
+        "caveats": [
+          "Level 0 syntax/surface pass is not inferred from missing failure codes.",
+          "Cluster 1 replay controls may be compile-only in artifact-backed analyses; normalized Level 2 false values are unproven, not measured failure."
+        ],
+        "condition": "none",
+        "level0_evidence_policy": "not_available",
+        "level0_parse_surface_evaluable_rows": 0,
+        "level0_parse_surface_pass_rate": null,
+        "level0_parse_surface_pass_rows": 0,
+        "level1_compile_launch_evaluable_rows": 2,
+        "level1_compile_launch_reached_rate": 1.0,
+        "level1_compile_launch_reached_rows": 2,
+        "level1_evidence_policy": "derived_with_policy",
+        "level2_correctness_evaluable_rows": 2,
+        "level2_correctness_reached_rate": 0.5,
+        "level2_correctness_reached_rows": 1,
+        "level2_evidence_policy": "derived_with_policy",
+        "n_rows": 2,
+        "unavailable_reasons": [
+          "level0_parse_surface_explicit_evidence_absent"
+        ]
+      },
+      {
+        "caveats": [
+          "Level 0 syntax/surface pass is not inferred from missing failure codes.",
+          "Cluster 1 replay controls may be compile-only in artifact-backed analyses; normalized Level 2 false values are unproven, not measured failure."
+        ],
+        "condition": "G",
+        "level0_evidence_policy": "not_available",
+        "level0_parse_surface_evaluable_rows": 0,
+        "level0_parse_surface_pass_rate": null,
+        "level0_parse_surface_pass_rows": 0,
+        "level1_compile_launch_evaluable_rows": 2,
+        "level1_compile_launch_reached_rate": 1.0,
+        "level1_compile_launch_reached_rows": 2,
+        "level1_evidence_policy": "derived_with_policy",
+        "level2_correctness_evaluable_rows": 2,
+        "level2_correctness_reached_rate": 0.5,
+        "level2_correctness_reached_rows": 1,
+        "level2_evidence_policy": "derived_with_policy",
+        "n_rows": 2,
+        "unavailable_reasons": [
+          "level0_parse_surface_explicit_evidence_absent"
+        ]
+      },
+      {
+        "caveats": [
+          "Level 0 syntax/surface pass is not inferred from missing failure codes."
+        ],
+        "condition": "C",
+        "level0_evidence_policy": "not_available",
+        "level0_parse_surface_evaluable_rows": 0,
+        "level0_parse_surface_pass_rate": null,
+        "level0_parse_surface_pass_rows": 0,
+        "level1_compile_launch_evaluable_rows": 2,
+        "level1_compile_launch_reached_rate": 1.0,
+        "level1_compile_launch_reached_rows": 2,
+        "level1_evidence_policy": "derived_with_policy",
+        "level2_correctness_evaluable_rows": 2,
+        "level2_correctness_reached_rate": 0.5,
+        "level2_correctness_reached_rows": 1,
+        "level2_evidence_policy": "derived_with_policy",
+        "n_rows": 2,
+        "unavailable_reasons": [
+          "level0_parse_surface_explicit_evidence_absent"
+        ]
+      },
+      {
+        "caveats": [
+          "Level 0 syntax/surface pass is not inferred from missing failure codes."
+        ],
+        "condition": "G+C",
+        "level0_evidence_policy": "not_available",
+        "level0_parse_surface_evaluable_rows": 0,
+        "level0_parse_surface_pass_rate": null,
+        "level0_parse_surface_pass_rows": 0,
+        "level1_compile_launch_evaluable_rows": 2,
+        "level1_compile_launch_reached_rate": 1.0,
+        "level1_compile_launch_reached_rows": 2,
+        "level1_evidence_policy": "derived_with_policy",
+        "level2_correctness_evaluable_rows": 2,
+        "level2_correctness_reached_rate": 0.5,
+        "level2_correctness_reached_rows": 1,
+        "level2_evidence_policy": "derived_with_policy",
+        "n_rows": 2,
+        "unavailable_reasons": [
+          "level0_parse_surface_explicit_evidence_absent"
+        ]
+      }
+    ],
+    "metric_availability": {
+      "benchmarkable_pass_at_k": {
+        "availability_status": "future_only",
+        "available": false,
+        "computed_value_present": false,
+        "current_status": "future_only",
+        "level_gate": "level4_performance",
+        "metric_gate": "future_performance",
+        "metric_name": "benchmarkable_pass_at_k",
+        "outcome_family": "benchmarkable_performance",
+        "reason": "Metric requires a future Level 4 or benchmarkable/performance contract.",
+        "reportability": "future_only",
+        "reportable_output": true
+      },
+      "compile_pass_at_k": {
+        "availability_status": "planned_deferred",
+        "available": false,
+        "computed_value_present": false,
+        "current_status": "planned_deferred",
+        "level_gate": "level1_compile_launch",
+        "metric_gate": "compile_success",
+        "metric_name": "compile_pass_at_k",
+        "outcome_family": "structural_code_surface",
+        "reason": "Metric is registered but intentionally not computed in S1.",
+        "reportability": "diagnostic_only",
+        "reportable_output": true
+      },
+      "correctness_pass_at_k": {
+        "availability_status": "planned_deferred",
+        "available": false,
+        "computed_value_present": false,
+        "current_status": "planned_deferred",
+        "level_gate": "level2_correctness",
+        "metric_gate": "functional_success",
+        "metric_name": "correctness_pass_at_k",
+        "outcome_family": "task_functional",
+        "reason": "Metric is registered but intentionally not computed in S1.",
+        "reportability": "not_reportable",
+        "reportable_output": true
+      },
+      "eval_set_success_rate": {
+        "availability_status": "planned_deferred",
+        "available": false,
+        "computed_value_present": false,
+        "current_status": "planned_deferred",
+        "level_gate": "level2_correctness",
+        "metric_gate": "functional_success",
+        "metric_name": "eval_set_success_rate",
+        "outcome_family": "task_functional",
+        "reason": "Metric is registered but intentionally not computed in S1.",
+        "reportability": "diagnostic_only",
+        "reportable_output": true
+      },
+      "grammar_valid_rate": {
+        "availability_status": "not_available",
+        "available": false,
+        "computed_value_present": false,
+        "current_status": "current_with_caveats",
+        "level_gate": "level0_parse_surface",
+        "metric_gate": "grammar_valid",
+        "metric_name": "grammar_valid_rate",
+        "outcome_family": "structural_code_surface",
+        "reason": "Required compatible source evidence is absent from this input.",
+        "reportability": "diagnostic_only",
+        "reportable_output": true
+      },
+      "level1_compile_success_rate": {
+        "availability_status": "available",
+        "available": true,
+        "computed_value_present": true,
+        "current_status": "current_with_caveats",
+        "level_gate": "level1_compile_launch",
+        "metric_gate": "compile_success",
+        "metric_name": "level1_compile_success_rate",
+        "outcome_family": "structural_code_surface",
+        "reason": "Required source evidence is present under current analyzer policy.",
+        "reportability": "reportable_secondary",
+        "reportable_output": true
+      },
+      "level2_functional_success_rate": {
+        "availability_status": "available",
+        "available": true,
+        "computed_value_present": true,
+        "current_status": "current_with_caveats",
+        "level_gate": "level2_correctness",
+        "metric_gate": "functional_success",
+        "metric_name": "level2_functional_success_rate",
+        "outcome_family": "task_functional",
+        "reason": "Required source evidence is present under current analyzer policy.",
+        "reportability": "reportable_primary",
+        "reportable_output": true
+      },
+      "repair_set_success_rate": {
+        "availability_status": "planned_deferred",
+        "available": false,
+        "computed_value_present": false,
+        "current_status": "planned_deferred",
+        "level_gate": "level2_correctness",
+        "metric_gate": "functional_success",
+        "metric_name": "repair_set_success_rate",
+        "outcome_family": "task_functional",
+        "reason": "Metric is registered but intentionally not computed in S1.",
+        "reportability": "diagnostic_only",
+        "reportable_output": true
+      },
+      "syntax_valid_rate": {
+        "availability_status": "not_available_mixed_schema",
+        "available": false,
+        "computed_value_present": false,
+        "current_status": "planned_deferred",
+        "level_gate": "level0_parse_surface",
+        "metric_gate": "syntax_valid",
+        "metric_name": "syntax_valid_rate",
+        "outcome_family": "structural_code_surface",
+        "reason": "S1 does not compute mixed-schema syntax validity aggregates.",
+        "reportability": "not_reportable",
+        "reportable_output": true
+      },
+      "terminal_failure_distribution": {
+        "availability_status": "not_available",
+        "available": false,
+        "computed_value_present": false,
+        "current_status": "current_with_caveats",
+        "level_gate": "failure_taxonomy",
+        "metric_gate": "terminal_failure",
+        "metric_name": "terminal_failure_distribution",
+        "outcome_family": "mixed_diagnostic",
+        "reason": "Required compatible source evidence is absent from this input.",
+        "reportability": "diagnostic_only",
+        "reportable_output": true
+      }
+    },
     "missing_cells": [
       "P",
       "G+P",
@@ -1602,9 +2049,403 @@ LEGACY_2X2_GOLDEN_JSON = r"""
     "interpretation_flags": [
       "p_cells_not_populated"
     ],
+    "metric_aliases": {
+      "compile_launch_success_rate": "level1_compile_success_rate",
+      "compile_success_rate": "level1_compile_success_rate",
+      "evaluation_set_success_rate": "eval_set_success_rate",
+      "failure_code_distribution": "terminal_failure_distribution",
+      "functional_success_rate": "level2_functional_success_rate",
+      "grammar_acceptance_rate": "grammar_valid_rate",
+      "grammar_valid": "grammar_valid_rate",
+      "level1_compile_pass_at_k": "compile_pass_at_k",
+      "level2_correctness_pass_at_k": "correctness_pass_at_k",
+      "level4_benchmarkable_pass_at_k": "benchmarkable_pass_at_k",
+      "python_syntax_valid_rate": "syntax_valid_rate",
+      "repair_success_rate": "repair_set_success_rate",
+      "task_functional_success_rate": "level2_functional_success_rate",
+      "terminal_failure_rate": "terminal_failure_distribution"
+    },
+    "metric_registry": {
+      "benchmarkable_pass_at_k": {
+        "aliases": [
+          "level4_benchmarkable_pass_at_k"
+        ],
+        "analysis_role": "future_only",
+        "attempt_policy": "Future-only; no S1 computation.",
+        "caveat": "Future-only metric; no current computation or paper claim is authorized.",
+        "cluster_owner": "cross_cluster",
+        "current_status": "future_only",
+        "denominator_policy": "Future-only; requires a later Level 4 performance contract.",
+        "denominator_unit": "sample_group",
+        "display_name": "Benchmarkable pass-at-k with future performance gate",
+        "evidence_policy": "not_computed",
+        "forbidden_interpretations": [
+          "Do not claim performance, timing, speedup, or benchmarkability from S1 metadata.",
+          "Do not emit a current computed rate for this future-only metric."
+        ],
+        "level_gate": "level4_performance",
+        "metric_gate": "future_performance",
+        "metric_name": "benchmarkable_pass_at_k",
+        "missing_policy": "Always unavailable in S1.",
+        "numerator_policy": "Future sample groups that satisfy correctness and performance gates.",
+        "outcome_family": "benchmarkable_performance",
+        "reportability": "future_only",
+        "required_source_fields": [
+          "future_level4_performance_evidence"
+        ],
+        "response_variable": null,
+        "schema_version": "metric_registry_v1",
+        "scope": "future benchmarkable/performance work only"
+      },
+      "compile_pass_at_k": {
+        "aliases": [
+          "level1_compile_pass_at_k"
+        ],
+        "analysis_role": "diagnostic",
+        "attempt_policy": "Requires explicit k/sample-group policy before computation.",
+        "caveat": "Gate-specific pass-at-k metadata only; no current S1 aggregate is computed.",
+        "cluster_owner": "cross_cluster",
+        "current_status": "planned_deferred",
+        "denominator_policy": "Deferred unless gate-specific sample-group counts exist.",
+        "denominator_unit": "sample_group",
+        "display_name": "Compile pass-at-k with Level 1 gate",
+        "evidence_policy": "not_computed",
+        "forbidden_interpretations": [
+          "Do not emit an ungated pass-at-k metric.",
+          "Do not treat compile pass-at-k as task correctness."
+        ],
+        "level_gate": "level1_compile_launch",
+        "metric_gate": "compile_success",
+        "metric_name": "compile_pass_at_k",
+        "missing_policy": "Not populated until explicit k-group evidence exists.",
+        "numerator_policy": "Sample groups with at least one compile_success=True member.",
+        "outcome_family": "structural_code_surface",
+        "reportability": "diagnostic_only",
+        "required_source_fields": [
+          "sample_group",
+          "compile_success"
+        ],
+        "response_variable": "compile_success",
+        "schema_version": "metric_registry_v1",
+        "scope": "planned gate-specific diagnostic"
+      },
+      "correctness_pass_at_k": {
+        "aliases": [
+          "level2_correctness_pass_at_k"
+        ],
+        "analysis_role": "primary",
+        "attempt_policy": "Requires explicit k/sample-group policy before computation.",
+        "caveat": "No current correctness pass-at-k aggregate is computed in S1.",
+        "cluster_owner": "cross_cluster",
+        "current_status": "planned_deferred",
+        "denominator_policy": "Deferred until Level 2 sample groups exist.",
+        "denominator_unit": "sample_group",
+        "display_name": "Correctness pass-at-k with Level 2 gate",
+        "evidence_policy": "not_computed",
+        "forbidden_interpretations": [
+          "Do not emit an ungated pass-at-k metric.",
+          "Do not compute from compile-only evidence."
+        ],
+        "level_gate": "level2_correctness",
+        "metric_gate": "functional_success",
+        "metric_name": "correctness_pass_at_k",
+        "missing_policy": "Not populated until explicit Level 2 sample groups exist.",
+        "numerator_policy": "Sample groups with at least one functional_success=True member.",
+        "outcome_family": "task_functional",
+        "reportability": "not_reportable",
+        "required_source_fields": [
+          "sample_group",
+          "functional_success"
+        ],
+        "response_variable": "functional_success",
+        "schema_version": "metric_registry_v1",
+        "scope": "planned deferred task/functional sample-group metric"
+      },
+      "eval_set_success_rate": {
+        "aliases": [
+          "evaluation_set_success_rate"
+        ],
+        "analysis_role": "diagnostic",
+        "attempt_policy": "Requires explicit eval-set membership and attempt policy.",
+        "caveat": "Deferred until explicit eval-set evidence exists.",
+        "cluster_owner": "cross_cluster",
+        "current_status": "planned_deferred",
+        "denominator_policy": "Deferred unless explicit eval-set evidence is available.",
+        "denominator_unit": "sample_group",
+        "display_name": "Evaluation-set task success rate",
+        "evidence_policy": "not_computed",
+        "forbidden_interpretations": [
+          "Do not infer eval-set success from compile-only evidence.",
+          "Do not describe as paper-scale evidence without an approved eval-set contract."
+        ],
+        "level_gate": "level2_correctness",
+        "metric_gate": "functional_success",
+        "metric_name": "eval_set_success_rate",
+        "missing_policy": "Not populated without explicit eval-set evidence.",
+        "numerator_policy": "Eval-set rows with functional_success=True.",
+        "outcome_family": "task_functional",
+        "reportability": "diagnostic_only",
+        "required_source_fields": [
+          "eval_set_id",
+          "functional_success"
+        ],
+        "response_variable": "functional_success",
+        "schema_version": "metric_registry_v1",
+        "scope": "planned eval-set diagnostic"
+      },
+      "grammar_valid_rate": {
+        "aliases": [
+          "grammar_acceptance_rate",
+          "grammar_valid"
+        ],
+        "analysis_role": "diagnostic",
+        "attempt_policy": "Diagnostic row-attempt summary; not a primary condition comparison.",
+        "caveat": "Grammar validity is a structural diagnostic with schema-specific meaning.",
+        "cluster_owner": "cluster1",
+        "current_status": "current_with_caveats",
+        "denominator_policy": "Rows with explicit grammar_valid evidence only.",
+        "denominator_unit": "row_attempt",
+        "display_name": "Grammar-valid rate",
+        "evidence_policy": "explicit_only",
+        "forbidden_interpretations": [
+          "Do not treat grammar acceptance as Python syntax validity.",
+          "Do not treat grammar acceptance as compile or functional success."
+        ],
+        "level_gate": "level0_parse_surface",
+        "metric_gate": "grammar_valid",
+        "metric_name": "grammar_valid_rate",
+        "missing_policy": "Unavailable when grammar_valid evidence is absent.",
+        "numerator_policy": "Rows where grammar_valid=True.",
+        "outcome_family": "structural_code_surface",
+        "reportability": "diagnostic_only",
+        "required_source_fields": [
+          "grammar_valid"
+        ],
+        "response_variable": null,
+        "schema_version": "metric_registry_v1",
+        "scope": "diagnostic grammar acceptance metadata where explicit evidence exists"
+      },
+      "level1_compile_success_rate": {
+        "aliases": [
+          "compile_success_rate",
+          "compile_launch_success_rate"
+        ],
+        "analysis_role": "secondary_diagnostic",
+        "attempt_policy": "Same attempt collapse as current compile_success analyzer summaries.",
+        "caveat": "Compile success is structural/code-surface evidence, not task correctness.",
+        "cluster_owner": "cross_cluster",
+        "current_status": "current_with_caveats",
+        "denominator_policy": "Condition denominator after current analyzer attempt collapse; F3_EVAL_PIPELINE rows remain excluded from compile-rate condition summaries under the existing policy.",
+        "denominator_unit": "experimental_unit",
+        "display_name": "Level 1 structural compile/launch success rate",
+        "evidence_policy": "derived_with_policy",
+        "forbidden_interpretations": [
+          "Do not claim numerical correctness from compile success.",
+          "Do not combine compile and functional success under an unlabeled pass metric."
+        ],
+        "level_gate": "level1_compile_launch",
+        "metric_gate": "compile_success",
+        "metric_name": "level1_compile_success_rate",
+        "missing_policy": "Compile summaries are omitted when compile_success is unavailable.",
+        "numerator_policy": "Experimental units with compile_success=True.",
+        "outcome_family": "structural_code_surface",
+        "reportability": "reportable_secondary",
+        "required_source_fields": [
+          "condition",
+          "compile_success",
+          "kernel_class",
+          "kernel_id",
+          "dtype",
+          "base_seed"
+        ],
+        "response_variable": "compile_success",
+        "schema_version": "metric_registry_v1",
+        "scope": "secondary structural/code-surface diagnostic"
+      },
+      "level2_functional_success_rate": {
+        "aliases": [
+          "functional_success_rate",
+          "task_functional_success_rate"
+        ],
+        "analysis_role": "primary",
+        "attempt_policy": "Replay controls use attempt_index 0; generated rows collapse attempts by experimental unit using any success for the selected response variable.",
+        "caveat": "Cluster 1 controls may be normalized false/unproven under current compile-only policy; this is not measured Level 2 failure.",
+        "cluster_owner": "cross_cluster",
+        "current_status": "current_with_caveats",
+        "denominator_policy": "Current analyzer condition denominator after existing attempt collapse and F3 policy; paper-primary only when reportable four-cell paper-scale metadata is true.",
+        "denominator_unit": "experimental_unit",
+        "display_name": "Level 2 task/functional success rate",
+        "evidence_policy": "derived_with_policy",
+        "forbidden_interpretations": [
+          "Do not treat Cluster 1 compile-only normalized false values as measured Level 2 failure.",
+          "Do not infer performance or benchmarkability from this metric."
+        ],
+        "level_gate": "level2_correctness",
+        "metric_gate": "functional_success",
+        "metric_name": "level2_functional_success_rate",
+        "missing_policy": "Primary functional analysis rejects missing functional_success.",
+        "numerator_policy": "Experimental units with functional_success=True.",
+        "outcome_family": "task_functional",
+        "reportability": "reportable_primary",
+        "required_source_fields": [
+          "condition",
+          "functional_success",
+          "kernel_class",
+          "kernel_id",
+          "dtype",
+          "base_seed"
+        ],
+        "response_variable": "functional_success",
+        "schema_version": "metric_registry_v1",
+        "scope": "current primary 2^2 G/C subset when reportable; diagnostic otherwise"
+      },
+      "repair_set_success_rate": {
+        "aliases": [
+          "repair_success_rate"
+        ],
+        "analysis_role": "diagnostic",
+        "attempt_policy": "Requires explicit repair-set membership and attempt policy.",
+        "caveat": "Deferred until explicit repair-set evidence exists.",
+        "cluster_owner": "cross_cluster",
+        "current_status": "planned_deferred",
+        "denominator_policy": "Deferred unless explicit repair-set evidence is available.",
+        "denominator_unit": "matched_pair",
+        "display_name": "Repair-set task success rate",
+        "evidence_policy": "not_computed",
+        "forbidden_interpretations": [
+          "Do not infer repair success from factor labels alone.",
+          "Do not claim repair-memory lift from this deferred registry entry."
+        ],
+        "level_gate": "level2_correctness",
+        "metric_gate": "functional_success",
+        "metric_name": "repair_set_success_rate",
+        "missing_policy": "Not populated without explicit repair-set evidence.",
+        "numerator_policy": "Repair-set rows with functional_success=True.",
+        "outcome_family": "task_functional",
+        "reportability": "diagnostic_only",
+        "required_source_fields": [
+          "repair_set_id",
+          "functional_success"
+        ],
+        "response_variable": "functional_success",
+        "schema_version": "metric_registry_v1",
+        "scope": "planned or diagnostic repair-set evidence only"
+      },
+      "syntax_valid_rate": {
+        "aliases": [
+          "python_syntax_valid_rate"
+        ],
+        "analysis_role": "diagnostic",
+        "attempt_policy": "Deferred; no mixed-schema aggregation in S1.",
+        "caveat": "S1 intentionally does not compute mixed-schema syntax_valid_rate.",
+        "cluster_owner": "cross_cluster",
+        "current_status": "planned_deferred",
+        "denominator_policy": "Deferred until every included row has compatible explicit syntax evidence and a shared syntax_valid_definition_id.",
+        "denominator_unit": "row_attempt",
+        "display_name": "Syntax-valid rate",
+        "evidence_policy": "not_computed",
+        "forbidden_interpretations": [
+          "Do not infer syntax validity from missing failure codes.",
+          "Do not infer syntax validity from compile_success.",
+          "Do not merge grammar, parser, and semantic-validator evidence under one syntax label."
+        ],
+        "level_gate": "level0_parse_surface",
+        "metric_gate": "syntax_valid",
+        "metric_name": "syntax_valid_rate",
+        "missing_policy": "Emit availability metadata instead of a mixed-schema rate.",
+        "numerator_policy": "Rows with explicit Python syntax parse success.",
+        "outcome_family": "structural_code_surface",
+        "reportability": "not_reportable",
+        "required_source_fields": [
+          "syntax_valid",
+          "syntax_valid_definition_id"
+        ],
+        "response_variable": null,
+        "schema_version": "metric_registry_v1",
+        "scope": "planned deferred metric registry entry only"
+      },
+      "terminal_failure_distribution": {
+        "aliases": [
+          "failure_code_distribution",
+          "terminal_failure_rate"
+        ],
+        "analysis_role": "diagnostic",
+        "attempt_policy": "Diagnostic row-attempt distribution; not a primary rate.",
+        "caveat": "Failure distributions are explanatory diagnostics.",
+        "cluster_owner": "cross_cluster",
+        "current_status": "current_with_caveats",
+        "denominator_policy": "Rows with terminal failure_code or terminal diagnostic evidence.",
+        "denominator_unit": "row_attempt",
+        "display_name": "Terminal failure distribution",
+        "evidence_policy": "derived_with_policy",
+        "forbidden_interpretations": [
+          "Do not convert F3_EVAL_PIPELINE into functional success.",
+          "Do not describe failure movement as a primary success metric."
+        ],
+        "level_gate": "failure_taxonomy",
+        "metric_gate": "terminal_failure",
+        "metric_name": "terminal_failure_distribution",
+        "missing_policy": "Unavailable when terminal failure evidence is absent.",
+        "numerator_policy": "Counts by terminal failure family or failure_code.",
+        "outcome_family": "mixed_diagnostic",
+        "reportability": "diagnostic_only",
+        "required_source_fields": [
+          "failure_code"
+        ],
+        "response_variable": null,
+        "schema_version": "metric_registry_v1",
+        "scope": "diagnostic failure movement and coverage explanation"
+      }
+    },
+    "metric_registry_schema_version": "metric_registry_v1",
     "normalized_scale_tiers": [
       "paper"
     ],
+    "outcome_families": {
+      "benchmarkable_performance": {
+        "display_name": "Benchmarkable/performance quality",
+        "key": "benchmarkable_performance",
+        "level_gates": [
+          "level2_correctness",
+          "level4_performance"
+        ],
+        "question_answered": "What would qualify a correct row for future performance evaluation?",
+        "report_role": "future_only",
+        "schema_version": "outcome_family_v1"
+      },
+      "mixed_diagnostic": {
+        "display_name": "Mixed diagnostic",
+        "key": "mixed_diagnostic",
+        "level_gates": [
+          "failure_taxonomy"
+        ],
+        "question_answered": "What explains failure movement or activation without being a primary outcome?",
+        "report_role": "diagnostic_only",
+        "schema_version": "outcome_family_v1"
+      },
+      "structural_code_surface": {
+        "display_name": "Structural/code-surface quality",
+        "key": "structural_code_surface",
+        "level_gates": [
+          "level0_parse_surface",
+          "level1_compile_launch"
+        ],
+        "question_answered": "What improves generated-code structure, surface validity, grammar acceptance, compile, or launch?",
+        "report_role": "secondary_or_diagnostic",
+        "schema_version": "outcome_family_v1"
+      },
+      "task_functional": {
+        "display_name": "Task/functional quality",
+        "key": "task_functional",
+        "level_gates": [
+          "level2_correctness"
+        ],
+        "question_answered": "What improves numerical correctness under the Level 2 task harness?",
+        "report_role": "primary_current_c_comparisons",
+        "schema_version": "outcome_family_v1"
+      }
+    },
+    "outcome_family_schema_version": "outcome_family_v1",
     "p_cell_status": "P-containing cells are deferred for this iteration and are not included in current paper-claiming outputs.",
     "paired_primary_comparisons": [
       {
@@ -1619,6 +2460,55 @@ LEGACY_2X2_GOLDEN_JSON = r"""
     "primary_response_variable": "functional_success",
     "raw_scale_tiers_before_annotation": [
       "paper"
+    ],
+    "registry_provenance": {
+      "analyzer_version": "factorial_alignment_v3_f3_eval_pipeline_policy",
+      "generated_by_activity": "analyze_factorial",
+      "row_count": 8,
+      "scale_tiers": [
+        "paper"
+      ],
+      "schema_version": "registry_provenance_v1",
+      "software_entity": "shared/analysis/factorial.py",
+      "source_artifact_paths": [],
+      "source_code": [
+        "shared/analysis/factorial.py"
+      ],
+      "source_doc_versions": {
+        "docs/14_structural_vs_task_outcome_reporting_plan.md": "0.1.1",
+        "docs/17_structural_task_analyzer_metadata_implementation_spec.md": "0.1.3"
+      },
+      "source_docs": [
+        "docs/14_structural_vs_task_outcome_reporting_plan.md",
+        "docs/17_structural_task_analyzer_metadata_implementation_spec.md"
+      ],
+      "source_tests": [
+        "shared/tests/test_factorial_analysis.py"
+      ]
+    },
+    "repair_history_group_columns": [
+      "repair_history_policy",
+      "repair_prompt_template_version",
+      "repair_prompt_renderer_version",
+      "repair_max_prompt_chars",
+      "repair_include_latest_source"
+    ],
+    "repair_history_groups": [
+      {
+        "n_rows": 8,
+        "repair_history_policy": "last_attempt_only_v1",
+        "repair_include_latest_source": null,
+        "repair_max_prompt_chars": null,
+        "repair_prompt_renderer_version": null,
+        "repair_prompt_template_version": null
+      }
+    ],
+    "repair_history_policies": [
+      "last_attempt_only_v1"
+    ],
+    "repair_history_policy_quarantine": "reject_by_default",
+    "repair_history_policy_states": [
+      "known_legacy_missing_policy"
     ],
     "reportable": true,
     "requested_scale_tier": null,
@@ -1673,11 +2563,17 @@ LEGACY_2X2_GOLDEN_JSON = r"""
       "interpretation_flags": [
         "p_cells_not_populated"
       ],
+      "level_gate": "level2_correctness",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 2 task/functional success rate",
+      "metric_gate": "functional_success",
       "metric_name": "level2_functional_success_rate",
+      "metric_reportability": "reportable_primary",
       "missing_control_pairs": [],
       "missing_treatment_pairs": [],
       "multiple_testing_method": "holm",
       "n_pairs": 2,
+      "outcome_family": "task_functional",
       "p_value": 1.0,
       "p_value_holm": 1.0,
       "paired_analysis": true,
@@ -1722,11 +2618,17 @@ LEGACY_2X2_GOLDEN_JSON = r"""
       "interpretation_flags": [
         "p_cells_not_populated"
       ],
+      "level_gate": "level2_correctness",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 2 task/functional success rate",
+      "metric_gate": "functional_success",
       "metric_name": "level2_functional_success_rate",
+      "metric_reportability": "reportable_primary",
       "missing_control_pairs": [],
       "missing_treatment_pairs": [],
       "multiple_testing_method": "holm",
       "n_pairs": 2,
+      "outcome_family": "task_functional",
       "p_value": 1.0,
       "p_value_holm": 1.0,
       "paired_analysis": true,
@@ -1773,11 +2675,17 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "strict_surface_metric",
         "p_cells_not_populated"
       ],
+      "level_gate": "level1_compile_launch",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 1 structural compile/launch success rate",
+      "metric_gate": "compile_success",
       "metric_name": "level1_compile_success_rate",
+      "metric_reportability": "reportable_secondary",
       "missing_control_pairs": [],
       "missing_treatment_pairs": [],
       "multiple_testing_method": "holm",
       "n_pairs": 2,
+      "outcome_family": "structural_code_surface",
       "p_value": 1.0,
       "p_value_holm": 1.0,
       "paired_analysis": true,
@@ -1824,11 +2732,17 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "strict_surface_metric",
         "p_cells_not_populated"
       ],
+      "level_gate": "level1_compile_launch",
+      "metric_current_status": "current_with_caveats",
+      "metric_display_name": "Level 1 structural compile/launch success rate",
+      "metric_gate": "compile_success",
       "metric_name": "level1_compile_success_rate",
+      "metric_reportability": "reportable_secondary",
       "missing_control_pairs": [],
       "missing_treatment_pairs": [],
       "multiple_testing_method": "holm",
       "n_pairs": 2,
+      "outcome_family": "structural_code_surface",
       "p_value": 1.0,
       "p_value_holm": 1.0,
       "paired_analysis": true,
@@ -1849,8 +2763,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "condition": "C",
         "condition_label": "C",
         "interpretation_flags": [],
+        "level_gate": "level2_correctness",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 2 task/functional success rate",
+        "metric_gate": "functional_success",
         "metric_name": "level2_functional_success_rate",
+        "metric_reportability": "reportable_primary",
         "n_cells": 2,
+        "outcome_family": "task_functional",
         "response_variable": "functional_success",
         "scale_tier": "paper",
         "success_rate": 0.5,
@@ -1863,8 +2783,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "condition": "G",
         "condition_label": "task-agnostic G",
         "interpretation_flags": [],
+        "level_gate": "level2_correctness",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 2 task/functional success rate",
+        "metric_gate": "functional_success",
         "metric_name": "level2_functional_success_rate",
+        "metric_reportability": "reportable_primary",
         "n_cells": 2,
+        "outcome_family": "task_functional",
         "response_variable": "functional_success",
         "scale_tier": "paper",
         "success_rate": 0.5,
@@ -1877,8 +2803,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "condition": "G+C",
         "condition_label": "task-agnostic G + C",
         "interpretation_flags": [],
+        "level_gate": "level2_correctness",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 2 task/functional success rate",
+        "metric_gate": "functional_success",
         "metric_name": "level2_functional_success_rate",
+        "metric_reportability": "reportable_primary",
         "n_cells": 2,
+        "outcome_family": "task_functional",
         "response_variable": "functional_success",
         "scale_tier": "paper",
         "success_rate": 0.5,
@@ -1891,8 +2823,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "condition": "none",
         "condition_label": "none",
         "interpretation_flags": [],
+        "level_gate": "level2_correctness",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 2 task/functional success rate",
+        "metric_gate": "functional_success",
         "metric_name": "level2_functional_success_rate",
+        "metric_reportability": "reportable_primary",
         "n_cells": 2,
+        "outcome_family": "task_functional",
         "response_variable": "functional_success",
         "scale_tier": "paper",
         "success_rate": 0.5,
@@ -1907,8 +2845,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "dtype": "fp32",
         "interpretation_flags": [],
         "kernel_class": "elementwise",
+        "level_gate": "level2_correctness",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 2 task/functional success rate",
+        "metric_gate": "functional_success",
         "metric_name": "level2_functional_success_rate",
+        "metric_reportability": "reportable_primary",
         "n_cells": 2,
+        "outcome_family": "task_functional",
         "response_variable": "functional_success",
         "scale_tier": "paper",
         "success_rate": 0.5,
@@ -1923,8 +2867,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "dtype": "fp32",
         "interpretation_flags": [],
         "kernel_class": "elementwise",
+        "level_gate": "level2_correctness",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 2 task/functional success rate",
+        "metric_gate": "functional_success",
         "metric_name": "level2_functional_success_rate",
+        "metric_reportability": "reportable_primary",
         "n_cells": 2,
+        "outcome_family": "task_functional",
         "response_variable": "functional_success",
         "scale_tier": "paper",
         "success_rate": 0.5,
@@ -1939,8 +2889,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "dtype": "fp32",
         "interpretation_flags": [],
         "kernel_class": "elementwise",
+        "level_gate": "level2_correctness",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 2 task/functional success rate",
+        "metric_gate": "functional_success",
         "metric_name": "level2_functional_success_rate",
+        "metric_reportability": "reportable_primary",
         "n_cells": 2,
+        "outcome_family": "task_functional",
         "response_variable": "functional_success",
         "scale_tier": "paper",
         "success_rate": 0.5,
@@ -1955,8 +2911,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "dtype": "fp32",
         "interpretation_flags": [],
         "kernel_class": "elementwise",
+        "level_gate": "level2_correctness",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 2 task/functional success rate",
+        "metric_gate": "functional_success",
         "metric_name": "level2_functional_success_rate",
+        "metric_reportability": "reportable_primary",
         "n_cells": 2,
+        "outcome_family": "task_functional",
         "response_variable": "functional_success",
         "scale_tier": "paper",
         "success_rate": 0.5,
@@ -1972,8 +2934,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
           "diagnostic_only",
           "strict_surface_metric"
         ],
+        "level_gate": "level1_compile_launch",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 1 structural compile/launch success rate",
+        "metric_gate": "compile_success",
         "metric_name": "level1_compile_success_rate",
+        "metric_reportability": "reportable_secondary",
         "n_cells": 2,
+        "outcome_family": "structural_code_surface",
         "response_variable": "compile_success",
         "scale_tier": "paper",
         "success_rate": 1.0,
@@ -1989,8 +2957,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
           "diagnostic_only",
           "strict_surface_metric"
         ],
+        "level_gate": "level1_compile_launch",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 1 structural compile/launch success rate",
+        "metric_gate": "compile_success",
         "metric_name": "level1_compile_success_rate",
+        "metric_reportability": "reportable_secondary",
         "n_cells": 2,
+        "outcome_family": "structural_code_surface",
         "response_variable": "compile_success",
         "scale_tier": "paper",
         "success_rate": 1.0,
@@ -2006,8 +2980,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
           "diagnostic_only",
           "strict_surface_metric"
         ],
+        "level_gate": "level1_compile_launch",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 1 structural compile/launch success rate",
+        "metric_gate": "compile_success",
         "metric_name": "level1_compile_success_rate",
+        "metric_reportability": "reportable_secondary",
         "n_cells": 2,
+        "outcome_family": "structural_code_surface",
         "response_variable": "compile_success",
         "scale_tier": "paper",
         "success_rate": 1.0,
@@ -2023,8 +3003,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
           "diagnostic_only",
           "strict_surface_metric"
         ],
+        "level_gate": "level1_compile_launch",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 1 structural compile/launch success rate",
+        "metric_gate": "compile_success",
         "metric_name": "level1_compile_success_rate",
+        "metric_reportability": "reportable_secondary",
         "n_cells": 2,
+        "outcome_family": "structural_code_surface",
         "response_variable": "compile_success",
         "scale_tier": "paper",
         "success_rate": 1.0,
@@ -2042,8 +3028,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
           "strict_surface_metric"
         ],
         "kernel_class": "elementwise",
+        "level_gate": "level1_compile_launch",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 1 structural compile/launch success rate",
+        "metric_gate": "compile_success",
         "metric_name": "level1_compile_success_rate",
+        "metric_reportability": "reportable_secondary",
         "n_cells": 2,
+        "outcome_family": "structural_code_surface",
         "response_variable": "compile_success",
         "scale_tier": "paper",
         "success_rate": 1.0,
@@ -2061,8 +3053,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
           "strict_surface_metric"
         ],
         "kernel_class": "elementwise",
+        "level_gate": "level1_compile_launch",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 1 structural compile/launch success rate",
+        "metric_gate": "compile_success",
         "metric_name": "level1_compile_success_rate",
+        "metric_reportability": "reportable_secondary",
         "n_cells": 2,
+        "outcome_family": "structural_code_surface",
         "response_variable": "compile_success",
         "scale_tier": "paper",
         "success_rate": 1.0,
@@ -2080,8 +3078,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
           "strict_surface_metric"
         ],
         "kernel_class": "elementwise",
+        "level_gate": "level1_compile_launch",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 1 structural compile/launch success rate",
+        "metric_gate": "compile_success",
         "metric_name": "level1_compile_success_rate",
+        "metric_reportability": "reportable_secondary",
         "n_cells": 2,
+        "outcome_family": "structural_code_surface",
         "response_variable": "compile_success",
         "scale_tier": "paper",
         "success_rate": 1.0,
@@ -2099,8 +3103,14 @@ LEGACY_2X2_GOLDEN_JSON = r"""
           "strict_surface_metric"
         ],
         "kernel_class": "elementwise",
+        "level_gate": "level1_compile_launch",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 1 structural compile/launch success rate",
+        "metric_gate": "compile_success",
         "metric_name": "level1_compile_success_rate",
+        "metric_reportability": "reportable_secondary",
         "n_cells": 2,
+        "outcome_family": "structural_code_surface",
         "response_variable": "compile_success",
         "scale_tier": "paper",
         "success_rate": 1.0,
@@ -2142,11 +3152,17 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "interpretation_flags": [
           "p_cells_not_populated"
         ],
+        "level_gate": "level2_correctness",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 2 task/functional success rate",
+        "metric_gate": "functional_success",
         "metric_name": "level2_functional_success_rate",
+        "metric_reportability": "reportable_primary",
         "missing_control_pairs": [],
         "missing_treatment_pairs": [],
         "multiple_testing_method": "holm",
         "n_pairs": 2,
+        "outcome_family": "task_functional",
         "p_value": 1.0,
         "p_value_holm": 1.0,
         "paired_analysis": true,
@@ -2191,11 +3207,17 @@ LEGACY_2X2_GOLDEN_JSON = r"""
         "interpretation_flags": [
           "p_cells_not_populated"
         ],
+        "level_gate": "level2_correctness",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 2 task/functional success rate",
+        "metric_gate": "functional_success",
         "metric_name": "level2_functional_success_rate",
+        "metric_reportability": "reportable_primary",
         "missing_control_pairs": [],
         "missing_treatment_pairs": [],
         "multiple_testing_method": "holm",
         "n_pairs": 2,
+        "outcome_family": "task_functional",
         "p_value": 1.0,
         "p_value_holm": 1.0,
         "paired_analysis": true,
@@ -2242,11 +3264,17 @@ LEGACY_2X2_GOLDEN_JSON = r"""
           "strict_surface_metric",
           "p_cells_not_populated"
         ],
+        "level_gate": "level1_compile_launch",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 1 structural compile/launch success rate",
+        "metric_gate": "compile_success",
         "metric_name": "level1_compile_success_rate",
+        "metric_reportability": "reportable_secondary",
         "missing_control_pairs": [],
         "missing_treatment_pairs": [],
         "multiple_testing_method": "holm",
         "n_pairs": 2,
+        "outcome_family": "structural_code_surface",
         "p_value": 1.0,
         "p_value_holm": 1.0,
         "paired_analysis": true,
@@ -2293,11 +3321,17 @@ LEGACY_2X2_GOLDEN_JSON = r"""
           "strict_surface_metric",
           "p_cells_not_populated"
         ],
+        "level_gate": "level1_compile_launch",
+        "metric_current_status": "current_with_caveats",
+        "metric_display_name": "Level 1 structural compile/launch success rate",
+        "metric_gate": "compile_success",
         "metric_name": "level1_compile_success_rate",
+        "metric_reportability": "reportable_secondary",
         "missing_control_pairs": [],
         "missing_treatment_pairs": [],
         "multiple_testing_method": "holm",
         "n_pairs": 2,
+        "outcome_family": "structural_code_surface",
         "p_value": 1.0,
         "p_value_holm": 1.0,
         "paired_analysis": true,

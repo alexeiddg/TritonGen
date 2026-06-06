@@ -1,6 +1,6 @@
 # Experiment Change Orchestration State
 
-- Version: 1.5.68
+- Version: 1.5.69
 - Date: 2026-06-06
 - Status: active live state record
 - Owner: current orchestration agent
@@ -395,7 +395,7 @@ reason. Do not backfill missing provenance silently after execution.
 | Agentic transcript A6 run-packet gate planning | promoted into handoff trunk at commit `4a84600`; `audits/agentic_transcript_v1_a6_run_packet_gate_report.md` v1.0.0 remains the evidence snapshot; `docs/handoff/agentic_transcript_v1_next_run_packet.md` is `DRAFT_NOT_APPROVED` and authorizes no Modal/output/generation/n=5/n=20/paper-scale work |
 | Observability O0-O6b package | O0-O4 promoted into handoff trunk at commit `309c451`; O5-Prep/O5a accepted locally through `c41a5bc`; O5b committed at `cf63de8`; O5c adapter-ready blocked state committed at `dc48782`; O6a Level-4 performance contract scaffolding committed at `d966ad0`; O6b smoke sidecar committed at `403cfea`; final O5b/O5c/O6a/O6b promotion audit passed with caveats |
 | Structural/task reporting S0-S4 package | S0 terminology accepted at `d9bbdb2`; S1 analyzer metric registry metadata committed at `ff876d2`; S2 report metadata consumption committed at `a7b0cdb`; S3 report refresh docs-only record committed at `f1058eb`; S0-S3 promotion audit committed at `80086f9`; S4 future experiment metric-family guidance committed at `f73ecb9`, fast-forwarded into `codex-track-handoff-context`, and promotion-audited at `d015862`. Generated preliminary-report previews remain ignored local outputs unless a future explicit force-add publication decision is made. |
-| Current Cluster 3 gate | Phase 14e four-cell n=5 development matrix frozen with warnings; C3 n20 metric-family-gated experiment packet review passed as draft/non-authorizing planning only; Full Pipeline Launch Packet v1 is promoted and patched to the selected 12-cell `grammar_mode x C x P` design; L1a n=1 authorization packet completion is promoted into `codex-track-handoff-context` at `0d1e8e3` for review/user signature only with `baseline_pin_commit: d172e02` and `code_support_commit: c24fbaa`; local dry-plan launcher support for all 12 cells, including six no-P controls, is promoted into `codex-track-handoff-context` through `e914557` and promotion-audited at `76ede6a`; Modal optimization intake is promoted at `6160c88`; sidecar stage timing is promoted at `ef41890` and promotion-audited at `76310b5`; Modal preflight cost/time estimator is promoted through `bd89e67` and `c256af5`; the L1a final approval packet surface is promoted into `codex-track-handoff-context` at `e348c2c` and promotion-audited in `audits/l1a_final_approval_packet_promotion_audit_report.md`; signature-readiness gap closure is promoted into `codex-track-handoff-context` at `616ae01` and promotion-audited in `audits/l1a_signature_readiness_gap_closure_promotion_audit_report.md`; executable 12-cell selector support is promoted into `codex-track-handoff-context` at `e9f180a` and promotion-audited at `c05e111`, adding `--execution-plan` command construction and fail-closed runtime refusal; the final L1a signature packet surface is prepared on `codex/l1a-final-signature-packet` with target `c05e111` and audit `audits/l1a_final_signature_packet_report.md`; MLflow grammar-mode indexing remains deferred; execution remains blocked until a later signed approval supplies signed numeric stop/spend limits, a signable preflight estimate, billing reconciliation authorization, post-run validation bundle authorization, remote image digest, exact target commit approval, and execution packet authorization |
+| Current Cluster 3 gate | L1a n=1 for the 12-cell `grammar_mode x C x P` design completed and validated as `L1A_N1_12CELL_RUN_COMPLETE_VALIDATED`; success evidence is recorded in `audits/l1a_n1_attempt_006_completion_report.md`, analyzer/report/billing artifacts are preserved at `1367cdb Preserve L1a n1 generated artifacts`, and the analyzer/golden drift pre-scale audit is recorded in `audits/l1a_analyzer_patch_and_golden_drift_audit.md`. The audit refreshes the stale legacy 2x2 golden, keeps ordinary analyzer strictness intact, fixes nested three-way interaction reportability so smoke output cannot become a paper-scale claim, and classifies the next step as L1b n=5 planning/authorization only. MLflow grammar-mode indexing remains deferred. No L1b n=5, L2 n20, paper-scale run, output/artifact mutation, billing query, or MLflow runtime write is authorized without a separate signed packet. |
 | Paper-scale status | blocked; no Cluster 3 `n=20` launch or paper-scale claim until a later signed launch approval satisfies Gate G8 |
 
 Important repository note: on the handoff trunk, `docs/`, `audits/`, and
@@ -647,36 +647,40 @@ Historical context:
 
 Allowed without run approval:
 
-1. Review and commit the docs-only `codex/l1a-final-signature-packet` package
-   if validation passes. After that, the next L1a action is human signature
-   review only. A separate signed approval is still required before any run.
-2. Retry O5c live billing collection only after the Modal workspace billing
+1. Draft an L1b n=5 planning/authorization packet that cites
+   `audits/l1a_n1_attempt_006_completion_report.md` and
+   `audits/l1a_analyzer_patch_and_golden_drift_audit.md`. This is planning
+   only; execution still requires a separate signed packet.
+2. If the preserved L1a analyzer/report artifacts are cited, cite the analyzer
+   audit caveat: the artifacts were not regenerated, and nested three-way
+   reportability is superseded by the patched analyzer gate and audit.
+3. Retry O5c live billing collection only after the Modal workspace billing
    report rate limit clears, using a separate explicit billing approval packet.
    Prefer daily resolution for multi-day windows and hourly resolution only for
    windows of 7 days or less, or after explicit approval.
-3. Do not run any additional O6b/O6c performance benchmark, output mutation,
+4. Do not run any additional O6b/O6c performance benchmark, output mutation,
    historical sidecar migration, analyzer/economic metrics,
    cost-per-success/pass@k cost, or paper-scale economic/performance claims
    without a new signed packet.
-4. Do not create or run an L1a execution packet until a later explicit approval
+5. Do not create or run an L1b execution packet until a later explicit approval
    supplies exact executable command(s), branch, commit, condition matrix,
    output paths, observability IDs, grammar-mode mapping/proof, repair-history
    policy, model/revision/decoding config, numeric stop/spend limits, advisory
    preflight estimate, billing reconciliation plan, analyzer/report plan, and
    MLflow post-hoc indexing proof.
-5. Keep ignored derived report previews
+6. Keep ignored derived report previews
    `docs/preliminary_report/_report_data.json`,
    `docs/preliminary_report/index.html`, and
    `docs/preliminary_report/index.es.html` as local previews unless a future
    explicit review decision force-adds them as publication deliverables. Do not
    rerun analyzer output, rewrite raw JSONL, run experiments, or mutate raw
    outputs/artifacts without a separate signed packet.
-6. Review A6 run-packet gate planning or prepare a future signed approval
+7. Review A6 run-packet gate planning or prepare a future signed approval
    packet from `docs/handoff/agentic_transcript_v1_run_packet_template.md`.
    The current next-run packet is `DRAFT_NOT_APPROVED` and does not authorize
    Modal execution, generation, n=5, n=20, paper-scale work, or output
    mutation.
-7. Create serialized-surface leases before touching analyzer, runner, repair
+8. Create serialized-surface leases before touching analyzer, runner, repair
    loop, result schema, raw output, or any new report-data-builder surfaces.
 
 Not allowed without explicit approval:

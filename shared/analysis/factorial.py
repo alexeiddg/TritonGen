@@ -702,10 +702,17 @@ def analyze_factorial(
     _annotate_metric_rows(cell_summaries, metric_registry)
     _annotate_metric_rows(paired_comparisons, metric_registry)
 
+    reportable_output = _is_reportable_output(
+        scope=scope,
+        scale_tiers=scale_tiers,
+        allow_mixed_scale=allow_mixed_scale,
+        populated_cells=populated_cells,
+    )
     factorial_model = _factorial_model(
         cell_outcomes,
         response_variable=response_variable,
         populated_cells=populated_cells,
+        reportable_output=reportable_output,
     )
     diagnostics = _diagnostics(
         df,
@@ -753,12 +760,7 @@ def analyze_factorial(
             "multiple_testing_method": MULTIPLE_TESTING_METHOD,
             "significance_alpha": SIGNIFICANCE_ALPHA,
         },
-        "reportable": _is_reportable_output(
-            scope=scope,
-            scale_tiers=scale_tiers,
-            allow_mixed_scale=allow_mixed_scale,
-            populated_cells=populated_cells,
-        ),
+        "reportable": reportable_output,
         "interpretation_flags": global_flags,
         **_f3_and_coverage_metadata(df),
     }
@@ -770,9 +772,13 @@ def analyze_factorial(
                 "(rate_GCP - rate_GC) - (rate_GP - rate_G) - "
                 "(rate_CP - rate_C) + (rate_P - rate_none)"
             ),
-            "reportable": True,
+            "reportable": reportable_output,
             "response_variable": response_variable,
         }
+        if not reportable_output:
+            metadata["three_way_interaction"]["reason"] = (
+                "requires_reportable_primary_paper_scale_output"
+            )
     elif any(condition in populated_cells for condition in P_CONDITIONS):
         metadata["three_way_interaction"] = {
             "reportable": False,
@@ -4143,6 +4149,7 @@ def _factorial_model(
     *,
     response_variable: str,
     populated_cells: Sequence[str],
+    reportable_output: bool,
 ) -> dict[str, Any]:
     if cell_outcomes.empty:
         return {
@@ -4259,7 +4266,11 @@ def _factorial_model(
             "(rate_GCP - rate_GC) - (rate_GP - rate_G) - "
             "(rate_CP - rate_C) + (rate_P - rate_none)"
         )
-        result["three_way_interaction_reportable"] = True
+        result["three_way_interaction_reportable"] = reportable_output
+        if not reportable_output:
+            result["warnings"].append(
+                "three_way_interaction_requires_reportable_primary_paper_scale_output"
+            )
     elif has_p:
         result["three_way_interaction_reportable"] = False
     return result

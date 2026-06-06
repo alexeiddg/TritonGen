@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.16
+Version: 1.37.17
 Date: 2026-06-06
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -61,6 +61,9 @@ treated as report-facing.
 | C3 n20 metric-family-gated experiment packet | `docs/experiment_packets/c3_n20_metric_family_gated_packet.md` |
 | Full Pipeline grammar-mode x C x P launch packet v1 | `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md` |
 | Full Pipeline L1a n=1 authorization packet review draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md` |
+| Full Pipeline L1a n=1 completion audit | `audits/l1a_n1_attempt_006_completion_report.md` |
+| Full Pipeline L1a generated artifact preservation commit | `1367cdb Preserve L1a n1 generated artifacts` |
+| Full Pipeline L1a analyzer/golden drift audit | `audits/l1a_analyzer_patch_and_golden_drift_audit.md` |
 | Full Pipeline L1a final signature packet report | `audits/l1a_final_signature_packet_report.md` |
 | Full Pipeline L1a executable 12-cell selector support audit | `audits/l1a_executable_12cell_selector_support_report.md` |
 | Full Pipeline L1a executable 12-cell selector support promotion audit | `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md` |
@@ -88,6 +91,20 @@ treated as report-facing.
 | Completed handoff-readiness plan | `.contracts/agentic/preliminary_report_handoff_readiness_plan.md` |
 
 ## Current Cluster 3 Planning Gate
+
+Post-L1a update: the 12-cell `grammar_mode x C x P` L1a n=1 run completed
+and is validated as `L1A_N1_12CELL_RUN_COMPLETE_VALIDATED`; generated analysis,
+report, billing, and observability artifacts are preserved at
+`1367cdb Preserve L1a n1 generated artifacts`. The pre-scale analyzer audit is
+`audits/l1a_analyzer_patch_and_golden_drift_audit.md`; it refreshes the stale
+legacy 2x2 golden for metric-registry/provenance metadata, fixes nested
+three-way interaction reportability so smoke output cannot become a paper-scale
+claim, and classifies the next step as L1b n=5 planning/authorization only.
+Do not run n=5, n=20, Modal/GPU generation, billing queries, output/artifact
+mutation, MLflow runtime writes, or paper-scale work without a separate signed
+packet. If citing preserved L1a analyzer/report artifacts, cite the audit caveat
+that those artifacts were not regenerated and nested three-way reportability is
+superseded by the patched analyzer gate.
 
 Cluster 3 diagnostic evidence is provenance-frozen through
 `audits/cluster3_phase13b_commit_provenance_freeze_report.md`. Phase 14e froze
