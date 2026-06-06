@@ -688,6 +688,7 @@ def analyze_factorial(
     if _should_emit_secondary_compile_summary(df, response_variable=response_variable):
         secondary_compile_comparisons = _secondary_compile_comparison_rows(
             df,
+            scope=scope,
             populated_cells=populated_cells,
             bootstrap_samples=bootstrap_samples,
             bootstrap_seed=bootstrap_seed,
@@ -925,12 +926,12 @@ def paired_condition_summary(
     """Return paired binary outcomes for arbitrary tuple-matched conditions."""
 
     df = _ensure_pair_identity_columns(df)
-    key_columns = tuple(pair_key_columns or PAIR_KEY_COLUMNS)
+    subset = df[df["condition"].isin({treatment_condition, control_condition})]
+    key_columns = tuple(pair_key_columns or _comparison_pair_key_columns(subset))
     _require_columns(
         df,
         ("condition", response_variable, "attempt_index", *key_columns),
     )
-    subset = df[df["condition"].isin({treatment_condition, control_condition})]
     non_nullable_key_columns = tuple(
         column for column in key_columns if column not in set(nullable_pair_key_columns)
     )
@@ -1011,6 +1012,18 @@ def paired_condition_summary(
     )
     paired.attrs["pair_key_columns"] = key_columns
     return paired
+
+
+def _comparison_pair_key_columns(df: pd.DataFrame) -> tuple[str, ...]:
+    base_cols = tuple(PAIR_KEY_COLUMNS)
+    if "grammar_mode" not in df.columns or df.empty:
+        return base_cols
+    duplicate_condition_attempts = df.duplicated(
+        ["condition", *base_cols, "attempt_index"]
+    ).any()
+    if duplicate_condition_attempts:
+        return (*base_cols, "grammar_mode")
+    return base_cols
 
 
 def paired_p_factor_summary(
@@ -3594,9 +3607,15 @@ def _cell_outcome_frame(
 ) -> pd.DataFrame:
     _require_columns(df, ("condition", *PAIR_KEY_COLUMNS, response_variable))
     rows: list[dict[str, Any]] = []
-    group_cols = ["condition", *PAIR_KEY_COLUMNS]
+    group_cols = _cell_outcome_group_columns(df)
     for key, group in df.groupby(group_cols, sort=True, dropna=False):
-        condition, kernel_class, kernel_id, dtype, base_seed = key
+        key_values = key if isinstance(key, tuple) else (key,)
+        keyed = dict(zip(group_cols, key_values, strict=True))
+        condition = keyed["condition"]
+        kernel_class = keyed["kernel_class"]
+        kernel_id = keyed["kernel_id"]
+        dtype = keyed["dtype"]
+        base_seed = keyed["base_seed"]
         if group.duplicated(["attempt_index"]).any():
             raise ValueError(f"duplicate attempt_index values for cell {key}")
         source_classes = set(group.get("source_class", pd.Series(dtype=object)).dropna())
@@ -3610,21 +3629,36 @@ def _cell_outcome_frame(
         else:
             success = bool(group[response_variable].astype(bool).any())
             attempts_considered = len(group)
-        rows.append(
-            {
-                "condition": condition,
-                "kernel_class": kernel_class,
-                "kernel_id": kernel_id,
-                "dtype": dtype,
-                "base_seed": int(base_seed),
-                **_condition_factors(str(condition)),
-                "response_variable": response_variable,
-                "success": success,
-                "attempts_observed": len(group),
-                "attempts_considered": attempts_considered,
-            }
-        )
+        record = {
+            "condition": condition,
+            "kernel_class": kernel_class,
+            "kernel_id": kernel_id,
+            "dtype": dtype,
+            "base_seed": int(base_seed),
+            **_condition_factors(str(condition)),
+            "response_variable": response_variable,
+            "success": success,
+            "attempts_observed": len(group),
+            "attempts_considered": attempts_considered,
+        }
+        if "grammar_mode" in keyed:
+            record["grammar_mode"] = keyed["grammar_mode"]
+        rows.append(record)
     return pd.DataFrame(rows)
+
+
+def _cell_outcome_group_columns(df: pd.DataFrame) -> list[str]:
+    base_cols = ["condition", *PAIR_KEY_COLUMNS]
+    if "grammar_mode" not in df.columns:
+        return base_cols
+    grammar_counts = (
+        df.groupby(base_cols, dropna=False)["grammar_mode"]
+        .nunique(dropna=True)
+        .tolist()
+    )
+    if any(count > 1 for count in grammar_counts):
+        return [*base_cols, "grammar_mode"]
+    return base_cols
 
 
 def _cell_summaries(
@@ -3887,6 +3921,8 @@ def _paired_comparison_rows(
         except ValueError as exc:
             if is_p_pair and _is_skippable_p_pair_error(exc):
                 continue
+            if _is_skippable_l1a_smoke_pair_error(scope, exc):
+                continue
             raise
         flags = []
         if response_variable == SECONDARY_RESPONSE_VARIABLE:
@@ -3920,9 +3956,26 @@ def _paired_comparison_rows(
     return rows
 
 
+def _is_skippable_l1a_smoke_pair_error(scope: str, exc: ValueError) -> bool:
+    if scope != "l1a_grammar_mode_cp_smoke":
+        return False
+    message = str(exc)
+    return (
+        "missing paired replay metadata" in message
+        or "metadata mismatch in paired replay dataframe" in message
+        or "paired replay dataframe has unmatched seed rows" in message
+        or "paired condition dataframe has no matched seed rows" in message
+        or "duplicate replay pair in dataframe" in message
+        or "duplicate generated pair attempt in dataframe" in message
+        or "metadata mismatch within paired P dataframe" in message
+        or "mixed grammar variants in paired P comparison" in message
+    )
+
+
 def _secondary_compile_comparison_rows(
     df: pd.DataFrame,
     *,
+    scope: str,
     populated_cells: Sequence[str],
     bootstrap_samples: int,
     bootstrap_seed: int,
@@ -3931,13 +3984,18 @@ def _secondary_compile_comparison_rows(
     for treatment_condition, control_condition in SECONDARY_COMPILE_COMPARISONS.items():
         if treatment_condition not in populated_cells or control_condition not in populated_cells:
             continue
-        paired = paired_condition_summary(
-            df,
-            treatment_condition=treatment_condition,
-            control_condition=control_condition,
-            response_variable=SECONDARY_RESPONSE_VARIABLE,
-            allow_incomplete_coverage=True,
-        )
+        try:
+            paired = paired_condition_summary(
+                df,
+                treatment_condition=treatment_condition,
+                control_condition=control_condition,
+                response_variable=SECONDARY_RESPONSE_VARIABLE,
+                allow_incomplete_coverage=True,
+            )
+        except ValueError as exc:
+            if _is_skippable_l1a_smoke_pair_error(scope, exc):
+                continue
+            raise
         flags = ["diagnostic_only", "strict_surface_metric"]
         if paired.attrs.get("missing_control_pairs") or paired.attrs.get(
             "missing_treatment_pairs"
