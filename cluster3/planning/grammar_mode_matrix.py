@@ -1,8 +1,8 @@
 """Local 12-cell grammar-mode x C x P planning matrix.
 
-This module is intentionally planning-only. It defines labels and expected
-metadata for future launch packets but does not invoke generation, Modal,
-correctness evaluation, output writing, tracking, or artifact refreshes.
+This module defines labels, paths, and selector command metadata for launch
+packets. It does not invoke generation, Modal, correctness evaluation, output
+writing, tracking, or artifact refreshes.
 """
 
 from __future__ import annotations
@@ -51,8 +51,17 @@ L1A_OBSERVABILITY_ROOT = (
     "artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1"
 )
 L1A_RUN_ID_PREFIX = "full_pipeline_grammar_mode_cp_factorial_v1_l1a_n1"
+L1B_SCALE_NAMESPACE = "l1b_n5"
+L1B_OUTPUT_ROOT = (
+    "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1b_n5"
+)
+L1B_OBSERVABILITY_ROOT = (
+    "artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1b_n5"
+)
+L1B_RUN_ID_PREFIX = "full_pipeline_grammar_mode_cp_factorial_v1_l1b_n5"
 L1A_PATH_COLLISION_POLICY = "fail_if_any_target_path_exists"
 L1A_SIGNED_AUTHORIZATION_PLACEHOLDER = "SIGNED_L1A_PACKET_ID_REQUIRED"
+L1B_SIGNED_AUTHORIZATION_PLACEHOLDER = "SIGNED_L1B_PACKET_ID_REQUIRED"
 L1A_EXECUTABLE_SELECTOR_SUPPORT_STATUS = (
     "EXECUTABLE_SELECTOR_PRESENT_AUTHORIZATION_REQUIRED_NO_EXECUTION"
 )
@@ -163,15 +172,21 @@ def build_l1a_launcher_dry_plan(
     cell_selector: str = "all",
     output_root: str | Path = L1A_OUTPUT_ROOT,
     observability_root: str | Path = L1A_OBSERVABILITY_ROOT,
+    run_id_prefix: str = L1A_RUN_ID_PREFIX,
+    scale_tier: str = "smoke",
+    n: int = 1,
     repo_root: str | Path | None = None,
 ) -> tuple[GrammarModeLauncherCellPlan, ...]:
-    """Return deterministic dry-plan entries for the 12-cell L1a selector."""
+    """Return deterministic dry-plan entries for the 12-cell selector."""
 
     return _build_l1a_launcher_plan(
         repair_history_policy=repair_history_policy,
         cell_selector=cell_selector,
         output_root=output_root,
         observability_root=observability_root,
+        run_id_prefix=run_id_prefix,
+        scale_tier=scale_tier,
+        n=n,
         repo_root=repo_root,
         command_mode="dry_plan",
     )
@@ -183,8 +198,12 @@ def build_l1a_launcher_executable_plan(
     cell_selector: str = "all",
     output_root: str | Path = L1A_OUTPUT_ROOT,
     observability_root: str | Path = L1A_OBSERVABILITY_ROOT,
+    run_id_prefix: str = L1A_RUN_ID_PREFIX,
+    scale_tier: str = "smoke",
+    n: int = 1,
     repo_root: str | Path | None = None,
     signed_authorization_placeholder: str = L1A_SIGNED_AUTHORIZATION_PLACEHOLDER,
+    signed_authorization_option: str = "--signed-l1a-authorization",
 ) -> tuple[GrammarModeLauncherCellPlan, ...]:
     """Return executable-selector command plans without running them."""
 
@@ -193,9 +212,13 @@ def build_l1a_launcher_executable_plan(
         cell_selector=cell_selector,
         output_root=output_root,
         observability_root=observability_root,
+        run_id_prefix=run_id_prefix,
+        scale_tier=scale_tier,
+        n=n,
         repo_root=repo_root,
         command_mode="executable",
         signed_authorization_placeholder=signed_authorization_placeholder,
+        signed_authorization_option=signed_authorization_option,
     )
 
 
@@ -205,9 +228,13 @@ def _build_l1a_launcher_plan(
     cell_selector: str,
     output_root: str | Path,
     observability_root: str | Path,
+    run_id_prefix: str,
+    scale_tier: str,
+    n: int,
     repo_root: str | Path | None,
     command_mode: str,
     signed_authorization_placeholder: str | None = None,
+    signed_authorization_option: str = "--signed-l1a-authorization",
 ) -> tuple[GrammarModeLauncherCellPlan, ...]:
     selected = _select_cells(
         build_l1a_grammar_mode_cp_matrix(repair_history_policy=repair_history_policy),
@@ -222,9 +249,13 @@ def _build_l1a_launcher_plan(
             repair_history_policy=repair_history_policy,
             output_base=output_base,
             observability_base=observability_base,
+            run_id_prefix=run_id_prefix,
+            scale_tier=scale_tier,
+            n=n,
             repo_root=resolved_repo_root,
             command_mode=command_mode,
             signed_authorization_placeholder=signed_authorization_placeholder,
+            signed_authorization_option=signed_authorization_option,
         )
         for cell in selected
     )
@@ -260,9 +291,13 @@ def _launcher_plan_for_cell(
     repair_history_policy: str,
     output_base: Path,
     observability_base: Path,
+    run_id_prefix: str,
+    scale_tier: str,
+    n: int,
     repo_root: Path,
     command_mode: str,
     signed_authorization_placeholder: str | None,
+    signed_authorization_option: str,
 ) -> GrammarModeLauncherCellPlan:
     condition_id = cell.output_namespace_suffix
     output_path = output_base / f"{condition_id}.jsonl"
@@ -289,8 +324,12 @@ def _launcher_plan_for_cell(
         command_grammar_argument=command_grammar_argument,
         output_path=output_path.as_posix(),
         observability_event_path=observability_event_path.as_posix(),
+        run_id_prefix=run_id_prefix,
+        scale_tier=scale_tier,
+        n=n,
         repair_history_policy=repair_history_policy,
         signed_authorization_placeholder=signed_authorization_placeholder,
+        signed_authorization_option=signed_authorization_option,
     )
     support_status = (
         "DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION"
@@ -320,7 +359,7 @@ def _launcher_plan_for_cell(
         observability_hash_path=observability_hash_path.as_posix(),
         observability_experiment_id=L1A_EXPERIMENT_ID,
         observability_run_id_suffix=condition_id,
-        observability_join_key=f"{L1A_RUN_ID_PREFIX}__{condition_id}",
+        observability_join_key=f"{run_id_prefix}__{condition_id}",
         path_collision_policy=L1A_PATH_COLLISION_POLICY,
         write_mode_required="fail_if_existing_before_signed_execution",
         command_mode=command_mode,
@@ -345,8 +384,12 @@ def _command_selector_for_cell(
     command_grammar_argument: str | None,
     output_path: str,
     observability_event_path: str,
+    run_id_prefix: str,
+    scale_tier: str,
+    n: int,
     repair_history_policy: str,
     signed_authorization_placeholder: str | None,
+    signed_authorization_option: str,
 ) -> str:
     if command_mode == "dry_plan":
         return (
@@ -365,9 +408,9 @@ def _command_selector_for_cell(
         "--kernel-class",
         "elementwise",
         "--scale-tier",
-        "smoke",
+        scale_tier,
         "--n",
-        "1",
+        str(n),
         "--dtypes",
         "fp32",
         "--repair-history-policy",
@@ -377,10 +420,10 @@ def _command_selector_for_cell(
         "--observability-experiment-id",
         L1A_EXPERIMENT_ID,
         "--observability-run-id",
-        f"{L1A_RUN_ID_PREFIX}__{condition_id}",
+        f"{run_id_prefix}__{condition_id}",
         "--observability-output",
         observability_event_path,
-        "--signed-l1a-authorization",
+        signed_authorization_option,
         signed_authorization_placeholder,
         "--output",
         output_path,

@@ -75,6 +75,11 @@ from cluster3.planning.grammar_mode_matrix import (
     L1A_OBSERVABILITY_ROOT,
     L1A_PATH_COLLISION_POLICY,
     L1A_RUN_ID_PREFIX,
+    L1A_SIGNED_AUTHORIZATION_PLACEHOLDER,
+    L1B_OUTPUT_ROOT,
+    L1B_OBSERVABILITY_ROOT,
+    L1B_RUN_ID_PREFIX,
+    L1B_SIGNED_AUTHORIZATION_PLACEHOLDER,
     GrammarModeLauncherCellPlan,
     build_l1a_launcher_dry_plan,
     build_l1a_launcher_executable_plan,
@@ -142,6 +147,10 @@ L1A_DRY_PLAN_PLACEHOLDER_OUTPUT = f"{L1A_OUTPUT_ROOT}/__dry_plan__.jsonl"
 L1A_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT = f"{L1A_OUTPUT_ROOT}/__selector__.jsonl"
 L1A_SIGNED_AUTHORIZATION_TOKEN = (
     "FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1"
+)
+L1B_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT = f"{L1B_OUTPUT_ROOT}/__selector__.jsonl"
+L1B_SIGNED_AUTHORIZATION_TOKEN = (
+    "FULL_PIPELINE_GRAMMAR_MODE_CP_L1B_N5_AUTHORIZATION_GOAL_20260606"
 )
 DIAGNOSTIC_F1_SEED_CONDITIONS: tuple[str, ...] = ("P", "G+P")
 DIAGNOSTIC_F2_SEED_CONDITIONS: tuple[str, ...] = ("C+P", "G+C+P")
@@ -378,14 +387,99 @@ class Cluster3RunnerConfig:
         return payload
 
 
+@dataclass(frozen=True)
+class _GrammarModeSelectorProfile:
+    label: str
+    signed_authorization_token: str
+    signed_authorization_placeholder: str
+    signed_authorization_option: str
+    output_root: str
+    observability_root: str
+    run_id_prefix: str
+    selector_placeholder_output: str
+    scale_tier: str
+    n: int
+    expected_planned_rows: int
+
+
+L1A_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
+    label="L1a n=1 smoke",
+    signed_authorization_token=L1A_SIGNED_AUTHORIZATION_TOKEN,
+    signed_authorization_placeholder=L1A_SIGNED_AUTHORIZATION_PLACEHOLDER,
+    signed_authorization_option="--signed-l1a-authorization",
+    output_root=L1A_OUTPUT_ROOT,
+    observability_root=L1A_OBSERVABILITY_ROOT,
+    run_id_prefix=L1A_RUN_ID_PREFIX,
+    selector_placeholder_output=L1A_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT,
+    scale_tier="smoke",
+    n=1,
+    expected_planned_rows=12,
+)
+L1B_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
+    label="L1b n=5 development",
+    signed_authorization_token=L1B_SIGNED_AUTHORIZATION_TOKEN,
+    signed_authorization_placeholder=L1B_SIGNED_AUTHORIZATION_PLACEHOLDER,
+    signed_authorization_option="--signed-l1b-authorization",
+    output_root=L1B_OUTPUT_ROOT,
+    observability_root=L1B_OBSERVABILITY_ROOT,
+    run_id_prefix=L1B_RUN_ID_PREFIX,
+    selector_placeholder_output=L1B_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT,
+    scale_tier="development",
+    n=5,
+    expected_planned_rows=60,
+)
+SELECTOR_PROFILES: tuple[_GrammarModeSelectorProfile, ...] = (
+    L1A_SELECTOR_PROFILE,
+    L1B_SELECTOR_PROFILE,
+)
+
+
 def _output_from_namespace(namespace: argparse.Namespace) -> str:
     if namespace.output is not None:
         return namespace.output
     if namespace.dry_plan:
         return L1A_DRY_PLAN_PLACEHOLDER_OUTPUT
     if namespace.condition == L1A_GRAMMAR_MODE_CP_SELECTOR:
-        return L1A_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
+        signed_authorization = getattr(namespace, "signed_l1a_authorization", None)
+        if signed_authorization:
+            for profile in SELECTOR_PROFILES:
+                if signed_authorization == profile.signed_authorization_token:
+                    return profile.selector_placeholder_output
+        return _selector_profile_for_scale(
+            scale_tier=namespace.scale_tier,
+            n=namespace.n,
+        ).selector_placeholder_output
     return ""
+
+
+def _selector_profile_for_scale(
+    *,
+    scale_tier: str,
+    n: int,
+) -> _GrammarModeSelectorProfile:
+    for profile in SELECTOR_PROFILES:
+        if scale_tier == profile.scale_tier and n == profile.n:
+            return profile
+    supported = ", ".join(
+        f"{profile.scale_tier}/n={profile.n}" for profile in SELECTOR_PROFILES
+    )
+    raise ValueError(
+        f"{L1A_GRAMMAR_MODE_CP_SELECTOR} supports only {supported}; "
+        f"got {scale_tier}/n={n}"
+    )
+
+
+def _selector_profile_for_authorization(
+    config: Cluster3RunnerConfig,
+) -> _GrammarModeSelectorProfile:
+    for profile in SELECTOR_PROFILES:
+        if config.signed_l1a_authorization == profile.signed_authorization_token:
+            return profile
+    supported = ", ".join(profile.signed_authorization_token for profile in SELECTOR_PROFILES)
+    raise ValueError(
+        "signed selector authorization must match one of the approved tokens: "
+        f"{supported}"
+    )
 
 
 @dataclass(frozen=True)
@@ -1013,6 +1107,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         choices=l1a_grammar_mode_cell_selector_choices(),
     )
     parser.add_argument("--signed-l1a-authorization", default=None)
+    parser.add_argument(
+        "--signed-l1b-authorization",
+        dest="signed_l1a_authorization",
+        default=None,
+    )
     mode = parser.add_mutually_exclusive_group(required=False)
     mode.add_argument("--overwrite", action="store_true")
     mode.add_argument("--resume", action="store_true")
@@ -1061,9 +1160,15 @@ def _validate_cli_namespace(
 def build_l1a_dry_plan_payload(config: Cluster3RunnerConfig) -> dict[str, Any]:
     if not config.dry_plan:
         raise ValueError("build_l1a_dry_plan_payload requires dry_plan=True")
+    profile = _selector_profile_for_scale(scale_tier=config.scale_tier, n=config.n)
     cells = build_l1a_launcher_dry_plan(
         repair_history_policy=config.repair_history_policy,
         cell_selector=config.grammar_mode_cell,
+        output_root=profile.output_root,
+        observability_root=profile.observability_root,
+        run_id_prefix=profile.run_id_prefix,
+        scale_tier=profile.scale_tier,
+        n=profile.n,
         repo_root=REPO_ROOT,
     )
     return {
@@ -1071,9 +1176,13 @@ def build_l1a_dry_plan_payload(config: Cluster3RunnerConfig) -> dict[str, Any]:
         "dry_plan_only": True,
         "cell_selector": config.grammar_mode_cell,
         "cell_count": len(cells),
+        "planned_rows": _planned_rows(config, cells),
+        "authorization_profile": profile.label,
+        "scale_tier": profile.scale_tier,
+        "n": profile.n,
         "experiment_id": L1A_EXPERIMENT_ID,
-        "output_root": L1A_OUTPUT_ROOT,
-        "observability_root": L1A_OBSERVABILITY_ROOT,
+        "output_root": profile.output_root,
+        "observability_root": profile.observability_root,
         "path_collision_policy": L1A_PATH_COLLISION_POLICY,
         "execution_authorized": False,
         "writes_outputs": False,
@@ -1088,10 +1197,18 @@ def build_l1a_execution_plan_payload(config: Cluster3RunnerConfig) -> dict[str, 
         raise ValueError(
             "build_l1a_execution_plan_payload requires execution_plan=True"
         )
+    profile = _selector_profile_for_scale(scale_tier=config.scale_tier, n=config.n)
     cells = build_l1a_launcher_executable_plan(
         repair_history_policy=config.repair_history_policy,
         cell_selector=config.grammar_mode_cell,
+        output_root=profile.output_root,
+        observability_root=profile.observability_root,
+        run_id_prefix=profile.run_id_prefix,
+        scale_tier=profile.scale_tier,
+        n=profile.n,
         repo_root=REPO_ROOT,
+        signed_authorization_placeholder=profile.signed_authorization_placeholder,
+        signed_authorization_option=profile.signed_authorization_option,
     )
     return {
         "selector": L1A_GRAMMAR_MODE_CP_SELECTOR,
@@ -1099,17 +1216,32 @@ def build_l1a_execution_plan_payload(config: Cluster3RunnerConfig) -> dict[str, 
         "dry_plan_only": False,
         "cell_selector": config.grammar_mode_cell,
         "cell_count": len(cells),
+        "planned_rows": _planned_rows(config, cells),
+        "authorization_profile": profile.label,
+        "scale_tier": profile.scale_tier,
+        "n": profile.n,
         "experiment_id": L1A_EXPERIMENT_ID,
-        "output_root": L1A_OUTPUT_ROOT,
-        "observability_root": L1A_OBSERVABILITY_ROOT,
+        "output_root": profile.output_root,
+        "observability_root": profile.observability_root,
         "path_collision_policy": L1A_PATH_COLLISION_POLICY,
         "execution_authorized": False,
-        "requires_signed_l1a_authorization": True,
+        "requires_signed_authorization": True,
+        "requires_signed_l1a_authorization": (
+            profile is L1A_SELECTOR_PROFILE
+        ),
+        "signed_authorization_option": profile.signed_authorization_option,
         "writes_outputs": False,
         "writes_artifacts": False,
         "writes_mlruns": False,
         "cells": [cell.to_dict() for cell in cells],
     }
+
+
+def _planned_rows(
+    config: Cluster3RunnerConfig,
+    cells: Sequence[GrammarModeLauncherCellPlan],
+) -> int:
+    return len(cells) * len(config.kernel_classes) * len(config.dtypes) * config.n
 
 
 def main(argv: Sequence[str] | None = None) -> Cluster3RunResult | dict[str, Any]:
@@ -1204,7 +1336,7 @@ def _run_signed_l1a_selector(
     return Cluster3RunResult(
         rows=tuple(rows),
         route_audit=tuple(audits),
-        output=L1A_OUTPUT_ROOT,
+        output=_selector_output_root_from_cells(cells),
         write_mode=config.write_mode,
     )
 
@@ -1226,7 +1358,7 @@ def _l1a_cell_runtime_config(
         output=cell.output_path,
         observability_mode="best_effort",
         observability_experiment_id=cell.observability_experiment_id,
-        observability_run_id=f"{L1A_RUN_ID_PREFIX}__{cell.condition_id}",
+        observability_run_id=cell.observability_join_key,
         observability_output=cell.observability_event_path,
         grammar_variant=grammar_variant,
         grammar_mode_cell="all",
@@ -1237,31 +1369,29 @@ def _l1a_cell_runtime_config(
 def _validate_l1a_runtime_authorization(
     config: Cluster3RunnerConfig,
 ) -> tuple[GrammarModeLauncherCellPlan, ...]:
-    """Validate the exact signed L1a selector command before runtime launch."""
+    """Validate the exact signed grammar-mode selector command before launch."""
 
     if config.condition != L1A_GRAMMAR_MODE_CP_SELECTOR:
-        raise ValueError("L1a authorization is only valid for grammar_mode_cp_12cell")
-    if config.signed_l1a_authorization != L1A_SIGNED_AUTHORIZATION_TOKEN:
-        raise ValueError(
-            "signed-l1a-authorization must match "
-            f"{L1A_SIGNED_AUTHORIZATION_TOKEN}"
-        )
+        raise ValueError("selector authorization is only valid for grammar_mode_cp_12cell")
+    profile = _selector_profile_for_authorization(config)
     if os.environ.get("TRITONGEN_MLFLOW") != "0":
-        raise RuntimeError("TRITONGEN_MLFLOW=0 is required for signed L1a n=1")
+        raise RuntimeError(f"TRITONGEN_MLFLOW=0 is required for signed {profile.label}")
     if config.write_mode != "overwrite":
-        raise ValueError("signed L1a n=1 requires --overwrite and forbids resume")
-    if config.output != L1A_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT:
-        raise ValueError("signed L1a selector command must not override --output")
+        raise ValueError(f"signed {profile.label} requires --overwrite and forbids resume")
+    if config.output != profile.selector_placeholder_output:
+        raise ValueError("signed selector command must not override --output")
     if config.grammar_mode_cell != "all":
-        raise ValueError("signed L1a selector command must plan all 12 cells")
-    if config.scale_tier != "smoke":
-        raise ValueError("signed L1a n=1 requires --scale-tier smoke")
-    if config.n != 1:
-        raise ValueError("signed L1a n=1 requires --n 1")
+        raise ValueError(f"signed {profile.label} selector command must plan all 12 cells")
+    if config.scale_tier != profile.scale_tier:
+        raise ValueError(
+            f"signed {profile.label} requires --scale-tier {profile.scale_tier}"
+        )
+    if config.n != profile.n:
+        raise ValueError(f"signed {profile.label} requires --n {profile.n}")
     if config.kernel_class != "elementwise":
-        raise ValueError("signed L1a n=1 requires --kernel-class elementwise")
+        raise ValueError(f"signed {profile.label} requires --kernel-class elementwise")
     if config.dtypes != ("fp32",):
-        raise ValueError("signed L1a n=1 requires --dtypes fp32")
+        raise ValueError(f"signed {profile.label} requires --dtypes fp32")
     if config.dry_plan or config.execution_plan:
         raise ValueError("runtime authorization does not apply to planning modes")
     if config.observability_mode != "off":
@@ -1276,45 +1406,54 @@ def _validate_l1a_runtime_authorization(
     cells = build_l1a_launcher_executable_plan(
         repair_history_policy=config.repair_history_policy,
         cell_selector=config.grammar_mode_cell,
+        output_root=profile.output_root,
+        observability_root=profile.observability_root,
+        run_id_prefix=profile.run_id_prefix,
+        scale_tier=profile.scale_tier,
+        n=profile.n,
         repo_root=REPO_ROOT,
-        signed_authorization_placeholder=L1A_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_placeholder=profile.signed_authorization_token,
+        signed_authorization_option=profile.signed_authorization_option,
     )
     if len(cells) != 12:
-        raise ValueError("signed L1a n=1 requires exactly 12 planned cells")
-    planned_rows = len(cells) * len(config.kernel_classes) * len(config.dtypes) * config.n
-    if planned_rows != 12:
-        raise ValueError("signed L1a n=1 requires exactly 12 planned rows")
+        raise ValueError(f"signed {profile.label} requires exactly 12 planned cells")
+    planned_rows = _planned_rows(config, cells)
+    if planned_rows != profile.expected_planned_rows:
+        raise ValueError(
+            f"signed {profile.label} requires exactly "
+            f"{profile.expected_planned_rows} planned rows"
+        )
 
     condition_ids = {cell.condition_id for cell in cells}
     if len(condition_ids) != 12:
-        raise ValueError("signed L1a n=1 requires 12 unique planned cells")
+        raise ValueError(f"signed {profile.label} requires 12 unique planned cells")
 
     for cell in cells:
         if cell.selector != L1A_GRAMMAR_MODE_CP_SELECTOR:
-            raise ValueError("signed L1a plan contains an unexpected selector")
+            raise ValueError("signed selector plan contains an unexpected selector")
         if cell.path_collision_policy != L1A_PATH_COLLISION_POLICY:
-            raise ValueError("signed L1a plan must fail if target paths exist")
-        if cell.output_path != f"{L1A_OUTPUT_ROOT}/{cell.condition_id}.jsonl":
-            raise ValueError("signed L1a plan output path does not match namespace")
-        _require_l1a_path(cell.output_path, root=L1A_OUTPUT_ROOT, label="output")
+            raise ValueError("signed selector plan must fail if target paths exist")
+        if cell.output_path != f"{profile.output_root}/{cell.condition_id}.jsonl":
+            raise ValueError("signed selector plan output path does not match namespace")
+        _require_l1a_path(cell.output_path, root=profile.output_root, label="output")
         _require_l1a_path(
             cell.content_hash_sidecar_path,
-            root=L1A_OUTPUT_ROOT,
+            root=profile.output_root,
             label="content hash sidecar",
         )
         _require_l1a_path(
             cell.observability_event_path,
-            root=L1A_OBSERVABILITY_ROOT,
+            root=profile.observability_root,
             label="observability event sidecar",
         )
         _require_l1a_path(
             cell.observability_summary_path,
-            root=L1A_OBSERVABILITY_ROOT,
+            root=profile.observability_root,
             label="observability summary sidecar",
         )
         _require_l1a_path(
             cell.observability_hash_path,
-            root=L1A_OBSERVABILITY_ROOT,
+            root=profile.observability_root,
             label="observability hash sidecar",
         )
         _require_absent_target(cell.output_path, label="output")
@@ -1334,20 +1473,29 @@ def _validate_l1a_runtime_authorization(
     return cells
 
 
+def _selector_output_root_from_cells(
+    cells: tuple[GrammarModeLauncherCellPlan, ...],
+) -> str:
+    roots = {Path(cell.output_path).parent.as_posix() for cell in cells}
+    if len(roots) != 1:
+        raise ValueError("signed selector cells must share one output root")
+    return next(iter(roots))
+
+
 def _require_l1a_path(path: str, *, root: str, label: str) -> None:
     target = (REPO_ROOT / path).resolve()
     allowed_root = (REPO_ROOT / root).resolve()
     try:
         target.relative_to(allowed_root)
     except ValueError as exc:
-        raise ValueError(f"signed L1a {label} path is outside {root}") from exc
+        raise ValueError(f"signed selector {label} path is outside {root}") from exc
 
 
 def _require_absent_target(path: str, *, label: str) -> None:
     target = REPO_ROOT / path
     if target.exists():
         raise FileExistsError(
-            f"signed L1a {label} target already exists: {path}; "
+            f"signed selector {label} target already exists: {path}; "
             "retry/resume/delete is not authorized"
         )
 

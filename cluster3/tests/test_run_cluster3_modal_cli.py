@@ -1660,6 +1660,27 @@ def _signed_l1a_selector_args(*extra: str, token: str | None = None) -> list[str
     ]
 
 
+def _signed_l1b_selector_args(*extra: str, token: str | None = None) -> list[str]:
+    return [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--kernel-class",
+        "elementwise",
+        "--scale-tier",
+        "development",
+        "--n",
+        "5",
+        "--dtypes",
+        "fp32",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l1b-authorization",
+        token or runner_mod.L1B_SIGNED_AUTHORIZATION_TOKEN,
+        *extra,
+        "--overwrite",
+    ]
+
+
 def test_l1a_12cell_dry_plan_cli_parses_without_output_or_write_mode() -> None:
     config = parse_args(
         [
@@ -1753,6 +1774,45 @@ def test_l1a_12cell_execution_plan_builds_executable_commands() -> None:
         "--observability-output " + cell["observability_event_path"]
         in cell["command_selector"]
     )
+
+
+def test_l1b_12cell_execution_plan_builds_n5_development_commands() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--scale-tier",
+            "development",
+            "--n",
+            "5",
+            "--dtypes",
+            "fp32",
+            "--execution-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_execution_plan_payload(config)
+
+    assert payload["cell_count"] == 12
+    assert payload["planned_rows"] == 60
+    assert payload["authorization_profile"] == "L1b n=5 development"
+    assert payload["output_root"] == runner_mod.L1B_OUTPUT_ROOT
+    assert payload["observability_root"] == runner_mod.L1B_OBSERVABILITY_ROOT
+    assert payload["requires_signed_authorization"] is True
+    assert payload["requires_signed_l1a_authorization"] is False
+    assert payload["signed_authorization_option"] == "--signed-l1b-authorization"
+    assert payload["writes_outputs"] is False
+    assert payload["writes_artifacts"] is False
+    assert payload["writes_mlruns"] is False
+    for planned_cell in payload["cells"]:
+        assert "--scale-tier development" in planned_cell["command_selector"]
+        assert "--n 5" in planned_cell["command_selector"]
+        assert "--signed-l1b-authorization" in planned_cell["command_selector"]
+        assert planned_cell["output_path"].startswith(runner_mod.L1B_OUTPUT_ROOT + "/")
+        assert planned_cell["observability_event_path"].startswith(
+            runner_mod.L1B_OBSERVABILITY_ROOT + "/"
+        )
 
 
 def test_l1a_12cell_selector_rejects_execution_without_dry_plan(tmp_path: Path) -> None:
@@ -1970,13 +2030,76 @@ def test_l1a_12cell_signed_selector_runs_all_cells_locally_with_fake_adapters(
         assert Path(cell.observability_hash_path).exists()
 
 
+def test_l1b_12cell_signed_selector_runs_all_cells_n5_locally_with_fake_adapters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = parse_args(_signed_l1b_selector_args())
+    cells = runner_mod.build_l1a_launcher_executable_plan(
+        repair_history_policy="agentic_transcript_v1",
+        output_root=tmp_path / "outputs",
+        observability_root=tmp_path / "observability",
+        run_id_prefix=runner_mod.L1B_RUN_ID_PREFIX,
+        scale_tier="development",
+        n=5,
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L1B_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l1b-authorization",
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(*(_result(None) for _ in range(60)))
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    result = runner_mod._run_signed_l1a_selector(
+        config,
+        cells=cells,
+        dependencies=RunnerDependencies(
+            generation=generation,
+            correctness=correctness,
+        ),
+    )
+
+    assert len(result.rows) == 60
+    assert len(generation.calls) == 60
+    assert len(correctness.calls) == 60
+    assert result.output == (tmp_path / "outputs").as_posix()
+    assert {
+        (
+            row.grammar_mode,
+            "on" if row.condition in {"C", "G+C", "C+P", "G+C+P"} else "off",
+            "on" if row.condition in {"P", "G+P", "C+P", "G+C+P"} else "off",
+            row.base_seed,
+        )
+        for row in result.rows
+    } == {
+        (grammar_mode, c_state, p_state, base_seed)
+        for grammar_mode in ("grammar_off", "template_upper_bound", "task_agnostic")
+        for c_state in ("off", "on")
+        for p_state in ("off", "on")
+        for base_seed in range(5)
+    }
+    assert all(
+        row.p_repair_attempted is False
+        for row in result.rows
+        if "+P" not in row.condition and row.condition != "P"
+    )
+    for cell in cells:
+        output_path = Path(cell.output_path)
+        assert output_path.exists()
+        assert output_path.read_text(encoding="utf-8").count("\n") == 5
+        assert Path(cell.content_hash_sidecar_path).exists()
+        assert Path(cell.observability_event_path).exists()
+        assert Path(cell.observability_summary_path).exists()
+        assert Path(cell.observability_hash_path).exists()
+
+
 def test_l1a_12cell_selector_wrong_token_fails_prelaunch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
     config = parse_args(_signed_l1a_selector_args(token="wrong-token"))
 
-    with pytest.raises(ValueError, match="signed-l1a-authorization"):
+    with pytest.raises(ValueError, match="signed selector authorization"):
         runner_mod._validate_l1a_runtime_authorization(config)
 
 
@@ -1993,6 +2116,31 @@ def test_l1a_12cell_selector_n5_fails_prelaunch(
 
     with pytest.raises(ValueError, match="--n 1"):
         runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l1b_12cell_selector_passes_prelaunch_guard_without_modal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l1b_selector_args())
+
+    cells = runner_mod._validate_l1a_runtime_authorization(config)
+
+    assert len(cells) == 12
+    assert {cell.output_path for cell in cells} == {
+        f"{runner_mod.L1B_OUTPUT_ROOT}/{cell.condition_id}.jsonl"
+        for cell in cells
+    }
+    assert {
+        cell.observability_event_path
+        for cell in cells
+    } == {
+        (
+            f"{runner_mod.L1B_OBSERVABILITY_ROOT}/"
+            f"{cell.condition_id}.observability.jsonl"
+        )
+        for cell in cells
+    }
 
 
 @pytest.mark.parametrize("scale_tier", ["development", "paper"])
