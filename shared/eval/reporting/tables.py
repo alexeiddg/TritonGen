@@ -230,11 +230,33 @@ def render_factorial_markdown_report(analysis: Mapping[str, Any]) -> str:
 
 
 def _factorial_report_scope(analysis: Mapping[str, Any]) -> tuple[str, tuple[str, ...]]:
+    metadata = analysis.get("metadata")
+    if isinstance(metadata, Mapping) and _metadata_blocks_paper_scale_title(metadata):
+        scale_tiers = ", ".join(_string_tuple(metadata.get("scale_tiers", ())))
+        scope = metadata.get("analysis_scope")
+        label = (
+            "L1b development-scale 2³ factorial diagnostic analysis"
+            if isinstance(scope, str) and scope.startswith("l1b_")
+            else "Non-paper-scale factorial diagnostic analysis"
+        )
+        statements = [
+            (
+                f"This analysis is {scale_tiers or 'non-paper'}-scale evidence "
+                "only and is not paper-scale or reportable paper evidence."
+            ),
+            FULL_FACTORIAL_GOAL_STATEMENT,
+        ]
+        if metadata.get("three_way_interaction", {}).get("reportable") is False:
+            statements.append(
+                "Three-way interaction fields are diagnostic only and not "
+                "reportable paper-scale claims."
+            )
+        return label, tuple(statements)
+
     model_types = _factorial_model_types(analysis)
     derived_label, derived_statements = _scope_from_model_types(model_types)
     if model_types:
         return _title_case_first(derived_label), derived_statements
-    metadata = analysis.get("metadata")
     if isinstance(metadata, Mapping):
         label = metadata.get("analysis_label")
         statements = metadata.get("scope_statements", ())
@@ -251,6 +273,19 @@ def _factorial_model_types(analysis: Mapping[str, Any]) -> set[Any]:
         row.get("model_type")
         for row in _mapping_rows(paper_tables.get("table_3_factorial_terms", ()))
     }
+
+
+def _metadata_blocks_paper_scale_title(metadata: Mapping[str, Any]) -> bool:
+    scale_tiers = set(_string_tuple(metadata.get("scale_tiers", ())))
+    return metadata.get("reportable") is False or bool(scale_tiers - {"paper"})
+
+
+def _string_tuple(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value,)
+    if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
+        return tuple(str(item) for item in value)
+    return ()
 
 
 def _scope_from_model_types(model_types: set[Any]) -> tuple[str, tuple[str, ...]]:

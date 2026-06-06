@@ -3927,7 +3927,7 @@ def _paired_comparison_rows(
         except ValueError as exc:
             if is_p_pair and _is_skippable_p_pair_error(exc):
                 continue
-            if _is_skippable_l1a_smoke_pair_error(scope, exc):
+            if _is_skippable_grammar_mode_selector_pair_error(scope, exc):
                 continue
             raise
         flags = []
@@ -3962,8 +3962,17 @@ def _paired_comparison_rows(
     return rows
 
 
-def _is_skippable_l1a_smoke_pair_error(scope: str, exc: ValueError) -> bool:
-    if scope != "l1a_grammar_mode_cp_smoke":
+GRAMMAR_MODE_SELECTOR_NON_PAPER_PAIR_SKIP_SCOPES = {
+    "l1a_grammar_mode_cp_smoke",
+    "l1b_grammar_mode_cp_dev",
+}
+
+
+def _is_skippable_grammar_mode_selector_pair_error(
+    scope: str,
+    exc: ValueError,
+) -> bool:
+    if scope not in GRAMMAR_MODE_SELECTOR_NON_PAPER_PAIR_SKIP_SCOPES:
         return False
     message = str(exc)
     return (
@@ -3999,7 +4008,7 @@ def _secondary_compile_comparison_rows(
                 allow_incomplete_coverage=True,
             )
         except ValueError as exc:
-            if _is_skippable_l1a_smoke_pair_error(scope, exc):
+            if _is_skippable_grammar_mode_selector_pair_error(scope, exc):
                 continue
             raise
         flags = ["diagnostic_only", "strict_surface_metric"]

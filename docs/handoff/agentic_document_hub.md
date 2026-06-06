@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.17
+Version: 1.37.18
 Date: 2026-06-06
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -64,6 +64,8 @@ treated as report-facing.
 | Full Pipeline L1a n=1 completion audit | `audits/l1a_n1_attempt_006_completion_report.md` |
 | Full Pipeline L1a generated artifact preservation commit | `1367cdb Preserve L1a n1 generated artifacts` |
 | Full Pipeline L1a analyzer/golden drift audit | `audits/l1a_analyzer_patch_and_golden_drift_audit.md` |
+| Full Pipeline L1b n=5 completion audit | `audits/l1b_n5_execution_completion_report.md` |
+| Full Pipeline L1b analyzer development-scope patch audit | `audits/l1b_n5_analyzer_dev_scope_patch_report.md` |
 | Full Pipeline L1a final signature packet report | `audits/l1a_final_signature_packet_report.md` |
 | Full Pipeline L1a executable 12-cell selector support audit | `audits/l1a_executable_12cell_selector_support_report.md` |
 | Full Pipeline L1a executable 12-cell selector support promotion audit | `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md` |
@@ -92,19 +94,21 @@ treated as report-facing.
 
 ## Current Cluster 3 Planning Gate
 
-Post-L1a update: the 12-cell `grammar_mode x C x P` L1a n=1 run completed
-and is validated as `L1A_N1_12CELL_RUN_COMPLETE_VALIDATED`; generated analysis,
-report, billing, and observability artifacts are preserved at
-`1367cdb Preserve L1a n1 generated artifacts`. The pre-scale analyzer audit is
-`audits/l1a_analyzer_patch_and_golden_drift_audit.md`; it refreshes the stale
-legacy 2x2 golden for metric-registry/provenance metadata, fixes nested
-three-way interaction reportability so smoke output cannot become a paper-scale
-claim, and classifies the next step as L1b n=5 planning/authorization only.
-Do not run n=5, n=20, Modal/GPU generation, billing queries, output/artifact
-mutation, MLflow runtime writes, or paper-scale work without a separate signed
-packet. If citing preserved L1a analyzer/report artifacts, cite the audit caveat
-that those artifacts were not regenerated and nested three-way reportability is
-superseded by the patched analyzer gate.
+Post-L1b update: the 12-cell `grammar_mode x C x P` L1b n=5 run completed
+and is validated as `L1B_N5_12CELL_RUN_COMPLETE_VALIDATED`. It produced 60
+rows, 12 content-hash sidecars, 12 observability sidecar sets, L1b
+development-scale analysis/report artifacts, and a UTC-window Modal billing
+artifact with empty tags. The completion audit is
+`audits/l1b_n5_execution_completion_report.md`. The analyzer/reporting boundary
+patch audit is `audits/l1b_n5_analyzer_dev_scope_patch_report.md`; it confirms
+the missing-pair-metadata skip is limited to explicit non-paper grammar-mode
+selector scopes while ordinary/paper analyzer strictness remains intact. The
+L1b report is development-scale only, not paper-scale or reportable paper
+evidence, and three-way interaction fields are diagnostic only. Do not run L2,
+n=20, paper-scale, additional Modal/GPU generation, billing queries beyond an
+explicit packet, output/artifact mutation outside authorized namespaces, MLflow
+runtime writes, performance profiling, speedup analysis, or economic claims
+without a separate signed packet.
 
 Cluster 3 diagnostic evidence is provenance-frozen through
 `audits/cluster3_phase13b_commit_provenance_freeze_report.md`. Phase 14e froze

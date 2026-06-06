@@ -839,6 +839,34 @@ def test_smoke_full_eight_cells_do_not_report_three_way_claim() -> None:
     )
 
 
+def test_l1b_dev_selector_scope_skips_missing_pair_metadata_without_reportable_claim() -> None:
+    rows = _all_eight_rows()
+    for row in rows:
+        row["scale_tier"] = "development"
+        metadata = row.get("generated_metadata")
+        if isinstance(metadata, dict):
+            metadata.pop("replay_control_condition", None)
+
+    with pytest.raises(ValueError, match="missing paired replay metadata"):
+        analyze_factorial(rows, bootstrap_samples=20)
+
+    result = analyze_factorial(
+        rows,
+        analysis_scope="l1b_grammar_mode_cp_dev",
+        bootstrap_samples=20,
+    )
+
+    assert result["metadata"]["reportable"] is False
+    assert result["metadata"]["scale_tiers"] == ["development"]
+    assert len(result["paired_comparisons"]) <= 6
+    assert result["metadata"]["three_way_interaction"]["reportable"] is False
+    assert (
+        result["metadata"]["three_way_interaction"]["reason"]
+        == "requires_reportable_primary_paper_scale_output"
+    )
+    assert result["factorial_model"]["three_way_interaction_reportable"] is False
+
+
 def test_analyzer_metadata_paired_pairs_extend_when_all_eight_cells_present() -> None:
     result = analyze_factorial(_all_eight_rows(), bootstrap_samples=20)
 

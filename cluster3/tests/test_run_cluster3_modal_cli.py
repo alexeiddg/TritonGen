@@ -2120,15 +2120,36 @@ def test_l1a_12cell_selector_n5_fails_prelaunch(
 
 def test_l1b_12cell_selector_passes_prelaunch_guard_without_modal(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    output_root = (tmp_path / "outputs" / "l1b_n5").as_posix()
+    observability_root = (tmp_path / "observability" / "l1b_n5").as_posix()
+    profile = runner_mod._GrammarModeSelectorProfile(
+        label="L1b n=5 development",
+        signed_authorization_token=runner_mod.L1B_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_placeholder=runner_mod.L1B_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l1b-authorization",
+        output_root=output_root,
+        observability_root=observability_root,
+        run_id_prefix=runner_mod.L1B_RUN_ID_PREFIX,
+        selector_placeholder_output=f"{output_root}/__selector__.jsonl",
+        scale_tier="development",
+        n=5,
+        expected_planned_rows=60,
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "SELECTOR_PROFILES",
+        (runner_mod.L1A_SELECTOR_PROFILE, profile),
+    )
     config = parse_args(_signed_l1b_selector_args())
 
     cells = runner_mod._validate_l1a_runtime_authorization(config)
 
     assert len(cells) == 12
     assert {cell.output_path for cell in cells} == {
-        f"{runner_mod.L1B_OUTPUT_ROOT}/{cell.condition_id}.jsonl"
+        f"{output_root}/{cell.condition_id}.jsonl"
         for cell in cells
     }
     assert {
@@ -2136,7 +2157,7 @@ def test_l1b_12cell_selector_passes_prelaunch_guard_without_modal(
         for cell in cells
     } == {
         (
-            f"{runner_mod.L1B_OBSERVABILITY_ROOT}/"
+            f"{observability_root}/"
             f"{cell.condition_id}.observability.jsonl"
         )
         for cell in cells
