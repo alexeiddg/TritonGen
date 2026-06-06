@@ -3,21 +3,23 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1`
-packet_version: `0.3.0`
+packet_version: `0.4.0`
 packet_type: completed review packet for possible future authorization; not an execution packet until signed
-branch: `codex/l1a-authorization-packet-completion`
+branch: `codex/grammar-mode-12cell-launcher-support`
 baseline_commit: `d172e02 Pin L1a packet to grammar mode support baseline`
 planning_baseline_commit: `d172e02 Pin L1a packet to grammar mode support baseline`
 code_support_commit: `c24fbaa Add local grammar-mode support for 12-cell L1a`
 baseline_pin_commit: `d172e02 Pin L1a packet to grammar mode support baseline`
+launcher_support_branch: `codex/grammar-mode-12cell-launcher-support`
+launcher_support_status: `LOCAL_DRY_PLAN_SELECTOR_READY`
 superseded_baseline_commit: `0cc43c1 Audit full pipeline launch packet promotion`
 launch_packet: `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md`
 created_at: 2026-06-05
 baseline_pinned_at: 2026-06-05
 packet_completed_at: 2026-06-05
 status: `DRAFT_READY_FOR_USER_SIGNATURE`
-code_support_status: `LOCAL_REPRESENTABILITY_READY`
-execution_readiness_status: `BLOCKED_PENDING_FULL_12CELL_LAUNCHER_AND_SIGNATURE`
+code_support_status: `LOCAL_REPRESENTABILITY_AND_DRY_PLAN_SELECTOR_READY`
+execution_readiness_status: `BLOCKED_PENDING_SIGNATURE_STOP_SPEND_AND_EXECUTION_PACKET`
 AUTHORIZES_EXECUTION: NO
 
 Execution authorization flags:
@@ -49,12 +51,14 @@ pinned separately to `c24fbaa`. The older `0cc43c1` baseline is historical
 context only and is not sufficient for L1a authorization because it predates the
 local grammar-mode support proof.
 
-Execution remains blocked even after packet completion because the current
-Cluster 3 runner accepts only `P`, `G+P`, `C+P`, `G+C+P`, and `all`. The
-selected 12-cell matrix also includes six no-P cells that do not have a current
-Cluster 3 execution selector. A future signer must either approve an
-implementation that adds full 12-cell launcher support or sign a narrower
-diagnostic subset packet; this packet does not authorize the subset.
+Execution remains blocked even after local launcher support because this packet
+is unsigned and still lacks approved numeric stop/spend limits and a signed
+execution command bundle. The current Cluster 3 CLI now exposes a local dry-plan
+selector, `--condition grammar_mode_cp_12cell --dry-plan`, that can select all
+12 `grammar_mode x C x P` cells, including the six no-P control cells. That
+selector emits deterministic plan metadata only; it does not invoke Modal,
+generation, correctness evaluation, output writing, artifact writing, or MLflow
+tracking.
 
 ## Launch-Packet Dependency
 
@@ -71,8 +75,9 @@ It must not be converted into an execution packet unless:
 - local grammar-mode representability proof remains present on the target
   branch, including the 12-cell planner, row labeling, and analyzer grouping
   fixture tests;
-- full 12-cell launcher support exists for all no-P and P-containing cells, or
-  a separate signed packet explicitly narrows the run and labels it diagnostic.
+- full 12-cell local dry-plan launcher support remains present for all no-P and
+  P-containing cells, or a separate signed packet explicitly narrows the run and
+  labels it diagnostic.
 
 ## Intended L1a Scope
 
@@ -133,6 +138,11 @@ Local code-support proof:
   binding checks against legacy `grammar_active`/`grammar_variant` metadata.
 - `cluster3/planning/grammar_mode_matrix.py` returns exactly 12 local L1a
   cell specs with unique condition names and output namespace suffixes.
+- `cluster3/experiments/run_cluster3_modal.py` exposes the dry-plan-only
+  selector `grammar_mode_cp_12cell`, which expands to all 12 cells with
+  deterministic output paths, content-hash sidecar paths, observability sidecar
+  paths, grammar path/hash/scope metadata, repair-history policy, and
+  no-overwrite policy markers.
 - `cluster3/results/dataclass.py` and `shared/eval/schema.py` can carry
   `grammar_mode` while preserving existing `grammar_active` fields.
 - `shared/analysis/factorial.py` can normalize/group explicit
@@ -151,7 +161,7 @@ target_branch: codex-track-handoff-context
 target_commit: d172e02 Pin L1a packet to grammar mode support baseline
 packet_completion_branch: codex/l1a-authorization-packet-completion
 command: not_authorized; see review-only command manifest below
-command_manifest_status: BLOCKED_NO_FULL_12CELL_EXECUTION_LAUNCHER
+command_manifest_status: LOCAL_DRY_PLAN_SELECTOR_PRESENT_EXECUTION_NOT_AUTHORIZED
 working_directory: /Users/alexeidelgado/Desktop/TritonGen
 exact_condition_list: twelve-cell matrix in this packet
 output_jsonl_paths: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.jsonl
@@ -186,37 +196,34 @@ post_run_validation_commands: required list in Post-Run Validation section
 ## L1a Command Manifest For Review
 
 No command in this section is authorized. The manifest records the exact
-condition-level intent and the current execution support status.
+condition-level intent and the current dry-plan selector support status.
 
 | condition_id | runner selector | grammar argument | output JSONL | support status |
 |---|---|---|---|---|
-| `grammar_off__c_off__p_off` | none available | none | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_off.jsonl` | `BLOCKED_NO_CLUSTER3_NO_P_SELECTOR` |
-| `grammar_off__c_on__p_off` | none available | none | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_off.jsonl` | `BLOCKED_NO_CLUSTER3_NO_P_SELECTOR` |
-| `grammar_off__c_off__p_on` | `--condition P` | ignored by non-G row | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_on.jsonl` | `RUNNER_SELECTOR_PRESENT_REVIEW_ONLY` |
-| `grammar_off__c_on__p_on` | `--condition C+P` | ignored by non-G row | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_on.jsonl` | `RUNNER_SELECTOR_PRESENT_REVIEW_ONLY` |
-| `template_upper_bound__c_off__p_off` | none available | `template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_off.jsonl` | `BLOCKED_NO_CLUSTER3_NO_P_SELECTOR` |
-| `template_upper_bound__c_on__p_off` | none available | `template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_off.jsonl` | `BLOCKED_NO_CLUSTER3_NO_P_SELECTOR` |
-| `template_upper_bound__c_off__p_on` | `--condition G+P` | `--grammar-variant template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_on.jsonl` | `RUNNER_SELECTOR_PRESENT_REVIEW_ONLY` |
-| `template_upper_bound__c_on__p_on` | `--condition G+C+P` | `--grammar-variant template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_on.jsonl` | `RUNNER_SELECTOR_PRESENT_REVIEW_ONLY` |
-| `task_agnostic__c_off__p_off` | none available | `task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_off.jsonl` | `BLOCKED_NO_CLUSTER3_NO_P_SELECTOR` |
-| `task_agnostic__c_on__p_off` | none available | `task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_off.jsonl` | `BLOCKED_NO_CLUSTER3_NO_P_SELECTOR` |
-| `task_agnostic__c_off__p_on` | `--condition G+P` | `--grammar-variant task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_on.jsonl` | `RUNNER_SELECTOR_PRESENT_REVIEW_ONLY` |
-| `task_agnostic__c_on__p_on` | `--condition G+C+P` | `--grammar-variant task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_on.jsonl` | `RUNNER_SELECTOR_PRESENT_REVIEW_ONLY` |
+| `grammar_off__c_off__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell grammar_off__c_off__p_off` | none | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_off.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
+| `grammar_off__c_on__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell grammar_off__c_on__p_off` | none | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_off.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
+| `grammar_off__c_off__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell grammar_off__c_off__p_on` | none | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_on.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
+| `grammar_off__c_on__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell grammar_off__c_on__p_on` | none | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_on.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
+| `template_upper_bound__c_off__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell template_upper_bound__c_off__p_off` | `--grammar-variant template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_off.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
+| `template_upper_bound__c_on__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell template_upper_bound__c_on__p_off` | `--grammar-variant template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_off.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
+| `template_upper_bound__c_off__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell template_upper_bound__c_off__p_on` | `--grammar-variant template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_on.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
+| `template_upper_bound__c_on__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell template_upper_bound__c_on__p_on` | `--grammar-variant template_upper_bound` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_on.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
+| `task_agnostic__c_off__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell task_agnostic__c_off__p_off` | `--grammar-variant task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_off.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
+| `task_agnostic__c_on__p_off` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell task_agnostic__c_on__p_off` | `--grammar-variant task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_off.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
+| `task_agnostic__c_off__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell task_agnostic__c_off__p_on` | `--grammar-variant task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_on.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
+| `task_agnostic__c_on__p_on` | `--condition grammar_mode_cp_12cell --dry-plan --grammar-mode-cell task_agnostic__c_on__p_on` | `--grammar-variant task_agnostic` | `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_on.jsonl` | `DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION` |
 
-Command preview for currently selectable P-containing cells:
+Local dry-plan command preview:
 
 ```text
-.venv/bin/python -m modal run -m cluster3.experiments.run_cluster3_modal --condition P --kernel-class elementwise --scale-tier smoke --n 1 --model-id Qwen/Qwen2.5-Coder-7B-Instruct-AWQ --model-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --tokenizer-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --dtypes fp32 --temperature 0.2 --max-new-tokens 1536 --p-repair-budget 5 --c-repair-budget 0 --repair-history-policy agentic_transcript_v1 --observability-mode best_effort --observability-experiment-id full_pipeline_grammar_mode_cp_factorial_v1 --observability-run-id full_pipeline_grammar_mode_cp_factorial_v1_l1a_20260605_review_only --observability-output artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_on.observability.jsonl --output outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_off__p_on.jsonl --overwrite
-.venv/bin/python -m modal run -m cluster3.experiments.run_cluster3_modal --condition C+P --kernel-class elementwise --scale-tier smoke --n 1 --model-id Qwen/Qwen2.5-Coder-7B-Instruct-AWQ --model-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --tokenizer-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --dtypes fp32 --temperature 0.2 --max-new-tokens 1536 --p-repair-budget 5 --c-repair-budget 5 --repair-history-policy agentic_transcript_v1 --observability-mode best_effort --observability-experiment-id full_pipeline_grammar_mode_cp_factorial_v1 --observability-run-id full_pipeline_grammar_mode_cp_factorial_v1_l1a_20260605_review_only --observability-output artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_on.observability.jsonl --output outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/grammar_off__c_on__p_on.jsonl --overwrite
-.venv/bin/python -m modal run -m cluster3.experiments.run_cluster3_modal --condition G+P --grammar-variant template_upper_bound --kernel-class elementwise --scale-tier smoke --n 1 --model-id Qwen/Qwen2.5-Coder-7B-Instruct-AWQ --model-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --tokenizer-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --dtypes fp32 --temperature 0.2 --max-new-tokens 1536 --p-repair-budget 5 --c-repair-budget 0 --repair-history-policy agentic_transcript_v1 --observability-mode best_effort --observability-experiment-id full_pipeline_grammar_mode_cp_factorial_v1 --observability-run-id full_pipeline_grammar_mode_cp_factorial_v1_l1a_20260605_review_only --observability-output artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_on.observability.jsonl --output outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_off__p_on.jsonl --overwrite
-.venv/bin/python -m modal run -m cluster3.experiments.run_cluster3_modal --condition G+C+P --grammar-variant template_upper_bound --kernel-class elementwise --scale-tier smoke --n 1 --model-id Qwen/Qwen2.5-Coder-7B-Instruct-AWQ --model-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --tokenizer-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --dtypes fp32 --temperature 0.2 --max-new-tokens 1536 --p-repair-budget 5 --c-repair-budget 5 --repair-history-policy agentic_transcript_v1 --observability-mode best_effort --observability-experiment-id full_pipeline_grammar_mode_cp_factorial_v1 --observability-run-id full_pipeline_grammar_mode_cp_factorial_v1_l1a_20260605_review_only --observability-output artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_on.observability.jsonl --output outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/template_upper_bound__c_on__p_on.jsonl --overwrite
-.venv/bin/python -m modal run -m cluster3.experiments.run_cluster3_modal --condition G+P --grammar-variant task_agnostic --kernel-class elementwise --scale-tier smoke --n 1 --model-id Qwen/Qwen2.5-Coder-7B-Instruct-AWQ --model-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --tokenizer-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --dtypes fp32 --temperature 0.2 --max-new-tokens 1536 --p-repair-budget 5 --c-repair-budget 0 --repair-history-policy agentic_transcript_v1 --observability-mode best_effort --observability-experiment-id full_pipeline_grammar_mode_cp_factorial_v1 --observability-run-id full_pipeline_grammar_mode_cp_factorial_v1_l1a_20260605_review_only --observability-output artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_on.observability.jsonl --output outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_off__p_on.jsonl --overwrite
-.venv/bin/python -m modal run -m cluster3.experiments.run_cluster3_modal --condition G+C+P --grammar-variant task_agnostic --kernel-class elementwise --scale-tier smoke --n 1 --model-id Qwen/Qwen2.5-Coder-7B-Instruct-AWQ --model-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --tokenizer-revision 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a --dtypes fp32 --temperature 0.2 --max-new-tokens 1536 --p-repair-budget 5 --c-repair-budget 5 --repair-history-policy agentic_transcript_v1 --observability-mode best_effort --observability-experiment-id full_pipeline_grammar_mode_cp_factorial_v1 --observability-run-id full_pipeline_grammar_mode_cp_factorial_v1_l1a_20260605_review_only --observability-output artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_on.observability.jsonl --output outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/task_agnostic__c_on__p_on.jsonl --overwrite
+.venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --dry-plan
+.venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --dry-plan --grammar-mode-cell task_agnostic__c_on__p_off
 ```
 
-The six no-P cells must remain unlaunchable until a future implementation adds
-an approved `grammar_mode x C x P` launcher or an explicit no-P control-row
-source policy.
+The six no-P cells are now selectable by the local dry-plan manifest. They still
+must not be executed or materialized without a later signed execution packet that
+approves exact runtime commands, target commit, target paths, stop/spend limits,
+and output mutation.
 
 ## Planned Namespaces
 

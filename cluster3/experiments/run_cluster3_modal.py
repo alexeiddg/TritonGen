@@ -64,6 +64,15 @@ from cluster3.modal.correctness_runner import Cluster3CorrectnessRequest
 from cluster3.modal.result_extraction import (
     extract_or_synthesize_cluster3_correctness_result_dict,
 )
+from cluster3.planning.grammar_mode_matrix import (
+    L1A_EXPERIMENT_ID,
+    L1A_GRAMMAR_MODE_CP_SELECTOR,
+    L1A_OUTPUT_ROOT,
+    L1A_OBSERVABILITY_ROOT,
+    L1A_PATH_COLLISION_POLICY,
+    build_l1a_launcher_dry_plan,
+    l1a_grammar_mode_cell_selector_choices,
+)
 from cluster3.replay.no_p_pairs import pair_for_condition
 from cluster3.results.dataclass import (
     CLUSTER3_RESULTS_SCHEMA_VERSION,
@@ -112,12 +121,17 @@ MODEL_ID_DEFAULT = "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"
 MODEL_REVISION_DEFAULT = "8e8ed243bbe6f9a5aff549a0924562fc719b2b8a"
 TOKENIZER_REVISION_DEFAULT = MODEL_REVISION_DEFAULT
 GRAMMAR_VARIANT_TASK_AGNOSTIC = "task_agnostic"
-CONDITION_SELECTOR_CHOICES: tuple[str, ...] = (*CLUSTER3_CONDITIONS, "all")
+CONDITION_SELECTOR_CHOICES: tuple[str, ...] = (
+    *CLUSTER3_CONDITIONS,
+    "all",
+    L1A_GRAMMAR_MODE_CP_SELECTOR,
+)
 KERNEL_CLASS_SELECTOR_CHOICES: tuple[str, ...] = (*LOCKED_KERNEL_CLASSES, "all")
 SCALE_TIER_CHOICES: tuple[str, ...] = ("smoke", "development", "paper")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLUSTER3_RUNNER_PATH = "cluster3/experiments/run_cluster3_modal.py"
 OBSERVABILITY_MODE_CHOICES: tuple[str, ...] = ("off", "best_effort", "required")
+L1A_DRY_PLAN_PLACEHOLDER_OUTPUT = f"{L1A_OUTPUT_ROOT}/__dry_plan__.jsonl"
 DIAGNOSTIC_F1_SEED_CONDITIONS: tuple[str, ...] = ("P", "G+P")
 DIAGNOSTIC_F2_SEED_CONDITIONS: tuple[str, ...] = ("C+P", "G+C+P")
 DIAGNOSTIC_EXPECTED_INITIAL_FAILURES: tuple[str, ...] = (
@@ -170,11 +184,28 @@ class Cluster3RunnerConfig:
     dtypes: tuple[str, ...] = ("fp32",)
     grammar_variant: str = GRAMMAR_VARIANT_TASK_AGNOSTIC
     write_mode: str = "overwrite"
+    dry_plan: bool = False
+    grammar_mode_cell: str = "all"
     diagnostic_seed_source: str | None = None
     diagnostic_expected_initial_failure: str | None = None
 
     def __post_init__(self) -> None:
         _require_member(self.condition, CONDITION_SELECTOR_CHOICES, "condition")
+        _require_member(
+            self.grammar_mode_cell,
+            l1a_grammar_mode_cell_selector_choices(),
+            "grammar_mode_cell",
+        )
+        if self.condition == L1A_GRAMMAR_MODE_CP_SELECTOR and not self.dry_plan:
+            raise ValueError(
+                f"{L1A_GRAMMAR_MODE_CP_SELECTOR} is dry-plan only; pass --dry-plan"
+            )
+        if self.dry_plan and self.condition != L1A_GRAMMAR_MODE_CP_SELECTOR:
+            raise ValueError(
+                f"--dry-plan is only supported for --condition {L1A_GRAMMAR_MODE_CP_SELECTOR}"
+            )
+        if not self.dry_plan and self.grammar_mode_cell != "all":
+            raise ValueError("--grammar-mode-cell is only supported with --dry-plan")
         _require_member(self.kernel_class, KERNEL_CLASS_SELECTOR_CHOICES, "kernel_class")
         _require_member(self.scale_tier, SCALE_TIER_CHOICES, "scale_tier")
         _require_positive_int(self.n, "n")
@@ -214,7 +245,11 @@ class Cluster3RunnerConfig:
         )
         _require_non_empty_str(self.output, "output")
         _reject_cluster1_cluster2_output(self.output)
-        _require_member(self.write_mode, ("overwrite", "resume"), "write_mode")
+        _require_member(self.write_mode, ("overwrite", "resume", "dry_plan"), "write_mode")
+        if self.dry_plan and self.write_mode != "dry_plan":
+            raise ValueError("dry_plan configs require write_mode='dry_plan'")
+        if not self.dry_plan and self.write_mode == "dry_plan":
+            raise ValueError("write_mode='dry_plan' requires dry_plan=True")
         _validate_observability_config(self)
         _validate_diagnostic_seed_config(self)
 
@@ -250,7 +285,7 @@ class Cluster3RunnerConfig:
             tokenizer_revision=namespace.tokenizer_revision,
             max_new_tokens=namespace.max_new_tokens,
             temperature=namespace.temperature,
-            output=namespace.output,
+            output=namespace.output or L1A_DRY_PLAN_PLACEHOLDER_OUTPUT,
             observability_mode=namespace.observability_mode,
             observability_experiment_id=namespace.observability_experiment_id,
             observability_run_id=namespace.observability_run_id,
@@ -260,7 +295,15 @@ class Cluster3RunnerConfig:
             n=namespace.n,
             dtypes=parse_dtypes(namespace.dtypes),
             grammar_variant=namespace.grammar_variant,
-            write_mode="resume" if namespace.resume else "overwrite",
+            write_mode=(
+                "dry_plan"
+                if namespace.dry_plan
+                else "resume"
+                if namespace.resume
+                else "overwrite"
+            ),
+            dry_plan=namespace.dry_plan,
+            grammar_mode_cell=namespace.grammar_mode_cell,
             diagnostic_seed_source=namespace.diagnostic_seed_source or None,
             diagnostic_expected_initial_failure=(
                 namespace.diagnostic_expected_initial_failure or None
@@ -835,20 +878,76 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--observability-experiment-id", default=None)
     parser.add_argument("--observability-run-id", default=None)
     parser.add_argument("--observability-output", default=None)
-    parser.add_argument("--output", required=True)
-    mode = parser.add_mutually_exclusive_group(required=True)
+    parser.add_argument("--output", default=None)
+    parser.add_argument(
+        "--grammar-mode-cell",
+        default="all",
+        choices=l1a_grammar_mode_cell_selector_choices(),
+    )
+    mode = parser.add_mutually_exclusive_group(required=False)
     mode.add_argument("--overwrite", action="store_true")
     mode.add_argument("--resume", action="store_true")
+    mode.add_argument("--dry-plan", action="store_true")
     return parser
 
 
 def parse_args(argv: Sequence[str] | None = None) -> Cluster3RunnerConfig:
-    namespace = build_arg_parser().parse_args(argv)
+    parser = build_arg_parser()
+    namespace = parser.parse_args(argv)
+    _validate_cli_namespace(parser, namespace)
     return Cluster3RunnerConfig.from_namespace(namespace)
 
 
-def main(argv: Sequence[str] | None = None) -> Cluster3RunResult:
+def _validate_cli_namespace(
+    parser: argparse.ArgumentParser,
+    namespace: argparse.Namespace,
+) -> None:
+    if namespace.dry_plan:
+        if namespace.output is not None:
+            parser.error("--output is not used with --dry-plan")
+        if namespace.condition != L1A_GRAMMAR_MODE_CP_SELECTOR:
+            parser.error(
+                f"--dry-plan requires --condition {L1A_GRAMMAR_MODE_CP_SELECTOR}"
+            )
+        return
+    if namespace.output is None:
+        parser.error("--output is required unless --dry-plan")
+    if not namespace.overwrite and not namespace.resume:
+        parser.error("one of --overwrite or --resume is required unless --dry-plan")
+
+
+def build_l1a_dry_plan_payload(config: Cluster3RunnerConfig) -> dict[str, Any]:
+    if not config.dry_plan:
+        raise ValueError("build_l1a_dry_plan_payload requires dry_plan=True")
+    cells = build_l1a_launcher_dry_plan(
+        repair_history_policy=config.repair_history_policy,
+        cell_selector=config.grammar_mode_cell,
+        repo_root=REPO_ROOT,
+    )
+    return {
+        "selector": L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "dry_plan_only": True,
+        "cell_selector": config.grammar_mode_cell,
+        "cell_count": len(cells),
+        "experiment_id": L1A_EXPERIMENT_ID,
+        "output_root": L1A_OUTPUT_ROOT,
+        "observability_root": L1A_OBSERVABILITY_ROOT,
+        "path_collision_policy": L1A_PATH_COLLISION_POLICY,
+        "execution_authorized": False,
+        "writes_outputs": False,
+        "writes_artifacts": False,
+        "writes_mlruns": False,
+        "cells": [cell.to_dict() for cell in cells],
+    }
+
+
+def main(argv: Sequence[str] | None = None) -> Cluster3RunResult | dict[str, Any]:
     config = parse_args(argv)
+    if config.dry_plan:
+        payload = build_l1a_dry_plan_payload(config)
+        print(json.dumps(payload, sort_keys=True))
+        return payload
+
     # Seam A (Modal path): open an optional MLflow run around the local
     # orchestration. Modal returns records; the Cluster 3 JSONL writer's seam
     # logs c3.* metrics inside this run. No-op when tracking is disabled.
@@ -1042,6 +1141,8 @@ def run_cluster3(
 
     if not isinstance(config, Cluster3RunnerConfig):
         raise TypeError("config must be Cluster3RunnerConfig")
+    if config.dry_plan:
+        raise ValueError("dry_plan configs must be handled by main before run_cluster3")
     deps = dependencies or RunnerDependencies()
     generation = deps.generation or _default_generation_call
     correctness = deps.correctness or _default_correctness_call
@@ -1178,6 +1279,8 @@ def run_cluster3(
 def expand_condition_selector(selector: str) -> tuple[str, ...]:
     if selector == "all":
         return CLUSTER3_CONDITIONS
+    if selector == L1A_GRAMMAR_MODE_CP_SELECTOR:
+        raise ValueError(f"{L1A_GRAMMAR_MODE_CP_SELECTOR} is dry-plan only")
     return (normalize_cluster3_condition(selector),)
 
 
@@ -2558,6 +2661,8 @@ def _validate_observability_config(config: Cluster3RunnerConfig) -> None:
         OBSERVABILITY_MODE_CHOICES,
         "observability_mode",
     )
+    if config.dry_plan:
+        return
     if config.observability_mode == "off":
         return
     _require_non_empty_str(

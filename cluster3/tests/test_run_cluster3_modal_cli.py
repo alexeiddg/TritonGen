@@ -1565,6 +1565,142 @@ def test_run_cluster3_cli_parses_args(tmp_path: Path) -> None:
     assert config.observability_output is None
 
 
+def test_l1a_12cell_dry_plan_cli_parses_without_output_or_write_mode() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--dry-plan",
+        ]
+    )
+
+    assert config.condition == runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR
+    assert config.dry_plan is True
+    assert config.write_mode == "dry_plan"
+    assert config.output == runner_mod.L1A_DRY_PLAN_PLACEHOLDER_OUTPUT
+    assert config.grammar_mode_cell == "all"
+
+
+def test_l1a_12cell_dry_plan_cli_selects_single_no_p_cell() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--grammar-mode-cell",
+            "task_agnostic__c_on__p_off",
+            "--dry-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_dry_plan_payload(config)
+
+    assert payload["cell_count"] == 1
+    cell = payload["cells"][0]
+    assert cell["condition_id"] == "task_agnostic__c_on__p_off"
+    assert cell["factor_cell"] == "G+C"
+    assert cell["execution_role"] == "no_p_control_cell"
+    assert cell["compile_feedback_active"] is False
+    assert cell["output_path"].startswith(
+        "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/"
+    )
+
+
+def test_l1a_12cell_selector_rejects_execution_without_dry_plan(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="dry-plan only"):
+        parse_args(
+            [
+                "--condition",
+                runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+                "--output",
+                str(tmp_path / "out.jsonl"),
+                "--overwrite",
+            ]
+        )
+
+
+def test_dry_plan_rejects_old_condition_selector() -> None:
+    with pytest.raises(SystemExit):
+        parse_args(["--condition", "P", "--dry-plan"])
+
+
+def test_grammar_mode_cell_rejects_non_dry_plan_selector(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="grammar-mode-cell"):
+        parse_args(
+            [
+                "--condition",
+                "P",
+                "--grammar-mode-cell",
+                "grammar_off__c_off__p_off",
+                "--output",
+                str(tmp_path / "out.jsonl"),
+                "--overwrite",
+            ]
+        )
+
+
+def test_l1a_12cell_dry_plan_main_does_not_run_or_write(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    planned = runner_mod.build_l1a_launcher_dry_plan(
+        repair_history_policy="agentic_transcript_v1",
+        repo_root=runner_mod.REPO_ROOT,
+    )
+    watched_paths = {
+        Path(cell.output_path) for cell in planned
+    } | {
+        Path(cell.content_hash_sidecar_path) for cell in planned
+    } | {
+        Path(cell.observability_event_path) for cell in planned
+    } | {
+        Path(cell.observability_summary_path) for cell in planned
+    } | {
+        Path(cell.observability_hash_path) for cell in planned
+    } | {Path("mlruns")}
+    before = {path: path.exists() for path in watched_paths}
+
+    def fail_run(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("dry-plan must not call run_cluster3")
+
+    monkeypatch.setattr(runner_mod, "run_cluster3", fail_run)
+
+    payload = runner_mod.main(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--dry-plan",
+        ]
+    )
+    printed = json.loads(capsys.readouterr().out)
+
+    assert json.loads(json.dumps(payload, sort_keys=True)) == printed
+    assert printed["cell_count"] == 12
+    assert printed["writes_outputs"] is False
+    assert printed["writes_artifacts"] is False
+    assert printed["writes_mlruns"] is False
+    assert before == {path: path.exists() for path in watched_paths}
+
+
+def test_l1a_12cell_dry_plan_rejects_output_argument(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "--condition",
+                runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+                "--output",
+                str(tmp_path / "ignored.jsonl"),
+                "--dry-plan",
+            ]
+        )
+
+
+def test_expand_condition_selector_all_remains_cluster3_conditions() -> None:
+    assert runner_mod.expand_condition_selector("all") == runner_mod.CLUSTER3_CONDITIONS
+
+
 def test_observability_cli_exposes_required_mode_choices() -> None:
     parser = runner_mod.build_arg_parser()
     action = next(
@@ -1842,7 +1978,6 @@ def test_observability_required_writes_valid_sidecars_in_tmp_path(
     }
     assert summary.source_event_sha256 == file_sha256(event_path)
     assert default_observability_hash_path(event_path).exists()
-
 
 @pytest.mark.parametrize("mode", ["best_effort", "required"])
 def test_observability_enabled_modes_include_supplied_safe_modal_context(

@@ -1,6 +1,17 @@
 from __future__ import annotations
 
-from cluster3.planning.grammar_mode_matrix import build_l1a_grammar_mode_cp_matrix
+import hashlib
+from pathlib import Path
+
+import pytest
+
+from cluster3.planning.grammar_mode_matrix import (
+    L1A_GRAMMAR_MODE_CP_SELECTOR,
+    L1A_OBSERVABILITY_ROOT,
+    L1A_OUTPUT_ROOT,
+    build_l1a_grammar_mode_cp_matrix,
+    build_l1a_launcher_dry_plan,
+)
 
 
 def test_l1a_grammar_mode_cp_matrix_has_12_unique_cells() -> None:
@@ -71,3 +82,89 @@ def test_l1a_grammar_mode_cp_matrix_maps_grammar_paths_and_scopes() -> None:
     assert task.grammar_path == "cluster1/grammar/triton_kernel_agnostic.gbnf"
     assert task.grammar_claim_scope == "primary"
     assert task.compile_feedback_active is True
+
+
+def test_l1a_launcher_dry_plan_has_12_selectable_cells() -> None:
+    plan = build_l1a_launcher_dry_plan(repair_history_policy="agentic_transcript_v1")
+
+    assert len(plan) == 12
+    assert {cell.selector for cell in plan} == {L1A_GRAMMAR_MODE_CP_SELECTOR}
+    assert len({cell.condition_name for cell in plan}) == 12
+    assert len({cell.condition_id for cell in plan}) == 12
+    assert len({cell.output_path for cell in plan}) == 12
+    assert {cell.grammar_mode for cell in plan} == {
+        "grammar_off",
+        "template_upper_bound",
+        "task_agnostic",
+    }
+    assert sum(not cell.compile_feedback_active for cell in plan) == 6
+    assert {cell.execution_role for cell in plan} == {
+        "no_p_control_cell",
+        "p_enabled_generated_cell",
+    }
+
+
+def test_l1a_launcher_dry_plan_paths_use_l1a_namespace() -> None:
+    plan = build_l1a_launcher_dry_plan(repair_history_policy="agentic_transcript_v1")
+
+    for cell in plan:
+        assert cell.output_path == f"{L1A_OUTPUT_ROOT}/{cell.condition_id}.jsonl"
+        assert cell.content_hash_sidecar_path == (
+            f"{L1A_OUTPUT_ROOT}/{cell.condition_id}.jsonl.hashes.json"
+        )
+        assert cell.observability_event_path == (
+            f"{L1A_OBSERVABILITY_ROOT}/{cell.condition_id}.observability.jsonl"
+        )
+        assert cell.observability_summary_path == (
+            f"{L1A_OBSERVABILITY_ROOT}/{cell.condition_id}.observability.summary.json"
+        )
+        assert cell.observability_hash_path == (
+            f"{L1A_OBSERVABILITY_ROOT}/{cell.condition_id}.observability.jsonl.hashes.json"
+        )
+        assert cell.observability_run_id_suffix == cell.condition_id
+        assert cell.condition_id in cell.observability_join_key
+        assert cell.path_collision_policy == "fail_if_any_target_path_exists"
+
+
+def test_l1a_launcher_dry_plan_records_grammar_hashes() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    template_hash = hashlib.sha256(
+        (repo_root / "cluster1/grammar/triton_kernel.gbnf").read_bytes()
+    ).hexdigest()
+    task_hash = hashlib.sha256(
+        (repo_root / "cluster1/grammar/triton_kernel_agnostic.gbnf").read_bytes()
+    ).hexdigest()
+
+    by_id = {
+        cell.condition_id: cell
+        for cell in build_l1a_launcher_dry_plan(
+            repair_history_policy="agentic_transcript_v1",
+            repo_root=repo_root,
+        )
+    }
+
+    assert by_id["grammar_off__c_off__p_off"].grammar_sha256 is None
+    assert (
+        by_id["template_upper_bound__c_off__p_on"].grammar_sha256 == template_hash
+    )
+    assert by_id["task_agnostic__c_on__p_on"].grammar_sha256 == task_hash
+
+
+def test_l1a_launcher_dry_plan_can_select_one_cell() -> None:
+    plan = build_l1a_launcher_dry_plan(
+        cell_selector="task_agnostic__c_on__p_off",
+        repair_history_policy="agentic_transcript_v1",
+    )
+
+    assert len(plan) == 1
+    cell = plan[0]
+    assert cell.condition_name == "task_agnostic+C"
+    assert cell.factor_cell == "G+C"
+    assert cell.compile_feedback_active is False
+    assert cell.execution_role == "no_p_control_cell"
+    assert cell.command_grammar_argument == "--grammar-variant task_agnostic"
+
+
+def test_l1a_launcher_dry_plan_rejects_invalid_cell_selector() -> None:
+    with pytest.raises(ValueError, match="grammar_mode_cell"):
+        build_l1a_launcher_dry_plan(cell_selector="primary_grammar__c_on__p_off")
