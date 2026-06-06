@@ -3,22 +3,29 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1`
-packet_version: `0.4.1`
+packet_version: `0.5.0`
 packet_type: completed review packet for possible future authorization; not an execution packet until signed
-branch: `codex/grammar-mode-12cell-launcher-support`
-baseline_commit: `d172e02 Pin L1a packet to grammar mode support baseline`
-planning_baseline_commit: `d172e02 Pin L1a packet to grammar mode support baseline`
+branch: `codex/l1a-final-approval-packet`
+target_branch: `codex-track-handoff-context`
+target_commit: `c256af5 Audit Modal preflight estimator promotion`
+baseline_commit: `c256af5 Audit Modal preflight estimator promotion`
+planning_baseline_commit: `c256af5 Audit Modal preflight estimator promotion`
 code_support_commit: `c24fbaa Add local grammar-mode support for 12-cell L1a`
 baseline_pin_commit: `d172e02 Pin L1a packet to grammar mode support baseline`
 launcher_support_branch: `codex/grammar-mode-12cell-launcher-support`
+launcher_support_commit: `e914557 Add dry-plan launcher support for 12-cell grammar mode matrix`
+launcher_support_promotion_audit_commit: `76ede6a Audit 12-cell launcher support promotion`
 launcher_support_status: `LOCAL_DRY_PLAN_SELECTOR_READY`
+preflight_estimator_commit: `bd89e67 Add local Modal preflight cost time estimator`
+preflight_estimator_promotion_audit_commit: `c256af5 Audit Modal preflight estimator promotion`
 preflight_estimator_status: `LOCAL_ADVISORY_ESTIMATOR_REQUIRED_BEFORE_SIGNATURE`
 superseded_baseline_commit: `0cc43c1 Audit full pipeline launch packet promotion`
 launch_packet: `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md`
 created_at: 2026-06-05
 baseline_pinned_at: 2026-06-05
-packet_completed_at: 2026-06-05
+packet_completed_at: 2026-06-06
 status: `DRAFT_READY_FOR_USER_SIGNATURE`
+DRAFT_READY_FOR_USER_SIGNATURE: YES
 code_support_status: `LOCAL_REPRESENTABILITY_AND_DRY_PLAN_SELECTOR_READY`
 execution_readiness_status: `BLOCKED_PENDING_SIGNATURE_STOP_SPEND_AND_EXECUTION_PACKET`
 AUTHORIZES_EXECUTION: NO
@@ -46,11 +53,13 @@ output mutation, analyzer output refresh, report artifact refresh, MLflow
 runtime writes, billing queries, dependency changes, lockfile changes, or
 paper-scale claims.
 
-The active planning baseline is the promoted baseline-pin commit `d172e02`.
-The executable local grammar-mode support required for the 12-cell design is
-pinned separately to `c24fbaa`. The older `0cc43c1` baseline is historical
-context only and is not sufficient for L1a authorization because it predates the
-local grammar-mode support proof.
+The active planning baseline is the promoted handoff trunk commit `c256af5`.
+That baseline includes local grammar-mode support (`c24fbaa`), 12-cell
+dry-plan launcher support (`e914557`), sidecar-only stage timing
+instrumentation, and the local advisory Modal preflight estimator (`bd89e67`).
+The older `0cc43c1` and `d172e02` baselines are historical context only and
+are not sufficient as the current L1a target because they predate later
+launcher and estimator support.
 
 Execution remains blocked even after local launcher support because this packet
 is unsigned and still lacks approved numeric stop/spend limits and a signed
@@ -68,6 +77,44 @@ counts, execution-shape envelopes, and larger-GPU breakeven requirements from
 explicit user-supplied pricing and timing inputs. That estimate remains
 planning-only: it does not authorize execution, does not replace billing
 reconciliation, and does not constitute experimental evidence.
+
+Pricing must be re-verified against official Modal documentation before any
+future signature. Exact numeric stop limits and exact numeric spend limits are
+also `REQUIRED_BEFORE_SIGNATURE`.
+
+## Final Approval Surface Summary
+
+```text
+target_branch: codex-track-handoff-context
+target_commit: c256af5 Audit Modal preflight estimator promotion
+packet_completion_branch: codex/l1a-final-approval-packet
+experiment_name: full_pipeline_grammar_mode_cp_factorial_v1
+level: L1a
+scale_tier: smoke/dev
+n_per_cell: 1
+cell_count: 12
+design: grammar_mode x C x P
+dry_plan_selector: --condition grammar_mode_cp_12cell --dry-plan
+dry_plan_verification_command: .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --dry-plan
+exact_intended_execution_command: REQUIRED_BEFORE_SIGNATURE_current_selector_is_dry_plan_only
+output_root: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1
+observability_artifact_root: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1
+jsonl_path_pattern: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.jsonl
+content_hash_sidecar_path_pattern: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.jsonl.hashes.json
+observability_event_sidecar_path_pattern: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.observability.jsonl
+observability_summary_sidecar_path_pattern: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.observability.summary.json
+observability_hash_sidecar_path_pattern: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.observability.jsonl.hashes.json
+AUTHORIZES_EXECUTION: NO
+DRAFT_READY_FOR_USER_SIGNATURE: YES
+```
+
+The exact intended execution command is still `REQUIRED_BEFORE_SIGNATURE`
+because the current `grammar_mode_cp_12cell` selector is explicitly
+dry-plan-only in `cluster3/experiments/run_cluster3_modal.py`. A future signer
+must either approve a code-supported executable 12-cell launcher command or
+provide an exact per-cell command bundle that maps each `grammar_mode`/C/P cell
+to supported runner conditions without changing row semantics. This packet does
+not provide that authorization and must not be used as a launch command.
 
 ## Launch-Packet Dependency
 
@@ -167,15 +214,19 @@ Local code-support proof:
 approval_source: not_approved
 approval_timestamp: not_applicable
 target_branch: codex-track-handoff-context
-target_commit: d172e02 Pin L1a packet to grammar mode support baseline
-packet_completion_branch: codex/l1a-authorization-packet-completion
-command: not_authorized; see review-only command manifest below
-command_manifest_status: LOCAL_DRY_PLAN_SELECTOR_PRESENT_EXECUTION_NOT_AUTHORIZED
+target_commit: c256af5 Audit Modal preflight estimator promotion
+packet_completion_branch: codex/l1a-final-approval-packet
+command: REQUIRED_BEFORE_SIGNATURE_current_12cell_selector_is_dry_plan_only
+command_manifest_status: LOCAL_DRY_PLAN_SELECTOR_PRESENT_EXECUTION_COMMAND_REQUIRED_BEFORE_SIGNATURE
 working_directory: /Users/alexeidelgado/Desktop/TritonGen
 exact_condition_list: twelve-cell matrix in this packet
+output_root: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1
+observability_artifact_root: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1
 output_jsonl_paths: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.jsonl
-observability_sidecar_paths: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.observability.jsonl plus adjacent summary/hash sidecars
 content_hash_sidecar_paths: outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.jsonl.hashes.json
+observability_event_sidecar_paths: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.observability.jsonl
+observability_summary_sidecar_paths: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.observability.summary.json
+observability_hash_sidecar_paths: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.observability.jsonl.hashes.json
 model_id: Qwen/Qwen2.5-Coder-7B-Instruct-AWQ
 model_revision: 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a
 tokenizer_revision: 8e8ed243bbe6f9a5aff549a0924562fc719b2b8a
@@ -186,22 +237,55 @@ problem_ids: not_applicable_current_runner_uses_kernel_class_shape_metadata
 dtype: fp32
 shape_policy: elementwise locked-kernel shape metadata from current Cluster 3 runner
 repair_history_policy: agentic_transcript_v1 for C-enabled or P-enabled cells; not_applicable when both C and P are off
-grammar_file_hash_lock: template_upper_bound=0f875b88ea80d7bc9573793f2cfb81bd75523af5ef5c0416466bc07d3eaf9b82; task_agnostic=7896a1befca10f68ab6aa4521681fa2577eba6fb669e87daf622c15691a22e32
+grammar_modes: grammar_off, template_upper_bound, task_agnostic
+grammar_file_paths: grammar_off=not_applicable_no_grammar; template_upper_bound=cluster1/grammar/triton_kernel.gbnf; task_agnostic=cluster1/grammar/triton_kernel_agnostic.gbnf
+grammar_file_hash_lock: grammar_off=not_applicable_no_grammar; template_upper_bound=0f875b88ea80d7bc9573793f2cfb81bd75523af5ef5c0416466bc07d3eaf9b82; task_agnostic=7896a1befca10f68ab6aa4521681fa2577eba6fb669e87daf622c15691a22e32
 observability_mode: best_effort
 observability_experiment_id: full_pipeline_grammar_mode_cp_factorial_v1
-observability_run_id: full_pipeline_grammar_mode_cp_factorial_v1_l1a_20260605_review_only
+observability_run_id: REQUIRED_BEFORE_SIGNATURE_exact_run_id
 mlflow_disposition: post_hoc_non_authoritative; runtime MLflow writes remain unauthorized; grammar-mode indexing patch remains deferred
 max_rows: 12
-max_generation_attempts: one initial generation per executable cell plus approved repair attempts
+max_generation_attempts: REQUIRED_BEFORE_SIGNATURE_exact_total_attempt_ceiling
 max_repair_attempts_per_row: P=5 when P is enabled; C=5 when C is enabled; 0 otherwise
-max_wall_clock: pending_user_signature_required
-max_estimated_cost: pending_user_signature_required
-preflight_estimate: required_before_signature; advisory_only; pricing_must_be_reverified
+max_wall_clock: REQUIRED_BEFORE_SIGNATURE_numeric_limit
+max_estimated_cost: REQUIRED_BEFORE_SIGNATURE_numeric_spend_limit
+max_reconciled_billing_cost: REQUIRED_BEFORE_SIGNATURE_numeric_spend_limit
+preflight_estimate: REQUIRED_BEFORE_SIGNATURE_advisory_only_pricing_must_be_reverified
 stop_on_first_infrastructure_failure: yes
 overwrite_policy: fail_if_any_target_path_exists
+retry_policy: no_retry_no_resume_unless_explicitly_approved_in_signed_packet
 resume_policy: no_resume_unless_explicitly_approved
-post_run_validation_commands: required list in Post-Run Validation section
+billing_reconciliation_requirement: approved_post_run_modal_billing_reconciliation_required; estimates_do_not_replace_billing
+modal_app_name: REQUIRED_BEFORE_SIGNATURE
+modal_image_digest: REQUIRED_BEFORE_SIGNATURE
+post_run_validation_commands: required list in Post-Run Validation and Analyzer Command Surface sections
 ```
+
+## Preflight Estimate And Limit Requirements
+
+No advisory preflight estimate is attached to this unsigned packet.
+
+Required before a future signature:
+
+- attach an advisory output from `cluster3/planning/modal_preflight_estimator.py`
+  for exactly the 12-cell L1a n=1 scope;
+- record whether stage timing inputs are measured from approved prior sidecars
+  or estimated;
+- re-verify Modal pricing against official Modal documentation on the approval
+  date;
+- record exact numeric stop limits, including row, generation-attempt,
+  correctness-call, repair-attempt, infrastructure-failure, and wall-clock
+  ceilings;
+- record exact numeric spend limits, including estimated preflight cap and
+  post-run reconciled billing cap;
+- state that estimates are not experimental evidence and do not replace JSONL
+  rows, content-hash sidecars, observability sidecars, analyzer outputs, or
+  billing reconciliation.
+
+The promoted sidecar stage-timing instrumentation may be used only as
+instrumentation. This packet does not claim speedup, reduced runtime, reduced
+cost, completed optimization, throughput improvement, or any performance
+result.
 
 ## L1a Command Manifest For Review
 
@@ -234,6 +318,34 @@ The six no-P cells are now selectable by the local dry-plan manifest. They still
 must not be executed or materialized without a later signed execution packet that
 approves exact runtime commands, target commit, target paths, stop/spend limits,
 and output mutation.
+
+## Exact Execution Command Surface
+
+Current exact dry-plan verification command:
+
+```text
+.venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --dry-plan
+```
+
+Current exact intended execution command:
+
+```text
+REQUIRED_BEFORE_SIGNATURE
+```
+
+Reason: `grammar_mode_cp_12cell` is dry-plan-only in the current local runner.
+The current code rejects `--condition grammar_mode_cp_12cell` unless
+`--dry-plan` is also present, and `--grammar-mode-cell` is supported only with
+dry-plan. A future signature must therefore name one of these exact command
+surfaces before execution:
+
+- a code-supported executable 12-cell launcher command on the target commit; or
+- an explicit per-cell Modal command bundle for all 12 condition IDs, with
+  target output, content-hash sidecar, observability event/summary/hash sidecar,
+  grammar-mode mapping, repair-history policy, stop/spend limits, and
+  fail-if-existing checks for each cell.
+
+Do not infer the executable command from the dry-plan selector.
 
 ## Planned Namespaces
 
@@ -297,6 +409,50 @@ post-run audit must include these exact validation classes:
 - MLflow post-hoc importer dry-run or fixture validation;
 - output/artifact registry and handoff updates.
 
+Exact command bundle status:
+
+```text
+post_run_schema_validation_command: REQUIRED_BEFORE_SIGNATURE
+post_run_content_hash_validation_command: REQUIRED_BEFORE_SIGNATURE
+post_run_observability_sidecar_validation_command: REQUIRED_BEFORE_SIGNATURE
+post_run_grammar_mode_consistency_command: REQUIRED_BEFORE_SIGNATURE
+post_run_billing_reconciliation_command: REQUIRED_BEFORE_SIGNATURE
+```
+
+The analyzer/report command surface must be signed before use. The expected
+shape is:
+
+```text
+TRITONGEN_MLFLOW=0 .venv/bin/python -m shared.analysis.factorial --inputs <12 explicit L1a JSONL paths> --analysis-scope l1a_grammar_mode_cp_smoke --scale-tier smoke --output artifacts/analysis/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1_factorial.json --markdown-output artifacts/reports/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1_factorial.md --bootstrap-samples 10000 --bootstrap-seed 13013
+```
+
+The exact 12 input paths must be expanded before signature rather than supplied
+through an unchecked shell glob. The analyzer output and markdown report paths
+are planned post-run artifacts only; this packet does not authorize writing
+them. Runtime MLflow writes remain disabled unless a later signed packet
+separately authorizes MLflow tracking.
+
+## Go/No-Go Checklist
+
+All items below must be true before any future signature:
+
+- target branch is `codex-track-handoff-context`;
+- target commit is the current approved commit and not stale;
+- launch packet still selects the 12-cell `grammar_mode x C x P` design;
+- dry-plan verification succeeds for all 12 cells;
+- exact intended execution command or exact per-cell command bundle is supplied;
+- all target JSONL, content-hash, observability, analyzer, report, billing, and
+  optional MLflow paths are absent or have a signed archive/resume policy;
+- advisory preflight estimate is attached for the exact L1a scope;
+- official Modal pricing is re-verified on the approval date;
+- numeric stop limits are supplied;
+- numeric spend limits are supplied;
+- billing reconciliation plan is approved;
+- post-run validation command bundle is supplied;
+- no-P cells are classified as controls and not as P evidence;
+- MLflow remains post-hoc/non-authoritative unless separately approved;
+- signature block below is completed by the user.
+
 ## Stop Conditions
 
 Stop before or during any future approved L1a execution if:
@@ -325,8 +481,25 @@ Stop before or during any future approved L1a execution if:
 Ready for user signature but unsigned. No execution is approved.
 
 ```text
-NOT APPROVED. A future user approval must replace this line with a signed L1a
-approval that names this packet, the exact target branch and commit, the full
-12-cell launcher support proof, the output and sidecar paths, stop/spend
-limits, and the post-run validation command bundle.
+AUTHORIZES_EXECUTION: NO
+DRAFT_READY_FOR_USER_SIGNATURE: YES
+
+signature_status: UNSIGNED
+signer: REQUIRED_BEFORE_SIGNATURE
+signed_at: REQUIRED_BEFORE_SIGNATURE
+approval_scope: REQUIRED_BEFORE_SIGNATURE
+exact_target_branch: codex-track-handoff-context
+exact_target_commit: c256af5 Audit Modal preflight estimator promotion
+exact_intended_execution_command: REQUIRED_BEFORE_SIGNATURE
+numeric_stop_limits: REQUIRED_BEFORE_SIGNATURE
+numeric_spend_limits: REQUIRED_BEFORE_SIGNATURE
+preflight_estimate_attachment: REQUIRED_BEFORE_SIGNATURE
+billing_reconciliation_plan: REQUIRED_BEFORE_SIGNATURE
+post_run_validation_bundle: REQUIRED_BEFORE_SIGNATURE
+
+NOT APPROVED. A future user approval must replace this unsigned block with a
+signed L1a approval that names this packet, the exact target branch and commit,
+the full 12-cell launcher support proof, the output and sidecar paths,
+stop/spend limits, advisory preflight estimate, billing reconciliation plan,
+and the post-run validation command bundle.
 ```

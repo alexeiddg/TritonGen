@@ -1,7 +1,7 @@
 # Agentic Documentation Hub
 
-Version: 1.37.9
-Date: 2026-06-05
+Version: 1.37.10
+Date: 2026-06-06
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
 Citation status: routing document only; do not cite as methodology
@@ -61,6 +61,7 @@ treated as report-facing.
 | C3 n20 metric-family-gated experiment packet | `docs/experiment_packets/c3_n20_metric_family_gated_packet.md` |
 | Full Pipeline grammar-mode x C x P launch packet v1 | `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md` |
 | Full Pipeline L1a n=1 authorization packet review draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md` |
+| Full Pipeline L1a final approval packet completion audit | `audits/l1a_final_approval_packet_completion_report.md` |
 | Full Pipeline L1a authorization packet completion promotion audit | `audits/l1a_authorization_packet_completion_promotion_audit_report.md` |
 | Full Pipeline L1a authorization packet completion audit | `audits/l1a_authorization_packet_completion_report.md` |
 | Full Pipeline L1a baseline pin audit | `audits/l1a_packet_baseline_pin_report.md` |
@@ -154,18 +155,21 @@ into `codex-track-handoff-context` at `5cc6326`, is promotion-audited in
 `audits/full_pipeline_launch_packet_v1_promotion_audit_report.md`, and is now
 patched under the 12-cell `grammar_mode x C x P` plan. The
 active future design is the 12-cell `grammar_mode x C x P` matrix. The old
-8-cell plan is superseded for future execution. The L1a n=1 authorization packet
-review draft is
+8-cell plan is superseded for future execution. The L1a n=1 authorization
+packet review draft is
 `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md`;
-it is unsigned, non-authorizing, and complete for review/user signature only.
-Its baseline/provenance is now pinned to baseline-pin commit
+it is unsigned, non-authorizing, and now being completed as the final approval
+surface for later human signature on `codex/l1a-final-approval-packet`. Its
+current target is `codex-track-handoff-context` at
+`c256af5 Audit Modal preflight estimator promotion`. Earlier
+baseline/provenance includes baseline-pin commit
 `d172e02 Pin L1a packet to grammar mode support baseline` and
 `code_support_commit: c24fbaa Add local grammar-mode support for 12-cell L1a`;
-see `audits/l1a_packet_baseline_pin_report.md` and
-`audits/l1a_authorization_packet_completion_report.md`; the packet-completion
-commit `3771b73 Complete L1a authorization packet review draft` was
-fast-forward promoted into `codex-track-handoff-context` and promotion-audited
-in `audits/l1a_authorization_packet_completion_promotion_audit_report.md`.
+see `audits/l1a_packet_baseline_pin_report.md`,
+`audits/l1a_authorization_packet_completion_report.md`,
+`audits/l1a_authorization_packet_completion_promotion_audit_report.md`, and
+the current completion audit
+`audits/l1a_final_approval_packet_completion_report.md`.
 Local representability support uses the repo-supported grammar-mode values
 `grammar_off`,
 `template_upper_bound`, and `task_agnostic`; see
@@ -185,9 +189,11 @@ The earlier
 code-support audit
 `audits/grammar_mode_code_support_audit_report.md` remains historical evidence
 for the launcher blocker that this implementation addresses. Future L1a
-authorization review must start from the completed packet and must not draft or
-run an execution packet until numeric stop/spend limits are supplied and a
-separate explicit approval is signed. The
+authorization review must start from the completed final approval surface and
+must not draft or run an execution packet until exact executable commands,
+numeric stop/spend limits, an advisory preflight estimate, a billing
+reconciliation plan, a post-run validation bundle, and a separate explicit
+approval are signed. The
 patched
 launch packet now uses the same repo-supported grammar-mode vocabulary and
 defines MLflow
@@ -226,16 +232,18 @@ are active. It is local-only, sidecar-only, and non-authorizing; L1a remains
 unsigned and no Modal/GPU/generation/output/mlruns/billing/benchmark or MLflow
 runtime work is approved.
 
-Modal preflight cost/time estimator work is active on
-`codex/modal-preflight-cost-time-estimator` from the promoted handoff baseline
-`76310b5`. The planned evidence surface is
+Modal preflight cost/time estimator work is promoted into
+`codex-track-handoff-context` through
+`bd89e67 Add local Modal preflight cost time estimator` and
+`c256af5 Audit Modal preflight estimator promotion`. The evidence surface is
 `audits/modal_preflight_cost_time_estimator_report.md`; the code surface is
-`cluster3/planning/modal_preflight_estimator.py`. This branch is local-only and
-advisory: it estimates row counts, execution-shape envelopes, caller-supplied
-cost/time inputs, warning flags, and larger-GPU breakeven requirements before
-any future L1a/L1b/L2 packet. It does not authorize Modal/GPU/generation,
-experiments, output/artifact/mlruns mutation, billing queries, dependency
-changes, lockfile changes, benchmark execution, or MLflow runtime writes.
+`cluster3/planning/modal_preflight_estimator.py`. This estimator is local-only
+and advisory: it estimates row counts, execution-shape envelopes,
+caller-supplied cost/time inputs, warning flags, and larger-GPU breakeven
+requirements before any future L1a/L1b/L2 packet. It does not authorize
+Modal/GPU/generation, experiments, output/artifact/mlruns mutation, billing
+queries, dependency changes, lockfile changes, benchmark execution, or MLflow
+runtime writes.
 
 Do not run Modal, n=5, n=20, paper-scale work, generation, experiments, or
 output mutation from this freeze state without separate explicit approval. Any
