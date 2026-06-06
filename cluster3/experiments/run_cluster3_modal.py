@@ -455,11 +455,6 @@ L2_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
     scale_tier="paper",
     n=20,
     expected_planned_rows=240,
-    runtime_execution_enabled=False,
-    runtime_block_reason=(
-        "L2 n=20 execution remains unsigned; this branch supports local planning "
-        "only until a later final signature explicitly authorizes execution"
-    ),
     support_status=L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
 )
 SELECTOR_PROFILES: tuple[_GrammarModeSelectorProfile, ...] = (
@@ -1441,6 +1436,11 @@ def _validate_l1a_runtime_authorization(
         raise ValueError(f"signed {profile.label} requires --kernel-class elementwise")
     if config.dtypes != ("fp32",):
         raise ValueError(f"signed {profile.label} requires --dtypes fp32")
+    if config.repair_history_policy != "agentic_transcript_v1":
+        raise ValueError(
+            f"signed {profile.label} requires "
+            "--repair-history-policy agentic_transcript_v1"
+        )
     if config.dry_plan or config.execution_plan:
         raise ValueError("runtime authorization does not apply to planning modes")
     if config.observability_mode != "off":

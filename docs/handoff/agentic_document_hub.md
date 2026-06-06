@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.25
+Version: 1.37.26
 Date: 2026-06-06
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -74,6 +74,7 @@ treated as report-facing.
 | Full Pipeline L2 n=20 final signature readiness report | `audits/l2_n20_final_signature_readiness_report.md` |
 | Full Pipeline L2 n=20 final authorization report | `audits/l2_n20_final_authorization_report.md` |
 | Full Pipeline L2 n=20 final authorization promotion audit | `audits/l2_n20_final_authorization_promotion_audit_report.md` |
+| Full Pipeline L2 n=20 runtime-gate enable report | `audits/l2_n20_runtime_gate_enable_report.md` |
 | Full Pipeline L1a final signature packet report | `audits/l1a_final_signature_packet_report.md` |
 | Full Pipeline L1a executable 12-cell selector support audit | `audits/l1a_executable_12cell_selector_support_report.md` |
 | Full Pipeline L1a executable 12-cell selector support promotion audit | `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md` |
@@ -113,21 +114,25 @@ signature-readiness audit is recorded in
 authorization report is recorded in `audits/l2_n20_final_authorization_report.md`.
 The final authorization promotion audit is recorded in
 `audits/l2_n20_final_authorization_promotion_audit_report.md`.
+The L2 runtime-gate enablement report is recorded in
+`audits/l2_n20_runtime_gate_enable_report.md`.
 Promoted commit `27493c0 Add L2 n20 selector profile support` adds local-only
 selector/profile support for `grammar_mode_cp_12cell`, `scale_tier=paper`,
 `n=20`, and 240 planned rows. The packet is now signed as
 `L2_N20_FINAL_AUTHORIZATION_READY` with `AUTHORIZES_EXECUTION: YES_L2_N20_ONLY`,
 and `bd84940 Authorize L2 n20 execution` is promoted into
-`codex-track-handoff-context`. Promotion did not execute L2 or change runtime
-launcher behavior. The target baseline still keeps the L2 runtime profile
-disabled/fail-closed in code, so the next narrow branch is
-`codex/l2-n20-runtime-gate-enable` to verify or enable only the signed L2 n=20
-runtime gate before any launch. Do not run L2, n=20, paper-scale, additional
-Modal/GPU generation, billing queries outside the post-run L2 reconciliation
-scope, output/artifact mutation outside authorized L2 n=20 namespaces, MLflow
-runtime writes, analyzer/report refresh before valid L2 outputs, performance
-profiling, speedup analysis, cost-per-success analysis, or economic claims
-outside this signed packet.
+`codex-track-handoff-context`. Promotion did not execute L2. Branch
+`codex/l2-n20-runtime-gate-enable` now narrows runtime launcher behavior so only
+the exact signed L2 n=20 selector command can pass pre-launch validation; wrong
+tokens, L1a/L1b token reuse, wrong `n`, non-elementwise kernels, non-fp32
+dtypes, MLflow-enabled runtime, resume, path collisions, row/cell mismatch, and
+namespace mismatch remain fail-closed. This runtime-gate branch still did not
+execute L2. Do not run L2, n=20, paper-scale, additional Modal/GPU generation,
+billing queries outside the post-run L2 reconciliation scope, output/artifact
+mutation outside authorized L2 n=20 namespaces, MLflow runtime writes,
+analyzer/report refresh before valid L2 outputs, performance profiling, speedup
+analysis, cost-per-success analysis, or economic claims outside this signed
+packet.
 
 Cluster 3 diagnostic evidence is provenance-frozen through
 `audits/cluster3_phase13b_commit_provenance_freeze_report.md`. Phase 14e froze

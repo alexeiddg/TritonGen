@@ -1922,7 +1922,7 @@ def test_l2_12cell_execution_plan_builds_signed_l2_command_surfaces() -> None:
             "command_selector"
         ]
         assert planned_cell["support_status"] == (
-            "L2_SELECTOR_PROFILE_PRESENT_SIGNATURE_REVIEW_REQUIRED_NO_EXECUTION"
+            "L2_SIGNED_RUNTIME_GATE_ENABLED_NO_EXECUTION"
         )
         assert planned_cell["output_path"].startswith(runner_mod.L2_OUTPUT_ROOT + "/")
         assert planned_cell["observability_event_path"].startswith(
@@ -2239,17 +2239,77 @@ def test_l2_12cell_selector_without_signed_l2_token_fails_closed(
         )
 
 
-def test_l2_12cell_selector_signed_token_still_fails_closed() -> None:
+def test_l2_12cell_signed_selector_passes_prelaunch_guard_without_modal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
     config = parse_args(_signed_l2_selector_args())
 
-    with pytest.raises(RuntimeError, match="L2 n=20 execution remains unsigned"):
-        runner_mod._validate_l1a_runtime_authorization(config)
+    cells = runner_mod._validate_l1a_runtime_authorization(config)
+
+    assert len(cells) == 12
+    assert runner_mod._planned_rows(config, cells) == 240
+    assert {cell.output_path for cell in cells} == {
+        f"{runner_mod.L2_OUTPUT_ROOT}/{cell.condition_id}.jsonl"
+        for cell in cells
+    }
+    assert {
+        cell.observability_event_path
+        for cell in cells
+    } == {
+        (
+            f"{runner_mod.L2_OBSERVABILITY_ROOT}/"
+            f"{cell.condition_id}.observability.jsonl"
+        )
+        for cell in cells
+    }
+    assert {cell.signed_authorization_placeholder for cell in cells} == {
+        runner_mod.L2_SIGNED_AUTHORIZATION_TOKEN
+    }
 
 
 def test_l2_12cell_selector_wrong_token_fails_prelaunch() -> None:
     config = parse_args(_signed_l2_selector_args(token="wrong-token"))
 
     with pytest.raises(ValueError, match="signed selector authorization"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+@pytest.mark.parametrize(
+    ("token", "expected"),
+    [
+        (runner_mod.L1A_SIGNED_AUTHORIZATION_TOKEN, "--scale-tier smoke"),
+        (runner_mod.L1B_SIGNED_AUTHORIZATION_TOKEN, "--scale-tier development"),
+    ],
+)
+def test_l2_12cell_selector_rejects_l1_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+    token: str,
+    expected: str,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2_selector_args(token=token))
+
+    with pytest.raises(ValueError, match=expected):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+@pytest.mark.parametrize(
+    ("args_factory", "expected"),
+    [
+        (_signed_l1a_selector_args, "--scale-tier paper"),
+        (_signed_l1b_selector_args, "--scale-tier paper"),
+    ],
+)
+def test_l1_selectors_reject_l2_token(
+    monkeypatch: pytest.MonkeyPatch,
+    args_factory: Any,
+    expected: str,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(args_factory(token=runner_mod.L2_SIGNED_AUTHORIZATION_TOKEN))
+
+    with pytest.raises(ValueError, match=expected):
         runner_mod._validate_l1a_runtime_authorization(config)
 
 
@@ -2272,20 +2332,6 @@ def test_l2_12cell_selector_n_not_20_fails_prelaunch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
-    enabled_l2 = replace(
-        runner_mod.L2_SELECTOR_PROFILE,
-        runtime_execution_enabled=True,
-        runtime_block_reason=None,
-    )
-    monkeypatch.setattr(
-        runner_mod,
-        "SELECTOR_PROFILES",
-        (
-            runner_mod.L1A_SELECTOR_PROFILE,
-            runner_mod.L1B_SELECTOR_PROFILE,
-            enabled_l2,
-        ),
-    )
     config = parse_args(
         _signed_l2_selector_args(
             "--n",
@@ -2295,6 +2341,79 @@ def test_l2_12cell_selector_n_not_20_fails_prelaunch(
 
     with pytest.raises(ValueError, match="--n 20"):
         runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_n1_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2_selector_args("--n", "1"))
+
+    with pytest.raises(ValueError, match="--n 20"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_n5_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2_selector_args("--n", "5"))
+
+    with pytest.raises(ValueError, match="--n 20"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_non_elementwise_kernel_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2_selector_args("--kernel-class", "reduction"))
+
+    with pytest.raises(ValueError, match="--kernel-class elementwise"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_non_fp32_dtype_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2_selector_args("--dtypes", "fp16"))
+
+    with pytest.raises(ValueError, match="--dtypes fp32"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_mlflow_enabled_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "1")
+    config = parse_args(_signed_l2_selector_args())
+
+    with pytest.raises(RuntimeError, match="TRITONGEN_MLFLOW=0"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_non_agentic_repair_history_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        _signed_l2_selector_args(
+            "--repair-history-policy",
+            "last_attempt_only_v1",
+        )
+    )
+
+    with pytest.raises(ValueError, match="agentic_transcript_v1"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_resume_fails_closed() -> None:
+    args = _signed_l2_selector_args()
+    args[args.index("--overwrite")] = "--resume"
+
+    with pytest.raises(SystemExit):
+        parse_args(args)
 
 
 def test_l1b_12cell_selector_passes_prelaunch_guard_without_modal(
@@ -2409,33 +2528,13 @@ def test_l1a_12cell_selector_existing_target_path_fails_prelaunch(
 
 def test_l2_12cell_selector_existing_target_path_fails_prelaunch(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
-    output_root = (tmp_path / "outputs" / "l2_n20").as_posix()
-    observability_root = (tmp_path / "observability" / "l2_n20").as_posix()
-    enabled_l2 = replace(
-        runner_mod.L2_SELECTOR_PROFILE,
-        output_root=output_root,
-        observability_root=observability_root,
-        selector_placeholder_output=f"{output_root}/__selector__.jsonl",
-        runtime_execution_enabled=True,
-        runtime_block_reason=None,
-    )
-    monkeypatch.setattr(
-        runner_mod,
-        "SELECTOR_PROFILES",
-        (
-            runner_mod.L1A_SELECTOR_PROFILE,
-            runner_mod.L1B_SELECTOR_PROFILE,
-            enabled_l2,
-        ),
-    )
     config = parse_args(_signed_l2_selector_args())
     first_cell = runner_mod.build_l1a_launcher_executable_plan(
         repair_history_policy="agentic_transcript_v1",
-        output_root=output_root,
-        observability_root=observability_root,
+        output_root=runner_mod.L2_OUTPUT_ROOT,
+        observability_root=runner_mod.L2_OBSERVABILITY_ROOT,
         run_id_prefix=runner_mod.L2_RUN_ID_PREFIX,
         scale_tier="paper",
         n=20,
@@ -2454,6 +2553,70 @@ def test_l2_12cell_selector_existing_target_path_fails_prelaunch(
     monkeypatch.setattr(runner_mod.Path, "exists", fake_exists)
 
     with pytest.raises(FileExistsError, match="already exists"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_requires_240_planned_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(runner_mod, "_planned_rows", lambda *_args, **_kwargs: 239)
+    config = parse_args(_signed_l2_selector_args())
+
+    with pytest.raises(ValueError, match="240 planned rows"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_requires_exactly_12_planned_cells(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2_selector_args())
+    cells = runner_mod.build_l1a_launcher_executable_plan(
+        repair_history_policy="agentic_transcript_v1",
+        output_root=runner_mod.L2_OUTPUT_ROOT,
+        observability_root=runner_mod.L2_OBSERVABILITY_ROOT,
+        run_id_prefix=runner_mod.L2_RUN_ID_PREFIX,
+        scale_tier="paper",
+        n=20,
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2-authorization",
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "build_l1a_launcher_executable_plan",
+        lambda **_kwargs: cells[:11],
+    )
+
+    with pytest.raises(ValueError, match="12 planned cells"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_rejects_output_namespace_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2_selector_args())
+    cells = runner_mod.build_l1a_launcher_executable_plan(
+        repair_history_policy="agentic_transcript_v1",
+        output_root=runner_mod.L2_OUTPUT_ROOT,
+        observability_root=runner_mod.L2_OBSERVABILITY_ROOT,
+        run_id_prefix=runner_mod.L2_RUN_ID_PREFIX,
+        scale_tier="paper",
+        n=20,
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2-authorization",
+    )
+    bad_cell = replace(cells[0], output_path="outputs/cluster3/not_l2_n20/bad.jsonl")
+    monkeypatch.setattr(
+        runner_mod,
+        "build_l1a_launcher_executable_plan",
+        lambda **_kwargs: (bad_cell, *cells[1:]),
+    )
+
+    with pytest.raises(ValueError, match="output path does not match namespace"):
         runner_mod._validate_l1a_runtime_authorization(config)
 
 
