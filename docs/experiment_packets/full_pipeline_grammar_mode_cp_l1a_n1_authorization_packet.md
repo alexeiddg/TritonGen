@@ -3,12 +3,12 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1`
-packet_version: `0.5.2`
+packet_version: `0.5.3`
 packet_type: completed review packet for possible future authorization; not an execution packet until signed
-branch: `codex/l1a-executable-12cell-selector-support`
+branch: `codex/l1a-final-signature-packet`
 target_branch: `codex-track-handoff-context`
-target_commit: `REQUIRED_AFTER_SELECTOR_SUPPORT_REVIEW_COMMIT_AND_PROMOTION`
-baseline_commit: `e96f70a Audit L1a signature readiness gap closure promotion`
+target_commit: `c05e111 Audit L1a executable selector support promotion`
+baseline_commit: `c05e111 Audit L1a executable selector support promotion`
 planning_baseline_commit: `59fa0d6 Audit L1a approval packet promotion`
 previous_execution_planning_baseline_commit: `c256af5 Audit Modal preflight estimator promotion`
 code_support_commit: `c24fbaa Add local grammar-mode support for 12-cell L1a`
@@ -30,6 +30,11 @@ signature_readiness_gap_closure_commit: `616ae01 Close L1a signature readiness g
 signature_readiness_gap_closure_promotion_audit_commit: `e96f70a Audit L1a signature readiness gap closure promotion`
 executable_selector_support_branch: `codex/l1a-executable-12cell-selector-support`
 executable_selector_support_status: `LOCAL_EXECUTABLE_SELECTOR_COMMAND_BUNDLE_READY_NO_EXECUTION`
+executable_selector_support_commit: `e9f180a Add executable planning for 12-cell L1a selector`
+executable_selector_support_promotion_audit_commit: `c05e111 Audit L1a executable selector support promotion`
+final_signature_packet_branch: `codex/l1a-final-signature-packet`
+final_signature_packet_prepared_at: 2026-06-06
+final_signature_packet_status: `DRAFT_READY_FOR_HUMAN_SIGNATURE_REVIEW_UNSIGNED_NO_EXECUTION`
 status: `DRAFT_READY_FOR_USER_SIGNATURE`
 DRAFT_READY_FOR_USER_SIGNATURE: YES
 code_support_status: `LOCAL_REPRESENTABILITY_DRY_PLAN_AND_EXECUTABLE_SELECTOR_PLAN_READY`
@@ -60,13 +65,13 @@ runtime writes, billing queries, dependency changes, lockfile changes, or
 paper-scale claims.
 
 The active signature-readiness baseline is the promoted handoff trunk commit
-`e96f70a`, which includes gap-closure commit `616ae01`. The earlier signature
-review packet target `59fa0d6` is historical context for v0.5.1 and predates
-the executable selector support added on this branch. Any future signed
-execution target must be a reviewed and promoted descendant that includes the
-selector support commit. The older `0cc43c1` and `d172e02` baselines are
-historical context only and are not sufficient as the current L1a target
-because they predate later launcher and estimator support.
+`c05e111 Audit L1a executable selector support promotion`. It includes the
+exact promoted selector-support commit
+`e9f180a Add executable planning for 12-cell L1a selector` and the matching
+promotion audit commit `c05e111`. Earlier signature review targets such as
+`59fa0d6`, `e96f70a`, `0cc43c1`, and `d172e02` are historical context only and
+are not sufficient as the current L1a target because they predate later
+launcher, estimator, signature-readiness, or executable-selector support.
 
 Execution remains blocked even after local launcher support because this packet
 is unsigned and still lacks approved numeric stop/spend limits, a signable
@@ -97,8 +102,10 @@ are also `REQUIRED_BEFORE_SIGNATURE`; the candidate limits in this packet are
 
 ```text
 target_branch: codex-track-handoff-context
-target_commit: REQUIRED_AFTER_SELECTOR_SUPPORT_REVIEW_COMMIT_AND_PROMOTION
-packet_completion_branch: codex/l1a-executable-12cell-selector-support
+target_commit: c05e111 Audit L1a executable selector support promotion
+exact_promoted_selector_commit: e9f180a Add executable planning for 12-cell L1a selector
+exact_promotion_audit_commit: c05e111 Audit L1a executable selector support promotion
+packet_completion_branch: codex/l1a-final-signature-packet
 experiment_name: full_pipeline_grammar_mode_cp_factorial_v1
 level: L1a
 scale_tier: smoke/dev
@@ -139,7 +146,7 @@ Resolved or narrowed fields:
 
 | Field | Status | Source-backed value or classification |
 |---|---|---|
-| target commit | `REQUIRED_AFTER_SELECTOR_SUPPORT_REVIEW_COMMIT_AND_PROMOTION` | Future signed target must be a reviewed and promoted descendant containing executable selector support |
+| target commit | `RESOLVED_CURRENT_PROMOTED_TARGET_NOT_SIGNED` | Future signed target must name `codex-track-handoff-context` at `c05e111 Audit L1a executable selector support promotion`, which contains selector support commit `e9f180a` and promotion audit commit `c05e111` |
 | executable command | `RESOLVED_LOCAL_COMMAND_SURFACE_NOT_SIGNED` | selector-level future command: `.venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite`; per-cell commands are emitted by `--execution-plan` |
 | observability run id convention | `PROPOSED_NOT_SIGNED` | global run id convention: `full_pipeline_grammar_mode_cp_factorial_v1_l1a_n1__target_<short_commit>__signed_<YYYYMMDDTHHMMSSZ>`; per-cell join key convention: `<run_id>__<condition_id>` |
 | current dry-plan observability join key | `RESOLVED_PLANNING_METADATA` | `cluster3/planning/grammar_mode_matrix.py` emits `full_pipeline_grammar_mode_cp_factorial_v1_l1a_n1__<condition_id>` join keys |
@@ -291,8 +298,10 @@ Local code-support proof:
 approval_source: not_approved
 approval_timestamp: not_applicable
 target_branch: codex-track-handoff-context
-target_commit: REQUIRED_AFTER_SELECTOR_SUPPORT_REVIEW_COMMIT_AND_PROMOTION
-packet_completion_branch: codex/l1a-executable-12cell-selector-support
+target_commit: c05e111 Audit L1a executable selector support promotion
+exact_promoted_selector_commit: e9f180a Add executable planning for 12-cell L1a selector
+exact_promotion_audit_commit: c05e111 Audit L1a executable selector support promotion
+packet_completion_branch: codex/l1a-final-signature-packet
 command: .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite
 command_manifest_status: LOCAL_EXECUTABLE_SELECTOR_COMMAND_BUNDLE_PRESENT_EXECUTION_UNSIGNED
 working_directory: /Users/alexeidelgado/Desktop/TritonGen
@@ -430,6 +439,21 @@ Current exact intended execution command:
 ```text
 .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite
 ```
+
+Current source-backed per-cell command bundle surface:
+
+```text
+.venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --execution-plan
+```
+
+That local planning command emits the exact future per-cell command strings for
+all 12 cells, including `--output`, `--observability-mode best_effort`,
+`--observability-experiment-id`, `--observability-run-id`,
+`--observability-output`, `--grammar-mode-cell`, any required
+`--grammar-variant`, `--signed-l1a-authorization
+SIGNED_L1A_PACKET_ID_REQUIRED`, and `--overwrite`. It was inspected as source
+surface only in this packet-prep phase and must not be executed as launch
+authorization.
 
 This command is not approved. It is a source-backed command surface for future
 signature review only. On this branch, `--condition grammar_mode_cp_12cell`
@@ -589,12 +613,15 @@ AUTHORIZES_EXECUTION: NO
 DRAFT_READY_FOR_USER_SIGNATURE: YES
 
 signature_status: UNSIGNED
-signer: REQUIRED_BEFORE_SIGNATURE
-signed_at: REQUIRED_BEFORE_SIGNATURE
+signer_name: REQUIRED_BEFORE_SIGNATURE_blank_or_unsigned
+date_time: REQUIRED_BEFORE_SIGNATURE_blank_or_unsigned
 approval_scope: REQUIRED_BEFORE_SIGNATURE
 exact_target_branch: codex-track-handoff-context
-exact_target_commit: REQUIRED_AFTER_SELECTOR_SUPPORT_REVIEW_COMMIT_AND_PROMOTION
+exact_target_commit: c05e111 Audit L1a executable selector support promotion
+exact_promoted_selector_commit: e9f180a Add executable planning for 12-cell L1a selector
+exact_promotion_audit_commit: c05e111 Audit L1a executable selector support promotion
 exact_intended_execution_command: PROPOSED_NOT_SIGNED .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite
+exact_per_cell_command_bundle: PROPOSED_NOT_SIGNED emitted by .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --execution-plan
 numeric_stop_limits: PROPOSED_NOT_SIGNED; signer must approve or replace
 numeric_spend_limits: PROPOSED_NOT_SIGNED; signer must approve or replace
 spend_cap: PROPOSED_NOT_SIGNED_USD_25_estimated_USD_50_reconciled
@@ -602,9 +629,14 @@ stop_limits: PROPOSED_NOT_SIGNED_rows_12_generation_attempts_72_correctness_call
 modal_pricing_recheck_completed: REQUIRED_BEFORE_SIGNATURE_yes_no
 preflight_estimate_attachment: NOT_SIGNABLE_SYNTHETIC_PLACEHOLDER_ATTACHED; signer must attach signable estimate
 advisory_estimate_attached: REQUIRED_BEFORE_SIGNATURE_yes_no
+remote_image_digest_recorded: REQUIRED_BEFORE_SIGNATURE_yes_no
+modal_image_digest: REQUIRED_BEFORE_SIGNATURE_REMOTE_IMAGE_DIGEST_UNKNOWN
 billing_reconciliation_plan: PLAN_ONLY_REQUIRES_SIGNED_TIME_WINDOW_AND_BILLING_QUERY_AUTHORIZATION
+billing_reconciliation_plan_accepted: REQUIRED_BEFORE_SIGNATURE_yes_no
 post_run_validation_bundle: PROPOSED_NOT_SIGNED_COMMANDS_LISTED_ABOVE
+post_run_validation_bundle_accepted: REQUIRED_BEFORE_SIGNATURE_yes_no
 authorization_statement: REQUIRED_BEFORE_SIGNATURE_explicit_human_statement_required
+authorization_statement_status: UNSIGNED_no_execution_authorization
 
 NOT APPROVED. A future user approval must replace this unsigned block with a
 signed L1a approval that names this packet, the exact target branch and commit,

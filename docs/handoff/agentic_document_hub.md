@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.15
+Version: 1.37.16
 Date: 2026-06-06
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -61,6 +61,7 @@ treated as report-facing.
 | C3 n20 metric-family-gated experiment packet | `docs/experiment_packets/c3_n20_metric_family_gated_packet.md` |
 | Full Pipeline grammar-mode x C x P launch packet v1 | `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md` |
 | Full Pipeline L1a n=1 authorization packet review draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md` |
+| Full Pipeline L1a final signature packet report | `audits/l1a_final_signature_packet_report.md` |
 | Full Pipeline L1a executable 12-cell selector support audit | `audits/l1a_executable_12cell_selector_support_report.md` |
 | Full Pipeline L1a executable 12-cell selector support promotion audit | `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md` |
 | Full Pipeline L1a signature-readiness gap closure promotion audit | `audits/l1a_signature_readiness_gap_closure_promotion_audit_report.md` |
@@ -182,7 +183,14 @@ construction for all 12 cells, including no-P controls, and records the
 implementation evidence in
 `audits/l1a_executable_12cell_selector_support_report.md`. The packet still
 keeps `AUTHORIZES_EXECUTION: NO`, and runtime selector execution remains
-fail-closed until later explicit human signature.
+fail-closed until later explicit human signature. The final signature packet
+surface is now prepared on `codex/l1a-final-signature-packet` against target
+commit `c05e111 Audit L1a executable selector support promotion` and recorded
+in `audits/l1a_final_signature_packet_report.md`. It remains unsigned, keeps
+numeric stop/spend limits as `PROPOSED_NOT_SIGNED`, keeps the advisory
+preflight estimate `NOT_SIGNABLE`, keeps the remote image digest required, and
+does not authorize billing queries, post-run validation commands, output or
+artifact mutation, MLflow runtime writes, or L1a execution.
 Earlier baseline/provenance includes baseline-pin commit
 `d172e02 Pin L1a packet to grammar mode support baseline` and
 `code_support_commit: c24fbaa Add local grammar-mode support for 12-cell L1a`;
