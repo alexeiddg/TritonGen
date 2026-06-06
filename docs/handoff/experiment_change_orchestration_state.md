@@ -1,6 +1,6 @@
 # Experiment Change Orchestration State
 
-- Version: 1.5.71
+- Version: 1.5.72
 - Date: 2026-06-06
 - Status: active live state record
 - Owner: current orchestration agent
@@ -375,11 +375,11 @@ reason. Do not backfill missing provenance silently after execution.
 
 | Field | Value |
 |---|---|
-| Git baseline commit | `a52d64a Authorize L1b n5 selector profile` before the L1b completion/audit preservation package |
-| Git branch | `codex-track-handoff-context` |
-| Git status at latest reconciliation | L1b n=5 for the 12-cell `grammar_mode x C x P` design completed and validated as `L1B_N5_12CELL_RUN_COMPLETE_VALIDATED`. The completion package records `audits/l1b_n5_execution_completion_report.md` and `audits/l1b_n5_analyzer_dev_scope_patch_report.md`, preserves the authorized L1b output/observability/analysis/report/billing namespaces, and keeps the analysis/report output explicitly development-scale and non-paper. Billing is UTC-window-only because Modal returned empty tags. Runtime MLflow was disabled and `mlruns/` is absent. No L2, n=20, paper-scale, benchmark, profiler, speedup, cost-per-success, dependency, lockfile, preliminary-report, or MLflow runtime mutation is authorized. |
+| Git baseline commit | `134bcf9 Audit L1b n5 completion and analyzer boundary` before the L2 n=20 authorization packet draft |
+| Git branch | `codex/l2-n20-authorization-packet` |
+| Git status at latest reconciliation | L2 n=20 authorization packet drafting is active on `codex/l2-n20-authorization-packet`. The draft packet `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md` and audit `audits/l2_n20_authorization_packet_draft_report.md` keep `AUTHORIZES_EXECUTION: NO` and classify the state as `L2_N20_AUTHORIZATION_PACKET_BLOCKED_COMMAND_SURFACE` because the current launcher has selector profiles only for L1a n=1 and L1b n=5. No L2, n=20, Modal/GPU/generation, billing query, output/artifact/mlruns mutation, runtime code change, analyzer/report refresh, benchmark, profiler, speedup, cost-per-success, dependency, lockfile, preliminary-report, or MLflow runtime mutation is authorized. |
 | Orchestration contract version | `docs/15_experiment_change_orchestration_contract.md` v1.0.13 |
-| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.107.0 |
+| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.109.0 |
 | Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.6 |
 | Structural/task analyzer metadata spec version | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.4 |
 | MLflow tracking policy version | `.contracts/research/mlflow_tracking_policy.md` v1.0.0 |
@@ -395,7 +395,7 @@ reason. Do not backfill missing provenance silently after execution.
 | Agentic transcript A6 run-packet gate planning | promoted into handoff trunk at commit `4a84600`; `audits/agentic_transcript_v1_a6_run_packet_gate_report.md` v1.0.0 remains the evidence snapshot; `docs/handoff/agentic_transcript_v1_next_run_packet.md` is `DRAFT_NOT_APPROVED` and authorizes no Modal/output/generation/n=5/n=20/paper-scale work |
 | Observability O0-O6b package | O0-O4 promoted into handoff trunk at commit `309c451`; O5-Prep/O5a accepted locally through `c41a5bc`; O5b committed at `cf63de8`; O5c adapter-ready blocked state committed at `dc48782`; O6a Level-4 performance contract scaffolding committed at `d966ad0`; O6b smoke sidecar committed at `403cfea`; final O5b/O5c/O6a/O6b promotion audit passed with caveats |
 | Structural/task reporting S0-S4 package | S0 terminology accepted at `d9bbdb2`; S1 analyzer metric registry metadata committed at `ff876d2`; S2 report metadata consumption committed at `a7b0cdb`; S3 report refresh docs-only record committed at `f1058eb`; S0-S3 promotion audit committed at `80086f9`; S4 future experiment metric-family guidance committed at `f73ecb9`, fast-forwarded into `codex-track-handoff-context`, and promotion-audited at `d015862`. Generated preliminary-report previews remain ignored local outputs unless a future explicit force-add publication decision is made. |
-| Current Cluster 3 gate | L1b n=5 for the 12-cell `grammar_mode x C x P` design completed and validated as `L1B_N5_12CELL_RUN_COMPLETE_VALIDATED`; completion evidence is recorded in `audits/l1b_n5_execution_completion_report.md`, and the narrow analyzer/reporting shape patch is recorded in `audits/l1b_n5_analyzer_dev_scope_patch_report.md`. The run produced 60 rows, 12 content-hash sidecars, 12 observability sidecar sets, L1b analysis/report artifacts, and a UTC-window Modal billing artifact with empty tags. The report is explicitly development-scale and non-paper; three-way interaction fields are diagnostic only. MLflow grammar-mode indexing remains deferred because runtime MLflow was disabled. No L2 n20, paper-scale run, benchmark, profiler, speedup, cost-per-success, output outside authorized L1b namespaces, billing beyond the recorded UTC-day query, dependency, lockfile, preliminary-report, or MLflow runtime write is authorized without a separate signed packet. |
+| Current Cluster 3 gate | L1b n=5 for the 12-cell `grammar_mode x C x P` design completed and was boundary-audited as `L1B_N5_AUDIT_PASS_L2_READY` for packet drafting/review only. The L2 n=20 authorization packet draft now exists at `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md` with audit `audits/l2_n20_authorization_packet_draft_report.md`, but it is blocked under `L2_N20_AUTHORIZATION_PACKET_BLOCKED_COMMAND_SURFACE` because `grammar_mode_cp_12cell` currently supports only L1a n=1 and L1b n=5 selector profiles. The L2 packet is unsigned and keeps `AUTHORIZES_EXECUTION: NO`; no L2 n20, paper-scale run, benchmark, profiler, speedup, cost-per-success, output/artifact mutation, billing query, dependency, lockfile, preliminary-report, runtime code change, analyzer/report refresh, or MLflow runtime write is authorized. |
 | Paper-scale status | blocked; no Cluster 3 `n=20` launch or paper-scale claim until a later signed launch approval satisfies Gate G8 |
 
 Important repository note: on the handoff trunk, `docs/`, `audits/`, and
@@ -407,7 +407,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Worktree | Branch | Commit | State ownership |
 |---|---|---|---|
-| `/Users/alexeidelgado/Desktop/TritonGen` | `codex-track-handoff-context` | L1b n=5 completion from `a52d64a` plus final audit/evidence preservation package | Completed the authorized L1b n=5 12-cell development run and preserves output rows, sidecars, analysis/report, billing, and audits. No L2, n=20, paper-scale, profiler, benchmark, speedup, economic claim, dependency, lockfile, preliminary-report, or MLflow runtime write is authorized |
+| `/Users/alexeidelgado/Desktop/TritonGen` | `codex/l2-n20-authorization-packet` | L2 n=20 authorization packet draft from `134bcf9` baseline | Drafts the unsigned L2 n=20 packet and audit only. Current classification is `L2_N20_AUTHORIZATION_PACKET_BLOCKED_COMMAND_SURFACE` pending L2 selector/profile implementation. No L2, n=20, Modal/GPU/generation, paper-scale run, billing query, output/artifact/mlruns mutation, runtime code change, analyzer/report refresh, profiler, benchmark, speedup, economic claim, dependency, lockfile, preliminary-report, or MLflow runtime write is authorized |
 | `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `4a84600` | reference/history worktree only; same A6 commit as the promoted handoff trunk and not the place for observability work |
 | `/Users/alexeidelgado/Desktop/TritonGen/.claude/worktrees/intelligent-pasteur-72d92f` | `claude/intelligent-pasteur-72d92f` | `b0085c1` | external/unknown to this orchestration state; reconcile before relying on it |
 
@@ -415,6 +415,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Branch | Stream/package | Worktree | Status | Notes |
 |---|---|---|---|---|
+| `codex/l2-n20-authorization-packet` | L2 n=20 authorization packet draft | `/Users/alexeidelgado/Desktop/TritonGen` | active/docs-only | Created from `codex-track-handoff-context` at `134bcf9`. Adds the unsigned L2 n=20 packet and packet-draft audit for the 12-cell `grammar_mode x C x P` matrix. The packet records 240 expected rows, proposed stop/spend limits, namespaces, command templates, analyzer/report validation plan, billing caveat, and signature placeholders, but remains blocked because current selector profiles support only L1a n=1 and L1b n=5. `AUTHORIZES_EXECUTION: NO`; no execution, output/artifact/mlruns mutation, Modal/GPU/generation, billing query, runtime code change, dependency, lockfile, analyzer/report refresh, benchmark, profiler, speedup, cost-per-success, or paper-scale claim is authorized. |
 | `codex-track-handoff-context` | L1b n=5 12-cell completion | `/Users/alexeidelgado/Desktop/TritonGen` | completed/local evidence preservation | Runs exactly the authorized L1b n=5 12-cell selector command from support commit `a52d64a`, validates 60 rows and all sidecars, records development-scale analyzer/report output, records UTC-window-only billing with empty Modal tags, and adds `audits/l1b_n5_execution_completion_report.md` plus `audits/l1b_n5_analyzer_dev_scope_patch_report.md`. No L2/n20/paper-scale/profiler/benchmark/speedup/economic-claim or MLflow runtime work is authorized. |
 | `codex/l1a-final-signature-packet` | L1a final signature packet preparation | `/Users/alexeidelgado/Desktop/TritonGen` | active/docs-only | Created from promoted handoff baseline `c05e111`. Updates the unsigned L1a packet target to `codex-track-handoff-context` at `c05e111`, records exact promoted selector commit `e9f180a` and promotion audit commit `c05e111`, adds `audits/l1a_final_signature_packet_report.md`, and updates handoff routing. It keeps `AUTHORIZES_EXECUTION: NO`; signature status remains `UNSIGNED`; numeric stop/spend limits remain `PROPOSED_NOT_SIGNED`; advisory estimate remains `NOT_SIGNABLE`; remote image digest, billing authorization, post-run validation authorization, and separate execution approval remain required. |
 | `codex/l1a-executable-12cell-selector-support` | L1a executable 12-cell selector support | none after promotion | promoted/audit closeout | Created from pushed handoff baseline `e96f70a` and fast-forwarded into `codex-track-handoff-context` at `e9f180a`. Adds source-backed `--execution-plan` command construction for all 12 `grammar_mode x C x P` cells, including six no-P controls, while preserving dry-plan support and refusing actual runtime selector execution before tracking, generation, Modal, result writers, observability writers, or MLflow runtime setup. Updates the unsigned L1a packet, adds `audits/l1a_executable_12cell_selector_support_report.md`, and is promotion-audited in `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md`. It remains `AUTHORIZES_EXECUTION: NO`; no execution, output/artifact/mlruns mutation, Modal/GPU/generation, dependency, lockfile, benchmark, billing query, profiler, MLflow runtime write, n=1 execution, n=5, n=20, or paper-scale work is authorized. |
@@ -497,6 +498,21 @@ Current draft packet:
   output mutation, MLflow runtime writes, billing queries, n=1 execution, n=5,
   n=20, paper-scale work, benchmark, profiler, timing, speedup, or dependency
   changes.
+
+- `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md`
+- Status: `UNSIGNED_COMMAND_SURFACE_BLOCKED`
+- `AUTHORIZES_EXECUTION: NO`
+- Unsigned L2 n=20 packet draft for the 12-cell design, created from baseline
+  `134bcf9`. It records the 240-row matrix, proposed stop/spend limits,
+  future namespaces, billing caveat carry-forward, analyzer/report validation
+  plan, and human signature fields.
+- Execution remains blocked because the current `grammar_mode_cp_12cell`
+  selector profiles support only L1a n=1 and L1b n=5; local-only L2
+  selector/profile support is required before this packet can become signable.
+- Does not authorize Modal execution, GPU work, generation, experiments,
+  output mutation, artifact mutation, MLflow runtime writes, billing queries,
+  n=20 execution, paper-scale claims, benchmark, profiler, timing, speedup,
+  analyzer/report refresh, runtime code change, or dependency changes.
 
 - `docs/handoff/agentic_transcript_v1_next_run_packet.md`
 - Status: `DRAFT_NOT_APPROVED`
@@ -648,10 +664,12 @@ Historical context:
 
 Allowed without run approval:
 
-1. Review the completed L1b n=5 development evidence in
-   `audits/l1b_n5_execution_completion_report.md` and
-   `audits/l1b_n5_analyzer_dev_scope_patch_report.md` before drafting any
-   later L2/n=20/paper-scale packet.
+1. Review the L2 n=20 packet draft in
+   `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md`
+   and `audits/l2_n20_authorization_packet_draft_report.md`. The draft is
+   blocked under `L2_N20_AUTHORIZATION_PACKET_BLOCKED_COMMAND_SURFACE`; the
+   next narrow implementation task is local-only L2 selector/profile support,
+   not execution.
 2. If the L1b analyzer/report artifacts are cited, cite the development-scale
    caveat: they are not paper-scale or reportable paper evidence, and
    three-way interaction fields are diagnostic only.
@@ -663,13 +681,13 @@ Allowed without run approval:
    historical sidecar migration, analyzer/economic metrics,
    cost-per-success/pass@k cost, or paper-scale economic/performance claims
    without a new signed packet.
-5. Do not create or run an L2/n=20/paper-scale execution packet until a later
-   explicit approval supplies exact executable command(s), branch, commit,
-   condition matrix, output paths, observability IDs, grammar-mode
-   mapping/proof, repair-history policy, model/revision/decoding config,
-   numeric stop/spend limits, advisory preflight estimate, billing
-   reconciliation plan, analyzer/report plan, and MLflow post-hoc indexing
-   proof.
+5. Do not create or run an L2/n=20/paper-scale execution packet until L2
+   selector/profile support is implemented and reviewed, and a later explicit
+   approval supplies exact executable command(s), branch, commit, condition
+   matrix, output paths, observability IDs, grammar-mode mapping/proof,
+   repair-history policy, model/revision/decoding config, numeric stop/spend
+   limits, advisory preflight estimate, billing reconciliation plan,
+   analyzer/report plan, and MLflow post-hoc indexing proof.
 6. Keep ignored derived report previews
    `docs/preliminary_report/_report_data.json`,
    `docs/preliminary_report/index.html`, and
@@ -1529,6 +1547,7 @@ status: promoted into A6 handoff trunk at 4a84600; reference/history only
 
 | Package | Suggested branch | Status | Entry gate | Exit gate | Notes |
 |---|---|---|---|---|---|
+| L2 n=20 authorization packet draft | `codex/l2-n20-authorization-packet` | active/docs-only | `134bcf9 Audit L1b n5 completion and analyzer boundary` | L2_N20_AUTHORIZATION_PACKET_BLOCKED_COMMAND_SURFACE | Adds `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md` and `audits/l2_n20_authorization_packet_draft_report.md`. The draft records 12 cells, n=20, 240 expected rows, L2 namespaces, proposed stop/spend limits, billing caveat carry-forward, analyzer/report validation plan, and unsigned signature fields. It remains non-authorizing because current `grammar_mode_cp_12cell` selector profiles support only L1a n=1 and L1b n=5; next branch should add local-only L2 selector/profile support without Modal/GPU/generation/billing/output mutation. |
 | S0 docs terminology | `codex/structural-task-s0-terminology` | accepted | G1 | G2 | Docs-only structural/task terminology gate closed. S0 accepted the existing vocabulary, confirmed `docs/17_structural_task_analyzer_metadata_implementation_spec.md` as the executable implementation contract, and added `audits/structural_task_s0_terminology_acceptance_report.md`. |
 | O-spec observability sidecar implementation spec | none | complete / tightened | G1 | spec routed | `docs/16_observability_sidecar_implementation_spec.md` v0.2.3. |
 | S-spec structural/task analyzer metadata implementation spec | none | complete / extended for S4 planning | G1 | spec routed | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.4 records S0-S4. S1/S2/S3 are promoted; S4 is docs/planning-only future packet guidance and does not start analyzer/report/output work. |

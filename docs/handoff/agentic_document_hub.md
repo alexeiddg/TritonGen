@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.19
+Version: 1.37.20
 Date: 2026-06-06
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -67,6 +67,8 @@ treated as report-facing.
 | Full Pipeline L1b n=5 completion audit | `audits/l1b_n5_execution_completion_report.md` |
 | Full Pipeline L1b analyzer development-scope patch audit | `audits/l1b_n5_analyzer_dev_scope_patch_report.md` |
 | Full Pipeline L1b completion/analyzer boundary audit | `audits/l1b_n5_completion_and_analyzer_boundary_audit.md` |
+| Full Pipeline L2 n=20 authorization packet draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md` |
+| Full Pipeline L2 n=20 authorization packet draft audit | `audits/l2_n20_authorization_packet_draft_report.md` |
 | Full Pipeline L1a final signature packet report | `audits/l1a_final_signature_packet_report.md` |
 | Full Pipeline L1a executable 12-cell selector support audit | `audits/l1a_executable_12cell_selector_support_report.md` |
 | Full Pipeline L1a executable 12-cell selector support promotion audit | `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md` |
@@ -95,25 +97,22 @@ treated as report-facing.
 
 ## Current Cluster 3 Planning Gate
 
-Post-L1b boundary update: the 12-cell `grammar_mode x C x P` L1b n=5 run
-completed and is validated as `L1B_N5_12CELL_RUN_COMPLETE_VALIDATED`. It
-produced 60 rows, 12 content-hash sidecars, 12 observability sidecar sets, L1b
-development-scale analysis/report artifacts, and a UTC-window Modal billing
-artifact with empty tags. The completion audit is
-`audits/l1b_n5_execution_completion_report.md`. The analyzer/reporting boundary
-patch audit is `audits/l1b_n5_analyzer_dev_scope_patch_report.md`; it confirms
-the missing-pair-metadata skip is limited to explicit non-paper grammar-mode
-selector scopes while ordinary/paper analyzer strictness remains intact. The
-follow-up boundary audit is
-`audits/l1b_n5_completion_and_analyzer_boundary_audit.md`; it confirms the
-pushed L1b package is clean enough for a separate L2 n=20 authorization packet
-draft/review under `L1B_N5_AUDIT_PASS_L2_READY`. The L1b report is
-development-scale only, not paper-scale or reportable paper evidence, and
-three-way interaction fields are diagnostic only. Do not run L2, n=20,
-paper-scale, additional Modal/GPU generation, billing queries beyond an explicit
-packet, output/artifact mutation outside authorized namespaces, MLflow runtime
-writes, performance profiling, speedup analysis, cost-per-success analysis, or
-economic claims without a separate signed packet.
+Post-L2-draft update: the L2 n=20 packet draft now exists at
+`docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md`
+with audit `audits/l2_n20_authorization_packet_draft_report.md`. It targets
+`134bcf9 Audit L1b n5 completion and analyzer boundary`, records the 12-cell
+`grammar_mode x C x P` matrix, 240 expected rows, future L2 namespaces,
+proposed stop/spend limits, billing caveat carry-forward, analyzer/report
+validation plan, and unsigned signature fields. It keeps
+`AUTHORIZES_EXECUTION: NO` and is blocked under
+`L2_N20_AUTHORIZATION_PACKET_BLOCKED_COMMAND_SURFACE` because the current
+`grammar_mode_cp_12cell` selector profiles support only L1a n=1 and L1b n=5.
+The next narrow task is local-only L2 selector/profile support, not execution.
+Do not run L2, n=20, paper-scale, additional Modal/GPU generation, billing
+queries beyond an explicit packet, output/artifact mutation outside authorized
+namespaces, MLflow runtime writes, analyzer/report refresh, performance
+profiling, speedup analysis, cost-per-success analysis, or economic claims
+without a separate signed packet.
 
 Cluster 3 diagnostic evidence is provenance-frozen through
 `audits/cluster3_phase13b_commit_provenance_freeze_report.md`. Phase 14e froze
