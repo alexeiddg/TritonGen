@@ -3,12 +3,14 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1`
-packet_version: `0.5.3`
-packet_type: completed review packet for possible future authorization; not an execution packet until signed
-branch: `codex/l1a-final-signature-packet`
+packet_version: `0.6.0-expedited-preflight-blocked-digest`
+packet_type: expedited signature/preflight packet; not an execution packet until signed
+branch: `codex/l1a-expedited-signature-and-preflight`
 target_branch: `codex-track-handoff-context`
-target_commit: `c05e111 Audit L1a executable selector support promotion`
-baseline_commit: `c05e111 Audit L1a executable selector support promotion`
+execution_code_target_commit: `31a097e3231e5b73a1402a26d18c660ba2f53d84 Audit L1a final signature packet promotion`
+approval_record_commit: `TO_BE_FILLED_AFTER_COMMIT`
+target_commit_policy: `execution_code_target_commit_names_latest_promoted_code_bearing_baseline; approval_record_commit_names_docs_only_signed_packet_commit_after_commit`
+baseline_commit: `31a097e3231e5b73a1402a26d18c660ba2f53d84 Audit L1a final signature packet promotion`
 planning_baseline_commit: `59fa0d6 Audit L1a approval packet promotion`
 previous_execution_planning_baseline_commit: `c256af5 Audit Modal preflight estimator promotion`
 code_support_commit: `c24fbaa Add local grammar-mode support for 12-cell L1a`
@@ -19,7 +21,7 @@ launcher_support_promotion_audit_commit: `76ede6a Audit 12-cell launcher support
 launcher_support_status: `LOCAL_DRY_PLAN_SELECTOR_READY`
 preflight_estimator_commit: `bd89e67 Add local Modal preflight cost time estimator`
 preflight_estimator_promotion_audit_commit: `c256af5 Audit Modal preflight estimator promotion`
-preflight_estimator_status: `LOCAL_ADVISORY_SYNTHETIC_PLACEHOLDER_ATTACHED_NOT_SIGNABLE`
+preflight_estimator_status: `SIGNABLE_ADVISORY_ATTACHED_PRICING_VERIFIED_TIMING_ESTIMATED_NOT_EXECUTION_EVIDENCE`
 superseded_baseline_commit: `0cc43c1 Audit full pipeline launch packet promotion`
 launch_packet: `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md`
 created_at: 2026-06-05
@@ -34,18 +36,23 @@ executable_selector_support_commit: `e9f180a Add executable planning for 12-cell
 executable_selector_support_promotion_audit_commit: `c05e111 Audit L1a executable selector support promotion`
 final_signature_packet_branch: `codex/l1a-final-signature-packet`
 final_signature_packet_prepared_at: 2026-06-06
-final_signature_packet_status: `DRAFT_READY_FOR_HUMAN_SIGNATURE_REVIEW_UNSIGNED_NO_EXECUTION`
-status: `DRAFT_READY_FOR_USER_SIGNATURE`
-DRAFT_READY_FOR_USER_SIGNATURE: YES
+final_signature_packet_promotion_audit_commit: `31a097e3231e5b73a1402a26d18c660ba2f53d84 Audit L1a final signature packet promotion`
+human_signature_readiness_review_commit: `3318002 Review L1a human signature readiness`
+human_signature_readiness_review_status: `REVIEW_ONLY_INPUT_NOT_EXECUTION_TARGET`
+expedited_signature_preflight_branch: `codex/l1a-expedited-signature-and-preflight`
+expedited_signature_preflight_at: 2026-06-06
+final_signature_packet_status: `EXPEDITED_PREFLIGHT_REVIEW_UNSIGNED_BLOCKED_REMOTE_IMAGE_DIGEST`
+status: `EXPEDITED_PREFLIGHT_BLOCKED_REMOTE_IMAGE_DIGEST`
+DRAFT_READY_FOR_USER_SIGNATURE: NO
 code_support_status: `LOCAL_REPRESENTABILITY_DRY_PLAN_AND_EXECUTABLE_SELECTOR_PLAN_READY`
-execution_readiness_status: `BLOCKED_SIGNATURE_UNSIGNED_LIMITS_PREFLIGHT_IMAGE_BILLING_VALIDATION`
+execution_readiness_status: `BLOCKED_REMOTE_IMAGE_DIGEST_AND_HUMAN_SIGNATURE_UNSIGNED`
 AUTHORIZES_EXECUTION: NO
 
 Execution authorization flags:
 
 ```text
-MODAL_AUTHORIZED: NO
-GPU_AUTHORIZED: NO
+MODAL_AUTHORIZED: YES_FOR_REMOTE_IMAGE_DIGEST_AND_CURRENT_PRICING_VERIFICATION_ONLY
+GPU_AUTHORIZED: YES_FOR_REMOTE_IMAGE_DIGEST_PREFLIGHT_VERIFICATION_ONLY_NO_FUNCTION_INVOCATION_PERFORMED
 GENERATION_AUTHORIZED: NO
 EXPERIMENT_EXECUTION_AUTHORIZED: NO
 OUTPUT_MUTATION_AUTHORIZED: NO
@@ -53,30 +60,31 @@ PAPER_SCALE_AUTHORIZED: NO
 PERFORMANCE_EXECUTION_AUTHORIZED: NO
 PROFILER_AUTHORIZED: NO
 MLFLOW_TRACKING_EXECUTION_AUTHORIZED: NO
-BILLING_QUERY_AUTHORIZED: NO
+BILLING_QUERY_AUTHORIZED: YES_FOR_L1A_RECONCILIATION_ONLY_AFTER_RUN
+NETWORK_AUTHORIZED: YES_FOR_MODAL_IMAGE_DIGEST_AND_CURRENT_PRICING_VERIFICATION_ONLY
 CREDENTIAL_USE_AUTHORIZED: NO
 DEPENDENCY_CHANGE_AUTHORIZED: NO
 ```
 
-This packet is complete for review and possible future user signature. It is
-not signed and does not authorize Modal, GPU work, generation, experiments,
-output mutation, analyzer output refresh, report artifact refresh, MLflow
-runtime writes, billing queries, dependency changes, lockfile changes, or
-paper-scale claims.
+This packet records the user's limited Modal/GPU authorization for remote image
+digest and pricing/preflight verification only. It is not signed and does not
+authorize generation, experiment execution, output mutation, analyzer output
+refresh, report artifact refresh, MLflow runtime writes, paper-scale claims,
+benchmarks, profilers, dependency changes, or lockfile changes.
 
-The active signature-readiness baseline is the promoted handoff trunk commit
-`c05e111 Audit L1a executable selector support promotion`. It includes the
-exact promoted selector-support commit
-`e9f180a Add executable planning for 12-cell L1a selector` and the matching
-promotion audit commit `c05e111`. Earlier signature review targets such as
-`59fa0d6`, `e96f70a`, `0cc43c1`, and `d172e02` are historical context only and
-are not sufficient as the current L1a target because they predate later
-launcher, estimator, signature-readiness, or executable-selector support.
+The active execution-code target is the latest promoted handoff trunk baseline
+`31a097e3231e5b73a1402a26d18c660ba2f53d84 Audit L1a final signature packet
+promotion`. This separates the code target from the future approval record:
+the eventual signed packet commit may be newer and docs-only, and the packet
+does not need to target itself. The target baseline includes the exact promoted
+selector-support commit `e9f180a Add executable planning for 12-cell L1a
+selector`, the selector-support promotion audit `c05e111`, and the final
+signature packet promotion audit `31a097e`. Earlier signature review targets
+such as `59fa0d6`, `e96f70a`, `0cc43c1`, `d172e02`, and `c05e111` are
+historical context only unless explicitly named as selector support evidence.
 
 Execution remains blocked even after local launcher support because this packet
-is unsigned and still lacks approved numeric stop/spend limits, a signable
-preflight estimate, remote image digest, billing-query authorization, and
-post-run validation authorization. The current Cluster 3 CLI now exposes local
+is unsigned and still lacks a remote image digest. The current Cluster 3 CLI now exposes local
 dry-plan and executable-plan selector surfaces for
 `--condition grammar_mode_cp_12cell`. Both can select all 12
 `grammar_mode x C x P` cells, including the six no-P control cells. The
@@ -85,27 +93,29 @@ target paths and a signed-authorization placeholder; it does not invoke Modal,
 generation, correctness evaluation, output writing, artifact writing, tracking,
 or MLflow.
 
-Any future signed execution packet must include an advisory preflight estimate
-for the exact target scope before launch. The local utility
+This packet now includes a pricing-verified advisory preflight estimate for
+the exact target scope. The local utility
 `cluster3/planning/modal_preflight_estimator.py` can estimate L1a/L1b/L2 row
 counts, execution-shape envelopes, and larger-GPU breakeven requirements from
 explicit user-supplied pricing and timing inputs. That estimate remains
 planning-only: it does not authorize execution, does not replace billing
 reconciliation, and does not constitute experimental evidence.
 
-Pricing must be re-verified against official Modal documentation before any
-future signature. Human-approved numeric stop limits and numeric spend limits
-are also `REQUIRED_BEFORE_SIGNATURE`; the candidate limits in this packet are
-`PROPOSED_NOT_SIGNED`.
+Modal pricing was re-verified against the official Modal pricing page on
+2026-06-06 for this expedited preflight. The numeric stop/spend limits below
+are ready for human signature, but they are not active until a final signed
+packet replaces the unsigned approval block and records the approval commit.
 
 ## Final Approval Surface Summary
 
 ```text
 target_branch: codex-track-handoff-context
-target_commit: c05e111 Audit L1a executable selector support promotion
+execution_code_target_commit: 31a097e3231e5b73a1402a26d18c660ba2f53d84 Audit L1a final signature packet promotion
+approval_record_commit: TO_BE_FILLED_AFTER_COMMIT
 exact_promoted_selector_commit: e9f180a Add executable planning for 12-cell L1a selector
-exact_promotion_audit_commit: c05e111 Audit L1a executable selector support promotion
-packet_completion_branch: codex/l1a-final-signature-packet
+exact_selector_support_promotion_audit_commit: c05e111 Audit L1a executable selector support promotion
+final_signature_packet_promotion_audit_commit: 31a097e Audit L1a final signature packet promotion
+packet_completion_branch: codex/l1a-expedited-signature-and-preflight
 experiment_name: full_pipeline_grammar_mode_cp_factorial_v1
 level: L1a
 scale_tier: smoke/dev
@@ -124,7 +134,7 @@ observability_event_sidecar_path_pattern: artifacts/observability/full_pipeline_
 observability_summary_sidecar_path_pattern: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.observability.summary.json
 observability_hash_sidecar_path_pattern: artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/<condition_id>.observability.jsonl.hashes.json
 AUTHORIZES_EXECUTION: NO
-DRAFT_READY_FOR_USER_SIGNATURE: YES
+DRAFT_READY_FOR_USER_SIGNATURE: NO_REMOTE_IMAGE_DIGEST_BLOCKED
 ```
 
 The exact intended execution command surface is now source-backed locally by
@@ -146,55 +156,64 @@ Resolved or narrowed fields:
 
 | Field | Status | Source-backed value or classification |
 |---|---|---|
-| target commit | `RESOLVED_CURRENT_PROMOTED_TARGET_NOT_SIGNED` | Future signed target must name `codex-track-handoff-context` at `c05e111 Audit L1a executable selector support promotion`, which contains selector support commit `e9f180a` and promotion audit commit `c05e111` |
+| execution code target commit | `RESOLVED_CURRENT_PROMOTED_TARGET_NOT_SIGNED` | Future signed target must name `codex-track-handoff-context` at `31a097e3231e5b73a1402a26d18c660ba2f53d84 Audit L1a final signature packet promotion`, which contains selector support commit `e9f180a`, selector-support promotion audit `c05e111`, final signature packet commit `316723a`, and final signature packet promotion audit `31a097e` |
+| approval record commit | `TO_BE_FILLED_AFTER_COMMIT` | The eventual signed packet commit may be newer and docs-only; it is not required to be the execution-code target |
 | executable command | `RESOLVED_LOCAL_COMMAND_SURFACE_NOT_SIGNED` | selector-level future command: `.venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite`; per-cell commands are emitted by `--execution-plan` |
 | observability run id convention | `PROPOSED_NOT_SIGNED` | global run id convention: `full_pipeline_grammar_mode_cp_factorial_v1_l1a_n1__target_<short_commit>__signed_<YYYYMMDDTHHMMSSZ>`; per-cell join key convention: `<run_id>__<condition_id>` |
 | current dry-plan observability join key | `RESOLVED_PLANNING_METADATA` | `cluster3/planning/grammar_mode_matrix.py` emits `full_pipeline_grammar_mode_cp_factorial_v1_l1a_n1__<condition_id>` join keys |
 | Modal app name | `RESOLVED_REPO_LOCAL` | `tritongen-gpu-harness` from `shared/modal_harness/app.py` |
-| Modal image definitions | `RESOLVED_REPO_LOCAL_SOURCE_ONLY` | `shared/modal_harness/images.py` defines `llm_generation_image` and `triton_compile_image` |
-| Modal image digest | `REQUIRED_BEFORE_SIGNATURE_REMOTE_IMAGE_DIGEST_UNKNOWN` | no Modal or remote image inspection is authorized in this phase |
-| advisory preflight estimate | `NOT_SIGNABLE_SYNTHETIC_PLACEHOLDER_ATTACHED` | pure local estimator run with synthetic pricing/timing inputs; official Modal pricing and measured/approved timing remain required |
-| numeric stop/spend limits | `PROPOSED_NOT_SIGNED` | candidate limits are listed below for human approval only |
-| billing reconciliation plan | `RESOLVED_PLAN_ONLY` | post-run billing is authoritative for actual spend; no billing query is authorized now |
-| validation bundle | `PROPOSED_NOT_SIGNED_REQUIRES_POST_RUN_ARTIFACTS` | exact local command surfaces are listed below; analyzer/report writes remain unauthorized until signed |
+| Modal image definitions | `RESOLVED_REPO_LOCAL_SOURCE_ONLY` | `shared/modal_harness/images.py` defines `llm_generation_image` and `triton_compile_image`; L1a uses `cluster2.modal.generation.c2_generation_image` and `cluster2.modal.correctness.c2_correctness_image` through the shared `tritongen-gpu-harness` app |
+| Modal image digest | `BLOCKED_REMOTE_IMAGE_DIGEST_NOT_EXPOSED_WITHOUT_BROADER_MODAL_APP_PATH` | Modal 1.4.2 refused direct image hydration; ephemeral app registration hydrated function/class handles with zero tasks and no function invocations but did not expose a Docker digest or stable image id in CLI-visible metadata |
+| advisory preflight estimate | `SIGNABLE_ADVISORY_PRICING_VERIFIED_TIMING_ESTIMATED` | local estimator run with official Modal pricing and conservative estimated timing inputs; billing reconciliation remains authoritative |
+| numeric stop/spend limits | `READY_FOR_SIGNATURE_NOT_ACTIVE_UNTIL_HUMAN_SIGNOFF` | candidate limits are listed below for human approval only |
+| billing reconciliation plan | `READY_FOR_SIGNATURE_L1A_RECONCILIATION_ONLY_AFTER_APPROVED_RUN` | post-run billing is authoritative for actual spend; billing query authorization is scoped to L1a reconciliation after the signed run window exists |
+| validation bundle | `READY_FOR_SIGNATURE_REQUIRES_POST_RUN_ARTIFACTS` | exact local command surfaces are listed below; analyzer/report writes remain inactive until signed and artifacts exist |
 
 Synthetic advisory estimate placeholder:
 
 ```text
-estimate_status: NOT_SIGNABLE_SYNTHETIC_PLACEHOLDER
+estimate_status: SIGNABLE_ADVISORY_PRICING_VERIFIED_TIMING_ESTIMATED
 estimator: cluster3/planning/modal_preflight_estimator.py
-inputs: cell_count=12; n_per_cell=1; gpu_label=L4_SYNTHETIC_NOT_SIGNABLE; price_per_gpu_second=0.01; cold_start_seconds=10.0; model_load_seconds=20.0; generation_seconds_per_row=2.0; compile_correctness_seconds_per_row=3.0; repair_overhead_seconds_per_activated_repair=4.0; expected_p_activation_rate=0.25; expected_c_activation_rate=0.5; fanout_limit=4; safety_multiplier=1.0; fixed_overhead_seconds=5.0; pricing_source=synthetic_fixture_not_modal_pricing; pricing_verified=false; stage_timing_source=estimated
+pricing_source: official Modal pricing page https://modal.com/pricing retrieved 2026-06-06
+official_rates_used: L4 GPU $0.000222/sec; CPU $0.0000131/core/sec; memory $0.00000222/GiB/sec
+conservative_unit_rate: $0.00039784/sec, computed as L4 + 8 CPU cores + 32 GiB memory, the larger of the repo generation and correctness surfaces
+inputs: cell_count=12; n_per_cell=1; total_generation_attempt_upper_bound=72; correctness_call_upper_bound=72; gpu_label=L4_PLUS_CPU8_MEM32GI_MAX_UNIT_RATE_OFFICIAL_MODAL_2026_06_06; price_per_gpu_second=0.00039784; cold_start_seconds=120.0; model_load_seconds=180.0; generation_seconds_per_row=360.0; compile_correctness_seconds_per_row=540.0; repair_overhead_seconds_per_activated_repair=60.0; expected_p_activation_rate=1.0; expected_c_activation_rate=1.0; fanout_limit=4; safety_multiplier=1.5; fixed_overhead_seconds=5.0; pricing_verified=true; stage_timing_source=estimated
 total_planned_rows: 12
 recommended_shape_name: bounded_fanout_across_cells_seeds
-estimated_parallel_wall_clock_seconds: 59.0
-estimated_gpu_seconds: 221.0
-estimated_cost: 2.21
-warning_flags: advisory_only_not_experimental_evidence, pricing_reverification_required, stage_timing_inputs_estimated_not_measured
-signability_status: NOT_SIGNABLE until official Modal pricing is re-verified, timing inputs are approved, and the estimate is attached to a signed packet
+estimated_parallel_wall_clock_seconds: 5047.5
+estimated_serial_wall_clock_seconds: 20167.5
+estimated_gpu_seconds: 20167.5
+estimated_cost: 8.0234382
+execution_shape_comparison_costs: one_remote_invocation_per_row=$9.4556622; one_remote_invocation_per_cell=$9.4556622; one_remote_invocation_per_grammar_mode_shard=$7.8444102; single_full_plan_invocation=$7.4863542; bounded_fanout_across_cells_seeds=$8.0234382
+wall_clock_cap_recommendation: 4 hours
+estimated_cost_cap_recommendation: USD 25
+reconciled_billing_cap_recommendation: USD 50
+warning_flags: advisory_only_not_experimental_evidence, stage_timing_inputs_estimated_not_measured
+signability_status: SIGNABLE_ADVISORY for L1a n=1 after human accepts estimated timing inputs; actual billing reconciliation remains authoritative
 ```
 
 Proposed unsigned stop/spend limits:
 
 ```text
 max_rows: 12
-max_generation_attempts: PROPOSED_NOT_SIGNED_72_total_initial_plus_C_and_P_repair_attempt_ceiling
-max_repair_attempts_per_row: PROPOSED_NOT_SIGNED_P_5_when_enabled_C_5_when_enabled_0_otherwise
-max_correctness_calls: PROPOSED_NOT_SIGNED_72_total_attempt_ceiling
-max_wall_clock: PROPOSED_NOT_SIGNED_4_hours
-max_estimated_cost: PROPOSED_NOT_SIGNED_USD_25_requires_official_pricing_reverification
-max_reconciled_billing_cost: PROPOSED_NOT_SIGNED_USD_50_billing_reconciliation_authoritative
-max_modal_invocations: PROPOSED_NOT_SIGNED_REQUIRES_EXECUTION_SHAPE_SELECTION
-stop_on_first_infrastructure_failure: PROPOSED_NOT_SIGNED_yes
-retry_policy: PROPOSED_NOT_SIGNED_no_retry_no_resume_unless_explicitly_signed
+max_generation_attempts: READY_FOR_SIGNATURE_72_total_initial_plus_C_and_P_repair_attempt_ceiling
+max_repair_attempts_per_row: READY_FOR_SIGNATURE_P_5_when_enabled_C_5_when_enabled_0_otherwise
+max_correctness_calls: READY_FOR_SIGNATURE_72_total_attempt_ceiling
+max_wall_clock: READY_FOR_SIGNATURE_4_hours
+max_estimated_cost: READY_FOR_SIGNATURE_USD_25_pricing_verified_2026_06_06
+max_reconciled_billing_cost: READY_FOR_SIGNATURE_USD_50_billing_reconciliation_authoritative
+max_modal_invocations: READY_FOR_SIGNATURE_execution_shape_planning_bound_12_cell_selector
+stop_on_first_infrastructure_failure: READY_FOR_SIGNATURE_yes
+retry_policy: READY_FOR_SIGNATURE_no_retry_no_resume_unless_explicitly_signed
 ```
 
 Billing reconciliation plan:
 
 ```text
-billing_reconciliation_status: PLAN_ONLY_NO_BILLING_QUERY_AUTHORIZED
+billing_reconciliation_status: READY_FOR_SIGNATURE_L1A_RECONCILIATION_ONLY_AFTER_APPROVED_RUN
 authoritative_actual_spend_source: post-run reconciled Modal billing artifact
 required_after_approved_run: signed start/end UTC window; signed experiment_id; signed run_id; redacted billing report path; redacted report sha256; reconciliation dry-run result; reconciliation write authorization if any sidecar mutation is requested
-future_collection_command_status: REQUIRED_BEFORE_SIGNATURE_BILLING_QUERY_AUTHORIZATION_TIME_WINDOW_AND_REDACTED_OUTPUT_PATH_MISSING
+future_collection_command_status: AUTHORIZED_ONLY_AFTER_SIGNED_L1A_RUN_WINDOW_AND_REDACTED_OUTPUT_PATH_EXIST
 future_collection_command_shape: .venv/bin/python -m modal billing report --start <YYYY-MM-DD> --end <YYYY-MM-DD> --resolution d --tag-names project,experiment_id,run_id,cluster,phase --json
 local_reconciliation_surface: shared/observability/billing_reconciliation.py dry_run_reconciliation(...)
 ```
@@ -298,10 +317,12 @@ Local code-support proof:
 approval_source: not_approved
 approval_timestamp: not_applicable
 target_branch: codex-track-handoff-context
-target_commit: c05e111 Audit L1a executable selector support promotion
+execution_code_target_commit: 31a097e3231e5b73a1402a26d18c660ba2f53d84 Audit L1a final signature packet promotion
+approval_record_commit: TO_BE_FILLED_AFTER_COMMIT
 exact_promoted_selector_commit: e9f180a Add executable planning for 12-cell L1a selector
-exact_promotion_audit_commit: c05e111 Audit L1a executable selector support promotion
-packet_completion_branch: codex/l1a-final-signature-packet
+exact_selector_support_promotion_audit_commit: c05e111 Audit L1a executable selector support promotion
+final_signature_packet_promotion_audit_commit: 31a097e Audit L1a final signature packet promotion
+packet_completion_branch: codex/l1a-expedited-signature-and-preflight
 command: .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite
 command_manifest_status: LOCAL_EXECUTABLE_SELECTOR_COMMAND_BUNDLE_PRESENT_EXECUTION_UNSIGNED
 working_directory: /Users/alexeidelgado/Desktop/TritonGen
@@ -332,42 +353,39 @@ observability_run_id: PROPOSED_NOT_SIGNED full_pipeline_grammar_mode_cp_factoria
 observability_join_key_convention: <observability_run_id>__<condition_id>
 mlflow_disposition: post_hoc_non_authoritative; runtime MLflow writes remain unauthorized; grammar-mode indexing patch remains deferred
 max_rows: 12
-max_generation_attempts: PROPOSED_NOT_SIGNED_72_total_initial_plus_C_and_P_repair_attempt_ceiling
-max_repair_attempts_per_row: PROPOSED_NOT_SIGNED_P_5_when_enabled_C_5_when_enabled_0_otherwise
-max_wall_clock: PROPOSED_NOT_SIGNED_4_hours
-max_estimated_cost: PROPOSED_NOT_SIGNED_USD_25_requires_official_pricing_reverification
-max_reconciled_billing_cost: PROPOSED_NOT_SIGNED_USD_50_billing_reconciliation_authoritative
-preflight_estimate: NOT_SIGNABLE_SYNTHETIC_PLACEHOLDER_advisory_only_pricing_and_timing_must_be_reverified
-stop_on_first_infrastructure_failure: PROPOSED_NOT_SIGNED_yes
+max_generation_attempts: READY_FOR_SIGNATURE_72_total_initial_plus_C_and_P_repair_attempt_ceiling
+max_repair_attempts_per_row: READY_FOR_SIGNATURE_P_5_when_enabled_C_5_when_enabled_0_otherwise
+max_wall_clock: READY_FOR_SIGNATURE_4_hours
+max_estimated_cost: READY_FOR_SIGNATURE_USD_25_pricing_verified_2026_06_06
+max_reconciled_billing_cost: READY_FOR_SIGNATURE_USD_50_billing_reconciliation_authoritative
+preflight_estimate: SIGNABLE_ADVISORY_PRICING_VERIFIED_TIMING_ESTIMATED
+stop_on_first_infrastructure_failure: READY_FOR_SIGNATURE_yes
 overwrite_policy: fail_if_any_target_path_exists
-retry_policy: PROPOSED_NOT_SIGNED_no_retry_no_resume_unless_explicitly_signed
-resume_policy: PROPOSED_NOT_SIGNED_no_resume_unless_explicitly_signed
-billing_reconciliation_requirement: approved_post_run_modal_billing_reconciliation_required; estimates_do_not_replace_billing
+retry_policy: READY_FOR_SIGNATURE_no_retry_no_resume_unless_explicitly_signed
+resume_policy: READY_FOR_SIGNATURE_no_resume_unless_explicitly_signed
+billing_reconciliation_requirement: ready_for_signature_post_run_modal_billing_reconciliation_required; estimates_do_not_replace_billing
 modal_app_name: tritongen-gpu-harness
-modal_image_sources: llm_generation_image and triton_compile_image in shared/modal_harness/images.py
-modal_image_digest: REQUIRED_BEFORE_SIGNATURE_REMOTE_IMAGE_DIGEST_UNKNOWN
-post_run_validation_commands: required list in Post-Run Validation and Analyzer Command Surface sections
+modal_image_sources: c2_generation_image from cluster2/modal/generation.py using shared llm_generation_image; c2_correctness_image from cluster2/modal/correctness.py using shared triton_compile_image
+modal_image_digest: BLOCKED_REMOTE_IMAGE_DIGEST_NOT_EXPOSED_WITHOUT_BROADER_MODAL_APP_PATH
+post_run_validation_commands: READY_FOR_SIGNATURE required list in Post-Run Validation and Analyzer Command Surface sections
 ```
 
 ## Preflight Estimate And Limit Requirements
 
-No signable advisory preflight estimate is attached to this unsigned packet.
-Only the synthetic `NOT_SIGNABLE` placeholder in the gap-closure addendum is
-present.
+This unsigned packet now attaches a signable advisory preflight estimate with
+official Modal pricing verified on 2026-06-06. It still uses conservative
+estimated timing inputs rather than measured L1a timing inputs. The estimate
+is planning evidence only; actual post-run billing reconciliation remains
+authoritative.
 
-Required before a future signature:
+Still required before a future signature:
 
-- attach an advisory output from `cluster3/planning/modal_preflight_estimator.py`
-  for exactly the 12-cell L1a n=1 scope;
-- record whether stage timing inputs are measured from approved prior sidecars
-  or estimated;
-- re-verify Modal pricing against official Modal documentation on the approval
-  date;
-- record exact numeric stop limits, including row, generation-attempt,
-  correctness-call, repair-attempt, infrastructure-failure, and wall-clock
-  ceilings;
-- record exact numeric spend limits, including estimated preflight cap and
-  post-run reconciled billing cap;
+- obtain a remote Modal image digest or explicitly sign an alternative stable
+  Modal image/object provenance policy;
+- human-accept the estimated timing inputs or replace them with measured
+  timing inputs;
+- record the final `approval_record_commit` after commit;
+- record the exact signed run id and signed billing time-window policy;
 - state that estimates are not experimental evidence and do not replace JSONL
   rows, content-hash sidecars, observability sidecars, analyzer outputs, or
   billing reconciliation.
@@ -528,12 +546,12 @@ post-run audit must include these exact validation classes:
 Exact command bundle status:
 
 ```text
-post_run_schema_validation_command: PROPOSED_NOT_SIGNED see exact command below
-post_run_content_hash_validation_command: PROPOSED_NOT_SIGNED see exact command below
-post_run_observability_sidecar_validation_command: PROPOSED_NOT_SIGNED see exact command below
-post_run_grammar_mode_consistency_command: PROPOSED_NOT_SIGNED see exact command below
-post_run_analyzer_report_command: PROPOSED_NOT_SIGNED see exact command below
-post_run_billing_reconciliation_command: REQUIRED_BEFORE_SIGNATURE_BILLING_QUERY_TIME_WINDOW_AND_REDACTED_REPORT_PATH_MISSING
+post_run_schema_validation_command: READY_FOR_SIGNATURE see exact command below
+post_run_content_hash_validation_command: READY_FOR_SIGNATURE see exact command below
+post_run_observability_sidecar_validation_command: READY_FOR_SIGNATURE see exact command below
+post_run_grammar_mode_consistency_command: READY_FOR_SIGNATURE see exact command below
+post_run_analyzer_report_command: READY_FOR_SIGNATURE see exact command below
+post_run_billing_reconciliation_command: READY_FOR_SIGNATURE_AFTER_SIGNED_RUN_WINDOW_AND_REDACTED_REPORT_PATH
 ```
 
 The analyzer/report command surface must be signed before use. The expected
@@ -563,7 +581,9 @@ Exact local validation command surfaces for a future approved run:
 All items below must be true before any future signature:
 
 - target branch is `codex-track-handoff-context`;
-- target commit is the current approved commit and not stale;
+- execution code target commit is
+  `31a097e3231e5b73a1402a26d18c660ba2f53d84`;
+- approval record commit is filled after the signed packet commit;
 - launch packet still selects the 12-cell `grammar_mode x C x P` design;
 - dry-plan verification succeeds for all 12 cells;
 - exact intended execution command or exact per-cell command bundle is supplied;
@@ -571,10 +591,12 @@ All items below must be true before any future signature:
   optional MLflow paths are absent or have a signed archive/resume policy;
 - advisory preflight estimate is attached for the exact L1a scope;
 - official Modal pricing is re-verified on the approval date;
-- numeric stop limits are supplied;
-- numeric spend limits are supplied;
+- numeric stop limits are supplied and accepted;
+- numeric spend limits are supplied and accepted;
+- remote Modal image digest is recorded or an alternative stable provenance
+  policy is explicitly signed;
 - billing reconciliation plan is approved;
-- post-run validation command bundle is supplied;
+- post-run validation command bundle is supplied and approved;
 - no-P cells are classified as controls and not as P evidence;
 - MLflow remains post-hoc/non-authoritative unless separately approved;
 - signature block below is completed by the user.
@@ -604,43 +626,46 @@ Stop before or during any future approved L1a execution if:
 
 ## Explicit Approval
 
-Ready for human signature review, but not signable until the required fields
-below are replaced or explicitly approved by the user. No execution is
-approved.
+Not signable as-is because the remote Modal image digest/provenance field is
+still blocked. No execution is approved.
 
 ```text
 AUTHORIZES_EXECUTION: NO
-DRAFT_READY_FOR_USER_SIGNATURE: YES
+DRAFT_READY_FOR_USER_SIGNATURE: NO_REMOTE_IMAGE_DIGEST_BLOCKED
 
 signature_status: UNSIGNED
 signer_name: REQUIRED_BEFORE_SIGNATURE_blank_or_unsigned
 date_time: REQUIRED_BEFORE_SIGNATURE_blank_or_unsigned
 approval_scope: REQUIRED_BEFORE_SIGNATURE
 exact_target_branch: codex-track-handoff-context
-exact_target_commit: c05e111 Audit L1a executable selector support promotion
+execution_code_target_commit: 31a097e3231e5b73a1402a26d18c660ba2f53d84 Audit L1a final signature packet promotion
+approval_record_commit: TO_BE_FILLED_AFTER_COMMIT
 exact_promoted_selector_commit: e9f180a Add executable planning for 12-cell L1a selector
-exact_promotion_audit_commit: c05e111 Audit L1a executable selector support promotion
-exact_intended_execution_command: PROPOSED_NOT_SIGNED .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite
-exact_per_cell_command_bundle: PROPOSED_NOT_SIGNED emitted by .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --execution-plan
-numeric_stop_limits: PROPOSED_NOT_SIGNED; signer must approve or replace
-numeric_spend_limits: PROPOSED_NOT_SIGNED; signer must approve or replace
-spend_cap: PROPOSED_NOT_SIGNED_USD_25_estimated_USD_50_reconciled
-stop_limits: PROPOSED_NOT_SIGNED_rows_12_generation_attempts_72_correctness_calls_72_wall_clock_4h_stop_on_first_infrastructure_failure
-modal_pricing_recheck_completed: REQUIRED_BEFORE_SIGNATURE_yes_no
-preflight_estimate_attachment: NOT_SIGNABLE_SYNTHETIC_PLACEHOLDER_ATTACHED; signer must attach signable estimate
-advisory_estimate_attached: REQUIRED_BEFORE_SIGNATURE_yes_no
-remote_image_digest_recorded: REQUIRED_BEFORE_SIGNATURE_yes_no
-modal_image_digest: REQUIRED_BEFORE_SIGNATURE_REMOTE_IMAGE_DIGEST_UNKNOWN
-billing_reconciliation_plan: PLAN_ONLY_REQUIRES_SIGNED_TIME_WINDOW_AND_BILLING_QUERY_AUTHORIZATION
-billing_reconciliation_plan_accepted: REQUIRED_BEFORE_SIGNATURE_yes_no
-post_run_validation_bundle: PROPOSED_NOT_SIGNED_COMMANDS_LISTED_ABOVE
-post_run_validation_bundle_accepted: REQUIRED_BEFORE_SIGNATURE_yes_no
+exact_selector_support_promotion_audit_commit: c05e111 Audit L1a executable selector support promotion
+final_signature_packet_promotion_audit_commit: 31a097e Audit L1a final signature packet promotion
+exact_intended_execution_command: READY_FOR_SIGNATURE .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier smoke --n 1 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l1a-authorization SIGNED_L1A_PACKET_ID_REQUIRED --overwrite
+exact_per_cell_command_bundle: READY_FOR_SIGNATURE emitted by .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --repair-history-policy agentic_transcript_v1 --execution-plan
+numeric_stop_limits: READY_FOR_SIGNATURE; signer must approve or replace
+numeric_spend_limits: READY_FOR_SIGNATURE; signer must approve or replace
+spend_cap: READY_FOR_SIGNATURE_USD_25_estimated_USD_50_reconciled
+stop_limits: READY_FOR_SIGNATURE_rows_12_generation_attempts_72_correctness_calls_72_wall_clock_4h_stop_on_first_infrastructure_failure
+modal_pricing_recheck_completed: YES_2026_06_06_OFFICIAL_MODAL_PRICING_PAGE
+preflight_estimate_attachment: SIGNABLE_ADVISORY_PRICING_VERIFIED_TIMING_ESTIMATED
+advisory_estimate_attached: YES
+remote_image_digest_recorded: NO_BLOCKED_NOT_EXPOSED_BY_MODAL_1_4_2_NO_INVOCATION_PATH
+modal_image_digest: BLOCKED_REMOTE_IMAGE_DIGEST_NOT_EXPOSED_WITHOUT_BROADER_MODAL_APP_PATH
+billing_reconciliation_plan: READY_FOR_SIGNATURE_L1A_RECONCILIATION_ONLY_AFTER_SIGNED_RUN_WINDOW
+billing_reconciliation_plan_accepted: READY_FOR_SIGNATURE_yes_no
+post_run_validation_bundle: READY_FOR_SIGNATURE_COMMANDS_LISTED_ABOVE
+post_run_validation_bundle_accepted: READY_FOR_SIGNATURE_yes_no
 authorization_statement: REQUIRED_BEFORE_SIGNATURE_explicit_human_statement_required
 authorization_statement_status: UNSIGNED_no_execution_authorization
 
 NOT APPROVED. A future user approval must replace this unsigned block with a
-signed L1a approval that names this packet, the exact target branch and commit,
-the full 12-cell launcher support proof, the output and sidecar paths,
-stop/spend limits, advisory preflight estimate, billing reconciliation plan,
-and the post-run validation command bundle.
+signed L1a approval that names this packet, the exact target branch,
+execution_code_target_commit, approval_record_commit, the full 12-cell launcher
+support proof, the output and sidecar paths, stop/spend limits, advisory
+preflight estimate, billing reconciliation plan, post-run validation command
+bundle, and a remote image digest or explicitly signed alternative Modal image
+provenance policy.
 ```
