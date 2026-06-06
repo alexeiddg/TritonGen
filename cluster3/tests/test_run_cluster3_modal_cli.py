@@ -1681,6 +1681,27 @@ def _signed_l1b_selector_args(*extra: str, token: str | None = None) -> list[str
     ]
 
 
+def _signed_l2_selector_args(*extra: str, token: str | None = None) -> list[str]:
+    return [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--kernel-class",
+        "elementwise",
+        "--scale-tier",
+        "paper",
+        "--n",
+        "20",
+        "--dtypes",
+        "fp32",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l2-authorization",
+        token or runner_mod.L2_SIGNED_AUTHORIZATION_TOKEN,
+        *extra,
+        "--overwrite",
+    ]
+
+
 def test_l1a_12cell_dry_plan_cli_parses_without_output_or_write_mode() -> None:
     config = parse_args(
         [
@@ -1812,6 +1833,100 @@ def test_l1b_12cell_execution_plan_builds_n5_development_commands() -> None:
         assert planned_cell["output_path"].startswith(runner_mod.L1B_OUTPUT_ROOT + "/")
         assert planned_cell["observability_event_path"].startswith(
             runner_mod.L1B_OBSERVABILITY_ROOT + "/"
+        )
+
+
+def test_l2_12cell_dry_plan_builds_n20_paper_rows() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--scale-tier",
+            "paper",
+            "--n",
+            "20",
+            "--dtypes",
+            "fp32",
+            "--dry-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_dry_plan_payload(config)
+
+    assert config.output == runner_mod.L2_DRY_PLAN_PLACEHOLDER_OUTPUT
+    assert payload["cell_count"] == 12
+    assert payload["planned_rows"] == 240
+    assert payload["authorization_profile"] == "L2 n=20 paper"
+    assert payload["scale_tier"] == "paper"
+    assert payload["n"] == 20
+    assert payload["output_root"] == runner_mod.L2_OUTPUT_ROOT
+    assert payload["observability_root"] == runner_mod.L2_OBSERVABILITY_ROOT
+    assert payload["execution_authorized"] is False
+    assert payload["writes_outputs"] is False
+    assert payload["writes_artifacts"] is False
+    assert payload["writes_mlruns"] is False
+    assert {
+        (
+            cell["grammar_mode"],
+            "on" if cell["correctness_feedback_active"] else "off",
+            "on" if cell["compile_feedback_active"] else "off",
+        )
+        for cell in payload["cells"]
+    } == {
+        (grammar_mode, c_state, p_state)
+        for grammar_mode in ("grammar_off", "template_upper_bound", "task_agnostic")
+        for c_state in ("off", "on")
+        for p_state in ("off", "on")
+    }
+    assert sum(not cell["compile_feedback_active"] for cell in payload["cells"]) == 6
+    assert sum(cell["compile_feedback_active"] for cell in payload["cells"]) == 6
+
+
+def test_l2_12cell_execution_plan_builds_signed_l2_command_surfaces() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--scale-tier",
+            "paper",
+            "--n",
+            "20",
+            "--dtypes",
+            "fp32",
+            "--execution-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_execution_plan_payload(config)
+
+    assert config.output == runner_mod.L2_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
+    assert payload["cell_count"] == 12
+    assert payload["planned_rows"] == 240
+    assert payload["authorization_profile"] == "L2 n=20 paper"
+    assert payload["output_root"] == runner_mod.L2_OUTPUT_ROOT
+    assert payload["observability_root"] == runner_mod.L2_OBSERVABILITY_ROOT
+    assert payload["requires_signed_authorization"] is True
+    assert payload["requires_signed_l1a_authorization"] is False
+    assert payload["signed_authorization_option"] == "--signed-l2-authorization"
+    assert payload["execution_authorized"] is False
+    assert payload["writes_outputs"] is False
+    assert payload["writes_artifacts"] is False
+    assert payload["writes_mlruns"] is False
+    for planned_cell in payload["cells"]:
+        assert "--scale-tier paper" in planned_cell["command_selector"]
+        assert "--n 20" in planned_cell["command_selector"]
+        assert "--signed-l2-authorization" in planned_cell["command_selector"]
+        assert runner_mod.L2_SIGNED_AUTHORIZATION_PLACEHOLDER in planned_cell[
+            "command_selector"
+        ]
+        assert planned_cell["support_status"] == (
+            "L2_SELECTOR_PROFILE_PRESENT_SIGNATURE_REVIEW_REQUIRED_NO_EXECUTION"
+        )
+        assert planned_cell["output_path"].startswith(runner_mod.L2_OUTPUT_ROOT + "/")
+        assert planned_cell["observability_event_path"].startswith(
+            runner_mod.L2_OBSERVABILITY_ROOT + "/"
         )
 
 
@@ -2103,6 +2218,41 @@ def test_l1a_12cell_selector_wrong_token_fails_prelaunch(
         runner_mod._validate_l1a_runtime_authorization(config)
 
 
+def test_l2_12cell_selector_without_signed_l2_token_fails_closed(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match="signed-l2-authorization"):
+        parse_args(
+            [
+                "--condition",
+                runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+                "--scale-tier",
+                "paper",
+                "--n",
+                "20",
+                "--dtypes",
+                "fp32",
+                "--output",
+                str(tmp_path / "out.jsonl"),
+                "--overwrite",
+            ]
+        )
+
+
+def test_l2_12cell_selector_signed_token_still_fails_closed() -> None:
+    config = parse_args(_signed_l2_selector_args())
+
+    with pytest.raises(RuntimeError, match="L2 n=20 execution remains unsigned"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_wrong_token_fails_prelaunch() -> None:
+    config = parse_args(_signed_l2_selector_args(token="wrong-token"))
+
+    with pytest.raises(ValueError, match="signed selector authorization"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
 def test_l1a_12cell_selector_n5_fails_prelaunch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2115,6 +2265,35 @@ def test_l1a_12cell_selector_n5_fails_prelaunch(
     )
 
     with pytest.raises(ValueError, match="--n 1"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_n_not_20_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    enabled_l2 = replace(
+        runner_mod.L2_SELECTOR_PROFILE,
+        runtime_execution_enabled=True,
+        runtime_block_reason=None,
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "SELECTOR_PROFILES",
+        (
+            runner_mod.L1A_SELECTOR_PROFILE,
+            runner_mod.L1B_SELECTOR_PROFILE,
+            enabled_l2,
+        ),
+    )
+    config = parse_args(
+        _signed_l2_selector_args(
+            "--n",
+            "19",
+        )
+    )
+
+    with pytest.raises(ValueError, match="--n 20"):
         runner_mod._validate_l1a_runtime_authorization(config)
 
 
@@ -2213,6 +2392,56 @@ def test_l1a_12cell_selector_existing_target_path_fails_prelaunch(
         repair_history_policy="agentic_transcript_v1",
         repo_root=runner_mod.REPO_ROOT,
         signed_authorization_placeholder=runner_mod.L1A_SIGNED_AUTHORIZATION_TOKEN,
+    )[0]
+    existing_target = runner_mod.REPO_ROOT / first_cell.output_path
+    original_exists = runner_mod.Path.exists
+
+    def fake_exists(path: Path) -> bool:
+        if path == existing_target:
+            return True
+        return original_exists(path)
+
+    monkeypatch.setattr(runner_mod.Path, "exists", fake_exists)
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_existing_target_path_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    output_root = (tmp_path / "outputs" / "l2_n20").as_posix()
+    observability_root = (tmp_path / "observability" / "l2_n20").as_posix()
+    enabled_l2 = replace(
+        runner_mod.L2_SELECTOR_PROFILE,
+        output_root=output_root,
+        observability_root=observability_root,
+        selector_placeholder_output=f"{output_root}/__selector__.jsonl",
+        runtime_execution_enabled=True,
+        runtime_block_reason=None,
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "SELECTOR_PROFILES",
+        (
+            runner_mod.L1A_SELECTOR_PROFILE,
+            runner_mod.L1B_SELECTOR_PROFILE,
+            enabled_l2,
+        ),
+    )
+    config = parse_args(_signed_l2_selector_args())
+    first_cell = runner_mod.build_l1a_launcher_executable_plan(
+        repair_history_policy="agentic_transcript_v1",
+        output_root=output_root,
+        observability_root=observability_root,
+        run_id_prefix=runner_mod.L2_RUN_ID_PREFIX,
+        scale_tier="paper",
+        n=20,
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2-authorization",
     )[0]
     existing_target = runner_mod.REPO_ROOT / first_cell.output_path
     original_exists = runner_mod.Path.exists

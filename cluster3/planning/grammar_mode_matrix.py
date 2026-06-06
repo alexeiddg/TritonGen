@@ -22,7 +22,7 @@ from shared.factors.grammar_modes import (
 
 @dataclass(frozen=True)
 class GrammarModeCellSpec:
-    """One planned L1a grammar-mode/C/P cell."""
+    """One planned grammar-mode/C/P cell."""
 
     condition_name: str
     factor_cell: FactorCell
@@ -59,11 +59,23 @@ L1B_OBSERVABILITY_ROOT = (
     "artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l1b_n5"
 )
 L1B_RUN_ID_PREFIX = "full_pipeline_grammar_mode_cp_factorial_v1_l1b_n5"
+L2_SCALE_NAMESPACE = "l2_n20"
+L2_OUTPUT_ROOT = (
+    "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20"
+)
+L2_OBSERVABILITY_ROOT = (
+    "artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20"
+)
+L2_RUN_ID_PREFIX = "full_pipeline_grammar_mode_cp_factorial_v1_l2_n20"
 L1A_PATH_COLLISION_POLICY = "fail_if_any_target_path_exists"
 L1A_SIGNED_AUTHORIZATION_PLACEHOLDER = "SIGNED_L1A_PACKET_ID_REQUIRED"
 L1B_SIGNED_AUTHORIZATION_PLACEHOLDER = "SIGNED_L1B_PACKET_ID_REQUIRED"
+L2_SIGNED_AUTHORIZATION_PLACEHOLDER = "SIGNED_L2_PACKET_ID_REQUIRED"
 L1A_EXECUTABLE_SELECTOR_SUPPORT_STATUS = (
     "EXECUTABLE_SELECTOR_PRESENT_AUTHORIZATION_REQUIRED_NO_EXECUTION"
+)
+L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS = (
+    "L2_SELECTOR_PROFILE_PRESENT_SIGNATURE_REVIEW_REQUIRED_NO_EXECUTION"
 )
 
 
@@ -204,6 +216,7 @@ def build_l1a_launcher_executable_plan(
     repo_root: str | Path | None = None,
     signed_authorization_placeholder: str = L1A_SIGNED_AUTHORIZATION_PLACEHOLDER,
     signed_authorization_option: str = "--signed-l1a-authorization",
+    support_status: str = L1A_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
 ) -> tuple[GrammarModeLauncherCellPlan, ...]:
     """Return executable-selector command plans without running them."""
 
@@ -219,6 +232,7 @@ def build_l1a_launcher_executable_plan(
         command_mode="executable",
         signed_authorization_placeholder=signed_authorization_placeholder,
         signed_authorization_option=signed_authorization_option,
+        support_status=support_status,
     )
 
 
@@ -235,6 +249,7 @@ def _build_l1a_launcher_plan(
     command_mode: str,
     signed_authorization_placeholder: str | None = None,
     signed_authorization_option: str = "--signed-l1a-authorization",
+    support_status: str = L1A_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
 ) -> tuple[GrammarModeLauncherCellPlan, ...]:
     selected = _select_cells(
         build_l1a_grammar_mode_cp_matrix(repair_history_policy=repair_history_policy),
@@ -256,6 +271,7 @@ def _build_l1a_launcher_plan(
             command_mode=command_mode,
             signed_authorization_placeholder=signed_authorization_placeholder,
             signed_authorization_option=signed_authorization_option,
+            support_status=support_status,
         )
         for cell in selected
     )
@@ -298,6 +314,7 @@ def _launcher_plan_for_cell(
     command_mode: str,
     signed_authorization_placeholder: str | None,
     signed_authorization_option: str,
+    support_status: str,
 ) -> GrammarModeLauncherCellPlan:
     condition_id = cell.output_namespace_suffix
     output_path = output_base / f"{condition_id}.jsonl"
@@ -331,10 +348,10 @@ def _launcher_plan_for_cell(
         signed_authorization_placeholder=signed_authorization_placeholder,
         signed_authorization_option=signed_authorization_option,
     )
-    support_status = (
+    resolved_support_status = (
         "DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION"
         if command_mode == "dry_plan"
-        else L1A_EXECUTABLE_SELECTOR_SUPPORT_STATUS
+        else support_status
     )
     return GrammarModeLauncherCellPlan(
         selector=L1A_GRAMMAR_MODE_CP_SELECTOR,
@@ -372,7 +389,7 @@ def _launcher_plan_for_cell(
             if cell.compile_feedback_active
             else "no_p_control_cell"
         ),
-        support_status=support_status,
+        support_status=resolved_support_status,
         expected_eligibility_notes=cell.expected_eligibility_notes,
     )
 
@@ -392,10 +409,24 @@ def _command_selector_for_cell(
     signed_authorization_option: str,
 ) -> str:
     if command_mode == "dry_plan":
-        return (
-            f"--condition {L1A_GRAMMAR_MODE_CP_SELECTOR} "
-            f"--dry-plan --grammar-mode-cell {condition_id}"
-        )
+        parts = [
+            "--condition",
+            L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--grammar-mode-cell",
+            condition_id,
+            "--kernel-class",
+            "elementwise",
+            "--scale-tier",
+            scale_tier,
+            "--n",
+            str(n),
+            "--dtypes",
+            "fp32",
+            "--repair-history-policy",
+            repair_history_policy,
+            "--dry-plan",
+        ]
+        return " ".join(parts)
     if command_mode != "executable":
         raise ValueError(f"unsupported command_mode {command_mode!r}")
     if not signed_authorization_placeholder:

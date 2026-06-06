@@ -75,11 +75,17 @@ from cluster3.planning.grammar_mode_matrix import (
     L1A_OBSERVABILITY_ROOT,
     L1A_PATH_COLLISION_POLICY,
     L1A_RUN_ID_PREFIX,
+    L1A_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L1A_SIGNED_AUTHORIZATION_PLACEHOLDER,
     L1B_OUTPUT_ROOT,
     L1B_OBSERVABILITY_ROOT,
     L1B_RUN_ID_PREFIX,
     L1B_SIGNED_AUTHORIZATION_PLACEHOLDER,
+    L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+    L2_OUTPUT_ROOT,
+    L2_OBSERVABILITY_ROOT,
+    L2_RUN_ID_PREFIX,
+    L2_SIGNED_AUTHORIZATION_PLACEHOLDER,
     GrammarModeLauncherCellPlan,
     build_l1a_launcher_dry_plan,
     build_l1a_launcher_executable_plan,
@@ -151,6 +157,11 @@ L1A_SIGNED_AUTHORIZATION_TOKEN = (
 L1B_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT = f"{L1B_OUTPUT_ROOT}/__selector__.jsonl"
 L1B_SIGNED_AUTHORIZATION_TOKEN = (
     "FULL_PIPELINE_GRAMMAR_MODE_CP_L1B_N5_AUTHORIZATION_GOAL_20260606"
+)
+L2_DRY_PLAN_PLACEHOLDER_OUTPUT = f"{L2_OUTPUT_ROOT}/__dry_plan__.jsonl"
+L2_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT = f"{L2_OUTPUT_ROOT}/__selector__.jsonl"
+L2_SIGNED_AUTHORIZATION_TOKEN = (
+    "FULL_PIPELINE_GRAMMAR_MODE_CP_L2_N20_AUTHORIZATION_PACKET_V1"
 )
 DIAGNOSTIC_F1_SEED_CONDITIONS: tuple[str, ...] = ("P", "G+P")
 DIAGNOSTIC_F2_SEED_CONDITIONS: tuple[str, ...] = ("C+P", "G+C+P")
@@ -236,7 +247,7 @@ class Cluster3RunnerConfig:
                 )
             if self.signed_l1a_authorization is not None:
                 raise ValueError(
-                    "--signed-l1a-authorization is only supported for "
+                    "signed selector authorization is only supported for "
                     f"--condition {L1A_GRAMMAR_MODE_CP_SELECTOR}"
                 )
         if self.signed_l1a_authorization is not None:
@@ -252,7 +263,8 @@ class Cluster3RunnerConfig:
         ):
             raise ValueError(
                 f"{L1A_GRAMMAR_MODE_CP_SELECTOR} execution requires "
-                "--signed-l1a-authorization; use --dry-plan or --execution-plan "
+                "--signed-l1a-authorization, --signed-l1b-authorization, or "
+                "--signed-l2-authorization; use --dry-plan or --execution-plan "
                 "for local no-execution planning"
             )
         _require_member(self.kernel_class, KERNEL_CLASS_SELECTOR_CHOICES, "kernel_class")
@@ -400,6 +412,9 @@ class _GrammarModeSelectorProfile:
     scale_tier: str
     n: int
     expected_planned_rows: int
+    runtime_execution_enabled: bool = True
+    runtime_block_reason: str | None = None
+    support_status: str = L1A_EXECUTABLE_SELECTOR_SUPPORT_STATUS
 
 
 L1A_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
@@ -428,9 +443,29 @@ L1B_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
     n=5,
     expected_planned_rows=60,
 )
+L2_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
+    label="L2 n=20 paper",
+    signed_authorization_token=L2_SIGNED_AUTHORIZATION_TOKEN,
+    signed_authorization_placeholder=L2_SIGNED_AUTHORIZATION_PLACEHOLDER,
+    signed_authorization_option="--signed-l2-authorization",
+    output_root=L2_OUTPUT_ROOT,
+    observability_root=L2_OBSERVABILITY_ROOT,
+    run_id_prefix=L2_RUN_ID_PREFIX,
+    selector_placeholder_output=L2_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT,
+    scale_tier="paper",
+    n=20,
+    expected_planned_rows=240,
+    runtime_execution_enabled=False,
+    runtime_block_reason=(
+        "L2 n=20 execution remains unsigned; this branch supports local planning "
+        "only until a later final signature explicitly authorizes execution"
+    ),
+    support_status=L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+)
 SELECTOR_PROFILES: tuple[_GrammarModeSelectorProfile, ...] = (
     L1A_SELECTOR_PROFILE,
     L1B_SELECTOR_PROFILE,
+    L2_SELECTOR_PROFILE,
 )
 
 
@@ -438,6 +473,12 @@ def _output_from_namespace(namespace: argparse.Namespace) -> str:
     if namespace.output is not None:
         return namespace.output
     if namespace.dry_plan:
+        if namespace.condition == L1A_GRAMMAR_MODE_CP_SELECTOR:
+            profile = _selector_profile_for_scale(
+                scale_tier=namespace.scale_tier,
+                n=namespace.n,
+            )
+            return f"{profile.output_root}/__dry_plan__.jsonl"
         return L1A_DRY_PLAN_PLACEHOLDER_OUTPUT
     if namespace.condition == L1A_GRAMMAR_MODE_CP_SELECTOR:
         signed_authorization = getattr(namespace, "signed_l1a_authorization", None)
@@ -1112,6 +1153,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         dest="signed_l1a_authorization",
         default=None,
     )
+    parser.add_argument(
+        "--signed-l2-authorization",
+        dest="signed_l1a_authorization",
+        default=None,
+    )
     mode = parser.add_mutually_exclusive_group(required=False)
     mode.add_argument("--overwrite", action="store_true")
     mode.add_argument("--resume", action="store_true")
@@ -1136,7 +1182,7 @@ def _validate_cli_namespace(
             parser.error("--output is not used with --dry-plan or --execution-plan")
         if namespace.signed_l1a_authorization is not None:
             parser.error(
-                "--signed-l1a-authorization is not used with local planning modes"
+                "signed selector authorization is not used with local planning modes"
             )
         if namespace.condition != L1A_GRAMMAR_MODE_CP_SELECTOR:
             parser.error(
@@ -1209,6 +1255,7 @@ def build_l1a_execution_plan_payload(config: Cluster3RunnerConfig) -> dict[str, 
         repo_root=REPO_ROOT,
         signed_authorization_placeholder=profile.signed_authorization_placeholder,
         signed_authorization_option=profile.signed_authorization_option,
+        support_status=profile.support_status,
     )
     return {
         "selector": L1A_GRAMMAR_MODE_CP_SELECTOR,
@@ -1374,6 +1421,8 @@ def _validate_l1a_runtime_authorization(
     if config.condition != L1A_GRAMMAR_MODE_CP_SELECTOR:
         raise ValueError("selector authorization is only valid for grammar_mode_cp_12cell")
     profile = _selector_profile_for_authorization(config)
+    if not profile.runtime_execution_enabled:
+        raise RuntimeError(profile.runtime_block_reason or f"{profile.label} is blocked")
     if os.environ.get("TRITONGEN_MLFLOW") != "0":
         raise RuntimeError(f"TRITONGEN_MLFLOW=0 is required for signed {profile.label}")
     if config.write_mode != "overwrite":

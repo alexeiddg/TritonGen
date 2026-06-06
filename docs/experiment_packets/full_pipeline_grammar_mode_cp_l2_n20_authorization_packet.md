@@ -3,13 +3,13 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L2_N20_AUTHORIZATION_PACKET_DRAFT_V1`
-packet_version: `0.1.0-draft-blocked-command-surface`
+packet_version: `0.2.0-selector-profile-support-ready-for-signature-review`
 packet_type: L2 n=20 authorization packet draft; not an execution packet
-branch: `codex/l2-n20-authorization-packet`
+branch: `codex/l2-n20-selector-profile-support`
 target_branch: `codex-track-handoff-context`
-execution_code_target_commit: `134bcf9c7fda9da933acf6fe3f93766b2b0a731e Audit L1b n5 completion and analyzer boundary`
-baseline_commit: `134bcf9 Audit L1b n5 completion and analyzer boundary`
-status: `UNSIGNED_COMMAND_SURFACE_BLOCKED`
+execution_code_target_commit: `pending selector support commit on codex/l2-n20-selector-profile-support`
+baseline_commit: `3a21002 Audit L2 n20 packet draft promotion`
+status: `UNSIGNED_SELECTOR_PROFILE_SUPPORT_READY_FOR_SIGNATURE_REVIEW`
 signature_status: `UNSIGNED`
 AUTHORIZES_EXECUTION: NO
 
@@ -39,12 +39,12 @@ experiment execution, output mutation, artifact mutation, billing queries,
 runtime MLflow writes, retry, resume, analyzer/report artifact refresh, or
 paper-scale claims.
 
-The current repo cannot yet execute this packet as written. The launcher has
-selector profiles for L1a n=1 smoke and L1b n=5 development only. A later
-narrow implementation branch must add a source-backed L2 n=20 selector profile,
-signed L2 authorization option/token, L2 output and observability roots, and
-paper-scale analyzer compatibility proof before this packet can become
-signable.
+The current repo can now represent the L2 n=20 selector profile locally for
+dry-plan and execution-plan review. The launcher includes a `paper/n=20`
+profile, L2 output and observability roots, a signed-L2 CLI option for future
+signature review, and deterministic 12-cell planning with 240 expected rows.
+Runtime L2 execution remains intentionally disabled in the L2 profile until a
+later final signature branch explicitly authorizes execution.
 
 ## Readiness Evidence
 
@@ -142,56 +142,70 @@ fail_if_any_target_path_exists: true
 Current command-surface classification:
 
 ```text
-L2_N20_AUTHORIZATION_PACKET_BLOCKED_COMMAND_SURFACE
+L2_N20_SELECTOR_PROFILE_SUPPORT_READY_FOR_SIGNATURE_REVIEW
 ```
 
-Reason:
+Source-backed support:
 
-`cluster3/experiments/run_cluster3_modal.py` currently defines selector
-profiles only for:
+- `cluster3/planning/grammar_mode_matrix.py` defines the L2 `l2_n20` output
+  root, observability root, run-id prefix, signed-L2 placeholder, and L2
+  no-execution support status.
+- `cluster3/experiments/run_cluster3_modal.py` defines the L2 selector profile
+  for `scale_tier=paper`, `n=20`, and 240 expected planned rows.
+- `SELECTOR_PROFILES` now includes L1a n=1, L1b n=5, and L2 n=20 profiles.
+- `--dry-plan` and `--execution-plan` can resolve `--scale-tier paper --n 20`
+  for `--condition grammar_mode_cp_12cell` without invoking Modal,
+  generation, correctness execution, output writes, artifact writes, or
+  `mlruns`.
+- `--signed-l2-authorization` exists as a future signed-selector option, but
+  the L2 runtime profile keeps execution disabled until a later signed packet
+  deliberately enables it.
 
 ```text
-L1a n=1 smoke
-L1b n=5 development
+dry-plan cells: 12
+dry-plan planned_rows: 240
+execution-plan cells: 12
+execution-plan planned_rows: 240
+runtime_execution_enabled: false for L2
 ```
 
-The current `_selector_profile_for_scale()` function rejects
-`--scale-tier paper --n 20` for `--condition grammar_mode_cp_12cell`. The
-current CLI also exposes `--signed-l1a-authorization` and
-`--signed-l1b-authorization`, not a signed L2 authorization option.
+Resolved implementation requirements:
 
-Required implementation before signature:
+- L2 namespace constants for `l2_n20` exist.
+- The L2 selector profile maps `paper/n=20` to 12 cells and 240 planned rows.
+- The signed L2 selector option exists without reusing L1a or L1b tokens.
+- L2 execution remains blocked by the profile-level runtime gate.
+- Selector-level path collision checks remain fail-closed for any future
+  enabled L2 runtime profile.
+- Grammar-mode mapping, no-P controls, P-eligible cells, and C-eligible cells
+  are represented in deterministic matrix order.
 
-- add L2 namespace constants for `l2_n20`;
-- add an L2 selector profile for `scale_tier=paper`, `n=20`, and 240 planned
-  rows;
-- add a signed L2 authorization option/token without reusing L1a or L1b tokens;
-- keep `TRITONGEN_MLFLOW=0` required for signed selector execution unless a
-  later packet explicitly changes the policy;
-- keep selector-level path collision checks fail-closed;
-- prove all 12 cells plan into the L2 namespace and all target paths are absent;
-- prove paper-scale analyzer/report strictness is satisfied without using L1a
-  smoke or L1b development pair-skip scopes.
+Remaining signature requirement:
+
+- prove paper-scale analyzer/report strictness on actual valid L2 outputs
+  without using L1a smoke or L1b development pair-skip scopes.
 
 ## Future Command Surfaces
 
-These commands are proposed for the eventual L2 packet. They are not authorized
-by this draft and are blocked until the L2 selector/profile implementation
-exists.
+These commands are source-backed for local planning. They are not authorized by
+this draft and do not permit Modal, GPU use, generation, output mutation,
+artifact mutation, billing queries, runtime MLflow writes, retry, resume, or
+paper-scale claims.
 
-Dry-plan command, blocked until L2 profile support exists:
+Dry-plan command, local no-execution planning only:
 
 ```bash
 TRITONGEN_MLFLOW=0 .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier paper --n 20 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --dry-plan
 ```
 
-Execution-plan command, blocked until L2 profile support exists:
+Execution-plan command, local no-execution planning only:
 
 ```bash
 TRITONGEN_MLFLOW=0 .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier paper --n 20 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --execution-plan
 ```
 
-Future execution command, blocked until signed L2 support exists:
+Future execution command surface, still blocked until a later final signature
+explicitly authorizes execution and enables the L2 runtime gate:
 
 ```bash
 TRITONGEN_MLFLOW=0 .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --kernel-class elementwise --scale-tier paper --n 20 --dtypes fp32 --repair-history-policy agentic_transcript_v1 --signed-l2-authorization FULL_PIPELINE_GRAMMAR_MODE_CP_L2_N20_AUTHORIZATION_PACKET_V1 --overwrite
@@ -359,27 +373,23 @@ AUTHORIZES_EXECUTION: NO
 
 ## Remaining Blockers
 
-1. L2 selector/profile support is missing.
-2. Signed L2 authorization option/token is missing.
-3. L2 dry-plan and execution-plan commands are currently rejected by the
-   selector profile gate.
-4. L2 output, observability, run-id, and placeholder constants are missing.
-5. Paper-scale analyzer strictness must be proven for valid 12-cell selector
+1. Final human signature is missing.
+2. L2 runtime execution is intentionally disabled in the selector profile until
+   a later final signature branch enables it.
+3. Paper-scale analyzer strictness must be proven for valid 12-cell selector
    output without using non-paper L1a/L1b pair-skip scopes.
-6. Pricing must be re-verified before signature.
-7. Spend and wall-clock caps must be human-signed.
-8. Billing query window and billing artifact write must be separately signed.
-9. Output/artifact mutation must remain blocked until final signature.
+4. Pricing must be re-verified before signature.
+5. Spend and wall-clock caps must be human-signed.
+6. Billing query window and billing artifact write must be separately signed.
+7. Output/artifact mutation must remain blocked until final signature.
 
 ## Classification
 
-`L2_N20_AUTHORIZATION_PACKET_BLOCKED_COMMAND_SURFACE`
+`L2_N20_SELECTOR_PROFILE_SUPPORT_READY_FOR_SIGNATURE_REVIEW`
 
 ## Next-Step Recommendation
 
-Create a narrow local-only L2 selector/profile support branch. It should make
-`grammar_mode_cp_12cell` representable for `scale_tier=paper`, `n=20`, 240
-planned rows, L2 namespaces, and signed L2 authorization planning without
-running Modal, generation, billing, analyzer/report refresh, or output/artifact
-mutation. After that branch is reviewed and promoted, revisit this packet for
-final signature readiness.
+Review and promote the local-only L2 selector/profile support branch. After
+promotion, prepare a separate final signature-readiness pass that fills any
+remaining human signature fields and deliberately decides whether to enable L2
+runtime execution. Do not execute L2 from this packet draft.

@@ -11,6 +11,11 @@ from cluster3.planning.grammar_mode_matrix import (
     L1A_OBSERVABILITY_ROOT,
     L1A_OUTPUT_ROOT,
     L1A_SIGNED_AUTHORIZATION_PLACEHOLDER,
+    L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+    L2_OBSERVABILITY_ROOT,
+    L2_OUTPUT_ROOT,
+    L2_RUN_ID_PREFIX,
+    L2_SIGNED_AUTHORIZATION_PLACEHOLDER,
     build_l1a_grammar_mode_cp_matrix,
     build_l1a_launcher_dry_plan,
     build_l1a_launcher_executable_plan,
@@ -225,4 +230,75 @@ def test_l1a_launcher_executable_plan_commands_encode_paths_and_authorization() 
     task = by_id["task_agnostic__c_on__p_off"]
     assert "--grammar-variant task_agnostic" in task.command_selector
     assert task.grammar_path == "cluster1/grammar/triton_kernel_agnostic.gbnf"
+    assert task.execution_role == "no_p_control_cell"
+
+
+def test_l2_launcher_dry_plan_uses_n20_namespace_without_execution() -> None:
+    plan = build_l1a_launcher_dry_plan(
+        repair_history_policy="agentic_transcript_v1",
+        output_root=L2_OUTPUT_ROOT,
+        observability_root=L2_OBSERVABILITY_ROOT,
+        run_id_prefix=L2_RUN_ID_PREFIX,
+        scale_tier="paper",
+        n=20,
+    )
+
+    assert len(plan) == 12
+    assert [cell.condition_id for cell in plan] == [
+        cell.condition_id
+        for cell in build_l1a_launcher_dry_plan(
+            repair_history_policy="agentic_transcript_v1"
+        )
+    ]
+    assert {cell.command_mode for cell in plan} == {"dry_plan"}
+    assert {cell.support_status for cell in plan} == {
+        "DRY_PLAN_SELECTOR_PRESENT_NO_EXECUTION"
+    }
+    for cell in plan:
+        assert cell.output_path == f"{L2_OUTPUT_ROOT}/{cell.condition_id}.jsonl"
+        assert cell.observability_event_path == (
+            f"{L2_OBSERVABILITY_ROOT}/{cell.condition_id}.observability.jsonl"
+        )
+        assert f"--grammar-mode-cell {cell.condition_id}" in cell.command_selector
+        assert "--scale-tier paper" in cell.command_selector
+        assert "--n 20" in cell.command_selector
+        assert "--dry-plan" in cell.command_selector
+        assert cell.path_collision_policy == "fail_if_any_target_path_exists"
+
+
+def test_l2_launcher_executable_plan_commands_encode_signed_l2_placeholder() -> None:
+    plan = build_l1a_launcher_executable_plan(
+        repair_history_policy="agentic_transcript_v1",
+        output_root=L2_OUTPUT_ROOT,
+        observability_root=L2_OBSERVABILITY_ROOT,
+        run_id_prefix=L2_RUN_ID_PREFIX,
+        scale_tier="paper",
+        n=20,
+        signed_authorization_placeholder=L2_SIGNED_AUTHORIZATION_PLACEHOLDER,
+        signed_authorization_option="--signed-l2-authorization",
+        support_status=L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+    )
+    by_id = {cell.condition_id: cell for cell in plan}
+
+    assert len(plan) == 12
+    assert {cell.support_status for cell in plan} == {
+        L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS
+    }
+    assert sum(not cell.compile_feedback_active for cell in plan) == 6
+    assert sum(cell.compile_feedback_active for cell in plan) == 6
+
+    off = by_id["grammar_off__c_off__p_off"]
+    assert "--signed-l2-authorization" in off.command_selector
+    assert L2_SIGNED_AUTHORIZATION_PLACEHOLDER in off.command_selector
+    assert "--scale-tier paper" in off.command_selector
+    assert "--n 20" in off.command_selector
+    assert "--grammar-variant" not in off.command_selector
+    assert off.execution_role == "no_p_control_cell"
+
+    template = by_id["template_upper_bound__c_on__p_on"]
+    assert "--grammar-variant template_upper_bound" in template.command_selector
+    assert template.execution_role == "p_enabled_generated_cell"
+
+    task = by_id["task_agnostic__c_on__p_off"]
+    assert "--grammar-variant task_agnostic" in task.command_selector
     assert task.execution_role == "no_p_control_cell"
