@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.5
+Version: 1.37.6
 Date: 2026-06-05
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -65,6 +65,8 @@ treated as report-facing.
 | Full Pipeline L1a authorization packet completion audit | `audits/l1a_authorization_packet_completion_report.md` |
 | Full Pipeline L1a baseline pin audit | `audits/l1a_packet_baseline_pin_report.md` |
 | Grammar-mode 12-cell launcher support report | `audits/grammar_mode_12cell_launcher_support_report.md` |
+| Modal full-factorial optimization plan | `docs/19_modal_full_factorial_optimization_plan.md` |
+| Modal optimization intake review | `audits/modal_optimization_intake_review_report.md` |
 | Grammar-mode code-support audit for L1a readiness | `audits/grammar_mode_code_support_audit_report.md` |
 | Grammar-mode support implementation report | `audits/grammar_mode_support_implementation_report.md` |
 | Experiment change orchestration state | `docs/handoff/experiment_change_orchestration_state.md` |
@@ -167,19 +169,22 @@ Local representability support uses the repo-supported grammar-mode values
 `audits/grammar_mode_support_implementation_report.md` for
 `GRAMMAR_MODE_SUPPORT_IMPLEMENTATION_PARTIAL_TRACKING_DEFERRED`. MLflow
 post-hoc grammar-mode indexing remains deferred, and no execution packet is
-approved. The current implementation branch
-`codex/grammar-mode-12cell-launcher-support` adds the local dry-plan-only
-selector `grammar_mode_cp_12cell`, which selects all 12 cells, including six
-no-P controls, and records deterministic output, content-hash sidecar,
+approved. The launcher support branch
+`codex/grammar-mode-12cell-launcher-support` was promoted into
+`codex-track-handoff-context` through `e914557` and promotion-audited at
+`76ede6a`. It adds the local dry-plan-only selector
+`grammar_mode_cp_12cell`, which selects all 12 cells, including six no-P
+controls, and records deterministic output, content-hash sidecar,
 observability sidecar, grammar hash/scope, repair-policy, and no-overwrite
-planning metadata; see
-`audits/grammar_mode_12cell_launcher_support_report.md`. The earlier
+planning metadata; see `audits/grammar_mode_12cell_launcher_support_report.md`
+and `audits/grammar_mode_12cell_launcher_support_promotion_audit_report.md`.
+The earlier
 code-support audit
 `audits/grammar_mode_code_support_audit_report.md` remains historical evidence
 for the launcher blocker that this implementation addresses. Future L1a
 authorization review must start from the completed packet and must not draft or
-run an execution packet until this launcher-support commit is promoted, numeric
-stop/spend limits are supplied, and a separate explicit approval is signed. The
+run an execution packet until numeric stop/spend limits are supplied and a
+separate explicit approval is signed. The
 patched
 launch packet now uses the same repo-supported grammar-mode vocabulary and
 defines MLflow
@@ -196,6 +201,16 @@ paper-scale, or output-mutating work, agents must also read
 draft or approved packet. The current draft is
 `docs/handoff/agentic_transcript_v1_next_run_packet.md`, has status
 `DRAFT_NOT_APPROVED`, and authorizes no execution.
+
+Modal optimization intake is active on
+`codex/modal-optimization-intake-review`. The intake artifact is
+`docs/19_modal_full_factorial_optimization_plan.md`; the review/audit surface is
+`audits/modal_optimization_intake_review_report.md`. This branch is
+planning/review only: it classifies the parked plan, records that no tracked
+dirty sidecar timing patch is present, adds an official Modal API/pricing
+re-verification caveat before any signed execution or spend packet, and
+authorizes no Modal/GPU/generation/output/mlruns/billing/profiler/benchmark or
+MLflow runtime work.
 
 Do not run Modal, n=5, n=20, paper-scale work, generation, experiments, or
 output mutation from this freeze state without separate explicit approval. Any
