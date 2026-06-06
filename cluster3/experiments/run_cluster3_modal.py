@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import inspect
 import json
+import os
 import subprocess
 import sys
 import time
@@ -70,6 +71,7 @@ from cluster3.planning.grammar_mode_matrix import (
     L1A_OUTPUT_ROOT,
     L1A_OBSERVABILITY_ROOT,
     L1A_PATH_COLLISION_POLICY,
+    GrammarModeLauncherCellPlan,
     build_l1a_launcher_dry_plan,
     build_l1a_launcher_executable_plan,
     l1a_grammar_mode_cell_selector_choices,
@@ -134,6 +136,9 @@ CLUSTER3_RUNNER_PATH = "cluster3/experiments/run_cluster3_modal.py"
 OBSERVABILITY_MODE_CHOICES: tuple[str, ...] = ("off", "best_effort", "required")
 L1A_DRY_PLAN_PLACEHOLDER_OUTPUT = f"{L1A_OUTPUT_ROOT}/__dry_plan__.jsonl"
 L1A_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT = f"{L1A_OUTPUT_ROOT}/__selector__.jsonl"
+L1A_SIGNED_AUTHORIZATION_TOKEN = (
+    "FULL_PIPELINE_GRAMMAR_MODE_CP_L1A_N1_AUTHORIZATION_PACKET_V1"
+)
 DIAGNOSTIC_F1_SEED_CONDITIONS: tuple[str, ...] = ("P", "G+P")
 DIAGNOSTIC_F2_SEED_CONDITIONS: tuple[str, ...] = ("C+P", "G+C+P")
 DIAGNOSTIC_EXPECTED_INITIAL_FAILURES: tuple[str, ...] = (
@@ -1114,11 +1119,7 @@ def main(argv: Sequence[str] | None = None) -> Cluster3RunResult | dict[str, Any
         print(json.dumps(payload, sort_keys=True))
         return payload
     if config.condition == L1A_GRAMMAR_MODE_CP_SELECTOR:
-        raise RuntimeError(
-            f"{L1A_GRAMMAR_MODE_CP_SELECTOR} execution is not enabled by this "
-            "local support branch; the selector remains fail-closed until a "
-            "separate signed execution packet authorizes launch"
-        )
+        _validate_l1a_runtime_authorization(config)
 
     # Seam A (Modal path): open an optional MLflow run around the local
     # orchestration. Modal returns records; the Cluster 3 JSONL writer's seam
@@ -1147,6 +1148,124 @@ def main(argv: Sequence[str] | None = None) -> Cluster3RunResult | dict[str, Any
         )
     )
     return result
+
+
+def _validate_l1a_runtime_authorization(
+    config: Cluster3RunnerConfig,
+) -> tuple[GrammarModeLauncherCellPlan, ...]:
+    """Validate the exact signed L1a selector command before runtime launch."""
+
+    if config.condition != L1A_GRAMMAR_MODE_CP_SELECTOR:
+        raise ValueError("L1a authorization is only valid for grammar_mode_cp_12cell")
+    if config.signed_l1a_authorization != L1A_SIGNED_AUTHORIZATION_TOKEN:
+        raise ValueError(
+            "signed-l1a-authorization must match "
+            f"{L1A_SIGNED_AUTHORIZATION_TOKEN}"
+        )
+    if os.environ.get("TRITONGEN_MLFLOW") != "0":
+        raise RuntimeError("TRITONGEN_MLFLOW=0 is required for signed L1a n=1")
+    if config.write_mode != "overwrite":
+        raise ValueError("signed L1a n=1 requires --overwrite and forbids resume")
+    if config.output != L1A_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT:
+        raise ValueError("signed L1a selector command must not override --output")
+    if config.grammar_mode_cell != "all":
+        raise ValueError("signed L1a selector command must plan all 12 cells")
+    if config.scale_tier != "smoke":
+        raise ValueError("signed L1a n=1 requires --scale-tier smoke")
+    if config.n != 1:
+        raise ValueError("signed L1a n=1 requires --n 1")
+    if config.kernel_class != "elementwise":
+        raise ValueError("signed L1a n=1 requires --kernel-class elementwise")
+    if config.dtypes != ("fp32",):
+        raise ValueError("signed L1a n=1 requires --dtypes fp32")
+    if config.dry_plan or config.execution_plan:
+        raise ValueError("runtime authorization does not apply to planning modes")
+    if config.observability_mode != "off":
+        raise ValueError("selector-level signed command must not override observability")
+    if (
+        config.observability_experiment_id is not None
+        or config.observability_run_id is not None
+        or config.observability_output is not None
+    ):
+        raise ValueError("selector-level signed command must not set observability paths")
+
+    cells = build_l1a_launcher_executable_plan(
+        repair_history_policy=config.repair_history_policy,
+        cell_selector=config.grammar_mode_cell,
+        repo_root=REPO_ROOT,
+        signed_authorization_placeholder=L1A_SIGNED_AUTHORIZATION_TOKEN,
+    )
+    if len(cells) != 12:
+        raise ValueError("signed L1a n=1 requires exactly 12 planned cells")
+    planned_rows = len(cells) * len(config.kernel_classes) * len(config.dtypes) * config.n
+    if planned_rows != 12:
+        raise ValueError("signed L1a n=1 requires exactly 12 planned rows")
+
+    condition_ids = {cell.condition_id for cell in cells}
+    if len(condition_ids) != 12:
+        raise ValueError("signed L1a n=1 requires 12 unique planned cells")
+
+    for cell in cells:
+        if cell.selector != L1A_GRAMMAR_MODE_CP_SELECTOR:
+            raise ValueError("signed L1a plan contains an unexpected selector")
+        if cell.path_collision_policy != L1A_PATH_COLLISION_POLICY:
+            raise ValueError("signed L1a plan must fail if target paths exist")
+        if cell.output_path != f"{L1A_OUTPUT_ROOT}/{cell.condition_id}.jsonl":
+            raise ValueError("signed L1a plan output path does not match namespace")
+        _require_l1a_path(cell.output_path, root=L1A_OUTPUT_ROOT, label="output")
+        _require_l1a_path(
+            cell.content_hash_sidecar_path,
+            root=L1A_OUTPUT_ROOT,
+            label="content hash sidecar",
+        )
+        _require_l1a_path(
+            cell.observability_event_path,
+            root=L1A_OBSERVABILITY_ROOT,
+            label="observability event sidecar",
+        )
+        _require_l1a_path(
+            cell.observability_summary_path,
+            root=L1A_OBSERVABILITY_ROOT,
+            label="observability summary sidecar",
+        )
+        _require_l1a_path(
+            cell.observability_hash_path,
+            root=L1A_OBSERVABILITY_ROOT,
+            label="observability hash sidecar",
+        )
+        _require_absent_target(cell.output_path, label="output")
+        _require_absent_target(cell.content_hash_sidecar_path, label="content hash sidecar")
+        _require_absent_target(
+            cell.observability_event_path,
+            label="observability event sidecar",
+        )
+        _require_absent_target(
+            cell.observability_summary_path,
+            label="observability summary sidecar",
+        )
+        _require_absent_target(
+            cell.observability_hash_path,
+            label="observability hash sidecar",
+        )
+    return cells
+
+
+def _require_l1a_path(path: str, *, root: str, label: str) -> None:
+    target = (REPO_ROOT / path).resolve()
+    allowed_root = (REPO_ROOT / root).resolve()
+    try:
+        target.relative_to(allowed_root)
+    except ValueError as exc:
+        raise ValueError(f"signed L1a {label} path is outside {root}") from exc
+
+
+def _require_absent_target(path: str, *, label: str) -> None:
+    target = REPO_ROOT / path
+    if target.exists():
+        raise FileExistsError(
+            f"signed L1a {label} target already exists: {path}; "
+            "retry/resume/delete is not authorized"
+        )
 
 
 def _modal_entrypoint_argv(

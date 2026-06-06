@@ -1574,6 +1574,27 @@ def test_run_cluster3_cli_parses_args(tmp_path: Path) -> None:
     assert config.observability_output is None
 
 
+def _signed_l1a_selector_args(*extra: str, token: str | None = None) -> list[str]:
+    return [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--kernel-class",
+        "elementwise",
+        "--scale-tier",
+        "smoke",
+        "--n",
+        "1",
+        "--dtypes",
+        "fp32",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l1a-authorization",
+        token or runner_mod.L1A_SIGNED_AUTHORIZATION_TOKEN,
+        *extra,
+        "--overwrite",
+    ]
+
+
 def test_l1a_12cell_dry_plan_cli_parses_without_output_or_write_mode() -> None:
     config = parse_args(
         [
@@ -1793,24 +1814,142 @@ def test_l1a_12cell_execution_plan_main_does_not_run_or_write(
     assert before == {path: path.exists() for path in watched_paths}
 
 
-def test_l1a_12cell_signed_selector_refuses_before_runtime(
+def test_l1a_12cell_signed_selector_passes_prelaunch_guard_without_modal(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[runner_mod.Cluster3RunnerConfig] = []
+
+    def fake_run(config: runner_mod.Cluster3RunnerConfig) -> runner_mod.Cluster3RunResult:
+        calls.append(config)
+        return runner_mod.Cluster3RunResult(
+            rows=(),
+            route_audit=(),
+            output=config.output,
+            write_mode=config.write_mode,
+        )
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(runner_mod, "run_cluster3", fake_run)
+
+    result = runner_mod.main(_signed_l1a_selector_args())
+    printed = json.loads(capsys.readouterr().out)
+
+    assert isinstance(result, runner_mod.Cluster3RunResult)
+    assert len(calls) == 1
+    assert calls[0].condition == runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR
+    assert calls[0].signed_l1a_authorization == runner_mod.L1A_SIGNED_AUTHORIZATION_TOKEN
+    assert printed["rows"] == 0
+    assert printed["output"] == runner_mod.L1A_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
+
+
+def test_l1a_12cell_selector_wrong_token_fails_prelaunch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fail_run(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError("signed selector must still stop before run_cluster3")
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l1a_selector_args(token="wrong-token"))
 
-    monkeypatch.setattr(runner_mod, "run_cluster3", fail_run)
+    with pytest.raises(ValueError, match="signed-l1a-authorization"):
+        runner_mod._validate_l1a_runtime_authorization(config)
 
-    with pytest.raises(RuntimeError, match="not enabled"):
-        runner_mod.main(
-            [
-                "--condition",
-                runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
-                "--signed-l1a-authorization",
-                "signed-test-placeholder",
-                "--overwrite",
-            ]
+
+def test_l1a_12cell_selector_n5_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        _signed_l1a_selector_args(
+            "--n",
+            "5",
         )
+    )
+
+    with pytest.raises(ValueError, match="--n 1"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+@pytest.mark.parametrize("scale_tier", ["development", "paper"])
+def test_l1a_12cell_selector_non_smoke_scale_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+    scale_tier: str,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l1a_selector_args("--scale-tier", scale_tier))
+
+    with pytest.raises(ValueError, match="--scale-tier smoke"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l1a_12cell_selector_non_elementwise_kernel_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l1a_selector_args("--kernel-class", "reduction"))
+
+    with pytest.raises(ValueError, match="--kernel-class elementwise"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l1a_12cell_selector_mlflow_enabled_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "1")
+    config = parse_args(_signed_l1a_selector_args())
+
+    with pytest.raises(RuntimeError, match="TRITONGEN_MLFLOW=0"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l1a_12cell_selector_resume_fails_closed() -> None:
+    args = _signed_l1a_selector_args()
+    args[args.index("--overwrite")] = "--resume"
+
+    with pytest.raises(SystemExit):
+        parse_args(args)
+
+
+def test_l1a_12cell_selector_existing_target_path_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l1a_selector_args())
+    first_cell = runner_mod.build_l1a_launcher_executable_plan(
+        repair_history_policy="agentic_transcript_v1",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L1A_SIGNED_AUTHORIZATION_TOKEN,
+    )[0]
+    existing_target = runner_mod.REPO_ROOT / first_cell.output_path
+    original_exists = runner_mod.Path.exists
+
+    def fake_exists(path: Path) -> bool:
+        if path == existing_target:
+            return True
+        return original_exists(path)
+
+    monkeypatch.setattr(runner_mod.Path, "exists", fake_exists)
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l1a_12cell_selector_requires_exactly_12_planned_cells(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l1a_selector_args())
+    cells = runner_mod.build_l1a_launcher_executable_plan(
+        repair_history_policy="agentic_transcript_v1",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L1A_SIGNED_AUTHORIZATION_TOKEN,
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "build_l1a_launcher_executable_plan",
+        lambda **_kwargs: cells[:11],
+    )
+
+    with pytest.raises(ValueError, match="12 planned cells"):
+        runner_mod._validate_l1a_runtime_authorization(config)
 
 
 def test_l1a_12cell_dry_plan_rejects_output_argument(tmp_path: Path) -> None:
