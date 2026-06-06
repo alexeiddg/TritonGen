@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.12
+Version: 1.37.13
 Date: 2026-06-06
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -61,6 +61,7 @@ treated as report-facing.
 | C3 n20 metric-family-gated experiment packet | `docs/experiment_packets/c3_n20_metric_family_gated_packet.md` |
 | Full Pipeline grammar-mode x C x P launch packet v1 | `docs/experiment_packets/full_pipeline_gcp_factorial_launch_packet_v1.md` |
 | Full Pipeline L1a n=1 authorization packet review draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l1a_n1_authorization_packet.md` |
+| Full Pipeline L1a signature-readiness gap closure promotion audit | `audits/l1a_signature_readiness_gap_closure_promotion_audit_report.md` |
 | Full Pipeline L1a signature-readiness gap closure audit | `audits/l1a_signature_readiness_gap_closure_report.md` |
 | Full Pipeline L1a final approval packet promotion audit | `audits/l1a_final_approval_packet_promotion_audit_report.md` |
 | Full Pipeline L1a final approval packet completion audit | `audits/l1a_final_approval_packet_completion_report.md` |
@@ -180,8 +181,9 @@ see `audits/l1a_packet_baseline_pin_report.md`,
 the final approval completion and promotion audits
 `audits/l1a_final_approval_packet_completion_report.md` and
 `audits/l1a_final_approval_packet_promotion_audit_report.md`, plus
-`audits/l1a_signature_readiness_gap_closure_report.md` for the current
-gap-closure branch.
+`audits/l1a_signature_readiness_gap_closure_report.md` and
+`audits/l1a_signature_readiness_gap_closure_promotion_audit_report.md` for the
+promoted gap-closure packet surface.
 Local representability support uses the repo-supported grammar-mode values
 `grammar_off`,
 `template_upper_bound`, and `task_agnostic`; see
