@@ -2472,6 +2472,21 @@ def _call_c_loop(
     )
 
 
+def _c_terminal_prompt_metadata(c_result: Cluster3CLoopResult | None) -> Any | None:
+    if c_result is None:
+        return None
+    repair_result = c_result.cluster2_repair_result
+    return _metadata_attr(repair_result, "terminal_prompt_metadata")
+
+
+def _metadata_attr(metadata: Any | None, field_name: str) -> Any | None:
+    if metadata is None:
+        return None
+    if isinstance(metadata, Mapping):
+        return metadata.get(field_name)
+    return getattr(metadata, field_name, None)
+
+
 def _build_row(
     *,
     condition: str,
@@ -2507,6 +2522,7 @@ def _build_row(
         if p_prompt_metadata is not None
         else config.repair_history_config.repair_history_policy
     )
+    c_prompt_metadata = _c_terminal_prompt_metadata(c_result)
     p_changed = (
         _p_changed_terminal_class("F1_COMPILE", p_terminal_failure)
         if p_result
@@ -2618,6 +2634,62 @@ def _build_row(
         "tokenizer_revision": config.tokenizer_revision,
         "temperature": config.temperature,
         "max_new_tokens": config.max_new_tokens,
+        "c_history_policy": _metadata_attr(
+            c_prompt_metadata,
+            "repair_history_policy",
+        ),
+        "c_repair_prompt_template_version": _metadata_attr(
+            c_prompt_metadata,
+            "repair_prompt_template_version",
+        ),
+        "c_repair_prompt_renderer_version": _metadata_attr(
+            c_prompt_metadata,
+            "repair_prompt_renderer_version",
+        ),
+        "c_repair_anchor_attempt_index": _metadata_attr(
+            c_prompt_metadata,
+            "repair_anchor_attempt_index",
+        ),
+        "c_repair_latest_attempt_index": _metadata_attr(
+            c_prompt_metadata,
+            "repair_latest_attempt_index",
+        ),
+        "c_repair_history_attempt_count": _metadata_attr(
+            c_prompt_metadata,
+            "repair_history_attempt_count",
+        ),
+        "c_repair_prompt_sha256": _metadata_attr(
+            c_prompt_metadata,
+            "repair_prompt_sha256",
+        ),
+        "c_repair_prompt_char_count": _metadata_attr(
+            c_prompt_metadata,
+            "repair_prompt_char_count",
+        ),
+        "c_repair_max_prompt_chars": _metadata_attr(
+            c_prompt_metadata,
+            "repair_max_prompt_chars",
+        ),
+        "c_repair_include_latest_source": _metadata_attr(
+            c_prompt_metadata,
+            "repair_include_latest_source",
+        ),
+        "c_repair_anchor_source_hash": _metadata_attr(
+            c_prompt_metadata,
+            "repair_anchor_source_hash",
+        ),
+        "c_repair_latest_source_hash": _metadata_attr(
+            c_prompt_metadata,
+            "repair_latest_source_hash",
+        ),
+        "c_repair_history_summary_sha256": _metadata_attr(
+            c_prompt_metadata,
+            "repair_history_summary_sha256",
+        ),
+        "c_repair_history_error_code": _metadata_attr(
+            c_prompt_metadata,
+            "repair_history_error_code",
+        ),
     }
     return generated_row(
         condition=condition,

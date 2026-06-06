@@ -283,6 +283,40 @@ class CLoopRecorder:
                     source_hash=_sha(source),
                 )
             )
+        repair_history_policy = kwargs["repair_history_config"].repair_history_policy
+        terminal_prompt_metadata: dict[str, Any] = {
+            "repair_history_policy": repair_history_policy,
+            "repair_prompt_template_version": None,
+            "repair_prompt_renderer_version": None,
+            "repair_anchor_attempt_index": None,
+            "repair_latest_attempt_index": None,
+            "repair_history_attempt_count": None,
+            "repair_prompt_sha256": None,
+            "repair_prompt_char_count": None,
+            "repair_max_prompt_chars": None,
+            "repair_include_latest_source": None,
+            "repair_anchor_source_hash": None,
+            "repair_latest_source_hash": None,
+            "repair_history_summary_sha256": None,
+            "repair_history_error_code": None,
+        }
+        if repair_history_policy == "agentic_transcript_v1" and self.c_attempt_count > 0:
+            terminal_prompt_metadata.update(
+                {
+                    "repair_prompt_template_version": "agentic_transcript_v1",
+                    "repair_prompt_renderer_version": "agentic_transcript_v1",
+                    "repair_anchor_attempt_index": 0,
+                    "repair_latest_attempt_index": 0,
+                    "repair_history_attempt_count": 1,
+                    "repair_prompt_sha256": prompt_hash,
+                    "repair_prompt_char_count": 512,
+                    "repair_max_prompt_chars": 24000,
+                    "repair_include_latest_source": False,
+                    "repair_anchor_source_hash": traces[0].source_hash,
+                    "repair_latest_source_hash": traces[0].source_hash,
+                    "repair_history_summary_sha256": _sha("c repair history summary"),
+                }
+            )
         return Cluster3CLoopResult(
             c_loop_fired=True,
             c_loop_source=kwargs["c_loop_source"],
@@ -299,7 +333,10 @@ class CLoopRecorder:
             terminal_prompt_hash_source=prompt_hash_source,
             terminal_attempt_index=terminal_index,
             terminal_correctness_result=result,
-            cluster2_repair_result={"trace_summaries": traces},
+            cluster2_repair_result={
+                "trace_summaries": traces,
+                "terminal_prompt_metadata": terminal_prompt_metadata,
+            },
             trace_summary_fragment={"outer_c3_condition": kwargs["outer_c3_condition"]},
             infrastructure_failure=False,
             f3_reason=None,
@@ -1042,6 +1079,34 @@ def test_run_cluster3_agentic_p_metadata_records_rendered_prompt(
     assert metadata.p_repair_anchor_source_hash == row.p_repair_trace[0].source_hash
     assert metadata.p_repair_latest_source_hash == row.p_repair_trace[0].source_hash
     assert row.terminal_prompt_hash == metadata.p_repair_prompt_sha256
+
+
+def test_run_cluster3_agentic_c_metadata_records_rendered_prompt(
+    tmp_path: Path,
+) -> None:
+    run, generation, _, _ = _run_with_results(
+        tmp_path,
+        "C",
+        _f2_result(),
+        _f2_result(),
+        repair_history_policy="agentic_transcript_v1",
+    )
+
+    row = run.rows[0]
+    metadata = row.generated_metadata
+    assert metadata is not None
+    assert row.c_loop_fired is True
+    assert metadata.c_history_policy == "agentic_transcript_v1"
+    assert metadata.c_repair_anchor_attempt_index == 0
+    assert metadata.c_repair_latest_attempt_index == 0
+    assert metadata.c_repair_history_attempt_count == 1
+    assert metadata.c_repair_prompt_sha256 == _sha("c repair prompt")
+    assert metadata.c_repair_max_prompt_chars == 24000
+    assert metadata.c_repair_include_latest_source is False
+    assert row.repair_trace is not None
+    assert metadata.c_repair_anchor_source_hash == _sha(SEED_SOURCE)
+    assert metadata.c_repair_latest_source_hash == _sha(SEED_SOURCE)
+    assert row.terminal_prompt_hash == metadata.c_repair_prompt_sha256
 
 
 def test_run_cluster3_default_p_metadata_records_legacy_policy(

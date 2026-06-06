@@ -119,6 +119,20 @@ class Cluster3GeneratedRowMetadata:
     p_repair_latest_source_hash: str | None = None
     p_repair_history_summary_sha256: str | None = None
     p_repair_history_error_code: str | None = None
+    c_history_policy: str | None = None
+    c_repair_prompt_template_version: str | None = None
+    c_repair_prompt_renderer_version: str | None = None
+    c_repair_anchor_attempt_index: int | None = None
+    c_repair_latest_attempt_index: int | None = None
+    c_repair_history_attempt_count: int | None = None
+    c_repair_prompt_sha256: str | None = None
+    c_repair_prompt_char_count: int | None = None
+    c_repair_max_prompt_chars: int | None = None
+    c_repair_include_latest_source: bool | None = None
+    c_repair_anchor_source_hash: str | None = None
+    c_repair_latest_source_hash: str | None = None
+    c_repair_history_summary_sha256: str | None = None
+    c_repair_history_error_code: str | None = None
     c_loop_fired: bool | None = None
     c_loop_source: CTraceSource | None = None
     grammar_mode: str | None = None
@@ -205,6 +219,28 @@ class Cluster3GeneratedRowMetadata:
                 self.p_repair_history_summary_sha256
             ),
             p_repair_history_error_code=self.p_repair_history_error_code,
+        )
+        _validate_c_repair_history_metadata(
+            c_history_policy=self.c_history_policy,
+            c_repair_prompt_template_version=(
+                self.c_repair_prompt_template_version
+            ),
+            c_repair_prompt_renderer_version=(
+                self.c_repair_prompt_renderer_version
+            ),
+            c_repair_anchor_attempt_index=self.c_repair_anchor_attempt_index,
+            c_repair_latest_attempt_index=self.c_repair_latest_attempt_index,
+            c_repair_history_attempt_count=self.c_repair_history_attempt_count,
+            c_repair_prompt_sha256=self.c_repair_prompt_sha256,
+            c_repair_prompt_char_count=self.c_repair_prompt_char_count,
+            c_repair_max_prompt_chars=self.c_repair_max_prompt_chars,
+            c_repair_include_latest_source=self.c_repair_include_latest_source,
+            c_repair_anchor_source_hash=self.c_repair_anchor_source_hash,
+            c_repair_latest_source_hash=self.c_repair_latest_source_hash,
+            c_repair_history_summary_sha256=(
+                self.c_repair_history_summary_sha256
+            ),
+            c_repair_history_error_code=self.c_repair_history_error_code,
         )
         _validate_optional_bool(self.c_loop_fired, "c_loop_fired")
         if self.c_loop_source is not None and self.c_loop_source not in _C_LOOP_SOURCES:
@@ -1707,6 +1743,124 @@ def _validate_agentic_p_rendered_metadata(
             "p_repair_anchor_attempt_index must be less than "
             "p_repair_history_attempt_count for "
             "agentic_transcript_v1 rendered P metadata"
+        )
+
+
+def _validate_c_repair_history_metadata(
+    *,
+    c_history_policy: str | None,
+    c_repair_prompt_template_version: str | None,
+    c_repair_prompt_renderer_version: str | None,
+    c_repair_anchor_attempt_index: int | None,
+    c_repair_latest_attempt_index: int | None,
+    c_repair_history_attempt_count: int | None,
+    c_repair_prompt_sha256: str | None,
+    c_repair_prompt_char_count: int | None,
+    c_repair_max_prompt_chars: int | None,
+    c_repair_include_latest_source: bool | None,
+    c_repair_anchor_source_hash: str | None,
+    c_repair_latest_source_hash: str | None,
+    c_repair_history_summary_sha256: str | None,
+    c_repair_history_error_code: str | None,
+) -> None:
+    rendered_fields = {
+        "c_repair_prompt_template_version": c_repair_prompt_template_version,
+        "c_repair_prompt_renderer_version": c_repair_prompt_renderer_version,
+        "c_repair_anchor_attempt_index": c_repair_anchor_attempt_index,
+        "c_repair_latest_attempt_index": c_repair_latest_attempt_index,
+        "c_repair_history_attempt_count": c_repair_history_attempt_count,
+        "c_repair_prompt_sha256": c_repair_prompt_sha256,
+        "c_repair_prompt_char_count": c_repair_prompt_char_count,
+        "c_repair_max_prompt_chars": c_repair_max_prompt_chars,
+        "c_repair_include_latest_source": c_repair_include_latest_source,
+        "c_repair_anchor_source_hash": c_repair_anchor_source_hash,
+        "c_repair_latest_source_hash": c_repair_latest_source_hash,
+        "c_repair_history_summary_sha256": c_repair_history_summary_sha256,
+    }
+    if c_history_policy is None and all(
+        value is None
+        for value in (*rendered_fields.values(), c_repair_history_error_code)
+    ):
+        return
+    if not isinstance(c_history_policy, str):
+        raise TypeError("c_history_policy must be a string")
+    if c_history_policy not in REPAIR_HISTORY_POLICIES_V1:
+        raise ValueError(f"unsupported c_history_policy {c_history_policy!r}")
+    _require_optional_non_empty_str(
+        c_repair_prompt_template_version,
+        "c_repair_prompt_template_version",
+    )
+    _require_optional_non_empty_str(
+        c_repair_prompt_renderer_version,
+        "c_repair_prompt_renderer_version",
+    )
+    _require_optional_non_empty_str(
+        c_repair_history_error_code,
+        "c_repair_history_error_code",
+    )
+    for field_name, value in (
+        ("c_repair_anchor_attempt_index", c_repair_anchor_attempt_index),
+        ("c_repair_latest_attempt_index", c_repair_latest_attempt_index),
+        ("c_repair_history_attempt_count", c_repair_history_attempt_count),
+    ):
+        if value is not None:
+            _require_non_negative_int(value, field_name)
+    for field_name, value in (
+        ("c_repair_prompt_char_count", c_repair_prompt_char_count),
+        ("c_repair_max_prompt_chars", c_repair_max_prompt_chars),
+    ):
+        if value is not None:
+            _require_positive_int(value, field_name)
+    if c_repair_include_latest_source is not None:
+        _require_bool(c_repair_include_latest_source, "c_repair_include_latest_source")
+    for field_name, value in (
+        ("c_repair_prompt_sha256", c_repair_prompt_sha256),
+        ("c_repair_anchor_source_hash", c_repair_anchor_source_hash),
+        ("c_repair_latest_source_hash", c_repair_latest_source_hash),
+        ("c_repair_history_summary_sha256", c_repair_history_summary_sha256),
+    ):
+        _validate_optional_sha256(value, field_name)
+    if c_history_policy != AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1:
+        return
+    if all(value is None for value in rendered_fields.values()):
+        return
+    missing = sorted(
+        field_name
+        for field_name, value in rendered_fields.items()
+        if value is None
+    )
+    if missing:
+        raise ValueError(
+            "agentic_transcript_v1 C metadata requires rendered prompt fields: "
+            + ", ".join(missing)
+        )
+    if (
+        c_repair_history_attempt_count is not None
+        and c_repair_history_attempt_count <= 0
+    ):
+        raise ValueError(
+            "c_repair_history_attempt_count must be positive for "
+            "agentic_transcript_v1 rendered C metadata"
+        )
+    if (
+        c_repair_latest_attempt_index is not None
+        and c_repair_history_attempt_count is not None
+        and c_repair_latest_attempt_index != c_repair_history_attempt_count - 1
+    ):
+        raise ValueError(
+            "c_repair_latest_attempt_index must equal "
+            "c_repair_history_attempt_count - 1 for "
+            "agentic_transcript_v1 rendered C metadata"
+        )
+    if (
+        c_repair_anchor_attempt_index is not None
+        and c_repair_history_attempt_count is not None
+        and c_repair_anchor_attempt_index >= c_repair_history_attempt_count
+    ):
+        raise ValueError(
+            "c_repair_anchor_attempt_index must be less than "
+            "c_repair_history_attempt_count for "
+            "agentic_transcript_v1 rendered C metadata"
         )
 
 
