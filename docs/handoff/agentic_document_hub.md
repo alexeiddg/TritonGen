@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.30
+Version: 1.37.31
 Date: 2026-06-07
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -79,10 +79,11 @@ treated as report-facing.
 | Full Pipeline L2 n=20 runtime-gate promotion audit | `audits/l2_n20_runtime_gate_enable_promotion_audit_report.md` |
 | Full Pipeline L2 n=20 execution completion report | `audits/l2_n20_execution_completion_report.md` |
 | Full Pipeline L2b compressed full-coverage plan packet | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_full_coverage_authorization_packet.md` |
-| Full Pipeline L2b n=2 final unsigned packet | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n2_full_coverage_authorization_packet.md` |
+| Full Pipeline L2b n=2 final signed packet | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n2_full_coverage_authorization_packet.md` |
 | Full Pipeline L2b n=20 unsigned blocked packet draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n20_full_coverage_authorization_packet.md` |
 | Full Pipeline L2b Fireworks-ready Modal plan | `docs/implementation_plans/l2b_full_coverage_fireworks_ready_modal_plan.md` |
 | Full Pipeline L2b plan/selector audit | `audits/l2b_full_coverage_plan_and_selector_report.md` |
+| Full Pipeline L2b n=2 final authorization audit | `audits/l2b_n2_final_authorization_report.md` |
 | Full Pipeline L1a final signature packet report | `audits/l1a_final_signature_packet_report.md` |
 | Full Pipeline L1a executable 12-cell selector support audit | `audits/l1a_executable_12cell_selector_support_report.md` |
 | Full Pipeline L1a executable 12-cell selector support promotion audit | `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md` |
@@ -157,14 +158,16 @@ models mandatory shards as exact `kernel_class__dtype_variant` tuples for the
 repo-backed 9-shard scope `elementwise/reduction/matmul x fp32/fp16/bf16`.
 The L2b-2 target is 12 cells x n=2 per shard, 24 rows per shard, 216 rows
 total, with deterministic per-shard output/artifact namespaces and
-fail-if-target-path-exists behavior. The L2b-2 packet is final unsigned and
-ready for signature review only; runtime execution remains fail-closed until a
-separate L2b-2 signature is applied. L2b-4 is unsigned, non-authorizing, and
+fail-if-target-path-exists behavior. The L2b-2 packet is now final signed as
+`SIGNED_FOR_L2B_N2_ONLY` at target baseline
+`eab664f560404cc40e309caa8d4202346452ecc3`, but no execution occurred during
+packet preparation and runtime launcher behavior was not changed. Before
+launch, a separate runtime-gate readiness step must verify or enable only the
+exact signed L2b-2 token/profile/path. L2b-4 is unsigned, non-authorizing, and
 blocked until L2b-2 completes and validates. Per-cell and per-shard timing
 diagnostics are sidecar-only operational metadata, not performance evidence.
-No L2b Modal/GPU/generation, output/artifact/mlruns mutation, billing query,
-analyzer/report refresh, retry, resume, overwrite, rerun, paper-scale claim, or
-L2a artifact mutation is authorized by this planning branch.
+Retry, resume, L2b-4, L3, analyzer/report refresh, paper-scale claim, and L2a
+artifact mutation remain blocked outside the signed L2b-2 packet boundaries.
 
 Cluster 3 diagnostic evidence is provenance-frozen through
 `audits/cluster3_phase13b_commit_provenance_freeze_report.md`. Phase 14e froze

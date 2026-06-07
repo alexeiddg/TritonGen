@@ -3,26 +3,27 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_COMPRESSED_FULL_COVERAGE_PACKET_V2`
-packet_version: `0.3.0-reconciled-plan-only`
-packet_type: compressed ladder planning packet and local selector/profile record
+packet_version: `0.4.0-l2b-n2-signed-boundary`
+packet_type: compressed ladder planning packet and L2b-2 signature boundary record
 branch: `codex/l2b-full-coverage-plan-and-selector`
 target_branch: `codex-track-handoff-context`
 baseline_commit: `9974770 Promote Fireworks Modal planning doc`
-status: `DRAFT_NOT_APPROVED_PLAN_ONLY`
-signature_status: `UNSIGNED`
-classification: `L2B_PLANNING_RECONCILED_READY_FOR_L2B2_SIGNATURE`
-AUTHORIZES_EXECUTION: NO
+execution_code_target_commit: `eab664f560404cc40e309caa8d4202346452ecc3`
+status: `L2B_2_SIGNED_L2B_4_BLOCKED_NO_EXECUTION_YET`
+signature_status: `SIGNED_FOR_L2B_N2_ONLY`
+classification: `L2B_N2_FINAL_AUTHORIZATION_READY`
+AUTHORIZES_EXECUTION: YES_L2B_N2_ONLY
 
 Execution authorization flags:
 
 ```text
-MODAL_AUTHORIZED: NO
-GPU_AUTHORIZED: NO
-GENERATION_AUTHORIZED: NO
-EXPERIMENT_EXECUTION_AUTHORIZED: NO
-OUTPUT_MUTATION_AUTHORIZED: NO
-ARTIFACT_MUTATION_AUTHORIZED: NO
-BILLING_QUERY_AUTHORIZED: NO
+MODAL_AUTHORIZED: YES_L2B_N2_ONLY
+GPU_AUTHORIZED: YES_L2B_N2_ONLY
+GENERATION_AUTHORIZED: YES_L2B_N2_ONLY
+EXPERIMENT_EXECUTION_AUTHORIZED: YES_L2B_N2_ONLY
+OUTPUT_MUTATION_AUTHORIZED: YES_L2B_N2_NAMESPACES_ONLY
+ARTIFACT_MUTATION_AUTHORIZED: YES_L2B_N2_NAMESPACES_ONLY
+BILLING_QUERY_AUTHORIZED: YES_L2B_N2_RECONCILIATION_ONLY_AFTER_RUN
 ANALYZER_REFRESH_AUTHORIZED: NO
 REPORT_REFRESH_AUTHORIZED: NO
 MLFLOW_TRACKING_EXECUTION_AUTHORIZED: NO
@@ -32,10 +33,11 @@ RESUME_AUTHORIZED: NO
 L2B_4_AUTHORIZED: NO
 ```
 
-This packet replaces the earlier monolithic L2b n=20 planning shape with a
-compressed two-stage sharded ladder. It does not run Modal, GPU work,
-generation, billing, analyzer/report refresh, Fireworks API calls, or any
-output/artifact mutation.
+This umbrella now records that the separate L2b-2 packet is signed for the
+216-row n=2 shard scope only. No execution occurred during packet drafting. This
+umbrella does not sign L2b-4, does not authorize retry or resume, and does not
+change runtime launcher behavior; a separate execution-readiness step must
+verify or enable only the exact signed L2b-2 token/profile/path before launch.
 
 ## Reconciliation Context
 
@@ -57,12 +59,14 @@ Do not run L2b-1.
 | Rung | Selector profile | Scope | Status |
 |---|---|---|---|
 | L2b-0 | local planning only | selector/profile and shard-plan support | implemented locally; no execution |
-| L2b-2 | `l2b_n2_full_coverage` | full repo-backed coverage at `n=2` | final unsigned packet ready for signature review |
+| L2b-2 | `l2b_n2_full_coverage` | full repo-backed coverage at `n=2` | signed for L2b-2 only; no execution yet |
 | L2b-4 | `l2b_n20_full_coverage` | same full coverage at `n=20` | unsigned and blocked on L2b-2 completion/validation |
 
 The branch may prepare L2b-4 selector/profile support and an unsigned packet
-draft only. L2b-4 can be signed only after L2b-2 completes and validates.
-Runtime remains fail-closed until the L2b-2 packet is separately signed.
+draft only. L2b-4 can be signed only after L2b-2 completes and validates. The
+L2b-2 packet is now signed, but the target code still has no registered signed
+L2b runtime token because this packet-preparation step intentionally did not
+change runtime launcher behavior.
 
 ## Repo-Backed Scope
 
@@ -290,7 +294,7 @@ wave validates cleanly.
 
 ## Packet Files
 
-The signature-ready L2b-2 draft is:
+The signed L2b-2 packet is:
 
 ```text
 docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n2_full_coverage_authorization_packet.md
@@ -317,4 +321,4 @@ Protected mutation scan must show no changed files under `outputs`,
 
 ## Classification
 
-`L2B_PLANNING_RECONCILED_READY_FOR_L2B2_SIGNATURE`
+`L2B_N2_FINAL_AUTHORIZATION_READY`

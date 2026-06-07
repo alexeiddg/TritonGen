@@ -2,12 +2,15 @@
 
 ## Summary
 
-status: `L2B_PLANNING_RECONCILED_READY_FOR_L2B2_SIGNATURE`
-report_version: `2.0.1`
+status: `L2B_PLANNING_RECONCILED_L2B2_SIGNED_BOUNDARY_RECORDED`
+report_version: `2.0.2`
 branch: `codex/l2b-full-coverage-plan-and-selector`
 baseline_commit: `9974770 Promote Fireworks Modal planning doc`
 promoted_planning_commit: `8b26951e37cde7eab5497f2a35860b95da067302`
 AUTHORIZES_EXECUTION: NO
+final_l2b2_signature_packet: `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n2_full_coverage_authorization_packet.md`
+final_l2b2_signature_status: `SIGNED_FOR_L2B_N2_ONLY`
+final_l2b2_target_commit: `eab664f560404cc40e309caa8d4202346452ecc3`
 
 This audit records the reconciled L2b planning branch. The branch is now replayed
 onto current `codex-track-handoff-context` at `9974770 Promote Fireworks Modal
@@ -23,9 +26,12 @@ No Modal/GPU/generation/billing/output/artifact/mlruns mutation, analyzer/report
 refresh, Fireworks API call, dependency change, lockfile change, retry, or
 resume was performed.
 
-The separate final unsigned L2b-2 packet now pins `SIGNED_TARGET_COMMIT` to
-promoted planning commit `8b26951e37cde7eab5497f2a35860b95da067302`. It remains
-unsigned and does not authorize execution.
+Supersession note: this reconciliation audit originally prepared the final
+unsigned L2b-2 packet. That packet has now been superseded by the final signed
+L2b-2 packet targeting
+`eab664f560404cc40e309caa8d4202346452ecc3` with
+`SIGNATURE_STATUS: SIGNED_FOR_L2B_N2_ONLY`. This audit remains non-authorizing
+historical planning evidence; the signed packet is the authorization surface.
 
 ## Current Trunk Context
 
@@ -160,7 +166,7 @@ Runtime remains fail-closed because no signed L2b token is registered. The
 placeholder `SIGNED_L2B_PACKET_NOT_APPROVED` parses as a command-shape draft but
 is not an approved authorization token.
 
-The L2b-2 packet is now the only final unsigned signature-ready L2b packet.
+The L2b-2 packet is now final signed for the n=2, 9-shard, 216-row scope only.
 L2b-4 remains unsigned and blocked on L2b-2 validation.
 
 Existing L2a `paper/n=20/elementwise/fp32` selector behavior remains separate
@@ -291,19 +297,20 @@ git diff --cached --check
 
 No planning blocker remains. Execution blockers remain:
 
-- L2b-2 is unsigned until reviewed and signed; runtime remains fail-closed.
+- L2b-2 is signed at the packet layer, but a separate runtime-gate readiness
+  pass remains required because this signing branch did not change launcher
+  behavior.
 - L2b-4 is unsigned and blocked on L2b-2 completion and validation.
-- A concrete per-cell wall-clock budget is required before any L2b execution
-  signature.
 - No L2b output/artifact/billing/analyzer/report evidence exists.
 - Fireworks API integration remains TODO-only.
 
 ## Classification
 
-`L2B_PLANNING_RECONCILED_READY_FOR_L2B2_SIGNATURE`
+`L2B_N2_FINAL_AUTHORIZATION_READY`
 
 ## Next Step
 
-Promote this reconciled planning/selector branch, then review and sign only the
-L2b-2 n=2 packet. Do not launch L2b during reconciliation or packet drafting.
+Use the final signed L2b-2 packet for a separate runtime-gate readiness review,
+then launch only the exact signed L2b-2 command if that readiness step passes.
+Do not launch L2b-4 or modify L2a artifacts.
 Do not sign or run L2b-4 until L2b-2 completes and validates cleanly.
