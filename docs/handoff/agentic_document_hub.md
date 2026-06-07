@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.31
+Version: 1.37.32
 Date: 2026-06-07
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -84,6 +84,7 @@ treated as report-facing.
 | Full Pipeline L2b Fireworks-ready Modal plan | `docs/implementation_plans/l2b_full_coverage_fireworks_ready_modal_plan.md` |
 | Full Pipeline L2b plan/selector audit | `audits/l2b_full_coverage_plan_and_selector_report.md` |
 | Full Pipeline L2b n=2 final authorization audit | `audits/l2b_n2_final_authorization_report.md` |
+| Full Pipeline L2b n=2 runtime-gate enable audit | `audits/l2b_n2_runtime_gate_enable_report.md` |
 | Full Pipeline L1a final signature packet report | `audits/l1a_final_signature_packet_report.md` |
 | Full Pipeline L1a executable 12-cell selector support audit | `audits/l1a_executable_12cell_selector_support_report.md` |
 | Full Pipeline L1a executable 12-cell selector support promotion audit | `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md` |
@@ -160,14 +161,20 @@ The L2b-2 target is 12 cells x n=2 per shard, 24 rows per shard, 216 rows
 total, with deterministic per-shard output/artifact namespaces and
 fail-if-target-path-exists behavior. The L2b-2 packet is now final signed as
 `SIGNED_FOR_L2B_N2_ONLY` at target baseline
-`eab664f560404cc40e309caa8d4202346452ecc3`, but no execution occurred during
-packet preparation and runtime launcher behavior was not changed. Before
-launch, a separate runtime-gate readiness step must verify or enable only the
-exact signed L2b-2 token/profile/path. L2b-4 is unsigned, non-authorizing, and
-blocked until L2b-2 completes and validates. Per-cell and per-shard timing
-diagnostics are sidecar-only operational metadata, not performance evidence.
-Retry, resume, L2b-4, L3, analyzer/report refresh, paper-scale claim, and L2a
-artifact mutation remain blocked outside the signed L2b-2 packet boundaries.
+`eab664f560404cc40e309caa8d4202346452ecc3`, and commit `b770521` is pushed on
+`codex-track-handoff-context`. The L2b-2 runtime-gate enablement report is
+recorded in `audits/l2b_n2_runtime_gate_enable_report.md`: the signed packet
+token/profile/path can pass local pre-launch validation for all shards, one
+shard, or a bounded wave, while unsigned, wrong-token, L1/L2 token reuse,
+L2b-4/n20, unknown-shard, row/shard-count mismatch, MLflow-enabled,
+retry/resume, target-path collision, and namespace-escape variants remain
+fail-closed. No L2b execution occurred during gate enablement. L2b-4 is
+unsigned, non-authorizing, and blocked until L2b-2 completes and validates.
+Per-cell and per-shard timing diagnostics are sidecar-only operational
+metadata, not performance evidence. Retry, resume, L2b-4, L3, analyzer/report
+refresh, billing reconciliation, profiler/benchmark/speedup, paper-scale claim,
+and L2a artifact mutation remain blocked outside the signed L2b-2 packet
+boundaries.
 
 Cluster 3 diagnostic evidence is provenance-frozen through
 `audits/cluster3_phase13b_commit_provenance_freeze_report.md`. Phase 14e froze

@@ -83,6 +83,7 @@ from cluster3.planning.grammar_mode_matrix import (
     L1B_SIGNED_AUTHORIZATION_PLACEHOLDER,
     L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+    L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_N20_OBSERVABILITY_ROOT,
     L2B_N20_OUTPUT_ROOT,
     L2B_N20_RUN_ID_PREFIX,
@@ -91,12 +92,15 @@ from cluster3.planning.grammar_mode_matrix import (
     L2B_N2_OUTPUT_ROOT,
     L2B_N2_RUN_ID_PREFIX,
     L2B_N2_SELECTOR_PROFILE_ID,
+    L2B_N2_SIGNATURE_STATUS,
+    L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
     L2B_SIGNED_AUTHORIZATION_PLACEHOLDER,
     L2_OUTPUT_ROOT,
     L2_OBSERVABILITY_ROOT,
     L2_RUN_ID_PREFIX,
     L2_SIGNED_AUTHORIZATION_PLACEHOLDER,
     GrammarModeLauncherCellPlan,
+    L2BFullCoverageShardPlan,
     build_l1a_launcher_dry_plan,
     build_l1a_launcher_executable_plan,
     build_l2b_full_coverage_shard_plan,
@@ -524,9 +528,9 @@ L2_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
 )
 L2B_N2_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
     profile_id=L2B_N2_SELECTOR_PROFILE_ID,
-    label="L2b-2 n=2 sharded full coverage signed-ready plan",
-    signed_authorization_token=None,
-    signed_authorization_placeholder=L2B_SIGNED_AUTHORIZATION_PLACEHOLDER,
+    label="L2b-2 n=2 sharded full coverage signed runtime gate",
+    signed_authorization_token=L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+    signed_authorization_placeholder=L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
     signed_authorization_option="--signed-l2b-authorization",
     output_root=L2B_N2_OUTPUT_ROOT,
     observability_root=L2B_N2_OBSERVABILITY_ROOT,
@@ -537,11 +541,9 @@ L2B_N2_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
     expected_planned_rows=216,
     kernel_class_selector="all",
     dtypes=DTYPE_NAMES,
-    runtime_execution_enabled=False,
-    runtime_block_reason=(
-        "L2b-2 is signed-ready planning only; no signed execution token exists"
-    ),
-    support_status=L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+    runtime_execution_enabled=True,
+    runtime_block_reason=None,
+    support_status=L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
 )
 L2B_N20_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
     profile_id=L2B_N20_SELECTOR_PROFILE_ID,
@@ -650,6 +652,8 @@ def _selector_profile_for_scale(
     for profile in SELECTOR_PROFILES:
         if (
             profile.runtime_execution_enabled is True
+            and profile.profile_id
+            not in (L2B_N2_SELECTOR_PROFILE_ID, L2B_N20_SELECTOR_PROFILE_ID)
             and scale_tier == profile.scale_tier
             and n == profile.n
         ):
@@ -1578,6 +1582,12 @@ def main(argv: Sequence[str] | None = None) -> Cluster3RunResult | dict[str, Any
         return payload
     l1a_cells: tuple[GrammarModeLauncherCellPlan, ...] | None = None
     if config.condition == L1A_GRAMMAR_MODE_CP_SELECTOR:
+        if config.l2b_stage is not None:
+            _validate_l2b_runtime_authorization(config)
+            raise RuntimeError(
+                "signed L2b-2 pre-launch gate passed; this no-execution "
+                "runtime-gate branch does not dispatch L2b Modal execution"
+            )
         l1a_cells = _validate_l1a_runtime_authorization(config)
 
     # Seam A (Modal path): open an optional MLflow run around the local
@@ -1808,6 +1818,223 @@ def _validate_l1a_runtime_authorization(
             label="observability hash sidecar",
         )
     return cells
+
+
+def _validate_l2b_runtime_authorization(
+    config: Cluster3RunnerConfig,
+) -> tuple[L2BFullCoverageShardPlan, ...]:
+    """Validate the exact signed L2b-2 shard selector before launch."""
+
+    if config.condition != L1A_GRAMMAR_MODE_CP_SELECTOR:
+        raise ValueError("L2b authorization is only valid for grammar_mode_cp_12cell")
+    if config.l2b_stage == L2B_N20_SELECTOR_PROFILE_ID:
+        raise RuntimeError("L2b-4 remains unsigned and blocked on L2b-2 validation")
+    if config.l2b_stage != L2B_N2_SELECTOR_PROFILE_ID:
+        raise ValueError(f"signed L2b-2 requires --l2b-stage {L2B_N2_SELECTOR_PROFILE_ID}")
+
+    profile = _selector_profile_for_authorization(config)
+    if (
+        profile.profile_id != L2B_N2_SELECTOR_PROFILE_ID
+        or config.signed_l1a_authorization != L2B_N2_SIGNED_AUTHORIZATION_TOKEN
+    ):
+        raise ValueError(
+            "signed L2b-2 requires --signed-l2b-authorization "
+            f"{L2B_N2_SIGNED_AUTHORIZATION_TOKEN}"
+        )
+    stage = l2b_full_coverage_stage_spec(config.l2b_stage)
+    if not stage.runtime_execution_enabled:
+        raise RuntimeError(stage.runtime_block_reason or "L2b-2 runtime gate is blocked")
+    if not stage.signed_authorization_available:
+        raise RuntimeError("signed L2b-2 runtime gate requires signed authorization")
+    if stage.signature_status != L2B_N2_SIGNATURE_STATUS:
+        raise RuntimeError(f"signed L2b-2 requires signature status {L2B_N2_SIGNATURE_STATUS}")
+    if stage.total_shards != 9:
+        raise ValueError("signed L2b-2 requires exactly 9 total shards")
+    if stage.rows_per_shard != 24:
+        raise ValueError("signed L2b-2 requires exactly 24 rows per shard")
+    if stage.full_matrix_planned_rows != 216:
+        raise ValueError("signed L2b-2 requires exactly 216 total planned rows")
+    if LOCKED_KERNEL_CLASSES != ("elementwise", "reduction", "matmul"):
+        raise ValueError("signed L2b-2 requires elementwise/reduction/matmul kernels")
+    if DTYPE_NAMES != ("fp32", "fp16", "bf16"):
+        raise ValueError("signed L2b-2 requires fp32/fp16/bf16 dtype variants")
+    if l2b_full_coverage_shard_ids() != (
+        "elementwise__fp32",
+        "elementwise__fp16",
+        "elementwise__bf16",
+        "reduction__fp32",
+        "reduction__fp16",
+        "reduction__bf16",
+        "matmul__fp32",
+        "matmul__fp16",
+        "matmul__bf16",
+    ):
+        raise ValueError("signed L2b-2 shard ids do not match the signed packet")
+
+    limits = stage.concurrency_limits
+    if limits.get("max_gpu_concurrency", 0) > 4:
+        raise ValueError("signed L2b-2 requires max_gpu_concurrency <= 4")
+    if limits.get("max_container_concurrency", 0) > 40:
+        raise ValueError("signed L2b-2 requires max_container_concurrency <= 40")
+    if os.environ.get("TRITONGEN_MLFLOW") != "0":
+        raise RuntimeError("TRITONGEN_MLFLOW=0 is required for signed L2b-2")
+    if config.write_mode != "overwrite":
+        raise ValueError("signed L2b-2 requires --overwrite and forbids resume")
+    if config.output != profile.selector_placeholder_output:
+        raise ValueError("signed L2b-2 selector command must not override --output")
+    if config.grammar_mode_cell != "all":
+        raise ValueError("signed L2b-2 selector command must plan all 12 cells")
+    if config.scale_tier != stage.scale_tier:
+        raise ValueError(f"signed L2b-2 requires --scale-tier {stage.scale_tier}")
+    if config.n != 2:
+        raise ValueError("signed L2b-2 requires --n 2")
+    if config.repair_history_policy != "agentic_transcript_v1":
+        raise ValueError(
+            "signed L2b-2 requires --repair-history-policy agentic_transcript_v1"
+        )
+    if config.dry_plan or config.execution_plan:
+        raise ValueError("runtime authorization does not apply to planning modes")
+    if config.observability_mode != "off":
+        raise ValueError("selector-level signed L2b-2 must not override observability")
+    if (
+        config.observability_experiment_id is not None
+        or config.observability_run_id is not None
+        or config.observability_output is not None
+    ):
+        raise ValueError("selector-level signed L2b-2 must not set observability paths")
+
+    shards = build_l2b_full_coverage_shard_plan(
+        stage_id=config.l2b_stage,
+        shard_selector=config.l2b_shard_selector,
+        repair_history_policy=config.repair_history_policy,
+        command_mode="executable",
+        repo_root=REPO_ROOT,
+        signed_authorization_placeholder=L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option=profile.signed_authorization_option
+        or "--signed-l2b-authorization",
+    )
+    if not shards:
+        raise ValueError("signed L2b-2 requires a non-empty shard plan")
+    if config.l2b_shard_selector == "all":
+        if config.kernel_class != "all":
+            raise ValueError("signed L2b-2 all-shards command requires --kernel-class all")
+        if config.dtypes != DTYPE_NAMES:
+            raise ValueError("signed L2b-2 all-shards command requires all signed dtypes")
+        if len(shards) != stage.total_shards:
+            raise ValueError("signed L2b-2 all-shards command requires exactly 9 shards")
+        if sum(shard.planned_rows for shard in shards) != stage.full_matrix_planned_rows:
+            raise ValueError("signed L2b-2 all-shards command requires 216 planned rows")
+    elif config.l2b_shard_selector.startswith("wave:"):
+        if config.kernel_class != "all":
+            raise ValueError("signed L2b-2 wave command requires --kernel-class all")
+        if config.dtypes != DTYPE_NAMES:
+            raise ValueError("signed L2b-2 wave command requires all signed dtypes")
+    else:
+        if len(shards) != 1:
+            raise ValueError("signed L2b-2 one-shard command requires exactly one shard")
+        shard = shards[0]
+        if config.kernel_class != shard.kernel_class:
+            raise ValueError(
+                "signed L2b-2 one-shard command requires matching --kernel-class"
+            )
+        if config.dtypes != (shard.dtype_variant,):
+            raise ValueError("signed L2b-2 one-shard command requires matching --dtypes")
+
+    for shard in shards:
+        _validate_l2b_runtime_shard_plan(stage=stage, shard=shard)
+    return shards
+
+
+def _validate_l2b_runtime_shard_plan(
+    *,
+    stage: Any,
+    shard: L2BFullCoverageShardPlan,
+) -> None:
+    expected_output_namespace = f"{stage.output_root}/{shard.shard_id}"
+    expected_artifact_namespace = f"{stage.observability_root}/{shard.shard_id}"
+    if shard.shard_id != f"{shard.kernel_class}__{shard.dtype_variant}":
+        raise ValueError("signed L2b-2 shard id must equal kernel_class__dtype_variant")
+    if shard.planned_cells != 12:
+        raise ValueError("signed L2b-2 requires 12 planned cells per shard")
+    if shard.planned_rows != 24:
+        raise ValueError("signed L2b-2 requires 24 planned rows per shard")
+    if shard.backend != "modal_local_model":
+        raise ValueError("signed L2b-2 requires backend=modal_local_model")
+    if shard.output_namespace != expected_output_namespace:
+        raise ValueError("signed L2b-2 output namespace does not match shard id")
+    if shard.artifact_namespace != expected_artifact_namespace:
+        raise ValueError("signed L2b-2 artifact namespace does not match shard id")
+    if not shard.fail_if_any_target_path_exists:
+        raise ValueError("signed L2b-2 requires fail_if_any_target_path_exists=true")
+    if shard.path_collision_policy != L1A_PATH_COLLISION_POLICY:
+        raise ValueError("signed L2b-2 shard plan must fail if target paths exist")
+    if shard.concurrency_limits.get("max_gpu_concurrency", 0) > 4:
+        raise ValueError("signed L2b-2 shard requires max_gpu_concurrency <= 4")
+    if shard.concurrency_limits.get("max_container_concurrency", 0) > 40:
+        raise ValueError("signed L2b-2 shard requires max_container_concurrency <= 40")
+    if shard.timing_observability.get("performance_evidence_authorized") is not False:
+        raise ValueError("signed L2b-2 timing observability is sidecar-only")
+    if shard.slow_cell_stop_policy.get("automatic_retry_authorized") is not False:
+        raise ValueError("signed L2b-2 forbids automatic retry")
+    if shard.slow_cell_stop_policy.get("automatic_resume_authorized") is not False:
+        raise ValueError("signed L2b-2 forbids automatic resume")
+    if L2B_N2_SIGNED_AUTHORIZATION_TOKEN not in shard.future_command:
+        raise ValueError("signed L2b-2 future command must contain the signed token")
+
+    _require_l1a_path(shard.output_namespace, root=stage.output_root, label="output root")
+    _require_l1a_path(
+        shard.artifact_namespace,
+        root=stage.observability_root,
+        label="observability root",
+    )
+    _require_absent_target(shard.output_namespace, label="output root")
+    _require_absent_target(shard.artifact_namespace, label="observability root")
+
+    for path in shard.output_paths["result_files"]:
+        expected_prefix = f"{expected_output_namespace}/"
+        if not str(path).startswith(expected_prefix):
+            raise ValueError("signed L2b-2 result path is outside shard namespace")
+        _require_l1a_path(str(path), root=expected_output_namespace, label="result")
+        _require_absent_target(str(path), label="result")
+    for path in shard.output_paths["content_hash_sidecars"]:
+        expected_prefix = f"{expected_output_namespace}/"
+        if not str(path).startswith(expected_prefix):
+            raise ValueError("signed L2b-2 hash sidecar is outside shard namespace")
+        _require_l1a_path(str(path), root=expected_output_namespace, label="hash sidecar")
+        _require_absent_target(str(path), label="hash sidecar")
+    for path in shard.artifact_paths["observability_event_files"]:
+        expected_prefix = f"{expected_artifact_namespace}/"
+        if not str(path).startswith(expected_prefix):
+            raise ValueError("signed L2b-2 observability path is outside shard namespace")
+        _require_l1a_path(
+            str(path),
+            root=expected_artifact_namespace,
+            label="observability event",
+        )
+        _require_absent_target(str(path), label="observability event")
+    for path in shard.artifact_paths["observability_summary_files"]:
+        _require_l1a_path(
+            str(path),
+            root=expected_artifact_namespace,
+            label="observability summary",
+        )
+        _require_absent_target(str(path), label="observability summary")
+    for path in shard.artifact_paths["observability_hash_sidecars"]:
+        _require_l1a_path(
+            str(path),
+            root=expected_artifact_namespace,
+            label="observability hash sidecar",
+        )
+        _require_absent_target(str(path), label="observability hash sidecar")
+
+    for label, root in (
+        ("analysis", stage.analysis_root),
+        ("reports", stage.reports_root),
+        ("billing", stage.billing_root),
+    ):
+        path = str(shard.artifact_paths[f"{label}_namespace_glob"])
+        if not path.startswith(f"{root}/{shard.shard_id}"):
+            raise ValueError(f"signed L2b-2 {label} path is outside shard namespace")
 
 
 def _selector_output_root_from_cells(

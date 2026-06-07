@@ -1721,7 +1721,7 @@ def _signed_l2b_selector_args(*extra: str, token: str | None = None) -> list[str
         "--repair-history-policy",
         "agentic_transcript_v1",
         "--signed-l2b-authorization",
-        token or runner_mod.L2B_SIGNED_AUTHORIZATION_PLACEHOLDER,
+        token or runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
         *extra,
         "--overwrite",
     ]
@@ -1980,7 +1980,7 @@ def test_l2b_n2_full_coverage_dry_plan_builds_sharded_matrix() -> None:
     assert config.output == runner_mod.L2B_N2_DRY_PLAN_PLACEHOLDER_OUTPUT
     assert payload["selector_profile_id"] == runner_mod.L2B_N2_SELECTOR_PROFILE_ID
     assert payload["authorization_profile"] == (
-        "L2b-2 n=2 sharded full coverage signed-ready plan"
+        "L2b-2 n=2 sharded full coverage signed runtime gate"
     )
     assert payload["total_shards"] == 9
     assert payload["selected_shard_count"] == 9
@@ -2011,9 +2011,10 @@ def test_l2b_n2_full_coverage_dry_plan_builds_sharded_matrix() -> None:
     )
     assert payload["slow_cell_stop_policy"]["preserve_partial_shard_audit"] is True
     assert payload["execution_authorized"] is False
-    assert payload["runtime_execution_enabled"] is False
+    assert payload["runtime_execution_enabled"] is True
     assert payload["requires_signed_authorization"] is False
-    assert payload["signed_authorization_available"] is False
+    assert payload["signed_authorization_available"] is True
+    assert payload["signature_status"] == "SIGNED_FOR_L2B_N2_ONLY"
     assert payload["fail_if_any_target_path_exists"] is True
     assert payload["concurrency_limits"]["max_gpu_concurrency"] <= 4
     assert payload["concurrency_limits"]["max_container_concurrency"] <= 40
@@ -2075,9 +2076,9 @@ def test_l2b_n2_execution_plan_lists_one_exact_shard_fail_closed() -> None:
     assert payload["total_planned_rows"] == 24
     assert payload["full_matrix_planned_rows"] == 216
     assert payload["requires_signed_authorization"] is True
-    assert payload["signed_authorization_available"] is False
-    assert payload["runtime_execution_enabled"] is False
-    assert "no signed execution token" in payload["runtime_block_reason"]
+    assert payload["signed_authorization_available"] is True
+    assert payload["runtime_execution_enabled"] is True
+    assert payload["runtime_block_reason"] is None
     assert payload["fail_if_any_target_path_exists"] is True
     assert payload["writes_outputs"] is False
     assert payload["writes_artifacts"] is False
@@ -2100,9 +2101,9 @@ def test_l2b_n2_execution_plan_lists_one_exact_shard_fail_closed() -> None:
     assert "--kernel-class elementwise" in shard["future_command"]
     assert "--dtypes fp32" in shard["future_command"]
     assert "--signed-l2b-authorization" in shard["future_command"]
-    assert runner_mod.L2B_SIGNED_AUTHORIZATION_PLACEHOLDER in shard["future_command"]
+    assert runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN in shard["future_command"]
     assert shard["support_status"] == (
-        "L2B_LOCAL_PLAN_ONLY_RUNTIME_DISABLED_NO_SIGNED_TOKEN"
+        "L2B_N2_SIGNED_RUNTIME_GATE_ENABLED_NO_EXECUTION"
     )
     assert shard["output_paths"]["result_root"] == shard["output_namespace"]
     assert shard["artifact_paths"]["observability_root"] == shard[
@@ -2195,14 +2196,281 @@ def test_l2b_n20_execution_plan_lists_bounded_wave_blocked_on_l2b2() -> None:
         assert "--dry-plan" not in shard["future_command"]
 
 
-def test_l2b_runtime_signed_placeholder_fails_closed(
+def test_l2b_n2_signed_all_shards_passes_prelaunch_without_modal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(
+        _signed_l2b_selector_args(
+            "--l2b-shard-selector",
+            "all",
+            "--kernel-class",
+            "all",
+            "--dtypes",
+            "fp32,fp16,bf16",
+        )
+    )
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert len(shards) == 9
+    assert [shard.shard_id for shard in shards] == list(
+        runner_mod.l2b_full_coverage_shard_ids()
+    )
+    assert {shard.planned_cells for shard in shards} == {12}
+    assert {shard.planned_rows for shard in shards} == {24}
+    assert sum(shard.planned_rows for shard in shards) == 216
+    assert all(
+        shard.output_namespace.startswith(runner_mod.L2B_N2_OUTPUT_ROOT + "/")
+        for shard in shards
+    )
+    assert all(
+        shard.artifact_namespace.startswith(
+            runner_mod.L2B_N2_OBSERVABILITY_ROOT + "/"
+        )
+        for shard in shards
+    )
+
+
+def test_l2b_n2_signed_one_shard_passes_prelaunch_without_modal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(_signed_l2b_selector_args())
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert len(shards) == 1
+    shard = shards[0]
+    assert shard.shard_id == "elementwise__fp32"
+    assert shard.kernel_class == "elementwise"
+    assert shard.dtype_variant == "fp32"
+    assert shard.planned_cells == 12
+    assert shard.planned_rows == 24
+    assert shard.output_namespace == (
+        f"{runner_mod.L2B_N2_OUTPUT_ROOT}/elementwise__fp32"
+    )
+
+
+def test_l2b_n2_signed_wave_passes_prelaunch_without_modal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(
+        _signed_l2b_selector_args(
+            "--l2b-shard-selector",
+            "wave:0:4",
+            "--kernel-class",
+            "all",
+            "--dtypes",
+            "fp32,fp16,bf16",
+        )
+    )
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert [shard.shard_id for shard in shards] == [
+        "elementwise__fp32",
+        "elementwise__fp16",
+        "elementwise__bf16",
+        "reduction__fp32",
+    ]
+    assert sum(shard.planned_rows for shard in shards) == 96
+
+
+def test_l2b_n2_unsigned_runtime_fails_closed() -> None:
+    with pytest.raises(ValueError, match="signed-l1a-authorization"):
+        parse_args(
+            [
+                "--condition",
+                runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+                "--l2b-stage",
+                runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+                "--l2b-shard-selector",
+                "elementwise__fp32",
+                "--kernel-class",
+                "elementwise",
+                "--scale-tier",
+                "development",
+                "--n",
+                "2",
+                "--dtypes",
+                "fp32",
+                "--repair-history-policy",
+                "agentic_transcript_v1",
+                "--overwrite",
+            ]
+        )
+
+
+def test_l2b_n2_wrong_token_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2b_selector_args(token="wrong-token"))
+
+    with pytest.raises(ValueError, match="signed selector authorization"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n20_fails_under_l2b_n2_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--l2b-stage",
+            runner_mod.L2B_N20_SELECTOR_PROFILE_ID,
+            "--l2b-shard-selector",
+            "all",
+            "--kernel-class",
+            "all",
+            "--scale-tier",
+            "paper",
+            "--n",
+            "20",
+            "--dtypes",
+            "fp32,fp16,bf16",
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--signed-l2b-authorization",
+            runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+            "--overwrite",
+        ]
+    )
+
+    with pytest.raises(RuntimeError, match="L2b-4 remains unsigned"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n2_unknown_shard_fails_closed() -> None:
+    with pytest.raises(ValueError, match="l2b_shard_selector"):
+        parse_args(
+            _signed_l2b_selector_args(
+                "--l2b-shard-selector",
+                "elementwise__tf32",
+            )
+        )
+
+
+def test_l2b_n2_all_shards_requires_9_selected_shards(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        _signed_l2b_selector_args(
+            "--l2b-shard-selector",
+            "all",
+            "--kernel-class",
+            "all",
+            "--dtypes",
+            "fp32,fp16,bf16",
+        )
+    )
+    shards = runner_mod.build_l2b_full_coverage_shard_plan(
+        stage_id=runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        shard_selector="all",
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2b-authorization",
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "build_l2b_full_coverage_shard_plan",
+        lambda **_kwargs: shards[:8],
+    )
+
+    with pytest.raises(ValueError, match="exactly 9 shards"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n2_shard_row_count_mismatch_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
     config = parse_args(_signed_l2b_selector_args())
+    shards = runner_mod.build_l2b_full_coverage_shard_plan(
+        stage_id=runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        shard_selector="elementwise__fp32",
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2b-authorization",
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "build_l2b_full_coverage_shard_plan",
+        lambda **_kwargs: (replace(shards[0], planned_rows=23),),
+    )
 
-    with pytest.raises(ValueError, match="approved tokens"):
-        runner_mod._validate_l1a_runtime_authorization(config)
+    with pytest.raises(ValueError, match="24 planned rows"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n2_mlflow_enabled_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "1")
+    config = parse_args(_signed_l2b_selector_args())
+
+    with pytest.raises(RuntimeError, match="TRITONGEN_MLFLOW=0"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n2_resume_fails_closed() -> None:
+    args = _signed_l2b_selector_args()
+    args[args.index("--overwrite")] = "--resume"
+
+    with pytest.raises(SystemExit):
+        parse_args(args)
+
+
+def test_l2b_n2_existing_target_path_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2b_selector_args())
+    shard = runner_mod.build_l2b_full_coverage_shard_plan(
+        stage_id=runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        shard_selector="elementwise__fp32",
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2b-authorization",
+    )[0]
+    existing_target = runner_mod.REPO_ROOT / shard.output_paths["result_files"][0]
+    original_exists = runner_mod.Path.exists
+
+    def fake_exists(path: Path) -> bool:
+        if path == existing_target:
+            return True
+        return original_exists(path)
+
+    monkeypatch.setattr(runner_mod.Path, "exists", fake_exists)
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        runner_mod._validate_l2b_runtime_authorization(config)
 
 
 def test_l2b_stage_rejects_wrong_n() -> None:

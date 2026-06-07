@@ -115,6 +115,10 @@ L2B_N2_RUN_ID_PREFIX = (
 L2B_N20_RUN_ID_PREFIX = (
     "full_pipeline_grammar_mode_cp_factorial_v1_l2b_n20_full_coverage"
 )
+L2B_N2_SIGNED_AUTHORIZATION_TOKEN = (
+    "FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N2_FULL_COVERAGE_AUTHORIZATION_PACKET_V1"
+)
+L2B_N2_SIGNATURE_STATUS = "SIGNED_FOR_L2B_N2_ONLY"
 L1A_PATH_COLLISION_POLICY = "fail_if_any_target_path_exists"
 L1A_SIGNED_AUTHORIZATION_PLACEHOLDER = "SIGNED_L1A_PACKET_ID_REQUIRED"
 L1B_SIGNED_AUTHORIZATION_PLACEHOLDER = "SIGNED_L1B_PACKET_ID_REQUIRED"
@@ -125,6 +129,9 @@ L1A_EXECUTABLE_SELECTOR_SUPPORT_STATUS = (
 )
 L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS = (
     "L2_SIGNED_RUNTIME_GATE_ENABLED_NO_EXECUTION"
+)
+L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS = (
+    "L2B_N2_SIGNED_RUNTIME_GATE_ENABLED_NO_EXECUTION"
 )
 L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS = (
     "L2B_LOCAL_PLAN_ONLY_RUNTIME_DISABLED_NO_SIGNED_TOKEN"
@@ -458,13 +465,10 @@ def l2b_full_coverage_stage_spec(stage_id: str) -> L2BFullCoverageStageSpec:
             rows_per_shard=rows_per_shard,
             full_matrix_planned_rows=L2B_TOTAL_SHARDS * rows_per_shard,
             backend=L2B_BACKEND_CURRENT,
-            runtime_execution_enabled=False,
-            runtime_block_reason=(
-                "L2b-2 is signed-ready planning only; no signed execution token "
-                "exists in this branch"
-            ),
-            signed_authorization_available=False,
-            signature_status="UNSIGNED_READY_FOR_SIGNATURE_REVIEW",
+            runtime_execution_enabled=True,
+            runtime_block_reason=None,
+            signed_authorization_available=True,
+            signature_status=L2B_N2_SIGNATURE_STATUS,
             dependency_gate="L2b-0 local planning selector support",
             concurrency_limits={
                 "max_gpu_concurrency": 4,
@@ -536,6 +540,11 @@ def build_l2b_full_coverage_shard_plan(
     if command_mode not in {"dry_plan", "executable"}:
         raise ValueError(f"unsupported command_mode {command_mode!r}")
     stage = l2b_full_coverage_stage_spec(stage_id)
+    if (
+        stage_id == L2B_N2_SELECTOR_PROFILE_ID
+        and signed_authorization_placeholder == L2B_SIGNED_AUTHORIZATION_PLACEHOLDER
+    ):
+        signed_authorization_placeholder = L2B_N2_SIGNED_AUTHORIZATION_TOKEN
     selected_shards = _select_l2b_shards(shard_selector)
     resolved_repo_root = Path(repo_root) if repo_root is not None else _default_repo_root()
     plans: list[L2BFullCoverageShardPlan] = []
@@ -556,7 +565,11 @@ def build_l2b_full_coverage_shard_plan(
             repo_root=resolved_repo_root,
             signed_authorization_placeholder=signed_authorization_placeholder,
             signed_authorization_option=signed_authorization_option,
-            support_status=L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+            support_status=(
+                L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS
+                if stage_id == L2B_N2_SELECTOR_PROFILE_ID
+                else L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS
+            ),
         )
         plans.append(
             L2BFullCoverageShardPlan(
@@ -609,7 +622,11 @@ def build_l2b_full_coverage_shard_plan(
                 slow_cell_stop_policy=stage.slow_cell_stop_policy,
                 fail_if_any_target_path_exists=True,
                 path_collision_policy=L1A_PATH_COLLISION_POLICY,
-                support_status=L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+                support_status=(
+                    L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS
+                    if stage_id == L2B_N2_SELECTOR_PROFILE_ID
+                    else L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS
+                ),
             )
         )
     return tuple(plans)

@@ -12,16 +12,17 @@ from cluster3.planning.grammar_mode_matrix import (
     L1A_OUTPUT_ROOT,
     L1A_SIGNED_AUTHORIZATION_PLACEHOLDER,
     L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
-    L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_KNOWN_HIGH_COST_CELL_ID,
+    L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_N20_OUTPUT_ROOT,
     L2B_N20_OBSERVABILITY_ROOT,
     L2B_N20_SELECTOR_PROFILE_ID,
     L2B_N2_OUTPUT_ROOT,
     L2B_N2_OBSERVABILITY_ROOT,
     L2B_N2_SELECTOR_PROFILE_ID,
+    L2B_N2_SIGNATURE_STATUS,
+    L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
     L2B_SLOW_CELL_STOP_CLASSIFICATION,
-    L2B_SIGNED_AUTHORIZATION_PLACEHOLDER,
     L2B_TIMING_OBSERVABILITY_REQUIRED_DIAGNOSTICS,
     L2_OBSERVABILITY_ROOT,
     L2_OUTPUT_ROOT,
@@ -329,6 +330,9 @@ def test_l2b_stage_specs_define_compressed_sharded_ladder() -> None:
     assert n2.full_matrix_planned_rows == 216
     assert n2.output_root == L2B_N2_OUTPUT_ROOT
     assert n2.observability_root == L2B_N2_OBSERVABILITY_ROOT
+    assert n2.runtime_execution_enabled is True
+    assert n2.signed_authorization_available is True
+    assert n2.signature_status == L2B_N2_SIGNATURE_STATUS
     assert n2.concurrency_limits["max_gpu_concurrency"] <= 4
     assert n2.concurrency_limits["max_container_concurrency"] <= 40
     assert n2.timing_observability["required_diagnostics"] == (
@@ -407,7 +411,7 @@ def test_l2b_n2_shard_plan_uses_deterministic_namespaces() -> None:
     )
     assert shard.fail_if_any_target_path_exists is True
     assert shard.path_collision_policy == "fail_if_any_target_path_exists"
-    assert shard.support_status == L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS
+    assert shard.support_status == L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS
     assert shard.output_paths["result_files"][0].startswith(
         f"{L2B_N2_OUTPUT_ROOT}/elementwise__fp32/"
     )
@@ -428,7 +432,8 @@ def test_l2b_n2_shard_plan_uses_deterministic_namespaces() -> None:
     assert "--kernel-class elementwise" in shard.future_command
     assert "--dtypes fp32" in shard.future_command
     assert "--signed-l2b-authorization" in shard.future_command
-    assert L2B_SIGNED_AUTHORIZATION_PLACEHOLDER in shard.future_command
+    assert L2B_N2_SIGNED_AUTHORIZATION_TOKEN in shard.future_command
+    assert shard.support_status == L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS
     assert shard.timing_observability["scope"] == (
         "per_cell_and_per_shard_sidecar_metadata_only"
     )
