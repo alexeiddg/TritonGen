@@ -17,6 +17,7 @@ import sys
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -195,6 +196,7 @@ DIAGNOSTIC_EXPECTED_INITIAL_FAILURES: tuple[str, ...] = (
     "F1_COMPILE",
     "F2_NUMERIC_LARGE",
 )
+L2B_N2_SIGNED_WALL_CLOCK_SECONDS_PER_CELL = 1800.0
 
 GenerationAdapter = Callable[..., Any]
 CorrectnessAdapter = Callable[[Cluster3CorrectnessRequest], Any]
@@ -1581,14 +1583,12 @@ def main(argv: Sequence[str] | None = None) -> Cluster3RunResult | dict[str, Any
         print(json.dumps(payload, sort_keys=True))
         return payload
     l1a_cells: tuple[GrammarModeLauncherCellPlan, ...] | None = None
+    l2b_shards: tuple[L2BFullCoverageShardPlan, ...] | None = None
     if config.condition == L1A_GRAMMAR_MODE_CP_SELECTOR:
         if config.l2b_stage is not None:
-            _validate_l2b_runtime_authorization(config)
-            raise RuntimeError(
-                "signed L2b-2 pre-launch gate passed; this no-execution "
-                "runtime-gate branch does not dispatch L2b Modal execution"
-            )
-        l1a_cells = _validate_l1a_runtime_authorization(config)
+            l2b_shards = _validate_l2b_runtime_authorization(config)
+        else:
+            l1a_cells = _validate_l1a_runtime_authorization(config)
 
     # Seam A (Modal path): open an optional MLflow run around the local
     # orchestration. Modal returns records; the Cluster 3 JSONL writer's seam
@@ -1604,11 +1604,18 @@ def main(argv: Sequence[str] | None = None) -> Cluster3RunResult | dict[str, Any
         backend="modal",
         cluster="cluster3",
     ):
-        result = (
-            _run_signed_l1a_selector_with_modal_context(config, cells=l1a_cells)
-            if l1a_cells is not None
-            else run_cluster3(config)
-        )
+        if l2b_shards is not None:
+            result = _run_signed_l2b_selector_with_modal_context(
+                config,
+                shards=l2b_shards,
+            )
+        elif l1a_cells is not None:
+            result = _run_signed_l1a_selector_with_modal_context(
+                config,
+                cells=l1a_cells,
+            )
+        else:
+            result = run_cluster3(config)
     print(
         json.dumps(
             {
@@ -1632,6 +1639,23 @@ def _run_signed_l1a_selector_with_modal_context(
 
     with _signed_l1a_modal_app_context():
         return _run_signed_l1a_selector(config, cells=cells)
+
+
+def _run_signed_l2b_selector_with_modal_context(
+    config: Cluster3RunnerConfig,
+    *,
+    shards: tuple[L2BFullCoverageShardPlan, ...],
+) -> Cluster3RunResult:
+    """Run the signed L2b-2 selector under a hydrated Modal app context."""
+
+    with _signed_l2b_modal_app_context():
+        return _run_signed_l2b_selector(config, shards=shards)
+
+
+def _signed_l2b_modal_app_context() -> Any:
+    """Return the same Modal app context used by signed selector launches."""
+
+    return _signed_l1a_modal_app_context()
 
 
 def _signed_l1a_modal_app_context() -> Any:
@@ -1673,6 +1697,156 @@ def _run_signed_l1a_selector(
     )
 
 
+def _run_signed_l2b_selector(
+    config: Cluster3RunnerConfig,
+    *,
+    shards: tuple[L2BFullCoverageShardPlan, ...],
+    dependencies: RunnerDependencies | None = None,
+) -> Cluster3RunResult:
+    """Expand the signed L2b-2 selector into validated shard/cell runs."""
+
+    if config.condition != L1A_GRAMMAR_MODE_CP_SELECTOR:
+        raise ValueError("signed L2b selector runner requires grammar_mode_cp_12cell")
+    if config.l2b_stage != L2B_N2_SELECTOR_PROFILE_ID:
+        raise ValueError(f"signed L2b selector requires {L2B_N2_SELECTOR_PROFILE_ID}")
+    if not shards:
+        raise ValueError("signed L2b selector requires at least one shard")
+
+    stage = l2b_full_coverage_stage_spec(config.l2b_stage)
+    max_workers = _signed_l2b_max_shard_workers(stage=stage, selected=len(shards))
+    results: list[Cluster3RunResult | None] = [None] * len(shards)
+
+    if max_workers == 1:
+        for index, shard in enumerate(shards):
+            results[index] = _run_signed_l2b_shard(
+                config,
+                shard,
+                dependencies=dependencies,
+            )
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(
+                    _run_signed_l2b_shard,
+                    config,
+                    shard,
+                    dependencies=dependencies,
+                ): index
+                for index, shard in enumerate(shards)
+            }
+            for future in as_completed(futures):
+                results[futures[future]] = future.result()
+
+    rows: list[Cluster3EvalRow] = []
+    audits: list[ConditionRouteAudit] = []
+    for result in results:
+        if result is None:
+            raise RuntimeError("signed L2b selector shard result missing")
+        rows.extend(result.rows)
+        audits.extend(result.route_audit)
+
+    return Cluster3RunResult(
+        rows=tuple(rows),
+        route_audit=tuple(audits),
+        output=_selector_output_root_from_shards(shards),
+        write_mode=config.write_mode,
+    )
+
+
+def _run_signed_l2b_shard(
+    config: Cluster3RunnerConfig,
+    shard: L2BFullCoverageShardPlan,
+    *,
+    dependencies: RunnerDependencies | None = None,
+) -> Cluster3RunResult:
+    cells = _l2b_cell_plans_for_shard(config, shard)
+    shard_config = replace(
+        config,
+        kernel_class=shard.kernel_class,
+        dtypes=(shard.dtype_variant,),
+        l2b_stage=None,
+        l2b_shard_selector="all",
+    )
+
+    rows: list[Cluster3EvalRow] = []
+    audits: list[ConditionRouteAudit] = []
+    for cell in cells:
+        runtime_config = _l1a_cell_runtime_config(shard_config, cell)
+        run_kwargs = {"dependencies": dependencies} if dependencies is not None else {}
+        cell_start = time.perf_counter()
+        cell_result = run_cluster3(runtime_config, **run_kwargs)
+        cell_elapsed = time.perf_counter() - cell_start
+        rows.extend(cell_result.rows)
+        audits.extend(cell_result.route_audit)
+        if cell_elapsed > L2B_N2_SIGNED_WALL_CLOCK_SECONDS_PER_CELL:
+            raise RuntimeError(
+                "SLOW_CELL_BUDGET_EXCEEDED: signed L2b shard "
+                f"{shard.shard_id} cell {cell.condition_id} took "
+                f"{cell_elapsed:.3f}s, exceeding "
+                f"{L2B_N2_SIGNED_WALL_CLOCK_SECONDS_PER_CELL:.0f}s"
+            )
+
+    if len(rows) != shard.planned_rows:
+        raise RuntimeError(
+            f"signed L2b shard {shard.shard_id} produced {len(rows)} rows; "
+            f"expected {shard.planned_rows}"
+        )
+    return Cluster3RunResult(
+        rows=tuple(rows),
+        route_audit=tuple(audits),
+        output=shard.output_namespace,
+        write_mode=config.write_mode,
+    )
+
+
+def _signed_l2b_max_shard_workers(*, stage: Any, selected: int) -> int:
+    limit = int(stage.concurrency_limits.get("max_gpu_concurrency", 1))
+    if limit < 1:
+        raise ValueError("signed L2b-2 requires max_gpu_concurrency >= 1")
+    if limit > 4:
+        raise ValueError("signed L2b-2 requires max_gpu_concurrency <= 4")
+    return max(1, min(selected, limit))
+
+
+def _l2b_cell_plans_for_shard(
+    config: Cluster3RunnerConfig,
+    shard: L2BFullCoverageShardPlan,
+) -> tuple[GrammarModeLauncherCellPlan, ...]:
+    if config.l2b_stage != L2B_N2_SELECTOR_PROFILE_ID:
+        raise ValueError(f"signed L2b cell plans require {L2B_N2_SELECTOR_PROFILE_ID}")
+    stage = l2b_full_coverage_stage_spec(config.l2b_stage)
+    cells = build_l1a_launcher_executable_plan(
+        repair_history_policy=config.repair_history_policy,
+        cell_selector="all",
+        output_root=shard.output_namespace,
+        observability_root=shard.artifact_namespace,
+        run_id_prefix=f"{stage.run_id_prefix}__{shard.shard_id}",
+        scale_tier=stage.scale_tier,
+        n=stage.n,
+        kernel_class_selector=shard.kernel_class,
+        dtypes=(shard.dtype_variant,),
+        repo_root=REPO_ROOT,
+        signed_authorization_placeholder=L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2b-authorization",
+        support_status=L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+    )
+    if len(cells) != shard.planned_cells:
+        raise ValueError("signed L2b shard cell count mismatch")
+    if len(cells) * stage.n != shard.planned_rows:
+        raise ValueError("signed L2b shard planned row mismatch")
+    if tuple(cell.executable_command for cell in cells) != shard.cell_commands:
+        raise ValueError("signed L2b shard cell command mismatch")
+    if tuple(cell.output_path for cell in cells) != tuple(
+        shard.output_paths["result_files"]
+    ):
+        raise ValueError("signed L2b shard output path mismatch")
+    if tuple(cell.observability_event_path for cell in cells) != tuple(
+        shard.artifact_paths["observability_event_files"]
+    ):
+        raise ValueError("signed L2b shard observability path mismatch")
+    return cells
+
+
 def _l1a_cell_runtime_config(
     config: Cluster3RunnerConfig,
     cell: GrammarModeLauncherCellPlan,
@@ -1694,6 +1868,8 @@ def _l1a_cell_runtime_config(
         observability_output=cell.observability_event_path,
         grammar_variant=grammar_variant,
         grammar_mode_cell="all",
+        l2b_stage=None,
+        l2b_shard_selector="all",
         signed_l1a_authorization=None,
     )
 
@@ -2043,6 +2219,15 @@ def _selector_output_root_from_cells(
     roots = {Path(cell.output_path).parent.as_posix() for cell in cells}
     if len(roots) != 1:
         raise ValueError("signed selector cells must share one output root")
+    return next(iter(roots))
+
+
+def _selector_output_root_from_shards(
+    shards: tuple[L2BFullCoverageShardPlan, ...],
+) -> str:
+    roots = {Path(shard.output_namespace).parent.as_posix() for shard in shards}
+    if len(roots) != 1:
+        raise ValueError("signed L2b selector shards must share one output root")
     return next(iter(roots))
 
 

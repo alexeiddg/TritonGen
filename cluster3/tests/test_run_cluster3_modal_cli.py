@@ -2237,6 +2237,98 @@ def test_l2b_n2_signed_all_shards_passes_prelaunch_without_modal(
     )
 
 
+def test_l2b_n2_signed_all_shards_reaches_mocked_modal_dispatch_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[runner_mod.Cluster3RunnerConfig] = []
+    modal_events: list[str] = []
+    planned = runner_mod.build_l2b_full_coverage_shard_plan(
+        stage_id=runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        shard_selector="all",
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2b-authorization",
+    )
+    watched_paths = {
+        Path(path)
+        for shard in planned
+        for path in (
+            *shard.output_paths["result_files"],
+            *shard.output_paths["content_hash_sidecars"],
+            *shard.artifact_paths["observability_event_files"],
+            *shard.artifact_paths["observability_summary_files"],
+            *shard.artifact_paths["observability_hash_sidecars"],
+        )
+    } | {Path("mlruns")}
+    before = {path: path.exists() for path in watched_paths}
+
+    class MockModalContext:
+        def __enter__(self) -> None:
+            modal_events.append("enter")
+
+        def __exit__(self, *_args: object) -> None:
+            modal_events.append("exit")
+
+    def fake_run(config: runner_mod.Cluster3RunnerConfig) -> runner_mod.Cluster3RunResult:
+        calls.append(config)
+        return runner_mod.Cluster3RunResult(
+            rows=tuple(object() for _ in range(config.n)),  # type: ignore[arg-type]
+            route_audit=(),
+            output=config.output,
+            write_mode=config.write_mode,
+        )
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "_signed_l2b_modal_app_context",
+        MockModalContext,
+    )
+    monkeypatch.setattr(runner_mod, "run_cluster3", fake_run)
+
+    result = runner_mod.main(
+        _signed_l2b_selector_args(
+            "--l2b-shard-selector",
+            "all",
+            "--kernel-class",
+            "all",
+            "--dtypes",
+            "fp32,fp16,bf16",
+        )
+    )
+    printed = json.loads(capsys.readouterr().out)
+
+    assert isinstance(result, runner_mod.Cluster3RunResult)
+    assert modal_events == ["enter", "exit"]
+    assert len(calls) == 108
+    assert printed["rows"] == 216
+    assert printed["output"] == runner_mod.L2B_N2_OUTPUT_ROOT
+    assert {call.l2b_stage for call in calls} == {None}
+    assert {call.signed_l1a_authorization for call in calls} == {None}
+    assert {call.observability_mode for call in calls} == {"best_effort"}
+    assert {call.write_mode for call in calls} == {"overwrite"}
+    assert {call.n for call in calls} == {2}
+    assert {call.kernel_class for call in calls} == set(runner_mod.LOCKED_KERNEL_CLASSES)
+    assert {call.dtypes for call in calls} == {("fp32",), ("fp16",), ("bf16",)}
+    assert {call.condition for call in calls} == set(runner_mod.CLUSTER3_CONDITIONS)
+    assert all(call.output.startswith(runner_mod.L2B_N2_OUTPUT_ROOT + "/") for call in calls)
+    assert all(
+        (call.observability_output or "").startswith(
+            runner_mod.L2B_N2_OBSERVABILITY_ROOT + "/"
+        )
+        for call in calls
+    )
+    assert before == {path: path.exists() for path in watched_paths}
+
+
 def test_l2b_n2_signed_one_shard_passes_prelaunch_without_modal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2471,6 +2563,71 @@ def test_l2b_n2_existing_target_path_fails_prelaunch(
 
     with pytest.raises(FileExistsError, match="already exists"):
         runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n2_namespace_escape_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2b_selector_args())
+    shard = runner_mod.build_l2b_full_coverage_shard_plan(
+        stage_id=runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        shard_selector="elementwise__fp32",
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2b-authorization",
+    )[0]
+    output_paths = dict(shard.output_paths)
+    output_paths["result_files"] = (
+        "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/"
+        "l2b_n20/elementwise__fp32/escaped.jsonl",
+    )
+    bad_shard = replace(shard, output_paths=output_paths)
+    monkeypatch.setattr(
+        runner_mod,
+        "build_l2b_full_coverage_shard_plan",
+        lambda **_kwargs: (bad_shard,),
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(ValueError, match="outside shard namespace"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n2_slow_cell_budget_exceeded_stops_shard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = parse_args(_signed_l2b_selector_args())
+    shard = runner_mod.build_l2b_full_coverage_shard_plan(
+        stage_id=runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        shard_selector="elementwise__fp32",
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2b-authorization",
+    )[0]
+    clock = iter((0.0, runner_mod.L2B_N2_SIGNED_WALL_CLOCK_SECONDS_PER_CELL + 1.0))
+
+    def fake_run(config: runner_mod.Cluster3RunnerConfig) -> runner_mod.Cluster3RunResult:
+        return runner_mod.Cluster3RunResult(
+            rows=tuple(object() for _ in range(config.n)),  # type: ignore[arg-type]
+            route_audit=(),
+            output=config.output,
+            write_mode=config.write_mode,
+        )
+
+    monkeypatch.setattr(runner_mod.time, "perf_counter", lambda: next(clock))
+    monkeypatch.setattr(runner_mod, "run_cluster3", fake_run)
+
+    with pytest.raises(RuntimeError, match="SLOW_CELL_BUDGET_EXCEEDED"):
+        runner_mod._run_signed_l2b_shard(config, shard)
 
 
 def test_l2b_stage_rejects_wrong_n() -> None:

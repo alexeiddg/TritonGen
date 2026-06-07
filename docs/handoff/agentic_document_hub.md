@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.32
+Version: 1.37.33
 Date: 2026-06-07
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -85,6 +85,7 @@ treated as report-facing.
 | Full Pipeline L2b plan/selector audit | `audits/l2b_full_coverage_plan_and_selector_report.md` |
 | Full Pipeline L2b n=2 final authorization audit | `audits/l2b_n2_final_authorization_report.md` |
 | Full Pipeline L2b n=2 runtime-gate enable audit | `audits/l2b_n2_runtime_gate_enable_report.md` |
+| Full Pipeline L2b n=2 runtime-dispatch enable audit | `audits/l2b_n2_runtime_dispatch_enable_report.md` |
 | Full Pipeline L1a final signature packet report | `audits/l1a_final_signature_packet_report.md` |
 | Full Pipeline L1a executable 12-cell selector support audit | `audits/l1a_executable_12cell_selector_support_report.md` |
 | Full Pipeline L1a executable 12-cell selector support promotion audit | `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md` |
@@ -168,8 +169,12 @@ token/profile/path can pass local pre-launch validation for all shards, one
 shard, or a bounded wave, while unsigned, wrong-token, L1/L2 token reuse,
 L2b-4/n20, unknown-shard, row/shard-count mismatch, MLflow-enabled,
 retry/resume, target-path collision, and namespace-escape variants remain
-fail-closed. No L2b execution occurred during gate enablement. L2b-4 is
-unsigned, non-authorizing, and blocked until L2b-2 completes and validates.
+fail-closed. The follow-up runtime-dispatch enablement report is recorded in
+`audits/l2b_n2_runtime_dispatch_enable_report.md`: the remaining no-dispatch
+guard is removed only for the validated signed L2b-2 shard plan, with mocked
+Modal-boundary tests proving all-shards expansion to 9 shards x 12 cells and
+216 planned rows. No L2b execution occurred during gate or dispatch enablement.
+L2b-4 is unsigned, non-authorizing, and blocked until L2b-2 completes and validates.
 Per-cell and per-shard timing diagnostics are sidecar-only operational
 metadata, not performance evidence. Retry, resume, L2b-4, L3, analyzer/report
 refresh, billing reconciliation, profiler/benchmark/speedup, paper-scale claim,
