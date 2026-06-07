@@ -3,9 +3,10 @@
 ## Summary
 
 status: `L2B_PLANNING_RECONCILED_READY_FOR_L2B2_SIGNATURE`
-report_version: `2.0.0`
+report_version: `2.0.1`
 branch: `codex/l2b-full-coverage-plan-and-selector`
 baseline_commit: `9974770 Promote Fireworks Modal planning doc`
+promoted_planning_commit: `8b26951e37cde7eab5497f2a35860b95da067302`
 AUTHORIZES_EXECUTION: NO
 
 This audit records the reconciled L2b planning branch. The branch is now replayed
@@ -21,6 +22,10 @@ L2b-4: same coverage at n=20, unsigned and blocked on L2b-2 validation
 No Modal/GPU/generation/billing/output/artifact/mlruns mutation, analyzer/report
 refresh, Fireworks API call, dependency change, lockfile change, retry, or
 resume was performed.
+
+The separate final unsigned L2b-2 packet now pins `SIGNED_TARGET_COMMIT` to
+promoted planning commit `8b26951e37cde7eab5497f2a35860b95da067302`. It remains
+unsigned and does not authorize execution.
 
 ## Current Trunk Context
 

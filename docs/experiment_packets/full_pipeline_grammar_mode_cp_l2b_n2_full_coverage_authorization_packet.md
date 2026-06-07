@@ -3,12 +3,12 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N2_FULL_COVERAGE_AUTHORIZATION_PACKET_V1`
-packet_version: `1.0.0-final-unsigned-signature-ready`
+packet_version: `1.0.1-final-unsigned-target-pinned`
 packet_type: final unsigned L2b-2 authorization packet
 branch: `codex/l2b-full-coverage-plan-and-selector`
 target_branch: `codex-track-handoff-context`
 planning_baseline_commit: `9974770 Promote Fireworks Modal planning doc`
-signed_target_commit: `REQUIRED_AFTER_L2B_PLANNING_PROMOTION`
+signed_target_commit: `8b26951e37cde7eab5497f2a35860b95da067302`
 selector_profile_id: `l2b_n2_full_coverage`
 rung: `L2b-2`
 status: `FINAL_UNSIGNED_READY_FOR_SIGNATURE_REVIEW`
@@ -27,6 +27,18 @@ Record failed L2 n20 validation` as an incomplete wall-clock/slow-tail run:
 228 of 240 rows completed, with only `task_agnostic__c_on__p_on` stopped at 8
 of 20 rows. L2b-2 is a new sharded n=2 planning and signature surface, not a
 retry or resume of L2a, and it does not modify any preserved L2a paths.
+
+## Final Authorization Target
+
+This final unsigned L2b-2 packet targets the promoted L2b planning/selector
+commit:
+
+```text
+8b26951e37cde7eab5497f2a35860b95da067302 Reconcile L2b planning with current trunk
+```
+
+Signature review may sign L2b-2 only. L2b-4 remains unsigned and blocked until
+L2b-2 completes and validates.
 
 ## Scope
 
@@ -189,5 +201,5 @@ AUTHORIZES_EXECUTION_AFTER_SIGNATURE_ONLY: PENDING_SIGNATURE_REVIEW_L2B_2_N2_ONL
 AUTHORIZES_L2B_4: NO
 AUTHORIZED_BY:
 AUTHORIZED_AT_UTC:
-SIGNED_TARGET_COMMIT: REQUIRED_AFTER_L2B_PLANNING_PROMOTION
+SIGNED_TARGET_COMMIT: 8b26951e37cde7eab5497f2a35860b95da067302
 ```
