@@ -12,6 +12,14 @@ from cluster3.planning.grammar_mode_matrix import (
     L1A_OUTPUT_ROOT,
     L1A_SIGNED_AUTHORIZATION_PLACEHOLDER,
     L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+    L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+    L2B_N20_OUTPUT_ROOT,
+    L2B_N20_OBSERVABILITY_ROOT,
+    L2B_N20_SELECTOR_PROFILE_ID,
+    L2B_N2_OUTPUT_ROOT,
+    L2B_N2_OBSERVABILITY_ROOT,
+    L2B_N2_SELECTOR_PROFILE_ID,
+    L2B_SIGNED_AUTHORIZATION_PLACEHOLDER,
     L2_OBSERVABILITY_ROOT,
     L2_OUTPUT_ROOT,
     L2_RUN_ID_PREFIX,
@@ -19,6 +27,9 @@ from cluster3.planning.grammar_mode_matrix import (
     build_l1a_grammar_mode_cp_matrix,
     build_l1a_launcher_dry_plan,
     build_l1a_launcher_executable_plan,
+    build_l2b_full_coverage_shard_plan,
+    l2b_full_coverage_shard_ids,
+    l2b_full_coverage_stage_spec,
 )
 
 
@@ -302,3 +313,124 @@ def test_l2_launcher_executable_plan_commands_encode_signed_l2_placeholder() -> 
     task = by_id["task_agnostic__c_on__p_off"]
     assert "--grammar-variant task_agnostic" in task.command_selector
     assert task.execution_role == "no_p_control_cell"
+
+
+def test_l2b_stage_specs_define_compressed_sharded_ladder() -> None:
+    n2 = l2b_full_coverage_stage_spec(L2B_N2_SELECTOR_PROFILE_ID)
+    n20 = l2b_full_coverage_stage_spec(L2B_N20_SELECTOR_PROFILE_ID)
+
+    assert n2.rung == "L2b-2"
+    assert n2.n == 2
+    assert n2.total_shards == 9
+    assert n2.rows_per_shard == 24
+    assert n2.full_matrix_planned_rows == 216
+    assert n2.output_root == L2B_N2_OUTPUT_ROOT
+    assert n2.observability_root == L2B_N2_OBSERVABILITY_ROOT
+    assert n2.concurrency_limits["max_gpu_concurrency"] <= 4
+    assert n2.concurrency_limits["max_container_concurrency"] <= 40
+
+    assert n20.rung == "L2b-4"
+    assert n20.n == 20
+    assert n20.total_shards == 9
+    assert n20.rows_per_shard == 240
+    assert n20.full_matrix_planned_rows == 2160
+    assert n20.output_root == L2B_N20_OUTPUT_ROOT
+    assert n20.observability_root == L2B_N20_OBSERVABILITY_ROOT
+    assert n20.concurrency_limits["first_wave_max_gpu_concurrency"] <= 4
+    assert n20.concurrency_limits["first_wave_max_container_concurrency"] <= 40
+    assert (
+        n20.concurrency_limits[
+            "second_wave_max_gpu_concurrency_after_first_wave_validation"
+        ]
+        <= 8
+    )
+    assert (
+        n20.concurrency_limits[
+            "second_wave_max_container_concurrency_after_first_wave_validation"
+        ]
+        <= 80
+    )
+
+
+def test_l2b_shard_ids_are_exact_kernel_dtype_tuples() -> None:
+    assert l2b_full_coverage_shard_ids() == (
+        "elementwise__fp32",
+        "elementwise__fp16",
+        "elementwise__bf16",
+        "reduction__fp32",
+        "reduction__fp16",
+        "reduction__bf16",
+        "matmul__fp32",
+        "matmul__fp16",
+        "matmul__bf16",
+    )
+
+
+def test_l2b_n2_shard_plan_uses_deterministic_namespaces() -> None:
+    plan = build_l2b_full_coverage_shard_plan(
+        stage_id=L2B_N2_SELECTOR_PROFILE_ID,
+        shard_selector="elementwise__fp32",
+        repair_history_policy="agentic_transcript_v1",
+    )
+
+    assert len(plan) == 1
+    shard = plan[0]
+    assert shard.shard_id == "elementwise__fp32"
+    assert shard.kernel_class == "elementwise"
+    assert shard.dtype_variant == "fp32"
+    assert shard.planned_cells == 12
+    assert shard.planned_rows == 24
+    assert shard.output_namespace == f"{L2B_N2_OUTPUT_ROOT}/elementwise__fp32"
+    assert (
+        shard.artifact_namespace
+        == f"{L2B_N2_OBSERVABILITY_ROOT}/elementwise__fp32"
+    )
+    assert shard.fail_if_any_target_path_exists is True
+    assert shard.path_collision_policy == "fail_if_any_target_path_exists"
+    assert shard.support_status == L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS
+    assert shard.output_paths["result_files"][0].startswith(
+        f"{L2B_N2_OUTPUT_ROOT}/elementwise__fp32/"
+    )
+    assert shard.artifact_paths["observability_event_files"][0].startswith(
+        f"{L2B_N2_OBSERVABILITY_ROOT}/elementwise__fp32/"
+    )
+    assert shard.artifact_paths["analysis_namespace_glob"].endswith(
+        "/elementwise__fp32*"
+    )
+    assert shard.artifact_paths["reports_namespace_glob"].endswith(
+        "/elementwise__fp32*"
+    )
+    assert shard.artifact_paths["billing_namespace_glob"].endswith(
+        "/elementwise__fp32*"
+    )
+    assert "--l2b-stage l2b_n2_full_coverage" in shard.future_command
+    assert "--l2b-shard-selector elementwise__fp32" in shard.future_command
+    assert "--kernel-class elementwise" in shard.future_command
+    assert "--dtypes fp32" in shard.future_command
+    assert "--signed-l2b-authorization" in shard.future_command
+    assert L2B_SIGNED_AUTHORIZATION_PLACEHOLDER in shard.future_command
+
+
+def test_l2b_wave_selector_returns_bounded_shard_window() -> None:
+    plan = build_l2b_full_coverage_shard_plan(
+        stage_id=L2B_N20_SELECTOR_PROFILE_ID,
+        shard_selector="wave:3:2",
+        repair_history_policy="agentic_transcript_v1",
+    )
+
+    assert [shard.shard_id for shard in plan] == [
+        "reduction__fp32",
+        "reduction__fp16",
+    ]
+    assert {shard.planned_rows for shard in plan} == {240}
+    for shard in plan:
+        assert shard.output_namespace.startswith(L2B_N20_OUTPUT_ROOT + "/")
+        assert shard.artifact_namespace.startswith(L2B_N20_OBSERVABILITY_ROOT + "/")
+
+
+def test_l2b_wave_selector_rejects_unbounded_window() -> None:
+    with pytest.raises(ValueError, match="within 9 shards"):
+        build_l2b_full_coverage_shard_plan(
+            stage_id=L2B_N20_SELECTOR_PROFILE_ID,
+            shard_selector="wave:8:2",
+        )

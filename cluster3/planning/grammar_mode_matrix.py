@@ -8,10 +8,13 @@ writing, tracking, or artifact refreshes.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from cluster2.constants import DTYPE_NAMES
 from cluster3.constants import P_HISTORY_POLICY_V1
+from shared.eval.correctness_shapes import LOCKED_KERNEL_CLASSES
 from shared.factors.cells import FactorCell, require_valid_factor_cell
 from shared.factors.grammar_modes import (
     GRAMMAR_MODE_VALUES,
@@ -67,17 +70,50 @@ L2_OBSERVABILITY_ROOT = (
     "artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20"
 )
 L2_RUN_ID_PREFIX = "full_pipeline_grammar_mode_cp_factorial_v1_l2_n20"
-L2B_SCALE_NAMESPACE = "l2b_full_coverage_n20"
-L2B_OUTPUT_ROOT = (
-    "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/"
-    "l2b_full_coverage_n20"
+L2B_N2_SELECTOR_PROFILE_ID = "l2b_n2_full_coverage"
+L2B_N20_SELECTOR_PROFILE_ID = "l2b_n20_full_coverage"
+L2B_SELECTOR_PROFILE_IDS = (
+    L2B_N2_SELECTOR_PROFILE_ID,
+    L2B_N20_SELECTOR_PROFILE_ID,
 )
-L2B_OBSERVABILITY_ROOT = (
+L2B_N2_SCALE_NAMESPACE = "l2b_n2"
+L2B_N20_SCALE_NAMESPACE = "l2b_n20"
+L2B_N2_OUTPUT_ROOT = (
+    "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n2"
+)
+L2B_N20_OUTPUT_ROOT = (
+    "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n20"
+)
+L2B_N2_OBSERVABILITY_ROOT = (
+    "artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n2"
+)
+L2B_N20_OBSERVABILITY_ROOT = (
     "artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/"
-    "l2b_full_coverage_n20"
+    "l2b_n20"
 )
-L2B_RUN_ID_PREFIX = (
-    "full_pipeline_grammar_mode_cp_factorial_v1_l2b_full_coverage_n20"
+L2B_N2_ANALYSIS_ROOT = (
+    "artifacts/analysis/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n2"
+)
+L2B_N20_ANALYSIS_ROOT = (
+    "artifacts/analysis/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n20"
+)
+L2B_N2_REPORTS_ROOT = (
+    "artifacts/reports/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n2"
+)
+L2B_N20_REPORTS_ROOT = (
+    "artifacts/reports/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n20"
+)
+L2B_N2_BILLING_ROOT = (
+    "artifacts/billing/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n2"
+)
+L2B_N20_BILLING_ROOT = (
+    "artifacts/billing/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n20"
+)
+L2B_N2_RUN_ID_PREFIX = (
+    "full_pipeline_grammar_mode_cp_factorial_v1_l2b_n2_full_coverage"
+)
+L2B_N20_RUN_ID_PREFIX = (
+    "full_pipeline_grammar_mode_cp_factorial_v1_l2b_n20_full_coverage"
 )
 L1A_PATH_COLLISION_POLICY = "fail_if_any_target_path_exists"
 L1A_SIGNED_AUTHORIZATION_PLACEHOLDER = "SIGNED_L1A_PACKET_ID_REQUIRED"
@@ -93,6 +129,10 @@ L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS = (
 L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS = (
     "L2B_LOCAL_PLAN_ONLY_RUNTIME_DISABLED_NO_SIGNED_TOKEN"
 )
+L2B_BACKEND_CURRENT = "modal_local_model"
+L2B_BACKEND_TODO = "fireworks_api"
+L2B_TOTAL_SHARDS = len(LOCKED_KERNEL_CLASSES) * len(DTYPE_NAMES)
+L2B_PLANNED_CELLS_PER_SHARD = 12
 
 
 @dataclass(frozen=True)
@@ -132,6 +172,64 @@ class GrammarModeLauncherCellPlan:
     execution_role: str
     support_status: str
     expected_eligibility_notes: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class L2BFullCoverageStageSpec:
+    """One compressed L2b full-coverage planning stage."""
+
+    selector_profile_id: str
+    rung: str
+    label: str
+    scale_tier: str
+    n: int
+    scale_namespace: str
+    output_root: str
+    observability_root: str
+    analysis_root: str
+    reports_root: str
+    billing_root: str
+    run_id_prefix: str
+    total_shards: int
+    planned_cells_per_shard: int
+    rows_per_shard: int
+    full_matrix_planned_rows: int
+    backend: str
+    runtime_execution_enabled: bool
+    runtime_block_reason: str
+    signed_authorization_available: bool
+    signature_status: str
+    dependency_gate: str
+    concurrency_limits: Mapping[str, object]
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class L2BFullCoverageShardPlan:
+    """One deterministic L2b kernel_class x dtype shard plan."""
+
+    shard_id: str
+    kernel_class: str
+    dtype_variant: str
+    planned_cells: int
+    planned_rows: int
+    backend: str
+    scale_namespace: str
+    output_namespace: str
+    artifact_namespace: str
+    output_paths: Mapping[str, object]
+    artifact_paths: Mapping[str, object]
+    future_command: str
+    cell_commands: tuple[str, ...]
+    concurrency_limits: Mapping[str, object]
+    fail_if_any_target_path_exists: bool
+    path_collision_policy: str
+    support_status: str
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -258,6 +356,291 @@ def build_l1a_launcher_executable_plan(
         signed_authorization_option=signed_authorization_option,
         support_status=support_status,
     )
+
+
+def l2b_full_coverage_stage_choices() -> tuple[str, ...]:
+    """Return accepted compressed L2b selector/profile identifiers."""
+
+    return L2B_SELECTOR_PROFILE_IDS
+
+
+def l2b_full_coverage_shard_ids() -> tuple[str, ...]:
+    """Return deterministic shard ids in repo-backed kernel/dtype order."""
+
+    return tuple(
+        _l2b_shard_id(kernel_class, dtype_variant)
+        for kernel_class in LOCKED_KERNEL_CLASSES
+        for dtype_variant in DTYPE_NAMES
+    )
+
+
+def l2b_full_coverage_stage_spec(stage_id: str) -> L2BFullCoverageStageSpec:
+    """Return the local-only L2b stage spec or raise ``ValueError``."""
+
+    if stage_id == L2B_N2_SELECTOR_PROFILE_ID:
+        n = 2
+        rows_per_shard = L2B_PLANNED_CELLS_PER_SHARD * n
+        return L2BFullCoverageStageSpec(
+            selector_profile_id=L2B_N2_SELECTOR_PROFILE_ID,
+            rung="L2b-2",
+            label="L2b-2 n=2 sharded full coverage signed-ready plan",
+            scale_tier="development",
+            n=n,
+            scale_namespace=L2B_N2_SCALE_NAMESPACE,
+            output_root=L2B_N2_OUTPUT_ROOT,
+            observability_root=L2B_N2_OBSERVABILITY_ROOT,
+            analysis_root=L2B_N2_ANALYSIS_ROOT,
+            reports_root=L2B_N2_REPORTS_ROOT,
+            billing_root=L2B_N2_BILLING_ROOT,
+            run_id_prefix=L2B_N2_RUN_ID_PREFIX,
+            total_shards=L2B_TOTAL_SHARDS,
+            planned_cells_per_shard=L2B_PLANNED_CELLS_PER_SHARD,
+            rows_per_shard=rows_per_shard,
+            full_matrix_planned_rows=L2B_TOTAL_SHARDS * rows_per_shard,
+            backend=L2B_BACKEND_CURRENT,
+            runtime_execution_enabled=False,
+            runtime_block_reason=(
+                "L2b-2 is signed-ready planning only; no signed execution token "
+                "exists in this branch"
+            ),
+            signed_authorization_available=False,
+            signature_status="UNSIGNED_READY_FOR_SIGNATURE_REVIEW",
+            dependency_gate="L2b-0 local planning selector support",
+            concurrency_limits={
+                "max_gpu_concurrency": 4,
+                "max_container_concurrency": 40,
+                "policy": "aggressive_but_bounded_smoke_parallelism",
+                "backend": L2B_BACKEND_CURRENT,
+            },
+        )
+    if stage_id == L2B_N20_SELECTOR_PROFILE_ID:
+        n = 20
+        rows_per_shard = L2B_PLANNED_CELLS_PER_SHARD * n
+        return L2BFullCoverageStageSpec(
+            selector_profile_id=L2B_N20_SELECTOR_PROFILE_ID,
+            rung="L2b-4",
+            label="L2b-4 n=20 sharded full coverage unsigned blocked plan",
+            scale_tier="paper",
+            n=n,
+            scale_namespace=L2B_N20_SCALE_NAMESPACE,
+            output_root=L2B_N20_OUTPUT_ROOT,
+            observability_root=L2B_N20_OBSERVABILITY_ROOT,
+            analysis_root=L2B_N20_ANALYSIS_ROOT,
+            reports_root=L2B_N20_REPORTS_ROOT,
+            billing_root=L2B_N20_BILLING_ROOT,
+            run_id_prefix=L2B_N20_RUN_ID_PREFIX,
+            total_shards=L2B_TOTAL_SHARDS,
+            planned_cells_per_shard=L2B_PLANNED_CELLS_PER_SHARD,
+            rows_per_shard=rows_per_shard,
+            full_matrix_planned_rows=L2B_TOTAL_SHARDS * rows_per_shard,
+            backend=L2B_BACKEND_CURRENT,
+            runtime_execution_enabled=False,
+            runtime_block_reason=(
+                "L2b-4 is unsigned and blocked until L2b-2 completes and "
+                "validates cleanly"
+            ),
+            signed_authorization_available=False,
+            signature_status="UNSIGNED_BLOCKED_ON_L2B_2_VALIDATION",
+            dependency_gate="L2b-2 completion and validation",
+            concurrency_limits={
+                "first_wave_max_gpu_concurrency": 4,
+                "first_wave_max_container_concurrency": 40,
+                "second_wave_max_gpu_concurrency_after_first_wave_validation": 8,
+                "second_wave_max_container_concurrency_after_first_wave_validation": 80,
+                "disallowed_without_l2b2_and_first_wave_validation": (
+                    "10 GPUs / 100 containers"
+                ),
+                "backend": L2B_BACKEND_CURRENT,
+            },
+        )
+    allowed = ", ".join(l2b_full_coverage_stage_choices())
+    raise ValueError(f"l2b_stage must be one of: {allowed}; got {stage_id!r}")
+
+
+def build_l2b_full_coverage_shard_plan(
+    *,
+    stage_id: str,
+    shard_selector: str = "all",
+    repair_history_policy: str = P_HISTORY_POLICY_V1,
+    command_mode: str = "executable",
+    repo_root: str | Path | None = None,
+    signed_authorization_placeholder: str = L2B_SIGNED_AUTHORIZATION_PLACEHOLDER,
+    signed_authorization_option: str = "--signed-l2b-authorization",
+) -> tuple[L2BFullCoverageShardPlan, ...]:
+    """Return deterministic sharded L2b plans without executing them."""
+
+    if command_mode not in {"dry_plan", "executable"}:
+        raise ValueError(f"unsupported command_mode {command_mode!r}")
+    stage = l2b_full_coverage_stage_spec(stage_id)
+    selected_shards = _select_l2b_shards(shard_selector)
+    resolved_repo_root = Path(repo_root) if repo_root is not None else _default_repo_root()
+    plans: list[L2BFullCoverageShardPlan] = []
+    for kernel_class, dtype_variant in selected_shards:
+        shard_id = _l2b_shard_id(kernel_class, dtype_variant)
+        output_namespace = f"{stage.output_root}/{shard_id}"
+        artifact_namespace = f"{stage.observability_root}/{shard_id}"
+        cell_plans = build_l1a_launcher_executable_plan(
+            repair_history_policy=repair_history_policy,
+            cell_selector="all",
+            output_root=output_namespace,
+            observability_root=artifact_namespace,
+            run_id_prefix=f"{stage.run_id_prefix}__{shard_id}",
+            scale_tier=stage.scale_tier,
+            n=stage.n,
+            kernel_class_selector=kernel_class,
+            dtypes=(dtype_variant,),
+            repo_root=resolved_repo_root,
+            signed_authorization_placeholder=signed_authorization_placeholder,
+            signed_authorization_option=signed_authorization_option,
+            support_status=L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+        )
+        plans.append(
+            L2BFullCoverageShardPlan(
+                shard_id=shard_id,
+                kernel_class=kernel_class,
+                dtype_variant=dtype_variant,
+                planned_cells=len(cell_plans),
+                planned_rows=len(cell_plans) * stage.n,
+                backend=stage.backend,
+                scale_namespace=stage.scale_namespace,
+                output_namespace=output_namespace,
+                artifact_namespace=artifact_namespace,
+                output_paths={
+                    "result_root": output_namespace,
+                    "result_files": tuple(cell.output_path for cell in cell_plans),
+                    "content_hash_sidecars": tuple(
+                        cell.content_hash_sidecar_path for cell in cell_plans
+                    ),
+                },
+                artifact_paths={
+                    "observability_root": artifact_namespace,
+                    "observability_event_files": tuple(
+                        cell.observability_event_path for cell in cell_plans
+                    ),
+                    "observability_summary_files": tuple(
+                        cell.observability_summary_path for cell in cell_plans
+                    ),
+                    "observability_hash_sidecars": tuple(
+                        cell.observability_hash_path for cell in cell_plans
+                    ),
+                    "analysis_namespace_glob": (
+                        f"{stage.analysis_root}/{shard_id}*"
+                    ),
+                    "reports_namespace_glob": f"{stage.reports_root}/{shard_id}*",
+                    "billing_namespace_glob": f"{stage.billing_root}/{shard_id}*",
+                },
+                future_command=_l2b_future_selector_command(
+                    stage=stage,
+                    shard_id=shard_id,
+                    kernel_class=kernel_class,
+                    dtype_variant=dtype_variant,
+                    repair_history_policy=repair_history_policy,
+                    command_mode=command_mode,
+                    signed_authorization_placeholder=signed_authorization_placeholder,
+                    signed_authorization_option=signed_authorization_option,
+                ),
+                cell_commands=tuple(cell.executable_command for cell in cell_plans),
+                concurrency_limits=stage.concurrency_limits,
+                fail_if_any_target_path_exists=True,
+                path_collision_policy=L1A_PATH_COLLISION_POLICY,
+                support_status=L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+            )
+        )
+    return tuple(plans)
+
+
+def _l2b_shard_id(kernel_class: str, dtype_variant: str) -> str:
+    return f"{kernel_class}__{dtype_variant}"
+
+
+def _select_l2b_shards(shard_selector: str) -> tuple[tuple[str, str], ...]:
+    all_shards = tuple(
+        (kernel_class, dtype_variant)
+        for kernel_class in LOCKED_KERNEL_CLASSES
+        for dtype_variant in DTYPE_NAMES
+    )
+    if shard_selector == "all":
+        return all_shards
+
+    by_id = {
+        _l2b_shard_id(kernel_class, dtype_variant): (kernel_class, dtype_variant)
+        for kernel_class, dtype_variant in all_shards
+    }
+    if shard_selector in by_id:
+        return (by_id[shard_selector],)
+
+    if shard_selector.startswith("wave:"):
+        parts = shard_selector.split(":")
+        if len(parts) != 3:
+            raise ValueError(
+                "l2b shard wave selector must use wave:<start>:<count>"
+            )
+        try:
+            start = int(parts[1])
+            count = int(parts[2])
+        except ValueError as exc:
+            raise ValueError(
+                "l2b shard wave selector start and count must be integers"
+            ) from exc
+        if start < 0 or count <= 0:
+            raise ValueError("l2b shard wave selector requires start>=0 and count>0")
+        end = start + count
+        if start >= len(all_shards) or end > len(all_shards):
+            raise ValueError(
+                f"l2b shard wave selector must stay within {len(all_shards)} shards"
+            )
+        return all_shards[start:end]
+
+    allowed = ", ".join(("all", *by_id, "wave:<start>:<count>"))
+    raise ValueError(
+        f"l2b_shard_selector must be one of: {allowed}; got {shard_selector!r}"
+    )
+
+
+def _l2b_future_selector_command(
+    *,
+    stage: L2BFullCoverageStageSpec,
+    shard_id: str,
+    kernel_class: str,
+    dtype_variant: str,
+    repair_history_policy: str,
+    command_mode: str,
+    signed_authorization_placeholder: str,
+    signed_authorization_option: str,
+) -> str:
+    parts = [
+        "TRITONGEN_MLFLOW=0",
+        ".venv/bin/python",
+        "-m",
+        "cluster3.experiments.run_cluster3_modal",
+        "--condition",
+        L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--l2b-stage",
+        stage.selector_profile_id,
+        "--l2b-shard-selector",
+        shard_id,
+        "--kernel-class",
+        kernel_class,
+        "--scale-tier",
+        stage.scale_tier,
+        "--n",
+        str(stage.n),
+        "--dtypes",
+        dtype_variant,
+        "--repair-history-policy",
+        repair_history_policy,
+    ]
+    if command_mode == "dry_plan":
+        parts.append("--dry-plan")
+    else:
+        parts.extend(
+            [
+                signed_authorization_option,
+                signed_authorization_placeholder,
+                "--overwrite",
+            ]
+        )
+    return " ".join(parts)
 
 
 def _build_l1a_launcher_plan(

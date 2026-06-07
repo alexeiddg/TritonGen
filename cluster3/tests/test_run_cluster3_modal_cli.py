@@ -1702,6 +1702,31 @@ def _signed_l2_selector_args(*extra: str, token: str | None = None) -> list[str]
     ]
 
 
+def _signed_l2b_selector_args(*extra: str, token: str | None = None) -> list[str]:
+    return [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--l2b-stage",
+        runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        "--l2b-shard-selector",
+        "elementwise__fp32",
+        "--kernel-class",
+        "elementwise",
+        "--scale-tier",
+        "development",
+        "--n",
+        "2",
+        "--dtypes",
+        "fp32",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l2b-authorization",
+        token or runner_mod.L2B_SIGNED_AUTHORIZATION_PLACEHOLDER,
+        *extra,
+        "--overwrite",
+    ]
+
+
 def test_l1a_12cell_dry_plan_cli_parses_without_output_or_write_mode() -> None:
     config = parse_args(
         [
@@ -1930,17 +1955,19 @@ def test_l2_12cell_execution_plan_builds_signed_l2_command_surfaces() -> None:
         )
 
 
-def test_l2b_full_coverage_dry_plan_builds_kernel_dtype_matrix() -> None:
+def test_l2b_n2_full_coverage_dry_plan_builds_sharded_matrix() -> None:
     config = parse_args(
         [
             "--condition",
             runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--l2b-stage",
+            runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
             "--kernel-class",
             "all",
             "--scale-tier",
-            "paper",
+            "development",
             "--n",
-            "20",
+            "2",
             "--dtypes",
             "fp32,fp16,bf16",
             "--repair-history-policy",
@@ -1950,30 +1977,132 @@ def test_l2b_full_coverage_dry_plan_builds_kernel_dtype_matrix() -> None:
     )
     payload = runner_mod.build_l1a_dry_plan_payload(config)
 
-    assert config.output == runner_mod.L2B_DRY_PLAN_PLACEHOLDER_OUTPUT
-    assert payload["cell_count"] == 12
-    assert payload["planned_rows"] == 2160
-    assert payload["expected_planned_rows"] == 2160
-    assert payload["authorization_profile"] == "L2b n=20 full coverage local plan"
+    assert config.output == runner_mod.L2B_N2_DRY_PLAN_PLACEHOLDER_OUTPUT
+    assert payload["selector_profile_id"] == runner_mod.L2B_N2_SELECTOR_PROFILE_ID
+    assert payload["authorization_profile"] == (
+        "L2b-2 n=2 sharded full coverage signed-ready plan"
+    )
+    assert payload["total_shards"] == 9
+    assert payload["selected_shard_count"] == 9
+    assert payload["planned_cells_per_shard"] == 12
+    assert payload["rows_per_shard"] == 24
+    assert payload["total_planned_rows"] == 216
+    assert payload["full_matrix_planned_rows"] == 216
+    assert payload["expected_planned_rows"] == 216
     assert payload["kernel_class_selector"] == "all"
     assert payload["kernel_classes"] == ("elementwise", "reduction", "matmul")
     assert payload["dtypes"] == ("fp32", "fp16", "bf16")
-    assert payload["output_root"] == runner_mod.L2B_OUTPUT_ROOT
-    assert payload["observability_root"] == runner_mod.L2B_OBSERVABILITY_ROOT
+    assert payload["output_root"] == runner_mod.L2B_N2_OUTPUT_ROOT
+    assert payload["observability_root"] == runner_mod.L2B_N2_OBSERVABILITY_ROOT
+    assert payload["backend"] == "modal_local_model"
+    assert payload["future_backend_todo"] == "fireworks_api"
     assert payload["execution_authorized"] is False
     assert payload["runtime_execution_enabled"] is False
     assert payload["signed_authorization_available"] is False
-    for planned_cell in payload["cells"]:
-        assert "--kernel-class all" in planned_cell["command_selector"]
-        assert "--dtypes fp32,fp16,bf16" in planned_cell["command_selector"]
-        assert planned_cell["output_path"].startswith(runner_mod.L2B_OUTPUT_ROOT + "/")
+    assert payload["fail_if_any_target_path_exists"] is True
+    assert payload["concurrency_limits"]["max_gpu_concurrency"] <= 4
+    assert payload["concurrency_limits"]["max_container_concurrency"] <= 40
+    assert [shard["shard_id"] for shard in payload["shards"]] == [
+        "elementwise__fp32",
+        "elementwise__fp16",
+        "elementwise__bf16",
+        "reduction__fp32",
+        "reduction__fp16",
+        "reduction__bf16",
+        "matmul__fp32",
+        "matmul__fp16",
+        "matmul__bf16",
+    ]
+    for shard in payload["shards"]:
+        assert shard["planned_cells"] == 12
+        assert shard["planned_rows"] == 24
+        assert shard["output_namespace"].startswith(runner_mod.L2B_N2_OUTPUT_ROOT + "/")
+        assert shard["artifact_namespace"].startswith(
+            runner_mod.L2B_N2_OBSERVABILITY_ROOT + "/"
+        )
+        assert "--dry-plan" in shard["future_command"]
+        assert "--signed-l2b-authorization" not in shard["future_command"]
 
 
-def test_l2b_full_coverage_execution_plan_is_local_only_fail_closed() -> None:
+def test_l2b_n2_execution_plan_lists_one_exact_shard_fail_closed() -> None:
     config = parse_args(
         [
             "--condition",
             runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--l2b-stage",
+            runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+            "--l2b-shard-selector",
+            "elementwise__fp32",
+            "--kernel-class",
+            "elementwise",
+            "--scale-tier",
+            "development",
+            "--n",
+            "2",
+            "--dtypes",
+            "fp32",
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--execution-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_execution_plan_payload(config)
+
+    assert config.output == runner_mod.L2B_N2_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
+    assert payload["selector_profile_id"] == runner_mod.L2B_N2_SELECTOR_PROFILE_ID
+    assert payload["total_shards"] == 9
+    assert payload["selected_shard_count"] == 1
+    assert payload["rows_per_shard"] == 24
+    assert payload["total_planned_rows"] == 24
+    assert payload["full_matrix_planned_rows"] == 216
+    assert payload["requires_signed_authorization"] is False
+    assert payload["signed_authorization_available"] is False
+    assert payload["runtime_execution_enabled"] is False
+    assert "no signed execution token" in payload["runtime_block_reason"]
+    assert payload["fail_if_any_target_path_exists"] is True
+    assert payload["writes_outputs"] is False
+    assert payload["writes_artifacts"] is False
+    assert payload["writes_mlruns"] is False
+    shard = payload["shards"][0]
+    assert shard["shard_id"] == "elementwise__fp32"
+    assert shard["kernel_class"] == "elementwise"
+    assert shard["dtype_variant"] == "fp32"
+    assert shard["planned_cells"] == 12
+    assert shard["planned_rows"] == 24
+    assert shard["fail_if_any_target_path_exists"] is True
+    assert shard["output_namespace"] == (
+        f"{runner_mod.L2B_N2_OUTPUT_ROOT}/elementwise__fp32"
+    )
+    assert shard["artifact_namespace"] == (
+        f"{runner_mod.L2B_N2_OBSERVABILITY_ROOT}/elementwise__fp32"
+    )
+    assert "--l2b-stage l2b_n2_full_coverage" in shard["future_command"]
+    assert "--l2b-shard-selector elementwise__fp32" in shard["future_command"]
+    assert "--kernel-class elementwise" in shard["future_command"]
+    assert "--dtypes fp32" in shard["future_command"]
+    assert "--signed-l2b-authorization" in shard["future_command"]
+    assert runner_mod.L2B_SIGNED_AUTHORIZATION_PLACEHOLDER in shard["future_command"]
+    assert shard["support_status"] == (
+        "L2B_LOCAL_PLAN_ONLY_RUNTIME_DISABLED_NO_SIGNED_TOKEN"
+    )
+    assert shard["output_paths"]["result_root"] == shard["output_namespace"]
+    assert shard["artifact_paths"]["observability_root"] == shard[
+        "artifact_namespace"
+    ]
+    assert shard["artifact_paths"]["analysis_namespace_glob"].endswith(
+        "/elementwise__fp32*"
+    )
+
+
+def test_l2b_n20_execution_plan_lists_bounded_wave_blocked_on_l2b2() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--l2b-stage",
+            runner_mod.L2B_N20_SELECTOR_PROFILE_ID,
+            "--l2b-shard-selector",
+            "wave:6:3",
             "--kernel-class",
             "all",
             "--scale-tier",
@@ -1989,50 +2118,76 @@ def test_l2b_full_coverage_execution_plan_is_local_only_fail_closed() -> None:
     )
     payload = runner_mod.build_l1a_execution_plan_payload(config)
 
-    assert config.output == runner_mod.L2B_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
-    assert payload["cell_count"] == 12
-    assert payload["planned_rows"] == 2160
-    assert payload["authorization_profile"] == "L2b n=20 full coverage local plan"
-    assert payload["requires_signed_authorization"] is False
-    assert payload["signed_authorization_available"] is False
-    assert payload["runtime_execution_enabled"] is False
-    assert "no signed execution token" in payload["runtime_block_reason"]
-    assert payload["writes_outputs"] is False
-    assert payload["writes_artifacts"] is False
-    assert payload["writes_mlruns"] is False
-    for planned_cell in payload["cells"]:
-        assert planned_cell["support_status"] == (
-            "L2B_LOCAL_PLAN_ONLY_RUNTIME_DISABLED_NO_SIGNED_TOKEN"
-        )
-        assert "--kernel-class all" in planned_cell["command_selector"]
-        assert "--dtypes fp32,fp16,bf16" in planned_cell["command_selector"]
-        assert runner_mod.L2B_SIGNED_AUTHORIZATION_PLACEHOLDER in planned_cell[
-            "command_selector"
+    assert config.output == runner_mod.L2B_N20_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
+    assert payload["selector_profile_id"] == runner_mod.L2B_N20_SELECTOR_PROFILE_ID
+    assert payload["authorization_profile"] == (
+        "L2b-4 n=20 sharded full coverage unsigned blocked plan"
+    )
+    assert payload["signature_status"] == "UNSIGNED_BLOCKED_ON_L2B_2_VALIDATION"
+    assert payload["dependency_gate"] == "L2b-2 completion and validation"
+    assert payload["total_shards"] == 9
+    assert payload["selected_shard_count"] == 3
+    assert payload["rows_per_shard"] == 240
+    assert payload["total_planned_rows"] == 720
+    assert payload["full_matrix_planned_rows"] == 2160
+    assert payload["concurrency_limits"]["first_wave_max_gpu_concurrency"] <= 4
+    assert (
+        payload["concurrency_limits"]["first_wave_max_container_concurrency"]
+        <= 40
+    )
+    assert (
+        payload["concurrency_limits"][
+            "second_wave_max_gpu_concurrency_after_first_wave_validation"
         ]
-        assert planned_cell["output_path"].startswith(runner_mod.L2B_OUTPUT_ROOT + "/")
+        <= 8
+    )
+    assert (
+        payload["concurrency_limits"][
+            "second_wave_max_container_concurrency_after_first_wave_validation"
+        ]
+        <= 80
+    )
+    assert [shard["shard_id"] for shard in payload["shards"]] == [
+        "matmul__fp32",
+        "matmul__fp16",
+        "matmul__bf16",
+    ]
+    for shard in payload["shards"]:
+        assert shard["planned_cells"] == 12
+        assert shard["planned_rows"] == 240
+        assert shard["output_namespace"].startswith(
+            runner_mod.L2B_N20_OUTPUT_ROOT + "/"
+        )
+        assert shard["artifact_namespace"].startswith(
+            runner_mod.L2B_N20_OBSERVABILITY_ROOT + "/"
+        )
+        assert "--signed-l2b-authorization" in shard["future_command"]
+        assert "--dry-plan" not in shard["future_command"]
 
 
-def test_l2b_full_coverage_runtime_without_token_fails_closed(
-    tmp_path: Path,
+def test_l2b_runtime_signed_placeholder_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    with pytest.raises(ValueError, match="signed-l1a-authorization"):
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2b_selector_args())
+
+    with pytest.raises(ValueError, match="approved tokens"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2b_stage_rejects_wrong_n() -> None:
+    with pytest.raises(ValueError, match="--n 2"):
         parse_args(
             [
                 "--condition",
                 runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
-                "--kernel-class",
-                "all",
+                "--l2b-stage",
+                runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
                 "--scale-tier",
-                "paper",
+                "development",
                 "--n",
                 "20",
-                "--dtypes",
-                "fp32,fp16,bf16",
-                "--repair-history-policy",
-                "agentic_transcript_v1",
-                "--output",
-                str(tmp_path / "out.jsonl"),
-                "--overwrite",
+                "--dry-plan",
             ]
         )
 
@@ -2531,6 +2686,7 @@ def test_l1b_12cell_selector_passes_prelaunch_guard_without_modal(
     output_root = (tmp_path / "outputs" / "l1b_n5").as_posix()
     observability_root = (tmp_path / "observability" / "l1b_n5").as_posix()
     profile = runner_mod._GrammarModeSelectorProfile(
+        profile_id="l1b_n5_grammar_mode_cp",
         label="L1b n=5 development",
         signed_authorization_token=runner_mod.L1B_SIGNED_AUTHORIZATION_TOKEN,
         signed_authorization_placeholder=runner_mod.L1B_SIGNED_AUTHORIZATION_TOKEN,

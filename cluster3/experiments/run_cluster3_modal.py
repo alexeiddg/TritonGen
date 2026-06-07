@@ -83,9 +83,14 @@ from cluster3.planning.grammar_mode_matrix import (
     L1B_SIGNED_AUTHORIZATION_PLACEHOLDER,
     L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
-    L2B_OBSERVABILITY_ROOT,
-    L2B_OUTPUT_ROOT,
-    L2B_RUN_ID_PREFIX,
+    L2B_N20_OBSERVABILITY_ROOT,
+    L2B_N20_OUTPUT_ROOT,
+    L2B_N20_RUN_ID_PREFIX,
+    L2B_N20_SELECTOR_PROFILE_ID,
+    L2B_N2_OBSERVABILITY_ROOT,
+    L2B_N2_OUTPUT_ROOT,
+    L2B_N2_RUN_ID_PREFIX,
+    L2B_N2_SELECTOR_PROFILE_ID,
     L2B_SIGNED_AUTHORIZATION_PLACEHOLDER,
     L2_OUTPUT_ROOT,
     L2_OBSERVABILITY_ROOT,
@@ -94,7 +99,11 @@ from cluster3.planning.grammar_mode_matrix import (
     GrammarModeLauncherCellPlan,
     build_l1a_launcher_dry_plan,
     build_l1a_launcher_executable_plan,
+    build_l2b_full_coverage_shard_plan,
     l1a_grammar_mode_cell_selector_choices,
+    l2b_full_coverage_shard_ids,
+    l2b_full_coverage_stage_choices,
+    l2b_full_coverage_stage_spec,
 )
 from cluster3.replay.no_p_pairs import pair_for_condition
 from cluster3.results.dataclass import (
@@ -168,8 +177,14 @@ L2_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT = f"{L2_OUTPUT_ROOT}/__selector__.jsonl
 L2_SIGNED_AUTHORIZATION_TOKEN = (
     "FULL_PIPELINE_GRAMMAR_MODE_CP_L2_N20_AUTHORIZATION_PACKET_V1"
 )
-L2B_DRY_PLAN_PLACEHOLDER_OUTPUT = f"{L2B_OUTPUT_ROOT}/__dry_plan__.jsonl"
-L2B_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT = f"{L2B_OUTPUT_ROOT}/__selector__.jsonl"
+L2B_N2_DRY_PLAN_PLACEHOLDER_OUTPUT = f"{L2B_N2_OUTPUT_ROOT}/__dry_plan__.jsonl"
+L2B_N2_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT = (
+    f"{L2B_N2_OUTPUT_ROOT}/__selector__.jsonl"
+)
+L2B_N20_DRY_PLAN_PLACEHOLDER_OUTPUT = f"{L2B_N20_OUTPUT_ROOT}/__dry_plan__.jsonl"
+L2B_N20_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT = (
+    f"{L2B_N20_OUTPUT_ROOT}/__selector__.jsonl"
+)
 DIAGNOSTIC_F1_SEED_CONDITIONS: tuple[str, ...] = ("P", "G+P")
 DIAGNOSTIC_F2_SEED_CONDITIONS: tuple[str, ...] = ("C+P", "G+C+P")
 DIAGNOSTIC_EXPECTED_INITIAL_FAILURES: tuple[str, ...] = (
@@ -225,6 +240,8 @@ class Cluster3RunnerConfig:
     dry_plan: bool = False
     execution_plan: bool = False
     grammar_mode_cell: str = "all"
+    l2b_stage: str | None = None
+    l2b_shard_selector: str = "all"
     signed_l1a_authorization: str | None = None
     diagnostic_seed_source: str | None = None
     diagnostic_expected_initial_failure: str | None = None
@@ -238,6 +255,38 @@ class Cluster3RunnerConfig:
         )
         if self.dry_plan and self.execution_plan:
             raise ValueError("dry_plan and execution_plan are mutually exclusive")
+        if self.l2b_stage is not None:
+            _require_member(
+                self.l2b_stage,
+                l2b_full_coverage_stage_choices(),
+                "l2b_stage",
+            )
+            stage = l2b_full_coverage_stage_spec(self.l2b_stage)
+            if self.condition != L1A_GRAMMAR_MODE_CP_SELECTOR:
+                raise ValueError(
+                    "--l2b-stage is only supported for "
+                    f"--condition {L1A_GRAMMAR_MODE_CP_SELECTOR}"
+                )
+            if self.scale_tier != stage.scale_tier:
+                raise ValueError(
+                    f"{self.l2b_stage} requires --scale-tier {stage.scale_tier}"
+                )
+            if self.n != stage.n:
+                raise ValueError(f"{self.l2b_stage} requires --n {stage.n}")
+            if (
+                self.l2b_shard_selector != "all"
+                and not self.l2b_shard_selector.startswith("wave:")
+                and self.l2b_shard_selector not in l2b_full_coverage_shard_ids()
+            ):
+                allowed = ", ".join(
+                    ("all", *l2b_full_coverage_shard_ids(), "wave:<start>:<count>")
+                )
+                raise ValueError(
+                    "l2b_shard_selector must be one of: "
+                    f"{allowed}; got {self.l2b_shard_selector!r}"
+                )
+        elif self.l2b_shard_selector != "all":
+            raise ValueError("--l2b-shard-selector requires --l2b-stage")
         if (
             (self.dry_plan or self.execution_plan)
             and self.condition != L1A_GRAMMAR_MODE_CP_SELECTOR
@@ -271,8 +320,9 @@ class Cluster3RunnerConfig:
             raise ValueError(
                 f"{L1A_GRAMMAR_MODE_CP_SELECTOR} execution requires "
                 "--signed-l1a-authorization, --signed-l1b-authorization, or "
-                "--signed-l2-authorization; use --dry-plan or --execution-plan "
-                "for local no-execution planning"
+                "--signed-l2-authorization, or --signed-l2b-authorization; "
+                "use --dry-plan or --execution-plan for local no-execution "
+                "planning"
             )
         _require_member(self.kernel_class, KERNEL_CLASS_SELECTOR_CHOICES, "kernel_class")
         _require_member(self.scale_tier, SCALE_TIER_CHOICES, "scale_tier")
@@ -385,6 +435,8 @@ class Cluster3RunnerConfig:
             dry_plan=namespace.dry_plan,
             execution_plan=namespace.execution_plan,
             grammar_mode_cell=namespace.grammar_mode_cell,
+            l2b_stage=namespace.l2b_stage or None,
+            l2b_shard_selector=namespace.l2b_shard_selector,
             signed_l1a_authorization=namespace.signed_l1a_authorization or None,
             diagnostic_seed_source=namespace.diagnostic_seed_source or None,
             diagnostic_expected_initial_failure=(
@@ -408,6 +460,7 @@ class Cluster3RunnerConfig:
 
 @dataclass(frozen=True)
 class _GrammarModeSelectorProfile:
+    profile_id: str
     label: str
     signed_authorization_token: str | None
     signed_authorization_placeholder: str
@@ -427,6 +480,7 @@ class _GrammarModeSelectorProfile:
 
 
 L1A_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
+    profile_id="l1a_n1_grammar_mode_cp",
     label="L1a n=1 smoke",
     signed_authorization_token=L1A_SIGNED_AUTHORIZATION_TOKEN,
     signed_authorization_placeholder=L1A_SIGNED_AUTHORIZATION_PLACEHOLDER,
@@ -440,6 +494,7 @@ L1A_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
     expected_planned_rows=12,
 )
 L1B_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
+    profile_id="l1b_n5_grammar_mode_cp",
     label="L1b n=5 development",
     signed_authorization_token=L1B_SIGNED_AUTHORIZATION_TOKEN,
     signed_authorization_placeholder=L1B_SIGNED_AUTHORIZATION_PLACEHOLDER,
@@ -453,6 +508,7 @@ L1B_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
     expected_planned_rows=60,
 )
 L2_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
+    profile_id="l2_n20_grammar_mode_cp",
     label="L2 n=20 paper",
     signed_authorization_token=L2_SIGNED_AUTHORIZATION_TOKEN,
     signed_authorization_placeholder=L2_SIGNED_AUTHORIZATION_PLACEHOLDER,
@@ -466,15 +522,37 @@ L2_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
     expected_planned_rows=240,
     support_status=L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
 )
-L2B_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
-    label="L2b n=20 full coverage local plan",
+L2B_N2_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
+    profile_id=L2B_N2_SELECTOR_PROFILE_ID,
+    label="L2b-2 n=2 sharded full coverage signed-ready plan",
     signed_authorization_token=None,
     signed_authorization_placeholder=L2B_SIGNED_AUTHORIZATION_PLACEHOLDER,
-    signed_authorization_option="--signed-l2-authorization",
-    output_root=L2B_OUTPUT_ROOT,
-    observability_root=L2B_OBSERVABILITY_ROOT,
-    run_id_prefix=L2B_RUN_ID_PREFIX,
-    selector_placeholder_output=L2B_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT,
+    signed_authorization_option="--signed-l2b-authorization",
+    output_root=L2B_N2_OUTPUT_ROOT,
+    observability_root=L2B_N2_OBSERVABILITY_ROOT,
+    run_id_prefix=L2B_N2_RUN_ID_PREFIX,
+    selector_placeholder_output=L2B_N2_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT,
+    scale_tier="development",
+    n=2,
+    expected_planned_rows=216,
+    kernel_class_selector="all",
+    dtypes=DTYPE_NAMES,
+    runtime_execution_enabled=False,
+    runtime_block_reason=(
+        "L2b-2 is signed-ready planning only; no signed execution token exists"
+    ),
+    support_status=L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+)
+L2B_N20_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
+    profile_id=L2B_N20_SELECTOR_PROFILE_ID,
+    label="L2b-4 n=20 sharded full coverage unsigned blocked plan",
+    signed_authorization_token=None,
+    signed_authorization_placeholder=L2B_SIGNED_AUTHORIZATION_PLACEHOLDER,
+    signed_authorization_option="--signed-l2b-authorization",
+    output_root=L2B_N20_OUTPUT_ROOT,
+    observability_root=L2B_N20_OBSERVABILITY_ROOT,
+    run_id_prefix=L2B_N20_RUN_ID_PREFIX,
+    selector_placeholder_output=L2B_N20_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT,
     scale_tier="paper",
     n=20,
     expected_planned_rows=2160,
@@ -482,7 +560,7 @@ L2B_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
     dtypes=DTYPE_NAMES,
     runtime_execution_enabled=False,
     runtime_block_reason=(
-        "L2b full coverage is planning-only; no signed execution token exists"
+        "L2b-4 is unsigned and blocked until L2b-2 completes and validates"
     ),
     support_status=L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
 )
@@ -490,7 +568,8 @@ SELECTOR_PROFILES: tuple[_GrammarModeSelectorProfile, ...] = (
     L1A_SELECTOR_PROFILE,
     L1B_SELECTOR_PROFILE,
     L2_SELECTOR_PROFILE,
-    L2B_SELECTOR_PROFILE,
+    L2B_N2_SELECTOR_PROFILE,
+    L2B_N20_SELECTOR_PROFILE,
 )
 
 
@@ -499,6 +578,9 @@ def _output_from_namespace(namespace: argparse.Namespace) -> str:
         return namespace.output
     if namespace.dry_plan:
         if namespace.condition == L1A_GRAMMAR_MODE_CP_SELECTOR:
+            if namespace.l2b_stage:
+                profile = _l2b_selector_profile_for_stage(namespace.l2b_stage)
+                return f"{profile.output_root}/__dry_plan__.jsonl"
             profile = _selector_profile_for_namespace(
                 scale_tier=namespace.scale_tier,
                 n=namespace.n,
@@ -508,6 +590,10 @@ def _output_from_namespace(namespace: argparse.Namespace) -> str:
             return f"{profile.output_root}/__dry_plan__.jsonl"
         return L1A_DRY_PLAN_PLACEHOLDER_OUTPUT
     if namespace.condition == L1A_GRAMMAR_MODE_CP_SELECTOR:
+        if namespace.l2b_stage:
+            return _l2b_selector_profile_for_stage(
+                namespace.l2b_stage
+            ).selector_placeholder_output
         signed_authorization = getattr(namespace, "signed_l1a_authorization", None)
         if signed_authorization:
             for profile in SELECTOR_PROFILES:
@@ -528,6 +614,8 @@ def _output_from_namespace(namespace: argparse.Namespace) -> str:
 def _selector_profile_for_config(
     config: Cluster3RunnerConfig,
 ) -> _GrammarModeSelectorProfile:
+    if config.l2b_stage is not None:
+        return _l2b_selector_profile_for_stage(config.l2b_stage)
     return _selector_profile_for_namespace(
         scale_tier=config.scale_tier,
         n=config.n,
@@ -543,16 +631,15 @@ def _selector_profile_for_namespace(
     kernel_class: str,
     dtypes: tuple[str, ...],
 ) -> _GrammarModeSelectorProfile:
-    for profile in SELECTOR_PROFILES:
-        if (
-            profile.runtime_execution_enabled is False
-            and scale_tier == profile.scale_tier
-            and n == profile.n
-            and kernel_class == profile.kernel_class_selector
-            and dtypes == profile.dtypes
-        ):
-            return profile
     return _selector_profile_for_scale(scale_tier=scale_tier, n=n)
+
+
+def _l2b_selector_profile_for_stage(stage_id: str) -> _GrammarModeSelectorProfile:
+    for profile in SELECTOR_PROFILES:
+        if profile.profile_id == stage_id:
+            return profile
+    allowed = ", ".join(l2b_full_coverage_stage_choices())
+    raise ValueError(f"l2b_stage must be one of: {allowed}; got {stage_id!r}")
 
 
 def _selector_profile_for_scale(
@@ -1222,6 +1309,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="all",
         choices=l1a_grammar_mode_cell_selector_choices(),
     )
+    parser.add_argument(
+        "--l2b-stage",
+        default=None,
+        choices=l2b_full_coverage_stage_choices(),
+    )
+    parser.add_argument("--l2b-shard-selector", default="all")
     parser.add_argument("--signed-l1a-authorization", default=None)
     parser.add_argument(
         "--signed-l1b-authorization",
@@ -1230,6 +1323,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--signed-l2-authorization",
+        dest="signed_l1a_authorization",
+        default=None,
+    )
+    parser.add_argument(
+        "--signed-l2b-authorization",
         dest="signed_l1a_authorization",
         default=None,
     )
@@ -1281,6 +1379,8 @@ def _validate_cli_namespace(
 def build_l1a_dry_plan_payload(config: Cluster3RunnerConfig) -> dict[str, Any]:
     if not config.dry_plan:
         raise ValueError("build_l1a_dry_plan_payload requires dry_plan=True")
+    if config.l2b_stage is not None:
+        return build_l2b_full_coverage_plan_payload(config)
     profile = _selector_profile_for_config(config)
     cells = build_l1a_launcher_dry_plan(
         repair_history_policy=config.repair_history_policy,
@@ -1329,6 +1429,8 @@ def build_l1a_execution_plan_payload(config: Cluster3RunnerConfig) -> dict[str, 
         raise ValueError(
             "build_l1a_execution_plan_payload requires execution_plan=True"
         )
+    if config.l2b_stage is not None:
+        return build_l2b_full_coverage_plan_payload(config)
     profile = _selector_profile_for_config(config)
     cells = build_l1a_launcher_executable_plan(
         repair_history_policy=config.repair_history_policy,
@@ -1381,6 +1483,77 @@ def build_l1a_execution_plan_payload(config: Cluster3RunnerConfig) -> dict[str, 
         "writes_artifacts": False,
         "writes_mlruns": False,
         "cells": [cell.to_dict() for cell in cells],
+    }
+
+
+def build_l2b_full_coverage_plan_payload(
+    config: Cluster3RunnerConfig,
+) -> dict[str, Any]:
+    if config.l2b_stage is None:
+        raise ValueError("build_l2b_full_coverage_plan_payload requires l2b_stage")
+    if not config.dry_plan and not config.execution_plan:
+        raise ValueError("L2b full-coverage payloads require a local planning mode")
+    profile = _selector_profile_for_config(config)
+    stage = l2b_full_coverage_stage_spec(config.l2b_stage)
+    command_mode = "dry_plan" if config.dry_plan else "executable"
+    shards = build_l2b_full_coverage_shard_plan(
+        stage_id=config.l2b_stage,
+        shard_selector=config.l2b_shard_selector,
+        repair_history_policy=config.repair_history_policy,
+        command_mode=command_mode,
+        repo_root=REPO_ROOT,
+        signed_authorization_placeholder=profile.signed_authorization_placeholder,
+        signed_authorization_option=profile.signed_authorization_option
+        or "--signed-l2b-authorization",
+    )
+    selected_shard_count = len(shards)
+    total_planned_rows = selected_shard_count * stage.rows_per_shard
+    return {
+        "selector": L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "selector_profile_id": profile.profile_id,
+        "authorization_profile": profile.label,
+        "l2b_stage": stage.selector_profile_id,
+        "l2b_rung": stage.rung,
+        "dry_plan_only": config.dry_plan,
+        "execution_plan_only": config.execution_plan,
+        "cell_selector": config.grammar_mode_cell,
+        "shard_selector": config.l2b_shard_selector,
+        "total_shards": stage.total_shards,
+        "selected_shard_count": selected_shard_count,
+        "planned_cells_per_shard": stage.planned_cells_per_shard,
+        "rows_per_shard": stage.rows_per_shard,
+        "total_planned_rows": total_planned_rows,
+        "full_matrix_planned_rows": stage.full_matrix_planned_rows,
+        "expected_planned_rows": profile.expected_planned_rows,
+        "scale_tier": stage.scale_tier,
+        "n": stage.n,
+        "kernel_class_selector": profile.kernel_class_selector,
+        "kernel_classes": LOCKED_KERNEL_CLASSES,
+        "dtypes": DTYPE_NAMES,
+        "backend": stage.backend,
+        "future_backend_todo": "fireworks_api",
+        "experiment_id": L1A_EXPERIMENT_ID,
+        "output_root": stage.output_root,
+        "observability_root": stage.observability_root,
+        "analysis_root": stage.analysis_root,
+        "reports_root": stage.reports_root,
+        "billing_root": stage.billing_root,
+        "path_collision_policy": L1A_PATH_COLLISION_POLICY,
+        "fail_if_any_target_path_exists": True,
+        "execution_authorized": False,
+        "runtime_execution_enabled": stage.runtime_execution_enabled,
+        "runtime_block_reason": stage.runtime_block_reason,
+        "signed_authorization_available": stage.signed_authorization_available,
+        "signature_status": stage.signature_status,
+        "dependency_gate": stage.dependency_gate,
+        "requires_signed_authorization": stage.signed_authorization_available,
+        "signed_authorization_option": profile.signed_authorization_option,
+        "support_status": profile.support_status,
+        "concurrency_limits": dict(stage.concurrency_limits),
+        "writes_outputs": False,
+        "writes_artifacts": False,
+        "writes_mlruns": False,
+        "shards": [shard.to_dict() for shard in shards],
     }
 
 

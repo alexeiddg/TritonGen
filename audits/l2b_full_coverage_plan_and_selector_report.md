@@ -1,23 +1,32 @@
-# L2b Full-Coverage Plan And Selector Report
+# L2b Sharded Full-Coverage Plan And Selector Report
 
 ## Summary
 
-status: `L2B_FULL_COVERAGE_PLAN_READY_FOR_REVIEW`
+status: `L2B_COMPRESSED_FULL_COVERAGE_PLAN_READY_FOR_SIGNATURE`
 branch: `codex/l2b-full-coverage-plan-and-selector`
 baseline_commit: `4b85c246795f4b6042852dfeb7219c053cc77760`
 AUTHORIZES_EXECUTION: NO
 
-This audit records the L2b planning branch for expanded
-`grammar_mode x C x P x kernel_class x dtype` coverage. The branch adds
-planning docs and local selector/profile support only. It does not run Modal,
-GPU work, generation, billing, analyzer/report refresh, Fireworks API calls, or
-any experiment.
+This audit records the amended L2b planning branch. The branch now implements a
+mandatory sharded model and compressed ladder:
+
+```text
+L2b-0: local planning/selector support only
+L2b-2: full repo-backed coverage at n=2
+L2b-4: same coverage at n=20, unsigned and blocked on L2b-2 validation
+```
+
+No Modal/GPU/generation/billing/output/artifact/mlruns mutation, analyzer/report
+refresh, Fireworks API call, dependency change, lockfile change, retry, or
+resume was performed.
 
 ## Files Added Or Updated
 
-New planning artifacts:
+Planning artifacts:
 
 - `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_full_coverage_authorization_packet.md`
+- `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n2_full_coverage_authorization_packet.md`
+- `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n20_full_coverage_authorization_packet.md`
 - `docs/implementation_plans/l2b_full_coverage_fireworks_ready_modal_plan.md`
 - `audits/l2b_full_coverage_plan_and_selector_report.md`
 
@@ -25,6 +34,7 @@ Local selector/profile support:
 
 - `cluster3/planning/grammar_mode_matrix.py`
 - `cluster3/experiments/run_cluster3_modal.py`
+- `cluster3/tests/test_grammar_mode_matrix.py`
 - `cluster3/tests/test_run_cluster3_modal_cli.py`
 
 Handoff records:
@@ -33,9 +43,9 @@ Handoff records:
 - `docs/handoff/document_version_registry.md`
 - `docs/handoff/agentic_document_hub.md`
 
-## Repo-Backed Matrix Scope
+## Repo-Backed Discovery
 
-Kernel classes:
+Kernel classes are discovered from `shared/eval/correctness_shapes.py`:
 
 ```text
 elementwise
@@ -43,12 +53,7 @@ reduction
 matmul
 ```
 
-Evidence:
-
-- `shared/eval/correctness_shapes.py` defines `LOCKED_KERNEL_CLASSES`.
-- The same module maps those classes to `relu`, `softmax`, and `gemm`.
-
-Dtype variants:
+Dtype variants are discovered from `cluster2/constants.py`:
 
 ```text
 fp32
@@ -56,83 +61,125 @@ fp16
 bf16
 ```
 
-Evidence:
+No naming ambiguity remains, and no new kernel/dtype names were invented.
 
-- `cluster2/constants.py` defines `DTYPE_NAMES`.
-- `shared/eval/tolerances.py` contains per-kernel-class/per-dtype tolerances.
+## Shard Contract
 
-No new kernel names, dtypes, tolerances, or numerical semantics were invented.
-
-## Expanded Matrix Count
+Each shard is exactly:
 
 ```text
-grammar_mode values: 3
-C states: 2
-P states: 2
-causal_control_cells: 12
-kernel_classes: 3
-dtype_variants: 3
-expanded_cells: 108
-n_per_expanded_cell: 20
-total_planned_rows: 2160
-rows_per_kernel_class: 720
-rows_per_dtype_variant: 720
-rows_per_kernel_dtype_pair: 240
-rows_per_causal_control_file: 180
+shard_id = <kernel_class>__<dtype_variant>
+```
+
+The deterministic order is:
+
+```text
+elementwise__fp32
+elementwise__fp16
+elementwise__bf16
+reduction__fp32
+reduction__fp16
+reduction__bf16
+matmul__fp32
+matmul__fp16
+matmul__bf16
+```
+
+Each shard has 12 planned grammar/C/P cells and independent output,
+observability, analysis, report, and billing namespaces.
+
+## Row Counts
+
+| Rung | Selector profile | n | rows_per_shard | total_shards | full_matrix_rows |
+|---|---|---:|---:|---:|---:|
+| L2b-2 | `l2b_n2_full_coverage` | 2 | 24 | 9 | 216 |
+| L2b-4 | `l2b_n20_full_coverage` | 20 | 240 | 9 | 2160 |
+
+Execution-plan payloads also report `selected_shard_count` and
+`total_planned_rows` for all-shard, one-shard, or bounded-wave selections.
+
+## Namespace Plan
+
+For `N in {2, 20}`:
+
+```text
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n{N}/<shard_id>
+artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n{N}/<shard_id>
+artifacts/analysis/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n{N}/<shard_id>*
+artifacts/reports/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n{N}/<shard_id>*
+artifacts/billing/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n{N}/<shard_id>*
+```
+
+The payload and shard entries report:
+
+```text
+fail_if_any_target_path_exists: true
+writes_outputs: false
+writes_artifacts: false
+writes_mlruns: false
 ```
 
 ## Selector/Profile Status
 
-Added L2b constants:
+Added local-only selector arguments:
 
 ```text
-L2B_OUTPUT_ROOT
-L2B_OBSERVABILITY_ROOT
-L2B_RUN_ID_PREFIX
-L2B_SIGNED_AUTHORIZATION_PLACEHOLDER
-L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS
-L2B_DRY_PLAN_PLACEHOLDER_OUTPUT
-L2B_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
+--l2b-stage {l2b_n2_full_coverage,l2b_n20_full_coverage}
+--l2b-shard-selector all
+--l2b-shard-selector <kernel_class>__<dtype_variant>
+--l2b-shard-selector wave:<start>:<count>
+--signed-l2b-authorization <token>
 ```
 
-Added profile:
+Runtime remains fail-closed because no signed L2b token is registered. The
+placeholder `SIGNED_L2B_PACKET_NOT_APPROVED` parses as a command-shape draft but
+is not an approved authorization token.
+
+Existing L2a `paper/n=20/elementwise/fp32` selector behavior remains separate
+from explicit L2b profiles.
+
+## Concurrency Plan
+
+L2b-2:
 
 ```text
-label: L2b n=20 full coverage local plan
-scale_tier: paper
-n: 20
-kernel_class_selector: all
-dtypes: fp32, fp16, bf16
-expected_planned_rows: 2160
-runtime_execution_enabled: false
-runtime_block_reason: L2b full coverage is planning-only; no signed execution token exists
-signed_authorization_token: none
-support_status: L2B_LOCAL_PLAN_ONLY_RUNTIME_DISABLED_NO_SIGNED_TOKEN
+max_gpu_concurrency <= 4
+max_container_concurrency <= 40
 ```
 
-Profile selection now preserves existing L2a behavior for
-`paper/n=20/elementwise/fp32` and selects L2b only for the explicit
-`paper/n=20/all/fp32,fp16,bf16` local planning surface.
+L2b-4:
 
-Runtime remains fail-closed because no approved token maps to the L2b profile.
+```text
+first_wave_max_gpu_concurrency <= 4
+first_wave_max_container_concurrency <= 40
+second_wave_after_first_wave_validation_max_gpu_concurrency <= 8
+second_wave_after_first_wave_validation_max_container_concurrency <= 80
+```
+
+Do not use 10 GPUs or 100 containers unless L2b-2 passes and the first L2b-4
+wave validates cleanly.
+
+## Fireworks Boundary
+
+The shard abstraction records:
+
+```text
+backend: modal_local_model
+future_backend_todo: fireworks_api
+```
+
+No Fireworks client, dependency, API key, provider retry, network call, or
+provider billing path is implemented.
 
 ## L2a Live Job Protection
 
-The current checkout used to create this branch was not switched away from the
-existing user workspace. This branch was created in an isolated worktree at:
+The original checkout remains separate from this isolated L2b worktree:
 
 ```text
 /private/tmp/tritongen-l2b-full-coverage-plan-and-selector
 ```
 
-L2b namespaces are separate from live L2a namespaces:
-
-```text
-outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l2b_full_coverage_n20
-artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l2b_full_coverage_n20
-```
-
-The branch must not mutate:
+This branch must not mutate:
 
 ```text
 outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20
@@ -143,86 +190,42 @@ artifacts/billing/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20*
 mlruns
 ```
 
-## Fireworks API Boundary
-
-This branch plans Fireworks compatibility only. It adds no Fireworks client,
-dependency, key handling, network call, provider billing call, retry policy, or
-runtime execution code.
-
-Future Fireworks work should use a separate packet for:
-
-- backend abstraction boundary;
-- provider config metadata;
-- prompt/generation request metadata;
-- disabled provider-side retry unless signed later;
-- sidecar-only provider cost/billing metadata.
-
 ## Validation Performed
 
 Focused selector tests:
 
 ```text
-/Users/alexeidelgado/Desktop/TritonGen/.venv/bin/python -m pytest cluster3/tests/test_run_cluster3_modal_cli.py cluster3/tests/test_grammar_mode_matrix.py -q
+/Users/alexeidelgado/Desktop/TritonGen/.venv/bin/python -m pytest cluster3/tests/test_grammar_mode_matrix.py cluster3/tests/test_run_cluster3_modal_cli.py -q
 ```
 
 Result:
 
 ```text
-193 passed
+200 passed
 ```
 
-The isolated worktree does not contain the ignored `.venv/` directory, so the
-same repository virtualenv was invoked by absolute path while keeping the
-working directory on this branch.
-
-Additional required validation to run before review closeout:
+Additional closeout validation required before final commit:
 
 ```bash
-.venv/bin/python -m compileall -q cluster3 shared
+/Users/alexeidelgado/Desktop/TritonGen/.venv/bin/python -m compileall -q cluster3 shared
 git diff --check
-```
-
-## No-Execution Proof
-
-No command in this branch invoked:
-
-```text
-modal
-cluster3.experiments.run_cluster3_modal without --dry-plan or --execution-plan
-generation adapters
-correctness execution against GPU
-billing report
-analyzer/report refresh
-Fireworks API
-```
-
-Protected mutation scan requirement:
-
-```text
-outputs: empty diff
-artifacts: empty diff
-mlruns: empty diff
-docs/preliminary_report: empty diff
-dependency files: empty diff
-lockfiles: empty diff
+git diff --cached --check
 ```
 
 ## Remaining Blockers
 
-No repo naming ambiguity remains for the planned L2b matrix. Remaining items are
-execution-stage prerequisites, not blockers for plan review:
+No planning blocker remains. Execution blockers remain:
 
-- no signed L2b execution token exists;
-- no L2b Modal/GPU/generation/billing authorization exists;
-- no L2b output exists;
-- analyzer/report strictness remains future post-run work;
-- Fireworks API integration remains a future backend abstraction.
+- L2b-2 is unsigned until reviewed and signed.
+- L2b-4 is unsigned and blocked on L2b-2 completion and validation.
+- No L2b output/artifact/billing/analyzer/report evidence exists.
+- Fireworks API integration remains TODO-only.
 
 ## Classification
 
-`L2B_FULL_COVERAGE_PLAN_READY_FOR_REVIEW`
+`L2B_COMPRESSED_FULL_COVERAGE_PLAN_READY_FOR_SIGNATURE`
 
 ## Next Step
 
-Review this planning branch. If accepted, draft a separate staged L2b run packet
-for one 240-row kernel_class x dtype stratum before authorizing any execution.
+Review and, if accepted, sign only the L2b-2 n=2 packet. Do not sign or run
+L2b-4 until L2b-2 completes and validates cleanly.
