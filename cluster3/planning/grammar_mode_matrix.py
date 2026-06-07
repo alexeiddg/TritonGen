@@ -118,6 +118,7 @@ L2B_N20_RUN_ID_PREFIX = (
 L2B_N2_SIGNED_AUTHORIZATION_TOKEN = (
     "FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N2_FULL_COVERAGE_AUTHORIZATION_PACKET_V1"
 )
+L2B_N2_RECOVERY_MISSING28_AUTHORIZATION_MARKER = "RECOVERY_MISSING28"
 L2B_N2_SIGNATURE_STATUS = "SIGNED_FOR_L2B_N2_ONLY"
 L1A_PATH_COLLISION_POLICY = "fail_if_any_target_path_exists"
 L1A_SIGNED_AUTHORIZATION_PLACEHOLDER = "SIGNED_L1A_PACKET_ID_REQUIRED"
@@ -533,6 +534,11 @@ def build_l2b_full_coverage_shard_plan(
     repair_history_policy: str = P_HISTORY_POLICY_V1,
     command_mode: str = "executable",
     repo_root: str | Path | None = None,
+    output_root: str | Path | None = None,
+    observability_root: str | Path | None = None,
+    analysis_root: str | Path | None = None,
+    reports_root: str | Path | None = None,
+    billing_root: str | Path | None = None,
     signed_authorization_placeholder: str = L2B_SIGNED_AUTHORIZATION_PLACEHOLDER,
     signed_authorization_option: str = "--signed-l2b-authorization",
 ) -> tuple[L2BFullCoverageShardPlan, ...]:
@@ -546,13 +552,30 @@ def build_l2b_full_coverage_shard_plan(
         and signed_authorization_placeholder == L2B_SIGNED_AUTHORIZATION_PLACEHOLDER
     ):
         signed_authorization_placeholder = L2B_N2_SIGNED_AUTHORIZATION_TOKEN
+    effective_output_root = (
+        str(output_root) if output_root is not None else str(stage.output_root)
+    )
+    effective_observability_root = (
+        str(observability_root)
+        if observability_root is not None
+        else str(stage.observability_root)
+    )
+    effective_analysis_root = (
+        str(analysis_root) if analysis_root is not None else str(stage.analysis_root)
+    )
+    effective_reports_root = (
+        str(reports_root) if reports_root is not None else str(stage.reports_root)
+    )
+    effective_billing_root = (
+        str(billing_root) if billing_root is not None else str(stage.billing_root)
+    )
     selected_shards = _select_l2b_shards(shard_selector)
     resolved_repo_root = Path(repo_root) if repo_root is not None else _default_repo_root()
     plans: list[L2BFullCoverageShardPlan] = []
     for kernel_class, dtype_variant in selected_shards:
         shard_id = _l2b_shard_id(kernel_class, dtype_variant)
-        output_namespace = f"{stage.output_root}/{shard_id}"
-        artifact_namespace = f"{stage.observability_root}/{shard_id}"
+        output_namespace = f"{effective_output_root}/{shard_id}"
+        artifact_namespace = f"{effective_observability_root}/{shard_id}"
         cell_plans = build_l1a_launcher_executable_plan(
             repair_history_policy=repair_history_policy,
             cell_selector=cell_selector,
@@ -602,10 +625,10 @@ def build_l2b_full_coverage_shard_plan(
                         cell.observability_hash_path for cell in cell_plans
                     ),
                     "analysis_namespace_glob": (
-                        f"{stage.analysis_root}/{shard_id}*"
+                        f"{effective_analysis_root}/{shard_id}*"
                     ),
-                    "reports_namespace_glob": f"{stage.reports_root}/{shard_id}*",
-                    "billing_namespace_glob": f"{stage.billing_root}/{shard_id}*",
+                    "reports_namespace_glob": f"{effective_reports_root}/{shard_id}*",
+                    "billing_namespace_glob": f"{effective_billing_root}/{shard_id}*",
                 },
                 future_command=_l2b_future_selector_command(
                 stage=stage,
@@ -719,13 +742,11 @@ def _l2b_future_selector_command(
     if command_mode == "dry_plan":
         parts.append("--dry-plan")
     else:
-        parts.extend(
-            [
-                signed_authorization_option,
-                signed_authorization_placeholder,
-                "--overwrite",
-            ]
-        )
+        parts.extend([signed_authorization_option, signed_authorization_placeholder])
+        if not _is_l2b_n2_recovery_missing28_placeholder(
+            signed_authorization_placeholder
+        ):
+            parts.append("--overwrite")
     if cell_selector != "all":
         selectors = (
             (cell_selector,) if isinstance(cell_selector, str) else tuple(cell_selector)
@@ -979,11 +1000,18 @@ def _command_selector_for_cell(
         signed_authorization_placeholder,
         "--output",
         output_path,
-        "--overwrite",
     ]
+    if not _is_l2b_n2_recovery_missing28_placeholder(
+        signed_authorization_placeholder
+    ):
+        parts.append("--overwrite")
     if command_grammar_argument is not None:
         parts.extend(command_grammar_argument.split(" "))
     return " ".join(parts)
+
+
+def _is_l2b_n2_recovery_missing28_placeholder(value: str | None) -> bool:
+    return bool(value and L2B_N2_RECOVERY_MISSING28_AUTHORIZATION_MARKER in value)
 
 
 def _result_hash_path(result_path: Path) -> Path:

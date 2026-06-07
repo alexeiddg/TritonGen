@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import socket
 from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
@@ -2179,6 +2180,7 @@ def test_l2b_n2_recovery_authorization_passes_prelaunch_with_expected_shard_rows
             "reduction",
             "--dtypes",
             "fp16",
+            token=runner_mod.L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_PACKET_TOKEN,
         )
     )
 
@@ -2221,6 +2223,7 @@ def test_l2b_n2_recovery_completed_shard_selector_rejected(
             "elementwise",
             "--dtypes",
             "fp32",
+            token=runner_mod.L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_PACKET_TOKEN,
         )
     )
 
@@ -2768,6 +2771,7 @@ def test_l2b_n2_recovery_namespace_escape_fails_prelaunch(
             "reduction",
             "--dtypes",
             "fp16",
+            token=runner_mod.L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_PACKET_TOKEN,
         )
     )
     shard = runner_mod.build_l2b_full_coverage_shard_plan(
@@ -2802,7 +2806,7 @@ def test_l2b_n2_recovery_namespace_escape_fails_prelaunch(
         lambda *_args, **_kwargs: None,
     )
 
-    with pytest.raises(ValueError, match="outside shard namespace"):
+    with pytest.raises(ValueError, match="output namespace does not match shard id"):
         runner_mod._validate_l2b_runtime_authorization(config)
 
 
@@ -3010,6 +3014,34 @@ def test_l1a_12cell_signed_selector_passes_prelaunch_guard_without_modal(
     assert {call.signed_l1a_authorization for call in calls} == {None}
     assert printed["rows"] == 0
     assert printed["output"] == runner_mod.L1A_OUTPUT_ROOT
+
+
+def test_modal_dns_preflight_fails_before_modal_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_getaddrinfo(*_args: object, **_kwargs: object) -> None:
+        raise socket.gaierror(8, "nodename nor servname provided, or not known")
+
+    monkeypatch.setattr(runner_mod.socket, "getaddrinfo", fail_getaddrinfo)
+
+    with pytest.raises(RuntimeError, match="Modal DNS preflight failed"):
+        runner_mod._require_modal_dns_preflight()
+
+
+def test_modal_dns_preflight_accepts_resolvable_modal_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[object, ...]] = []
+
+    def fake_getaddrinfo(*args: object, **_kwargs: object) -> list[tuple[object, ...]]:
+        calls.append(args)
+        return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", 443))]
+
+    monkeypatch.setattr(runner_mod.socket, "getaddrinfo", fake_getaddrinfo)
+
+    runner_mod._require_modal_dns_preflight()
+
+    assert calls == [("api.modal.com", 443)]
 
 
 def test_l1a_12cell_signed_selector_runs_all_cells_locally_with_fake_adapters(

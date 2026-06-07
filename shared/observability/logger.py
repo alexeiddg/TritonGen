@@ -31,7 +31,7 @@ from shared.observability.schema import (
     summary_with_digest,
 )
 
-ObservabilityWriteMode = Literal["overwrite", "resume"]
+ObservabilityWriteMode = Literal["overwrite", "resume", "create"]
 
 
 class ObservabilityJsonlAppendLogger:
@@ -98,6 +98,26 @@ class ObservabilityJsonlAppendLogger:
 
         if self.mode == "overwrite":
             with self.event_path.open("w", encoding="utf-8") as output:
+                output.flush()
+                if self.fsync:
+                    os.fsync(output.fileno())
+            self._next_sequence = 0
+            self._event_ids = set()
+            self._write_hash_sidecar(summary_status="not_written", summary_sha256=None)
+        elif self.mode == "create":
+            if self.event_path.exists():
+                raise FileExistsError(
+                    "create mode requires an absent observability event sidecar"
+                )
+            if self.hash_path.exists():
+                raise FileExistsError(
+                    "create mode requires an absent observability hash sidecar"
+                )
+            if self.summary_path.exists():
+                raise FileExistsError(
+                    "create mode requires an absent observability summary sidecar"
+                )
+            with self.event_path.open("x", encoding="utf-8") as output:
                 output.flush()
                 if self.fsync:
                     os.fsync(output.fileno())
@@ -439,8 +459,8 @@ def utc_now() -> str:
 def _validate_mode(mode: str) -> None:
     if mode == "append":
         raise ValueError("append mode is not supported for observability sidecars")
-    if mode not in {"overwrite", "resume"}:
-        raise ValueError("mode must be 'overwrite' or 'resume'")
+    if mode not in {"overwrite", "resume", "create"}:
+        raise ValueError("mode must be 'overwrite', 'resume', or 'create'")
 
 
 def _revalidate_event(event: ObservabilityEvent | dict) -> ObservabilityEvent:

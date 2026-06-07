@@ -12,6 +12,7 @@ import hashlib
 import inspect
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -245,6 +246,36 @@ L2B_N2_DRY_PLAN_PLACEHOLDER_OUTPUT = f"{L2B_N2_OUTPUT_ROOT}/__dry_plan__.jsonl"
 L2B_N2_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT = (
     f"{L2B_N2_OUTPUT_ROOT}/__selector__.jsonl"
 )
+L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_TOKEN = (
+    "FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N2_RECOVERY_MISSING28_AUTHORIZATION_TOKEN"
+)
+L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_PACKET_TOKEN = (
+    "FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N2_RECOVERY_MISSING28_AUTHORIZATION_PACKET_V1"
+)
+L2B_N2_RECOVERY_MISSING28_OUTPUT_ROOT = (
+    "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/"
+    "l2b_n2_recovery_missing28"
+)
+L2B_N2_RECOVERY_MISSING28_OBSERVABILITY_ROOT = (
+    "artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/"
+    "l2b_n2_recovery_missing28"
+)
+L2B_N2_RECOVERY_MISSING28_ANALYSIS_ROOT = (
+    "artifacts/analysis/full_pipeline_grammar_mode_cp_factorial_v1/"
+    "l2b_n2_recovery_missing28"
+)
+L2B_N2_RECOVERY_MISSING28_REPORTS_ROOT = (
+    "artifacts/reports/full_pipeline_grammar_mode_cp_factorial_v1/"
+    "l2b_n2_recovery_missing28"
+)
+L2B_N2_RECOVERY_MISSING28_BILLING_ROOT = (
+    "artifacts/billing/full_pipeline_grammar_mode_cp_factorial_v1/"
+    "l2b_n2_recovery_missing28"
+)
+L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_TOKENS: tuple[str, ...] = (
+    L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_TOKEN,
+    L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_PACKET_TOKEN,
+)
 L2B_N20_DRY_PLAN_PLACEHOLDER_OUTPUT = f"{L2B_N20_OUTPUT_ROOT}/__dry_plan__.jsonl"
 L2B_N20_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT = (
     f"{L2B_N20_OUTPUT_ROOT}/__selector__.jsonl"
@@ -444,7 +475,7 @@ class Cluster3RunnerConfig:
         _reject_cluster1_cluster2_output(self.output)
         _require_member(
             self.write_mode,
-            ("overwrite", "resume", "dry_plan", "execution_plan"),
+            ("overwrite", "resume", "create", "dry_plan", "execution_plan"),
             "write_mode",
         )
         if self.dry_plan and self.write_mode != "dry_plan":
@@ -509,6 +540,10 @@ class Cluster3RunnerConfig:
                 if namespace.execution_plan
                 else "resume"
                 if namespace.resume
+                else "create"
+                if _is_l2b_n2_recovery_missing28_token(
+                    namespace.signed_l1a_authorization
+                )
                 else "overwrite"
             ),
             dry_plan=namespace.dry_plan,
@@ -748,6 +783,10 @@ def _selector_profile_for_scale(
 def _selector_profile_for_authorization(
     config: Cluster3RunnerConfig,
 ) -> _GrammarModeSelectorProfile:
+    if (
+        _is_l2b_n2_recovery_missing28_token(config.signed_l1a_authorization)
+    ):
+        return L2B_N2_SELECTOR_PROFILE
     for profile in SELECTOR_PROFILES:
         if (
             profile.signed_authorization_token is not None
@@ -763,6 +802,10 @@ def _selector_profile_for_authorization(
         "signed selector authorization must match one of the approved tokens: "
         f"{supported}"
     )
+
+
+def _is_l2b_n2_recovery_missing28_token(token: str | None) -> bool:
+    return token in L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_TOKENS
 
 
 @dataclass(frozen=True)
@@ -1434,7 +1477,15 @@ def _validate_cli_namespace(
     if namespace.dry_plan or namespace.execution_plan:
         if namespace.output is not None:
             parser.error("--output is not used with --dry-plan or --execution-plan")
-        if namespace.signed_l1a_authorization is not None:
+        if (
+            namespace.signed_l1a_authorization is not None
+            and not (
+                namespace.l2b_stage == L2B_N2_SELECTOR_PROFILE_ID
+                and _is_l2b_n2_recovery_missing28_token(
+                    namespace.signed_l1a_authorization
+                )
+            )
+        ):
             parser.error(
                 "signed selector authorization is not used with local planning modes"
             )
@@ -1445,7 +1496,12 @@ def _validate_cli_namespace(
             )
         return
     if namespace.condition == L1A_GRAMMAR_MODE_CP_SELECTOR:
+        is_recovery_token = _is_l2b_n2_recovery_missing28_token(
+            getattr(namespace, "signed_l1a_authorization", None)
+        )
         if not namespace.overwrite:
+            if is_recovery_token:
+                return
             parser.error(
                 f"--condition {L1A_GRAMMAR_MODE_CP_SELECTOR} requires --overwrite "
                 "for future fail-if-existing execution planning"
@@ -1577,6 +1633,37 @@ def build_l2b_full_coverage_plan_payload(
     profile = _selector_profile_for_config(config)
     stage = l2b_full_coverage_stage_spec(config.l2b_stage)
     command_mode = "dry_plan" if config.dry_plan else "executable"
+    is_recovery_missing28 = _is_l2b_n2_recovery_missing28_token(
+        config.signed_l1a_authorization
+    )
+    output_root = (
+        L2B_N2_RECOVERY_MISSING28_OUTPUT_ROOT if is_recovery_missing28 else stage.output_root
+    )
+    observability_root = (
+        L2B_N2_RECOVERY_MISSING28_OBSERVABILITY_ROOT
+        if is_recovery_missing28
+        else stage.observability_root
+    )
+    analysis_root = (
+        L2B_N2_RECOVERY_MISSING28_ANALYSIS_ROOT
+        if is_recovery_missing28
+        else stage.analysis_root
+    )
+    reports_root = (
+        L2B_N2_RECOVERY_MISSING28_REPORTS_ROOT
+        if is_recovery_missing28
+        else stage.reports_root
+    )
+    billing_root = (
+        L2B_N2_RECOVERY_MISSING28_BILLING_ROOT
+        if is_recovery_missing28
+        else stage.billing_root
+    )
+    signed_authorization_placeholder = (
+        config.signed_l1a_authorization
+        if is_recovery_missing28
+        else profile.signed_authorization_placeholder
+    )
     shards = build_l2b_full_coverage_shard_plan(
         stage_id=config.l2b_stage,
         shard_selector=config.l2b_shard_selector,
@@ -1584,7 +1671,12 @@ def build_l2b_full_coverage_plan_payload(
         repair_history_policy=config.repair_history_policy,
         command_mode=command_mode,
         repo_root=REPO_ROOT,
-        signed_authorization_placeholder=profile.signed_authorization_placeholder,
+        output_root=output_root,
+        observability_root=observability_root,
+        analysis_root=analysis_root,
+        reports_root=reports_root,
+        billing_root=billing_root,
+        signed_authorization_placeholder=signed_authorization_placeholder,
         signed_authorization_option=profile.signed_authorization_option
         or "--signed-l2b-authorization",
     )
@@ -1615,11 +1707,11 @@ def build_l2b_full_coverage_plan_payload(
         "backend": stage.backend,
         "future_backend_todo": "fireworks_api",
         "experiment_id": L1A_EXPERIMENT_ID,
-        "output_root": stage.output_root,
-        "observability_root": stage.observability_root,
-        "analysis_root": stage.analysis_root,
-        "reports_root": stage.reports_root,
-        "billing_root": stage.billing_root,
+        "output_root": output_root,
+        "observability_root": observability_root,
+        "analysis_root": analysis_root,
+        "reports_root": reports_root,
+        "billing_root": billing_root,
         "path_collision_policy": L1A_PATH_COLLISION_POLICY,
         "fail_if_any_target_path_exists": True,
         "execution_authorized": False,
@@ -1737,11 +1829,26 @@ def _signed_l2b_modal_app_context() -> Any:
 def _signed_l1a_modal_app_context() -> Any:
     """Return an app.run context with existing C2 Modal surfaces registered."""
 
+    _require_modal_dns_preflight()
+
     import cluster2.modal.correctness  # noqa: F401
     import cluster2.modal.generation  # noqa: F401
     from shared.modal_harness.app import app as _modal_app
 
     return _modal_app.run()
+
+
+def _require_modal_dns_preflight(host: str = "api.modal.com") -> None:
+    """Fail before Modal dispatch when the local machine cannot resolve Modal."""
+
+    try:
+        socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
+    except socket.gaierror as exc:
+        raise RuntimeError(
+            f"Modal DNS preflight failed for {host}: {exc}. "
+            "Restore network/DNS access to Modal before retrying the signed "
+            "launch. On this checkout, use .venv/bin/modal for CLI preflight."
+        ) from exc
 
 
 def _run_signed_l1a_selector(
@@ -1842,6 +1949,7 @@ def _run_signed_l2b_shard(
         dtypes=(shard.dtype_variant,),
         l2b_stage=None,
         l2b_shard_selector="all",
+        l2b_recovery_cells="all",
     )
 
     rows: list[Cluster3EvalRow] = []
@@ -1902,7 +2010,8 @@ def _l2b_cell_plans_for_shard(
         kernel_class_selector=shard.kernel_class,
         dtypes=(shard.dtype_variant,),
         repo_root=REPO_ROOT,
-        signed_authorization_placeholder=L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_placeholder=config.signed_l1a_authorization
+        or L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
         signed_authorization_option="--signed-l2b-authorization",
         support_status=L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     )
@@ -2084,21 +2193,42 @@ def _validate_l2b_runtime_authorization(
     if config.l2b_stage != L2B_N2_SELECTOR_PROFILE_ID:
         raise ValueError(f"signed L2b-2 requires --l2b-stage {L2B_N2_SELECTOR_PROFILE_ID}")
 
+    is_full_coverage_auth_token = (
+        config.signed_l1a_authorization == L2B_N2_SIGNED_AUTHORIZATION_TOKEN
+    )
+    is_recovery_missing28_auth_token = _is_l2b_n2_recovery_missing28_token(
+        config.signed_l1a_authorization
+    )
+    if not is_full_coverage_auth_token and not is_recovery_missing28_auth_token:
+        raise ValueError(
+            "signed selector authorization for L2b-2 requires "
+            "--signed-l2b-authorization "
+            f"{L2B_N2_SIGNED_AUTHORIZATION_TOKEN}"
+        )
     profile = _selector_profile_for_authorization(config)
-    if (
-        profile.profile_id != L2B_N2_SELECTOR_PROFILE_ID
-        or config.signed_l1a_authorization != L2B_N2_SIGNED_AUTHORIZATION_TOKEN
-    ):
+    if profile.profile_id != L2B_N2_SELECTOR_PROFILE_ID:
         raise ValueError(
             "signed L2b-2 requires --signed-l2b-authorization "
             f"{L2B_N2_SIGNED_AUTHORIZATION_TOKEN}"
+        )
+    if is_recovery_missing28_auth_token and config.l2b_recovery_cells == "all":
+        raise ValueError(
+            "signed recovery token requires --l2b-recovery-cells and single-shard scope"
+        )
+    if not is_recovery_missing28_auth_token and config.l2b_recovery_cells != "all":
+        raise ValueError(
+            "recovery scope requires "
+            "FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N2_RECOVERY_MISSING28_AUTHORIZATION_TOKEN"
         )
     stage = l2b_full_coverage_stage_spec(config.l2b_stage)
     if not stage.runtime_execution_enabled:
         raise RuntimeError(stage.runtime_block_reason or "L2b-2 runtime gate is blocked")
     if not stage.signed_authorization_available:
         raise RuntimeError("signed L2b-2 runtime gate requires signed authorization")
-    if stage.signature_status != L2B_N2_SIGNATURE_STATUS:
+    if (
+        not is_recovery_missing28_auth_token
+        and stage.signature_status != L2B_N2_SIGNATURE_STATUS
+    ):
         raise RuntimeError(f"signed L2b-2 requires signature status {L2B_N2_SIGNATURE_STATUS}")
     if stage.total_shards != 9:
         raise ValueError("signed L2b-2 requires exactly 9 total shards")
@@ -2130,7 +2260,13 @@ def _validate_l2b_runtime_authorization(
         raise ValueError("signed L2b-2 requires max_container_concurrency <= 40")
     if os.environ.get("TRITONGEN_MLFLOW") != "0":
         raise RuntimeError("TRITONGEN_MLFLOW=0 is required for signed L2b-2")
-    if config.write_mode != "overwrite":
+    if is_recovery_missing28_auth_token:
+        if config.write_mode != "create":
+            raise ValueError(
+                "signed L2b-2 recovery requires create mode and forbids "
+                "overwrite/resume"
+            )
+    elif config.write_mode != "overwrite":
         raise ValueError("signed L2b-2 requires --overwrite and forbids resume")
     if config.output != profile.selector_placeholder_output:
         raise ValueError("signed L2b-2 selector command must not override --output")
@@ -2162,7 +2298,33 @@ def _validate_l2b_runtime_authorization(
         repair_history_policy=config.repair_history_policy,
         command_mode="executable",
         repo_root=REPO_ROOT,
-        signed_authorization_placeholder=L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        output_root=(
+            L2B_N2_RECOVERY_MISSING28_OUTPUT_ROOT
+            if is_recovery_missing28_auth_token
+            else None
+        ),
+        observability_root=(
+            L2B_N2_RECOVERY_MISSING28_OBSERVABILITY_ROOT
+            if is_recovery_missing28_auth_token
+            else None
+        ),
+        analysis_root=(
+            L2B_N2_RECOVERY_MISSING28_ANALYSIS_ROOT
+            if is_recovery_missing28_auth_token
+            else None
+        ),
+        reports_root=(
+            L2B_N2_RECOVERY_MISSING28_REPORTS_ROOT
+            if is_recovery_missing28_auth_token
+            else None
+        ),
+        billing_root=(
+            L2B_N2_RECOVERY_MISSING28_BILLING_ROOT
+            if is_recovery_missing28_auth_token
+            else None
+        ),
+        signed_authorization_placeholder=config.signed_l1a_authorization
+        or L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
         signed_authorization_option=profile.signed_authorization_option
         or "--signed-l2b-authorization",
     )
@@ -2213,6 +2375,31 @@ def _validate_l2b_runtime_authorization(
             stage=stage,
             config=config,
             shard=shard,
+            output_namespace_root=(
+                L2B_N2_RECOVERY_MISSING28_OUTPUT_ROOT
+                if is_recovery_missing28_auth_token
+                else None
+            ),
+            artifact_namespace_root=(
+                L2B_N2_RECOVERY_MISSING28_OBSERVABILITY_ROOT
+                if is_recovery_missing28_auth_token
+                else None
+            ),
+            analysis_namespace_root=(
+                L2B_N2_RECOVERY_MISSING28_ANALYSIS_ROOT
+                if is_recovery_missing28_auth_token
+                else None
+            ),
+            reports_namespace_root=(
+                L2B_N2_RECOVERY_MISSING28_REPORTS_ROOT
+                if is_recovery_missing28_auth_token
+                else None
+            ),
+            billing_namespace_root=(
+                L2B_N2_RECOVERY_MISSING28_BILLING_ROOT
+                if is_recovery_missing28_auth_token
+                else None
+            ),
         )
     return shards
 
@@ -2222,9 +2409,21 @@ def _validate_l2b_runtime_shard_plan(
     stage: Any,
     config: Cluster3RunnerConfig,
     shard: L2BFullCoverageShardPlan,
+    output_namespace_root: str | None = None,
+    artifact_namespace_root: str | None = None,
+    analysis_namespace_root: str | None = None,
+    reports_namespace_root: str | None = None,
+    billing_namespace_root: str | None = None,
 ) -> None:
-    expected_output_namespace = f"{stage.output_root}/{shard.shard_id}"
-    expected_artifact_namespace = f"{stage.observability_root}/{shard.shard_id}"
+    expected_output_namespace = (
+        f"{output_namespace_root or stage.output_root}/{shard.shard_id}"
+    )
+    expected_artifact_namespace = (
+        f"{artifact_namespace_root or stage.observability_root}/{shard.shard_id}"
+    )
+    analysis_root = analysis_namespace_root or stage.analysis_root
+    reports_root = reports_namespace_root or stage.reports_root
+    billing_root = billing_namespace_root or stage.billing_root
     if shard.shard_id != f"{shard.kernel_class}__{shard.dtype_variant}":
         raise ValueError("signed L2b-2 shard id must equal kernel_class__dtype_variant")
     if config.l2b_recovery_cells == "all":
@@ -2255,13 +2454,23 @@ def _validate_l2b_runtime_shard_plan(
         raise ValueError("signed L2b-2 forbids automatic retry")
     if shard.slow_cell_stop_policy.get("automatic_resume_authorized") is not False:
         raise ValueError("signed L2b-2 forbids automatic resume")
-    if L2B_N2_SIGNED_AUTHORIZATION_TOKEN not in shard.future_command:
+    if not any(
+        token in shard.future_command
+        for token in (
+            L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+            *L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_TOKENS,
+        )
+    ):
         raise ValueError("signed L2b-2 future command must contain the signed token")
 
-    _require_l1a_path(shard.output_namespace, root=stage.output_root, label="output root")
+    _require_l1a_path(
+        shard.output_namespace,
+        root=output_namespace_root or stage.output_root,
+        label="output root",
+    )
     _require_l1a_path(
         shard.artifact_namespace,
-        root=stage.observability_root,
+        root=artifact_namespace_root or stage.observability_root,
         label="observability root",
     )
     _require_absent_target(shard.output_namespace, label="output root")
@@ -2305,9 +2514,9 @@ def _validate_l2b_runtime_shard_plan(
         _require_absent_target(str(path), label="observability hash sidecar")
 
     for label, root in (
-        ("analysis", stage.analysis_root),
-        ("reports", stage.reports_root),
-        ("billing", stage.billing_root),
+        ("analysis", analysis_root),
+        ("reports", reports_root),
+        ("billing", billing_root),
     ):
         path = str(shard.artifact_paths[f"{label}_namespace_glob"])
         if not path.startswith(f"{root}/{shard.shard_id}"):
