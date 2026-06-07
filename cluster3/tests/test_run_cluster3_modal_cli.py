@@ -1704,8 +1704,12 @@ def _signed_l2_selector_args(*extra: str, token: str | None = None) -> list[str]
     ]
 
 
-def _signed_l2b_selector_args(*extra: str, token: str | None = None) -> list[str]:
-    return [
+def _signed_l2b_selector_args(
+    *extra: str,
+    token: str | None = None,
+    overwrite: bool = True,
+) -> list[str]:
+    args = [
         "--condition",
         runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
         "--l2b-stage",
@@ -1725,8 +1729,10 @@ def _signed_l2b_selector_args(*extra: str, token: str | None = None) -> list[str
         "--signed-l2b-authorization",
         token or runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
         *extra,
-        "--overwrite",
     ]
+    if overwrite:
+        args.append("--overwrite")
+    return args
 
 
 def _signed_l2b_n20_selector_args(*extra: str, token: str | None = None) -> list[str]:
@@ -1749,6 +1755,33 @@ def _signed_l2b_n20_selector_args(*extra: str, token: str | None = None) -> list
         "agentic_transcript_v1",
         "--signed-l2b-authorization",
         token or runner_mod.L2B_N20_SIGNED_AUTHORIZATION_TOKEN,
+        *extra,
+    ]
+
+
+def _signed_l2b_n20_attempt2_selector_args(
+    *extra: str,
+    token: str | None = None,
+) -> list[str]:
+    return [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--l2b-stage",
+        runner_mod.L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
+        "--l2b-shard-selector",
+        "elementwise__fp32",
+        "--kernel-class",
+        "elementwise",
+        "--scale-tier",
+        "paper",
+        "--n",
+        "20",
+        "--dtypes",
+        "fp32",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l2b-authorization",
+        token or runner_mod.L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN,
         *extra,
     ]
 
@@ -2206,6 +2239,7 @@ def test_l2b_n2_recovery_authorization_passes_prelaunch_with_expected_shard_rows
             "--dtypes",
             "fp16",
             token=runner_mod.L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_PACKET_TOKEN,
+            overwrite=False,
         )
     )
 
@@ -2249,6 +2283,7 @@ def test_l2b_n2_recovery_completed_shard_selector_rejected(
             "--dtypes",
             "fp32",
             token=runner_mod.L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_PACKET_TOKEN,
+            overwrite=False,
         )
     )
 
@@ -2684,6 +2719,150 @@ def test_l2b_n20_signed_missing_run_result_fails_with_classification(
     assert calls == 1
 
 
+def test_l2b_n20_attempt2_signed_one_shard_uses_distinct_create_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(_signed_l2b_n20_attempt2_selector_args())
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert config.write_mode == "create"
+    assert config.output == runner_mod.L2B_N20_ATTEMPT2_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
+    assert len(shards) == 1
+    shard = shards[0]
+    assert shard.shard_id == "elementwise__fp32"
+    assert shard.planned_rows == 240
+    assert shard.output_namespace == (
+        f"{runner_mod.L2B_N20_ATTEMPT2_OUTPUT_ROOT}/elementwise__fp32"
+    )
+    assert shard.artifact_namespace == (
+        f"{runner_mod.L2B_N20_ATTEMPT2_OBSERVABILITY_ROOT}/elementwise__fp32"
+    )
+    assert runner_mod.L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN in shard.future_command
+    assert runner_mod.L2B_N20_SIGNED_AUTHORIZATION_TOKEN not in shard.future_command
+    assert "--overwrite" not in shard.future_command
+    assert all("--overwrite" not in command for command in shard.cell_commands)
+
+
+def test_l2b_n20_attempt2_token_rejects_original_n20_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        _signed_l2b_n20_selector_args(
+            token=runner_mod.L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN,
+        )
+    )
+
+    with pytest.raises(ValueError, match="token does not match --l2b-stage"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n20_original_token_rejects_attempt2_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        _signed_l2b_n20_attempt2_selector_args(
+            token=runner_mod.L2B_N20_SIGNED_AUTHORIZATION_TOKEN,
+        )
+    )
+
+    with pytest.raises(ValueError, match="token does not match --l2b-stage"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n20_attempt2_rejects_overwrite_retry_resume_and_mlflow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    with pytest.raises(SystemExit):
+        parse_args(_signed_l2b_n20_attempt2_selector_args("--overwrite"))
+
+    with pytest.raises(SystemExit):
+        parse_args(_signed_l2b_n20_attempt2_selector_args("--resume"))
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "1")
+    mlflow_enabled = parse_args(_signed_l2b_n20_attempt2_selector_args())
+    with pytest.raises(RuntimeError, match="TRITONGEN_MLFLOW=0"):
+        runner_mod._validate_l2b_runtime_authorization(mlflow_enabled)
+
+
+def test_l2b_n20_attempt2_rejects_wrong_n(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    with pytest.raises(ValueError, match="requires --n 20"):
+        parse_args(_signed_l2b_n20_attempt2_selector_args("--n", "19"))
+
+
+def test_l2b_n20_attempt2_signed_one_shard_reaches_mocked_modal_dispatch_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[runner_mod.Cluster3RunnerConfig] = []
+    modal_events: list[str] = []
+
+    class MockModalContext:
+        def __enter__(self) -> None:
+            modal_events.append("enter")
+
+        def __exit__(self, *_args: object) -> None:
+            modal_events.append("exit")
+
+    def fake_run(config: runner_mod.Cluster3RunnerConfig) -> runner_mod.Cluster3RunResult:
+        calls.append(config)
+        return runner_mod.Cluster3RunResult(
+            rows=tuple(object() for _ in range(config.n)),  # type: ignore[arg-type]
+            route_audit=(),
+            output=config.output,
+            write_mode=config.write_mode,
+        )
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "_signed_l2b_modal_app_context",
+        MockModalContext,
+    )
+    monkeypatch.setattr(runner_mod, "run_cluster3", fake_run)
+
+    result = runner_mod.main(_signed_l2b_n20_attempt2_selector_args())
+    printed = json.loads(capsys.readouterr().out)
+
+    assert isinstance(result, runner_mod.Cluster3RunResult)
+    assert modal_events == ["enter", "exit"]
+    assert len(calls) == 12
+    assert printed["rows"] == 240
+    assert printed["output"] == runner_mod.L2B_N20_ATTEMPT2_OUTPUT_ROOT
+    assert {call.write_mode for call in calls} == {"create"}
+    assert {call.n for call in calls} == {20}
+    assert {call.l2b_stage for call in calls} == {None}
+    assert {call.signed_l1a_authorization for call in calls} == {None}
+    assert {call.observability_mode for call in calls} == {"best_effort"}
+    assert all(
+        call.output.startswith(runner_mod.L2B_N20_ATTEMPT2_OUTPUT_ROOT + "/")
+        for call in calls
+    )
+    assert all(
+        (call.observability_output or "").startswith(
+            runner_mod.L2B_N20_ATTEMPT2_OBSERVABILITY_ROOT + "/"
+        )
+        for call in calls
+    )
+
+
 def test_l2b_n20_create_only_rerun_rejects_existing_target(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2985,6 +3164,7 @@ def test_l2b_n2_recovery_namespace_escape_fails_prelaunch(
             "--dtypes",
             "fp16",
             token=runner_mod.L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_PACKET_TOKEN,
+            overwrite=False,
         )
     )
     shard = runner_mod.build_l2b_full_coverage_shard_plan(

@@ -85,6 +85,13 @@ from cluster3.planning.grammar_mode_matrix import (
     L1B_SIGNED_AUTHORIZATION_PLACEHOLDER,
     L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+    L2B_N20_ATTEMPT2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+    L2B_N20_ATTEMPT2_OBSERVABILITY_ROOT,
+    L2B_N20_ATTEMPT2_OUTPUT_ROOT,
+    L2B_N20_ATTEMPT2_RUN_ID_PREFIX,
+    L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
+    L2B_N20_ATTEMPT2_SIGNATURE_STATUS,
+    L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN,
     L2B_N20_OBSERVABILITY_ROOT,
     L2B_N20_OUTPUT_ROOT,
     L2B_N20_RUN_ID_PREFIX,
@@ -280,6 +287,12 @@ L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_TOKENS: tuple[str, ...] = (
 L2B_N20_DRY_PLAN_PLACEHOLDER_OUTPUT = f"{L2B_N20_OUTPUT_ROOT}/__dry_plan__.jsonl"
 L2B_N20_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT = (
     f"{L2B_N20_OUTPUT_ROOT}/__selector__.jsonl"
+)
+L2B_N20_ATTEMPT2_DRY_PLAN_PLACEHOLDER_OUTPUT = (
+    f"{L2B_N20_ATTEMPT2_OUTPUT_ROOT}/__dry_plan__.jsonl"
+)
+L2B_N20_ATTEMPT2_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT = (
+    f"{L2B_N20_ATTEMPT2_OUTPUT_ROOT}/__selector__.jsonl"
 )
 DIAGNOSTIC_F1_SEED_CONDITIONS: tuple[str, ...] = ("P", "G+P")
 DIAGNOSTIC_F2_SEED_CONDITIONS: tuple[str, ...] = ("C+P", "G+C+P")
@@ -678,12 +691,32 @@ L2B_N20_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
     runtime_block_reason=None,
     support_status=L2B_N20_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
 )
+L2B_N20_ATTEMPT2_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
+    profile_id=L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
+    label="L2b-4 n=20 attempt2 sharded full coverage signed runtime gate",
+    signed_authorization_token=L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN,
+    signed_authorization_placeholder=L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN,
+    signed_authorization_option="--signed-l2b-authorization",
+    output_root=L2B_N20_ATTEMPT2_OUTPUT_ROOT,
+    observability_root=L2B_N20_ATTEMPT2_OBSERVABILITY_ROOT,
+    run_id_prefix=L2B_N20_ATTEMPT2_RUN_ID_PREFIX,
+    selector_placeholder_output=L2B_N20_ATTEMPT2_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT,
+    scale_tier="paper",
+    n=20,
+    expected_planned_rows=2160,
+    kernel_class_selector="all",
+    dtypes=DTYPE_NAMES,
+    runtime_execution_enabled=True,
+    runtime_block_reason=None,
+    support_status=L2B_N20_ATTEMPT2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+)
 SELECTOR_PROFILES: tuple[_GrammarModeSelectorProfile, ...] = (
     L1A_SELECTOR_PROFILE,
     L1B_SELECTOR_PROFILE,
     L2_SELECTOR_PROFILE,
     L2B_N2_SELECTOR_PROFILE,
     L2B_N20_SELECTOR_PROFILE,
+    L2B_N20_ATTEMPT2_SELECTOR_PROFILE,
 )
 
 
@@ -765,7 +798,11 @@ def _selector_profile_for_scale(
         if (
             profile.runtime_execution_enabled is True
             and profile.profile_id
-            not in (L2B_N2_SELECTOR_PROFILE_ID, L2B_N20_SELECTOR_PROFILE_ID)
+            not in (
+                L2B_N2_SELECTOR_PROFILE_ID,
+                L2B_N20_SELECTOR_PROFILE_ID,
+                L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
+            )
             and scale_tier == profile.scale_tier
             and n == profile.n
         ):
@@ -813,6 +850,7 @@ def _is_l2b_create_only_signed_token(token: str | None) -> bool:
     return (
         _is_l2b_n2_recovery_missing28_token(token)
         or token == L2B_N20_SIGNED_AUTHORIZATION_TOKEN
+        or token == L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN
     )
 
 
@@ -1507,6 +1545,8 @@ def _validate_cli_namespace(
         is_create_only_signed_token = _is_l2b_create_only_signed_token(
             getattr(namespace, "signed_l1a_authorization", None)
         )
+        if is_create_only_signed_token and (namespace.overwrite or namespace.resume):
+            parser.error("signed L2b create-only launch forbids overwrite/resume")
         if not namespace.overwrite:
             if is_create_only_signed_token:
                 return
@@ -1904,7 +1944,11 @@ def _run_signed_l2b_selector(
 
     if config.condition != L1A_GRAMMAR_MODE_CP_SELECTOR:
         raise ValueError("signed L2b selector runner requires grammar_mode_cp_12cell")
-    if config.l2b_stage not in (L2B_N2_SELECTOR_PROFILE_ID, L2B_N20_SELECTOR_PROFILE_ID):
+    if config.l2b_stage not in (
+        L2B_N2_SELECTOR_PROFILE_ID,
+        L2B_N20_SELECTOR_PROFILE_ID,
+        L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
+    ):
         raise ValueError("signed L2b selector requires an approved L2b stage")
     if not shards:
         raise ValueError("signed L2b selector requires at least one shard")
@@ -2014,7 +2058,7 @@ def _signed_l2b_wall_clock_seconds_per_cell(
     stage_id: str | None,
     shard_id: str,
 ) -> float:
-    if stage_id == L2B_N20_SELECTOR_PROFILE_ID:
+    if stage_id in (L2B_N20_SELECTOR_PROFILE_ID, L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID):
         if shard_id == "matmul__fp32":
             return L2B_N20_SIGNED_WALL_CLOCK_SECONDS_FOR_MATMUL_FP32_CELL
         return L2B_N20_SIGNED_WALL_CLOCK_SECONDS_PER_CELL
@@ -2025,7 +2069,11 @@ def _l2b_cell_plans_for_shard(
     config: Cluster3RunnerConfig,
     shard: L2BFullCoverageShardPlan,
 ) -> tuple[GrammarModeLauncherCellPlan, ...]:
-    if config.l2b_stage not in (L2B_N2_SELECTOR_PROFILE_ID, L2B_N20_SELECTOR_PROFILE_ID):
+    if config.l2b_stage not in (
+        L2B_N2_SELECTOR_PROFILE_ID,
+        L2B_N20_SELECTOR_PROFILE_ID,
+        L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
+    ):
         raise ValueError("signed L2b cell plans require an approved L2b stage")
     stage = l2b_full_coverage_stage_spec(config.l2b_stage)
     cells = build_l1a_launcher_executable_plan(
@@ -2041,13 +2089,17 @@ def _l2b_cell_plans_for_shard(
         repo_root=REPO_ROOT,
         signed_authorization_placeholder=config.signed_l1a_authorization
         or (
-            L2B_N20_SIGNED_AUTHORIZATION_TOKEN
+            L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN
+            if config.l2b_stage == L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID
+            else L2B_N20_SIGNED_AUTHORIZATION_TOKEN
             if config.l2b_stage == L2B_N20_SELECTOR_PROFILE_ID
             else L2B_N2_SIGNED_AUTHORIZATION_TOKEN
         ),
         signed_authorization_option="--signed-l2b-authorization",
         support_status=(
-            L2B_N20_EXECUTABLE_SELECTOR_SUPPORT_STATUS
+            L2B_N20_ATTEMPT2_EXECUTABLE_SELECTOR_SUPPORT_STATUS
+            if config.l2b_stage == L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID
+            else L2B_N20_EXECUTABLE_SELECTOR_SUPPORT_STATUS
             if config.l2b_stage == L2B_N20_SELECTOR_PROFILE_ID
             else L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS
         ),
@@ -2225,7 +2277,11 @@ def _validate_l2b_runtime_authorization(
 
     if config.condition != L1A_GRAMMAR_MODE_CP_SELECTOR:
         raise ValueError("L2b authorization is only valid for grammar_mode_cp_12cell")
-    if config.l2b_stage not in (L2B_N2_SELECTOR_PROFILE_ID, L2B_N20_SELECTOR_PROFILE_ID):
+    if config.l2b_stage not in (
+        L2B_N2_SELECTOR_PROFILE_ID,
+        L2B_N20_SELECTOR_PROFILE_ID,
+        L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
+    ):
         raise ValueError("signed L2b requires an approved --l2b-stage")
 
     is_recovery_missing28_auth_token = _is_l2b_n2_recovery_missing28_token(
@@ -2259,7 +2315,9 @@ def _validate_l2b_runtime_authorization(
     if not stage.signed_authorization_available:
         raise RuntimeError("signed L2b runtime gate requires signed authorization")
     expected_signature_status = (
-        L2B_N20_SIGNATURE_STATUS
+        L2B_N20_ATTEMPT2_SIGNATURE_STATUS
+        if config.l2b_stage == L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID
+        else L2B_N20_SIGNATURE_STATUS
         if config.l2b_stage == L2B_N20_SELECTOR_PROFILE_ID
         else L2B_N2_SIGNATURE_STATUS
     )
@@ -2297,7 +2355,11 @@ def _validate_l2b_runtime_authorization(
         raise ValueError("signed L2b requires max_container_concurrency <= 40")
     if os.environ.get("TRITONGEN_MLFLOW") != "0":
         raise RuntimeError("TRITONGEN_MLFLOW=0 is required for signed L2b")
-    if is_recovery_missing28_auth_token or config.l2b_stage == L2B_N20_SELECTOR_PROFILE_ID:
+    if (
+        is_recovery_missing28_auth_token
+        or config.l2b_stage
+        in (L2B_N20_SELECTOR_PROFILE_ID, L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID)
+    ):
         if config.write_mode != "create":
             raise ValueError(
                 "signed L2b create-only launch forbids overwrite/resume"
@@ -2500,6 +2562,7 @@ def _validate_l2b_runtime_shard_plan(
         for token in (
             L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
             L2B_N20_SIGNED_AUTHORIZATION_TOKEN,
+            L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN,
             *L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_TOKENS,
         )
     ):

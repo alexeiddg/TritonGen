@@ -16,6 +16,9 @@ from cluster3.planning.grammar_mode_matrix import (
     L2B_N20_ATTEMPT2_OBSERVABILITY_ROOT,
     L2B_N20_ATTEMPT2_OUTPUT_ROOT,
     L2B_N20_ATTEMPT2_SCALE_NAMESPACE,
+    L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
+    L2B_N20_ATTEMPT2_SIGNATURE_STATUS,
+    L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN,
     L2B_N20_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_N20_OUTPUT_ROOT,
@@ -382,6 +385,40 @@ def test_l2b_n20_attempt2_namespace_is_distinct_future_relaunch_target() -> None
     assert L2B_N20_ATTEMPT2_OBSERVABILITY_ROOT != L2B_N20_OBSERVABILITY_ROOT
     assert L2B_N20_ATTEMPT2_OUTPUT_ROOT.endswith("/l2b_n20_attempt2")
     assert L2B_N20_ATTEMPT2_OBSERVABILITY_ROOT.endswith("/l2b_n20_attempt2")
+
+    attempt2 = l2b_full_coverage_stage_spec(L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID)
+    assert attempt2.selector_profile_id == L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID
+    assert attempt2.scale_namespace == L2B_N20_ATTEMPT2_SCALE_NAMESPACE
+    assert attempt2.output_root == L2B_N20_ATTEMPT2_OUTPUT_ROOT
+    assert attempt2.observability_root == L2B_N20_ATTEMPT2_OBSERVABILITY_ROOT
+    assert attempt2.n == 20
+    assert attempt2.rows_per_shard == 240
+    assert attempt2.full_matrix_planned_rows == 2160
+    assert attempt2.signature_status == L2B_N20_ATTEMPT2_SIGNATURE_STATUS
+
+    shards = build_l2b_full_coverage_shard_plan(
+        stage_id=L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
+        shard_selector="wave:0:3",
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+    )
+    assert len(shards) == 3
+    assert sum(shard.planned_rows for shard in shards) == 720
+    assert all(
+        shard.output_namespace.startswith(L2B_N20_ATTEMPT2_OUTPUT_ROOT + "/")
+        for shard in shards
+    )
+    assert all(
+        shard.artifact_namespace.startswith(
+            L2B_N20_ATTEMPT2_OBSERVABILITY_ROOT + "/"
+        )
+        for shard in shards
+    )
+    assert all(
+        L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN in shard.future_command
+        for shard in shards
+    )
+    assert all("--overwrite" not in shard.future_command for shard in shards)
 
 
 def test_l2b_shard_ids_are_exact_kernel_dtype_tuples() -> None:

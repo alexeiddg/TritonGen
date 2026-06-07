@@ -14,10 +14,9 @@ from pathlib import Path
 from typing import Any
 
 from cluster3.planning.grammar_mode_matrix import (
-    L2B_N20_SELECTOR_PROFILE_ID,
-    L2B_N2_SELECTOR_PROFILE_ID,
     L2B_SELECTOR_PROFILE_IDS,
     build_l2b_full_coverage_shard_plan,
+    l2b_full_coverage_stage_spec,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -73,14 +72,14 @@ class ValidationResult:
         }
 
 
-def _wave_selector(wave_id: str | None) -> str:
+def _wave_selectors(wave_id: str | None) -> tuple[str, ...]:
     if wave_id is None:
-        return "all"
+        return ("all",)
     selectors = {
-        "wave_1": "wave:0:3",
-        "wave_2": "wave:3:3",
-        "wave_3": "wave:6:2",
-        "wave_4": "matmul__fp32",
+        "wave_1": ("wave:0:3",),
+        "wave_2": ("wave:3:3",),
+        "wave_3": ("matmul__fp16", "matmul__bf16"),
+        "wave_4": ("matmul__fp32",),
     }
     try:
         return selectors[wave_id]
@@ -118,12 +117,17 @@ def validate_l2b_full_coverage(
     if stage not in L2B_SELECTOR_PROFILE_IDS:
         raise ValueError(f"unsupported L2b stage: {stage}")
 
-    stage_n = 20 if stage == L2B_N20_SELECTOR_PROFILE_ID else 2
-    plans = build_l2b_full_coverage_shard_plan(
-        stage_id=stage,
-        shard_selector=_wave_selector(wave_id),
-        repair_history_policy="agentic_transcript_v1",
-        repo_root=repo_root,
+    stage_spec = l2b_full_coverage_stage_spec(stage)
+    stage_n = stage_spec.n
+    plans = tuple(
+        shard
+        for selector in _wave_selectors(wave_id)
+        for shard in build_l2b_full_coverage_shard_plan(
+            stage_id=stage,
+            shard_selector=selector,
+            repair_history_policy="agentic_transcript_v1",
+            repo_root=repo_root,
+        )
     )
 
     actual_rows = 0

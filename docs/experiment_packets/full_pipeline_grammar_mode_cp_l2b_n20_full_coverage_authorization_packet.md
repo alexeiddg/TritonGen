@@ -3,7 +3,7 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N20_FULL_COVERAGE_AUTHORIZATION_PACKET_V1`
-packet_version: `1.0.1-archived-partial-attempt`
+packet_version: `1.0.2-archived-partial-attempt-attempt2-supersession`
 packet_type: archived signed bounded authorization packet
 target_branch: `codex-track-handoff-context`
 execution_code_target_commit: `28255c3afec51a2d61fcd59dbe9ee624b45e1306`
@@ -39,6 +39,11 @@ partial Wave 1 launch attempt. It no longer authorizes continuing the existing
 clean relaunch requires a separate signed packet or amended packet targeting a
 fresh namespace such as `l2b_n20_attempt2`. This packet does not authorize
 Fireworks API execution.
+
+Supersession note: the clean relaunch packet now exists at
+`docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n20_attempt2_authorization_packet.md`
+and signs only `l2b_n20_attempt2`. The archived `l2b_n20` namespace remains
+read-only provenance and is not an approved launch target.
 
 ## Partial Wave 1 Archive
 

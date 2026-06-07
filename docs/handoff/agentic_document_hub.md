@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.37
+Version: 1.37.38
 Date: 2026-06-07
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -81,6 +81,7 @@ treated as report-facing.
 | Full Pipeline L2b compressed full-coverage plan packet | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_full_coverage_authorization_packet.md` |
 | Full Pipeline L2b n=2 final signed packet | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n2_full_coverage_authorization_packet.md` |
 | Full Pipeline L2b n=20 final signed packet | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n20_full_coverage_authorization_packet.md` |
+| Full Pipeline L2b n=20 attempt2 signed packet | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n20_attempt2_authorization_packet.md` |
 | Full Pipeline L2b Fireworks-ready Modal plan | `docs/implementation_plans/l2b_full_coverage_fireworks_ready_modal_plan.md` |
 | Full Pipeline L2b plan/selector audit | `audits/l2b_full_coverage_plan_and_selector_report.md` |
 | Full Pipeline L2b n=2 final authorization audit | `audits/l2b_n2_final_authorization_report.md` |
@@ -89,6 +90,7 @@ treated as report-facing.
 | Full Pipeline L2b n=2 execution completion audit | `audits/l2b_n2_execution_completion_report.md` |
 | Full Pipeline L2b n=20 final authorization audit | `audits/l2b_n20_final_authorization_report.md` |
 | Full Pipeline L2b n=20 partial Wave 1 launch blocker audit | `audits/l2b_n20_partial_wave1_launch_surface_blocker_report.md` |
+| Full Pipeline L2b n=20 attempt2 authorization audit | `audits/l2b_n20_attempt2_authorization_report.md` |
 | Full Pipeline L1a final signature packet report | `audits/l1a_final_signature_packet_report.md` |
 | Full Pipeline L1a executable 12-cell selector support audit | `audits/l1a_executable_12cell_selector_support_report.md` |
 | Full Pipeline L1a executable 12-cell selector support promotion audit | `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md` |
@@ -177,11 +179,13 @@ Do not continue, retry, resume, overwrite, delete, or relaunch into the existing
 `l2b_n20` namespace. The launcher now fails closed with
 `L2B_N20_RUN_FAILED_INTERRUPTED_OR_MISSING_RUN_RESULT` when a signed run returns
 no result, and the packet validator command is backed by
-`cluster3.analysis.validate_l2b_full_coverage`. Future L2b n20 execution must
-use a separate signed packet or amended packet for a fresh namespace such as
-`l2b_n20_attempt2`. Per-cell and per-shard timing diagnostics remain
-sidecar-only operational metadata, not performance evidence. L2b-2 mutation,
-L2b-2 recovery mutation, Fireworks execution, L3, retry, resume, overwrite,
+`cluster3.analysis.validate_l2b_full_coverage`. The fresh relaunch packet is
+`docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n20_attempt2_authorization_packet.md`
+with audit `audits/l2b_n20_attempt2_authorization_report.md`; it signs only
+`l2b_n20_attempt2_full_coverage` and namespace `l2b_n20_attempt2`. Per-cell and
+per-shard timing diagnostics remain sidecar-only operational metadata, not
+performance evidence. L2b-2 mutation, L2b-2 recovery mutation, original
+`l2b_n20` mutation, Fireworks execution, L3, retry, resume, overwrite,
 profiler/benchmark/speedup, and paper claims remain blocked.
 
 Cluster 3 diagnostic evidence is provenance-frozen through
