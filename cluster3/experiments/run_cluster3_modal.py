@@ -1546,7 +1546,7 @@ def build_l2b_full_coverage_plan_payload(
         "signed_authorization_available": stage.signed_authorization_available,
         "signature_status": stage.signature_status,
         "dependency_gate": stage.dependency_gate,
-        "requires_signed_authorization": stage.signed_authorization_available,
+        "requires_signed_authorization": config.execution_plan,
         "signed_authorization_option": profile.signed_authorization_option,
         "support_status": profile.support_status,
         "concurrency_limits": dict(stage.concurrency_limits),

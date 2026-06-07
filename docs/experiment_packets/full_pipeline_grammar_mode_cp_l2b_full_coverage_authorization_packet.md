@@ -3,14 +3,14 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_COMPRESSED_FULL_COVERAGE_PACKET_V2`
-packet_version: `0.2.1-plan-only`
+packet_version: `0.3.0-reconciled-plan-only`
 packet_type: compressed ladder planning packet and local selector/profile record
 branch: `codex/l2b-full-coverage-plan-and-selector`
 target_branch: `codex-track-handoff-context`
-baseline_commit: `4b85c246795f4b6042852dfeb7219c053cc77760`
+baseline_commit: `9974770 Promote Fireworks Modal planning doc`
 status: `DRAFT_NOT_APPROVED_PLAN_ONLY`
 signature_status: `UNSIGNED`
-classification: `L2B_COMPRESSED_FULL_COVERAGE_PLAN_READY_FOR_SIGNATURE`
+classification: `L2B_PLANNING_RECONCILED_READY_FOR_L2B2_SIGNATURE`
 AUTHORIZES_EXECUTION: NO
 
 Execution authorization flags:
@@ -37,6 +37,19 @@ compressed two-stage sharded ladder. It does not run Modal, GPU work,
 generation, billing, analyzer/report refresh, Fireworks API calls, or any
 output/artifact mutation.
 
+## Reconciliation Context
+
+Current trunk is `codex-track-handoff-context` at `9974770 Promote Fireworks
+Modal planning doc`. The signed L2a n=20 attempt is preserved at `04d2eef
+Record failed L2 n20 validation` as an incomplete wall-clock/slow-tail run:
+228 of 240 rows completed, with only `task_agnostic__c_on__p_on` stopped at 8
+of 20 rows. This is not treated here as a scientific evidence failure; analyzer,
+report, paper-scale, retry, resume, overwrite, and rerun work remain blocked.
+
+L2b planning is reconciled on top of that trunk state and must not modify the
+preserved L2a output, observability, billing, report, analysis, or `mlruns`
+surfaces.
+
 ## Ladder
 
 Do not run L2b-1.
@@ -44,11 +57,12 @@ Do not run L2b-1.
 | Rung | Selector profile | Scope | Status |
 |---|---|---|---|
 | L2b-0 | local planning only | selector/profile and shard-plan support | implemented locally; no execution |
-| L2b-2 | `l2b_n2_full_coverage` | full repo-backed coverage at `n=2` | unsigned, ready for signature review |
+| L2b-2 | `l2b_n2_full_coverage` | full repo-backed coverage at `n=2` | final unsigned packet ready for signature review |
 | L2b-4 | `l2b_n20_full_coverage` | same full coverage at `n=20` | unsigned and blocked on L2b-2 completion/validation |
 
 The branch may prepare L2b-4 selector/profile support and an unsigned packet
 draft only. L2b-4 can be signed only after L2b-2 completes and validates.
+Runtime remains fail-closed until the L2b-2 packet is separately signed.
 
 ## Repo-Backed Scope
 
@@ -303,4 +317,4 @@ Protected mutation scan must show no changed files under `outputs`,
 
 ## Classification
 
-`L2B_COMPRESSED_FULL_COVERAGE_PLAN_READY_FOR_SIGNATURE`
+`L2B_PLANNING_RECONCILED_READY_FOR_L2B2_SIGNATURE`

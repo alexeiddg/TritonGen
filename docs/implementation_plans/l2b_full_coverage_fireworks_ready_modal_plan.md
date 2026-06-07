@@ -3,10 +3,10 @@
 ## Status
 
 status: `PLAN_ONLY_LOCAL_SELECTOR_SUPPORT`
-plan_version: `0.2.1`
+plan_version: `0.3.0`
 branch: `codex/l2b-full-coverage-plan-and-selector`
-baseline_commit: `4b85c246795f4b6042852dfeb7219c053cc77760`
-classification: `L2B_COMPRESSED_FULL_COVERAGE_PLAN_READY_FOR_SIGNATURE`
+baseline_commit: `9974770 Promote Fireworks Modal planning doc`
+classification: `L2B_PLANNING_RECONCILED_READY_FOR_L2B2_SIGNATURE`
 AUTHORIZES_EXECUTION: NO
 
 This plan implements local-only selector/profile support for a compressed L2b
@@ -38,6 +38,16 @@ profiler, benchmark, speedup, or performance claims
 
 Timing observability is allowed only as planned sidecar metadata and only after a
 future signed execution packet. It is not performance evidence.
+
+## Reconciliation Context
+
+Current trunk is `codex-track-handoff-context` at `9974770 Promote Fireworks
+Modal planning doc`. The prior signed L2a n=20 attempt is preserved at `04d2eef
+Record failed L2 n20 validation` as an incomplete wall-clock/slow-tail run:
+228 of 240 rows completed, with only `task_agnostic__c_on__p_on` stopped at 8
+of 20 rows. Treat that as incomplete slow-tail preservation, not a scientific
+evidence failure. L2b planning is reconciled on top of those preserved artifacts
+without modifying `outputs/`, `artifacts/`, or `mlruns/`.
 
 ## Repo-Backed Discovery
 
@@ -117,7 +127,7 @@ resume_policy: no resume
 
 | Profile | Rung | n | rows_per_shard | total_rows | Signature state |
 |---|---|---:|---:|---:|---|
-| `l2b_n2_full_coverage` | L2b-2 | 2 | 24 | 216 | unsigned, ready for signature review |
+| `l2b_n2_full_coverage` | L2b-2 | 2 | 24 | 216 | final unsigned, ready for signature review |
 | `l2b_n20_full_coverage` | L2b-4 | 20 | 240 | 2160 | unsigned, blocked on L2b-2 validation |
 
 Runtime execution remains fail-closed. No signed L2b token exists in this
@@ -276,7 +286,7 @@ Protected mutation scan must show no changed files under `outputs`,
 
 ## Acceptance Criteria
 
-`L2B_COMPRESSED_FULL_COVERAGE_PLAN_READY_FOR_SIGNATURE` when:
+`L2B_PLANNING_RECONCILED_READY_FOR_L2B2_SIGNATURE` when:
 
 - kernel classes and dtypes are repo-backed;
 - L2b is sharded by exact `<kernel_class>__<dtype_variant>`;

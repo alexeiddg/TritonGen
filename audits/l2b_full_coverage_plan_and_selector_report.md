@@ -2,14 +2,15 @@
 
 ## Summary
 
-status: `L2B_COMPRESSED_FULL_COVERAGE_PLAN_READY_FOR_SIGNATURE`
-report_version: `1.1.1`
+status: `L2B_PLANNING_RECONCILED_READY_FOR_L2B2_SIGNATURE`
+report_version: `2.0.0`
 branch: `codex/l2b-full-coverage-plan-and-selector`
-baseline_commit: `4b85c246795f4b6042852dfeb7219c053cc77760`
+baseline_commit: `9974770 Promote Fireworks Modal planning doc`
 AUTHORIZES_EXECUTION: NO
 
-This audit records the amended L2b planning branch. The branch now implements a
-mandatory sharded model and compressed ladder:
+This audit records the reconciled L2b planning branch. The branch is now replayed
+onto current `codex-track-handoff-context` at `9974770 Promote Fireworks Modal
+planning doc` and implements a mandatory sharded model and compressed ladder:
 
 ```text
 L2b-0: local planning/selector support only
@@ -20,6 +21,24 @@ L2b-4: same coverage at n=20, unsigned and blocked on L2b-2 validation
 No Modal/GPU/generation/billing/output/artifact/mlruns mutation, analyzer/report
 refresh, Fireworks API call, dependency change, lockfile change, retry, or
 resume was performed.
+
+## Current Trunk Context
+
+The signed L2a n=20 attempt is preserved at `04d2eef Record failed L2 n20
+validation` as an incomplete wall-clock/slow-tail run, not as a scientific
+evidence failure:
+
+```text
+expected rows: 240
+completed rows: 228
+partial cell: task_agnostic__c_on__p_on
+partial cell rows: 8 of 20
+```
+
+Analyzer/report refresh remains blocked. Retry, resume, overwrite, rerun,
+paper-scale claims, benchmark, speedup, and cost-per-success work remain blocked
+unless separately authorized. L2b planning does not modify the preserved L2a
+output, observability, billing, report, analysis, or `mlruns` surfaces.
 
 ## Files Added Or Updated
 
@@ -135,6 +154,9 @@ Added local-only selector arguments:
 Runtime remains fail-closed because no signed L2b token is registered. The
 placeholder `SIGNED_L2B_PACKET_NOT_APPROVED` parses as a command-shape draft but
 is not an approved authorization token.
+
+The L2b-2 packet is now the only final unsigned signature-ready L2b packet.
+L2b-4 remains unsigned and blocked on L2b-2 validation.
 
 Existing L2a `paper/n=20/elementwise/fp32` selector behavior remains separate
 from explicit L2b profiles.
@@ -264,7 +286,7 @@ git diff --cached --check
 
 No planning blocker remains. Execution blockers remain:
 
-- L2b-2 is unsigned until reviewed and signed.
+- L2b-2 is unsigned until reviewed and signed; runtime remains fail-closed.
 - L2b-4 is unsigned and blocked on L2b-2 completion and validation.
 - A concrete per-cell wall-clock budget is required before any L2b execution
   signature.
@@ -273,9 +295,10 @@ No planning blocker remains. Execution blockers remain:
 
 ## Classification
 
-`L2B_COMPRESSED_FULL_COVERAGE_PLAN_READY_FOR_SIGNATURE`
+`L2B_PLANNING_RECONCILED_READY_FOR_L2B2_SIGNATURE`
 
 ## Next Step
 
-Review and, if accepted, sign only the L2b-2 n=2 packet. Do not sign or run
-L2b-4 until L2b-2 completes and validates cleanly.
+Promote this reconciled planning/selector branch, then review and sign only the
+L2b-2 n=2 packet. Do not launch L2b during reconciliation or packet drafting.
+Do not sign or run L2b-4 until L2b-2 completes and validates cleanly.

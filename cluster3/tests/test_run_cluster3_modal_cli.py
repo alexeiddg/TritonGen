@@ -2012,6 +2012,7 @@ def test_l2b_n2_full_coverage_dry_plan_builds_sharded_matrix() -> None:
     assert payload["slow_cell_stop_policy"]["preserve_partial_shard_audit"] is True
     assert payload["execution_authorized"] is False
     assert payload["runtime_execution_enabled"] is False
+    assert payload["requires_signed_authorization"] is False
     assert payload["signed_authorization_available"] is False
     assert payload["fail_if_any_target_path_exists"] is True
     assert payload["concurrency_limits"]["max_gpu_concurrency"] <= 4
@@ -2073,7 +2074,7 @@ def test_l2b_n2_execution_plan_lists_one_exact_shard_fail_closed() -> None:
     assert payload["rows_per_shard"] == 24
     assert payload["total_planned_rows"] == 24
     assert payload["full_matrix_planned_rows"] == 216
-    assert payload["requires_signed_authorization"] is False
+    assert payload["requires_signed_authorization"] is True
     assert payload["signed_authorization_available"] is False
     assert payload["runtime_execution_enabled"] is False
     assert "no signed execution token" in payload["runtime_block_reason"]
@@ -2143,6 +2144,8 @@ def test_l2b_n20_execution_plan_lists_bounded_wave_blocked_on_l2b2() -> None:
     )
     assert payload["signature_status"] == "UNSIGNED_BLOCKED_ON_L2B_2_VALIDATION"
     assert payload["dependency_gate"] == "L2b-2 completion and validation"
+    assert payload["requires_signed_authorization"] is True
+    assert payload["signed_authorization_available"] is False
     assert payload["total_shards"] == 9
     assert payload["selected_shard_count"] == 3
     assert payload["rows_per_shard"] == 240
@@ -2532,6 +2535,11 @@ def test_l2_12cell_signed_selector_passes_prelaunch_guard_without_modal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
     config = parse_args(_signed_l2_selector_args())
 
     cells = runner_mod._validate_l1a_runtime_authorization(config)

@@ -1,6 +1,6 @@
 # Experiment Change Orchestration State
 
-- Version: 1.5.81
+- Version: 1.5.82
 - Date: 2026-06-07
 - Status: active live state record
 - Owner: current orchestration agent
@@ -375,11 +375,11 @@ reason. Do not backfill missing provenance silently after execution.
 
 | Field | Value |
 |---|---|
-| Git baseline commit | `04d2eef Record failed L2 n20 validation` plus Fireworks planning doc promotion in progress |
+| Git baseline commit | `9974770 Promote Fireworks Modal planning doc` plus reconciled L2b planning/selector promotion in progress |
 | Git branch | `codex-track-handoff-context` |
-| Git status at latest reconciliation | Final L2 n=20 authorization is promoted into `codex-track-handoff-context` at `bd84940` and promotion-audited at `2102259`. Runtime-gate commit `426ede8` is fast-forwarded into `codex-track-handoff-context` and promotion-audited at `4b85c24`. The exact signed L2 n=20 command was run once and failed validation with 228 of 240 rows because `task_agnostic__c_on__p_on` stopped at 8 of 20 rows. Partial L2 output/observability artifacts and one redacted low-confidence UTC-window billing artifact are preserved in commit `04d2eef`. The Fireworks API + Modal integration planning doc is now being promoted after `04d2eef` as docs-only v0.1.1; it does not authorize code, Fireworks API calls, Modal/GPU generation, output/artifact/mlruns mutation, billing query, dependency/lockfile change, analyzer/report refresh, profiler, or paper-scale work. |
+| Git status at latest reconciliation | Fireworks API + Modal planning is promoted into `codex-track-handoff-context` at `9974770` as docs-only/non-authorizing. The exact signed L2 n=20 command was run once and is preserved by `04d2eef` as incomplete wall-clock/slow-tail state, not scientific evidence failure: 228 of 240 rows exist and only `task_agnostic__c_on__p_on` stopped at 8 of 20 rows. Reconciled L2b planning/selector support is being replayed from `/private/tmp/tritongen-l2b-full-coverage-plan-and-selector` onto `9974770`; it prepares local-only sharded planning and a final unsigned L2b-2 packet for signature review only. It authorizes no L2b Modal/GPU/generation, output/artifact/mlruns mutation, billing query, analyzer/report refresh, retry/resume/overwrite/rerun, paper-scale claim, or L2a artifact mutation. |
 | Orchestration contract version | `docs/15_experiment_change_orchestration_contract.md` v1.0.13 |
-| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.118.0 |
+| Registry version at state reconciliation | `docs/handoff/document_version_registry.md` v1.119.0 |
 | Observability spec version | `docs/16_observability_sidecar_implementation_spec.md` v0.2.6 |
 | Structural/task analyzer metadata spec version | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` v0.1.4 |
 | MLflow tracking policy version | `.contracts/research/mlflow_tracking_policy.md` v1.0.0 |
@@ -395,7 +395,7 @@ reason. Do not backfill missing provenance silently after execution.
 | Agentic transcript A6 run-packet gate planning | promoted into handoff trunk at commit `4a84600`; `audits/agentic_transcript_v1_a6_run_packet_gate_report.md` v1.0.0 remains the evidence snapshot; `docs/handoff/agentic_transcript_v1_next_run_packet.md` is `DRAFT_NOT_APPROVED` and authorizes no Modal/output/generation/n=5/n=20/paper-scale work |
 | Observability O0-O6b package | O0-O4 promoted into handoff trunk at commit `309c451`; O5-Prep/O5a accepted locally through `c41a5bc`; O5b committed at `cf63de8`; O5c adapter-ready blocked state committed at `dc48782`; O6a Level-4 performance contract scaffolding committed at `d966ad0`; O6b smoke sidecar committed at `403cfea`; final O5b/O5c/O6a/O6b promotion audit passed with caveats |
 | Structural/task reporting S0-S4 package | S0 terminology accepted at `d9bbdb2`; S1 analyzer metric registry metadata committed at `ff876d2`; S2 report metadata consumption committed at `a7b0cdb`; S3 report refresh docs-only record committed at `f1058eb`; S0-S3 promotion audit committed at `80086f9`; S4 future experiment metric-family guidance committed at `f73ecb9`, fast-forwarded into `codex-track-handoff-context`, and promotion-audited at `d015862`. Generated preliminary-report previews remain ignored local outputs unless a future explicit force-add publication decision is made. |
-| Current Cluster 3 gate | L1b n=5 for the 12-cell `grammar_mode x C x P` design completed and was boundary-audited as `L1B_N5_AUDIT_PASS_L2_READY`. The L2 n=20 packet exists at `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md` with audits through runtime-gate promotion. The exact signed L2 n=20 command was run once and failed validation. All 12 output cell files exist, but `task_agnostic__c_on__p_on` has 8 of 20 rows, so the preserved run has 228 of 240 expected rows. The completion audit is `audits/l2_n20_execution_completion_report.md`. Analyzer/report refresh was not run and remains blocked. Any retry, resume, overwrite, or rerun requires a new signed recovery packet. |
+| Current Cluster 3 gate | L1b n=5 for the 12-cell `grammar_mode x C x P` design completed and was boundary-audited as `L1B_N5_AUDIT_PASS_L2_READY`. The signed L2 n=20 command was run once and is preserved as incomplete wall-clock/slow-tail state: all 12 output cell files exist, but `task_agnostic__c_on__p_on` has 8 of 20 rows, so the preserved run has 228 of 240 expected rows. The completion audit is `audits/l2_n20_execution_completion_report.md`; analyzer/report refresh was not run and remains blocked. Reconciled L2b planning/selector support prepares 9 mandatory shards `elementwise/reduction/matmul x fp32/fp16/bf16`; L2b-2 plans 216 rows and is final unsigned/signature-ready only, with runtime fail-closed until signed. L2b-4 remains unsigned and blocked until L2b-2 validates. Any retry, resume, overwrite, rerun, L2b launch, or analyzer/report refresh requires a new signed packet. |
 | Paper-scale status | blocked after failed L2 validation; graph/report/paper claims remain blocked because the L2 output is partial at 228 of 240 rows, analyzer/report did not run, billing is low-confidence UTC-window-only, and the partial artifacts are preservation evidence only |
 
 Important repository note: on the handoff trunk, `docs/`, `audits/`, and
@@ -407,7 +407,8 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 
 | Worktree | Branch | Commit | State ownership |
 |---|---|---|---|
-| `/Users/alexeidelgado/Desktop/TritonGen` | `codex-track-handoff-context` | `04d2eef Record failed L2 n20 validation` plus Fireworks planning doc promotion in progress | The exact signed L2 n=20 command was run once after runtime-gate promotion and failed validation at 228 of 240 rows. Partial output/observability artifacts and a redacted low-confidence UTC-window billing artifact are preserved. The Fireworks planning doc promotion is docs-only and non-authorizing. Analyzer/report refresh, retry/resume, Fireworks API calls, Modal/GPU generation, MLflow runtime writes, preliminary-report mutation, L3, extra kernels/dtypes, benchmark, speedup, cost-per-success, and paper conclusions remain blocked. |
+| `/Users/alexeidelgado/Desktop/TritonGen` | `codex-track-handoff-context` | `9974770 Promote Fireworks Modal planning doc` plus L2b planning/selector promotion in progress | The exact signed L2 n=20 command was run once after runtime-gate promotion and is preserved as incomplete wall-clock/slow-tail state at 228 of 240 rows. Partial output/observability artifacts and a redacted low-confidence UTC-window billing artifact are preserved. The Fireworks planning doc promotion is docs-only and non-authorizing. Reconciled L2b planning/selector work is local-only and non-authorizing until L2b-2 is separately signed. Analyzer/report refresh, retry/resume, Fireworks API calls, Modal/GPU generation, MLflow runtime writes, preliminary-report mutation, L3, L2b execution, extra kernels/dtypes outside signed L2b scope, benchmark, speedup, cost-per-success, and paper conclusions remain blocked. |
+| `/private/tmp/tritongen-l2b-full-coverage-plan-and-selector` | `codex/l2b-full-coverage-plan-and-selector` | `9974770` plus reconciled L2b planning commits | Isolated L2b planning/selector worktree rebased from commits `90470a6`, `4b86465`, and `aa55af4` onto current trunk. Scope is local-only sharded planning and unsigned packet preparation. It must not touch `outputs/`, `artifacts/`, `mlruns/`, preserved L2a paths, analyzer/report outputs, billing artifacts, or runtime generation state. |
 | `/private/tmp/tritongen-llm-repair-memory` | `codex/llm-repair-memory-agentic-transcript-v1` | `4a84600` | reference/history worktree only; same A6 commit as the promoted handoff trunk and not the place for observability work |
 | `/Users/alexeidelgado/Desktop/TritonGen/.claude/worktrees/intelligent-pasteur-72d92f` | `claude/intelligent-pasteur-72d92f` | `b0085c1` | external/unknown to this orchestration state; reconcile before relying on it |
 
@@ -416,6 +417,7 @@ output artifacts are unchanged; inspect `outputs/` directly when relevant.
 | Branch | Stream/package | Worktree | Status | Notes |
 |---|---|---|---|---|
 | `codex/fireworks-api-modal-implementation-plan` | Fireworks API + Modal integration planning | none after promotion | docs-only promotion | Original planning commit `2155630` forked from `4b85c24`. The plan is replayed onto `codex-track-handoff-context` after L2 failed-validation commit `04d2eef` as `docs/implementation_plans/fireworks_api_modal_integration_plan.md` v0.1.1. It is a non-authorizing Cluster FW plan and blocks all code/API/Modal/GPU/generation/output/artifact/mlruns/billing/dependency/lockfile/analyzer/report/profiler/paper-scale work until a separate signed Fireworks authorization packet decides how to handle the failed-validation L2 baseline. |
+| `codex/l2b-full-coverage-plan-and-selector` | L2b sharded full-coverage planning/selector support | `/private/tmp/tritongen-l2b-full-coverage-plan-and-selector` | reconciliation/promotion in progress | Replayed onto current trunk `9974770` after Fireworks planning promotion. Adds repo-backed L2b shard discovery for `elementwise/reduction/matmul x fp32/fp16/bf16`, selector/profile support for `l2b_n2_full_coverage` and `l2b_n20_full_coverage`, deterministic per-shard path planning, future per-shard commands, fail-if-any-target-path-exists metadata, sidecar-only timing diagnostics, slow-cell stop policy, L2b-2 final unsigned signature-ready packet, L2b-4 unsigned blocked draft, and audit report. `AUTHORIZES_EXECUTION: NO`; runtime remains fail-closed until L2b-2 is separately signed. No Modal/GPU/generation, output/artifact/mlruns mutation, billing query, analyzer/report refresh, or L2a artifact mutation is authorized. |
 | `codex/l2-n20-runtime-gate-enable` | L2 n=20 runtime-gate enablement | none after promotion | promoted/audit closeout | Created from pushed `codex-track-handoff-context` baseline `2102259`, committed as `426ede8`, and fast-forwarded into `codex-track-handoff-context`. Scope is narrow runtime pre-launch authorization only: allow exactly the signed L2 n=20 token/profile/path to pass and keep all other variants fail-closed. Adds `audits/l2_n20_runtime_gate_enable_report.md`; promotion audit is `audits/l2_n20_runtime_gate_enable_promotion_audit_report.md`. No L2 execution, Modal/GPU/generation, billing query, output/artifact/mlruns mutation, analyzer/report refresh, dependency/lockfile, profiler, benchmark, speedup, cost-per-success, paper conclusion, or MLflow runtime work occurred during the promotion. |
 | `codex/l2-n20-final-authorization` | L2 n=20 final authorization packet | none after promotion | promoted/audit closeout | Created from `codex-track-handoff-context` at `182db35`, committed as `bd84940`, and fast-forwarded into `codex-track-handoff-context`. Updates the L2 packet to `SIGNED_FOR_L2_N20_ONLY`, signs `AUTHORIZES_EXECUTION: YES_L2_N20_ONLY`, records the exact L2 command bundle, 12-cell and 240-row expectation, signed stop/spend limits, L2 namespaces, post-run validation authorization, post-run billing reconciliation authorization, and adds `audits/l2_n20_final_authorization_report.md`. Promotion audit is `audits/l2_n20_final_authorization_promotion_audit_report.md`. No L2 execution, Modal/GPU/generation, billing query, output/artifact/mlruns mutation, analyzer/report refresh, runtime code change, dependency/lockfile, preliminary-report refresh, profiler, benchmark, speedup, cost-per-success, paper conclusion, or MLflow runtime work occurred in this branch. |
 | `codex/l2-n20-selector-profile-support` | L2 n=20 selector/profile support | none after promotion | promoted/audit closeout | Created from pushed handoff baseline `3a21002` and fast-forwarded into `codex-track-handoff-context` at `27493c0`. Adds L2 `paper/n=20` profile support for the 12-cell `grammar_mode x C x P` selector, 240 planned rows, signed-L2 command surfaces, L2 namespaces, fail-closed runtime profile behavior, focused local tests, packet update, and `audits/l2_n20_selector_profile_support_report.md`. Promotion audit is `audits/l2_n20_selector_profile_support_promotion_audit_report.md`. `AUTHORIZES_EXECUTION: NO`; no L2/n20 execution, Modal/GPU/generation, output/artifact/mlruns mutation, billing query, analyzer/report refresh, dependency, lockfile, benchmark, profiler, speedup, cost-per-success, or paper-scale claim is authorized. |
@@ -679,27 +681,29 @@ Historical context:
 
 Allowed next actions:
 
-1. Commit and push the Fireworks API + Modal integration planning doc promotion
-   onto `codex-track-handoff-context`, preserving `04d2eef` and all L2 partial
-   output/observability/billing artifacts.
-2. After the Fireworks planning doc is pushed, prepare the separate L2b
-   full-coverage planning/selector branch from the updated
-   `codex-track-handoff-context` tip. L2b remains local/planning unless a later
-   signed packet says otherwise.
-3. Start a separate failure-audit or recovery-planning branch to inspect the
+1. Promote the reconciled L2b planning/selector branch onto current
+   `codex-track-handoff-context`, preserving `9974770`, `04d2eef`, and all L2a
+   partial output/observability/billing artifacts. Do not launch L2b.
+2. Review and, if approved, sign only the final unsigned L2b-2 packet for the
+   9-shard `elementwise/reduction/matmul x fp32/fp16/bf16` scope, n=2, 216
+   rows total. Runtime execution remains fail-closed until that L2b-2 packet is
+   signed.
+3. Keep L2b-4 unsigned and blocked until L2b-2 completes and validates. Do not
+   sign L2b-4, run L2b-4, or use 10 GPUs / 100 containers during L2b-2 review.
+4. Start a separate failure-audit or recovery-planning branch to inspect the
    partial `task_agnostic__c_on__p_on` cell, the idle cleanup hang, missing
    summary sidecar, and provenance metadata split.
-4. Draft a new signed recovery packet before any retry, resume, overwrite,
+5. Draft a new signed recovery packet before any retry, resume, overwrite,
    rerun, analyzer/report refresh, additional Modal/GPU generation, or billing
    query beyond the preserved L2 reconciliation artifact.
-5. If the L1b analyzer/report artifacts are cited, cite the development-scale
+6. If the L1b analyzer/report artifacts are cited, cite the development-scale
    caveat: they are not paper-scale or reportable paper evidence, and
    three-way interaction fields are diagnostic only.
-6. Retry O5c live billing collection only after the Modal workspace billing
+7. Retry O5c live billing collection only after the Modal workspace billing
    report rate limit clears, using a separate explicit billing approval packet.
    Prefer daily resolution for multi-day windows and hourly resolution only for
    windows of 7 days or less, or after explicit approval.
-7. Do not run any additional O6b/O6c performance benchmark, output mutation,
+8. Do not run any additional O6b/O6c performance benchmark, output mutation,
    historical sidecar migration, analyzer/economic metrics,
    cost-per-success/pass@k cost, or paper-scale economic/performance claims
    without a new signed packet.
@@ -1566,6 +1570,7 @@ status: promoted into A6 handoff trunk at 4a84600; reference/history only
 
 | Package | Suggested branch | Status | Entry gate | Exit gate | Notes |
 |---|---|---|---|---|---|
+| L2b sharded full-coverage planning/selector support | `codex/l2b-full-coverage-plan-and-selector` then `codex-track-handoff-context` | reconciliation/promotion in progress | current trunk `9974770`; preserved L2a incomplete slow-tail state at `04d2eef` | L2B_PLANNING_RECONCILED_READY_FOR_L2B2_SIGNATURE | Adds local-only L2b selector/profile support and planning docs for mandatory shards `elementwise/reduction/matmul x fp32/fp16/bf16`. L2b-2 is the only final unsigned signature-ready packet: 9 shards, 12 cells per shard, n=2, 24 rows per shard, 216 total rows. L2b-4 remains unsigned and blocked until L2b-2 validates. Runtime remains fail-closed until L2b-2 is signed. No Modal/GPU/generation, billing query, output/artifact/mlruns mutation, analyzer/report refresh, retry/resume/overwrite/rerun, performance claim, paper-scale claim, or L2a artifact mutation is authorized. |
 | Fireworks API + Modal integration plan | `codex/fireworks-api-modal-implementation-plan` then `codex-track-handoff-context` | docs-only promotion | L2 failed-validation preservation commit `04d2eef` | FIREWORKS_API_MODAL_PLAN_PROMOTED_DOCS_ONLY | Adds `docs/implementation_plans/fireworks_api_modal_integration_plan.md` v0.1.1 after the L2 failed-validation preservation commit. The plan defines a future Cluster FW path using Fireworks-hosted DeepSeek-R1 and Llama 3.1 405B with the existing Modal harness, but authorizes no code, Fireworks API calls, Modal/GPU generation, output/artifact/mlruns mutation, billing query, dependency/lockfile change, analyzer/report refresh, profiler, or paper-scale claim. Any implementation requires a separate signed Fireworks authorization packet. |
 | L2 n=20 failed-validation preservation | `codex-track-handoff-context` | preservation/audit in progress | signed L2 packet, promoted runtime gate, and one completed failed-validation attempt | L2_N20_RUN_FAILED_VALIDATION_PRESERVED | Preserves the single signed L2 n=20 attempt with 12 output cell files but 228 of 240 rows; `task_agnostic__c_on__p_on` is partial at 8 of 20 rows. Adds `audits/l2_n20_execution_completion_report.md`, preserves output/observability sidecars and one redacted low-confidence UTC-window billing artifact, and keeps analyzer/report blocked. No retry, resume, overwrite, rerun, paper-scale claim, benchmark, speedup, cost-per-success, MLflow runtime write, or preliminary-report mutation is authorized without a new signed recovery packet. |
 | L2 n=20 runtime-gate enablement | `codex/l2-n20-runtime-gate-enable` then `codex-track-handoff-context` | promoted/audit closeout | promoted final authorization `bd84940` plus promotion audit `2102259` | L2_N20_RUNTIME_GATE_PROMOTION_COMPLETE_EXECUTION_PRECHECK_READY | Narrow code/test branch to allow only the exact signed L2 n=20 token/profile/path through pre-launch authorization while preserving fail-closed behavior for unsigned, wrong-token, wrong-n, L1a/L1b token reuse, non-elementwise, non-fp32, MLflow-enabled, non-agentic repair history, retry/resume, existing target path, row/cell mismatch, namespace mismatch, L3, profiler, benchmark, speedup/performance paths, and all other variants. Promoted commit is `426ede8`; implementation audit is `audits/l2_n20_runtime_gate_enable_report.md`; promotion audit is `audits/l2_n20_runtime_gate_enable_promotion_audit_report.md`. No L2 execution occurred during promotion. |

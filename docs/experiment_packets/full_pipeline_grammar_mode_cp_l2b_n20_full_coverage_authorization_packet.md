@@ -3,18 +3,29 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N20_FULL_COVERAGE_AUTHORIZATION_PACKET_V1`
-packet_version: `0.1.1-unsigned-blocked`
+packet_version: `0.2.0-unsigned-blocked`
 packet_type: unsigned blocked authorization packet draft
 branch: `codex/l2b-full-coverage-plan-and-selector`
 target_branch: `codex-track-handoff-context`
-baseline_commit: `4b85c246795f4b6042852dfeb7219c053cc77760`
+planning_baseline_commit: `9974770 Promote Fireworks Modal planning doc`
 selector_profile_id: `l2b_n20_full_coverage`
 rung: `L2b-4`
 status: `UNSIGNED_BLOCKED_ON_L2B_2_VALIDATION`
+classification: `L2B_4_UNSIGNED_BLOCKED_ON_L2B_2_VALIDATION`
 AUTHORIZES_EXECUTION: NO
 
 L2b-4 must remain unsigned until L2b-2 completes and validates cleanly. This
 branch prepares only selector/profile support and a blocked packet draft.
+No L2b-4 signature or execution is authorized by this packet.
+
+## Reconciliation Context
+
+Current trunk is `codex-track-handoff-context` at `9974770 Promote Fireworks
+Modal planning doc`. The prior signed L2a n=20 attempt is preserved at `04d2eef
+Record failed L2 n20 validation` as an incomplete wall-clock/slow-tail run:
+228 of 240 rows completed, with only `task_agnostic__c_on__p_on` stopped at 8
+of 20 rows. L2b-4 remains blocked because L2b-2 must complete and validate
+first.
 
 ## Scope
 

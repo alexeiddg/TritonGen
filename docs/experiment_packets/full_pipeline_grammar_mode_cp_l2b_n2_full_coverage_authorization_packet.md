@@ -3,18 +3,30 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N2_FULL_COVERAGE_AUTHORIZATION_PACKET_V1`
-packet_version: `0.1.1-unsigned-signature-ready`
-packet_type: unsigned authorization packet draft
+packet_version: `1.0.0-final-unsigned-signature-ready`
+packet_type: final unsigned L2b-2 authorization packet
 branch: `codex/l2b-full-coverage-plan-and-selector`
 target_branch: `codex-track-handoff-context`
-baseline_commit: `4b85c246795f4b6042852dfeb7219c053cc77760`
+planning_baseline_commit: `9974770 Promote Fireworks Modal planning doc`
+signed_target_commit: `REQUIRED_AFTER_L2B_PLANNING_PROMOTION`
 selector_profile_id: `l2b_n2_full_coverage`
 rung: `L2b-2`
-status: `UNSIGNED_READY_FOR_SIGNATURE_REVIEW`
+status: `FINAL_UNSIGNED_READY_FOR_SIGNATURE_REVIEW`
+classification: `L2B_PLANNING_RECONCILED_READY_FOR_L2B2_SIGNATURE`
 AUTHORIZES_EXECUTION: NO
 
-This packet is prepared so L2b-2 can be signed first after review. It does not
-authorize execution in this branch.
+This packet is prepared so L2b-2 can be signed first after planning promotion.
+It does not authorize execution in this branch, and runtime must remain
+fail-closed until this packet is separately signed.
+
+## Reconciliation Context
+
+Current trunk is `codex-track-handoff-context` at `9974770 Promote Fireworks
+Modal planning doc`. The prior signed L2a n=20 attempt is preserved at `04d2eef
+Record failed L2 n20 validation` as an incomplete wall-clock/slow-tail run:
+228 of 240 rows completed, with only `task_agnostic__c_on__p_on` stopped at 8
+of 20 rows. L2b-2 is a new sharded n=2 planning and signature surface, not a
+retry or resume of L2a, and it does not modify any preserved L2a paths.
 
 ## Scope
 
@@ -33,6 +45,8 @@ total_planned_rows: 216
 repair_history_policy: agentic_transcript_v1
 backend: modal_local_model
 future_backend_todo: fireworks_api
+L2b-4 authorization: no
+runtime gate before signature: fail-closed
 ```
 
 ## Shards
@@ -156,6 +170,17 @@ and 216 total, if any live L2a path would be touched, if C/P/grammar semantics
 would change, if analyzer/report paper gates must be loosened, or if the signed
 per-cell wall-clock budget is missing.
 
+Protected paths that must not be modified by L2b-2 planning or signature review:
+
+```text
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20
+artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20
+artifacts/analysis/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20*
+artifacts/reports/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20*
+artifacts/billing/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20*
+mlruns
+```
+
 ## Signature Block
 
 ```text
@@ -164,5 +189,5 @@ AUTHORIZES_EXECUTION_AFTER_SIGNATURE_ONLY: PENDING_SIGNATURE_REVIEW_L2B_2_N2_ONL
 AUTHORIZES_L2B_4: NO
 AUTHORIZED_BY:
 AUTHORIZED_AT_UTC:
-SIGNED_TARGET_COMMIT:
+SIGNED_TARGET_COMMIT: REQUIRED_AFTER_L2B_PLANNING_PROMOTION
 ```
