@@ -1792,6 +1792,12 @@ def main(argv: Sequence[str] | None = None) -> Cluster3RunResult | dict[str, Any
             )
         else:
             result = run_cluster3(config)
+    if result is None:
+        raise RuntimeError(
+            "L2B_N20_RUN_FAILED_INTERRUPTED_OR_MISSING_RUN_RESULT: "
+            "signed L2b run returned no result; partial artifacts, if any, "
+            "are preserved and no retry or resume is authorized"
+        )
     print(
         json.dumps(
             {

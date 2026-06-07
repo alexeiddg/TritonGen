@@ -78,11 +78,15 @@ L2B_SELECTOR_PROFILE_IDS = (
 )
 L2B_N2_SCALE_NAMESPACE = "l2b_n2"
 L2B_N20_SCALE_NAMESPACE = "l2b_n20"
+L2B_N20_ATTEMPT2_SCALE_NAMESPACE = "l2b_n20_attempt2"
 L2B_N2_OUTPUT_ROOT = (
     "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n2"
 )
 L2B_N20_OUTPUT_ROOT = (
     "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n20"
+)
+L2B_N20_ATTEMPT2_OUTPUT_ROOT = (
+    "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n20_attempt2"
 )
 L2B_N2_OBSERVABILITY_ROOT = (
     "artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n2"
@@ -90,6 +94,10 @@ L2B_N2_OBSERVABILITY_ROOT = (
 L2B_N20_OBSERVABILITY_ROOT = (
     "artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/"
     "l2b_n20"
+)
+L2B_N20_ATTEMPT2_OBSERVABILITY_ROOT = (
+    "artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/"
+    "l2b_n20_attempt2"
 )
 L2B_N2_ANALYSIS_ROOT = (
     "artifacts/analysis/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n2"

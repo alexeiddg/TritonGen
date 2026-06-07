@@ -13,6 +13,9 @@ from cluster3.planning.grammar_mode_matrix import (
     L1A_SIGNED_AUTHORIZATION_PLACEHOLDER,
     L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_KNOWN_HIGH_COST_CELL_ID,
+    L2B_N20_ATTEMPT2_OBSERVABILITY_ROOT,
+    L2B_N20_ATTEMPT2_OUTPUT_ROOT,
+    L2B_N20_ATTEMPT2_SCALE_NAMESPACE,
     L2B_N20_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_N20_OUTPUT_ROOT,
@@ -370,6 +373,15 @@ def test_l2b_stage_specs_define_compressed_sharded_ladder() -> None:
         L2B_TIMING_OBSERVABILITY_REQUIRED_DIAGNOSTICS
     )
     assert n20.timing_observability["performance_evidence_authorized"] is False
+
+
+def test_l2b_n20_attempt2_namespace_is_distinct_future_relaunch_target() -> None:
+    assert L2B_N20_ATTEMPT2_SCALE_NAMESPACE == "l2b_n20_attempt2"
+    assert L2B_N20_ATTEMPT2_SCALE_NAMESPACE != "l2b_n20"
+    assert L2B_N20_ATTEMPT2_OUTPUT_ROOT != L2B_N20_OUTPUT_ROOT
+    assert L2B_N20_ATTEMPT2_OBSERVABILITY_ROOT != L2B_N20_OBSERVABILITY_ROOT
+    assert L2B_N20_ATTEMPT2_OUTPUT_ROOT.endswith("/l2b_n20_attempt2")
+    assert L2B_N20_ATTEMPT2_OBSERVABILITY_ROOT.endswith("/l2b_n20_attempt2")
 
 
 def test_l2b_shard_ids_are_exact_kernel_dtype_tuples() -> None:

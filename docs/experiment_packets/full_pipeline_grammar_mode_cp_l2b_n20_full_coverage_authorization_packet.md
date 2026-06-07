@@ -3,26 +3,26 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N20_FULL_COVERAGE_AUTHORIZATION_PACKET_V1`
-packet_version: `1.0.0-signed-l2b-n20-only`
-packet_type: signed bounded authorization packet
+packet_version: `1.0.1-archived-partial-attempt`
+packet_type: archived signed bounded authorization packet
 target_branch: `codex-track-handoff-context`
 execution_code_target_commit: `28255c3afec51a2d61fcd59dbe9ee624b45e1306`
 runtime_gate_commit: current packet commit after review
 selector_profile_id: `l2b_n20_full_coverage`
 rung: `L2b-4`
-status: `SIGNED_FOR_L2B_N20_ONLY`
-classification: `L2B_N20_FINAL_AUTHORIZATION_READY`
+status: `ARCHIVED_PARTIAL_WAVE1_ATTEMPT_NO_CONTINUATION`
+classification: `L2B_N20_PARTIAL_WAVE1_ARCHIVED_LAUNCH_SURFACE_GAP`
 
 ```text
-AUTHORIZES_EXECUTION: YES_L2B_N20_ONLY
-MODAL_AUTHORIZED: YES_L2B_N20_ONLY
-GPU_AUTHORIZED: YES_L2B_N20_ONLY
-GENERATION_AUTHORIZED: YES_L2B_N20_ONLY
-EXPERIMENT_EXECUTION_AUTHORIZED: YES_L2B_N20_ONLY
-OUTPUT_MUTATION_AUTHORIZED: YES_L2B_N20_NAMESPACES_ONLY
-ARTIFACT_MUTATION_AUTHORIZED: YES_L2B_N20_NAMESPACES_ONLY
-BILLING_QUERY_AUTHORIZED: YES_L2B_N20_RECONCILIATION_ONLY_AFTER_WAVES
-POST_RUN_VALIDATION_AUTHORIZED: YES_LISTED_COMMANDS_ONLY
+AUTHORIZES_EXECUTION: NO_CONTINUATION_ARCHIVED_PARTIAL_ATTEMPT
+MODAL_AUTHORIZED: NO
+GPU_AUTHORIZED: NO
+GENERATION_AUTHORIZED: NO
+EXPERIMENT_EXECUTION_AUTHORIZED: NO
+OUTPUT_MUTATION_AUTHORIZED: NO_NEW_ROWS
+ARTIFACT_MUTATION_AUTHORIZED: YES_EXISTING_L2B_N20_PARTIAL_ARCHIVE_ONLY
+BILLING_QUERY_AUTHORIZED: NO
+POST_RUN_VALIDATION_AUTHORIZED: YES_READ_ONLY_VALIDATION_ONLY
 OVERWRITE_AUTHORIZED: NO
 RETRY_AUTHORIZED: NO
 RESUME_AUTHORIZED: NO
@@ -33,8 +33,45 @@ L3_AUTHORIZED: NO
 SIGNATURE_STATUS: SIGNED_FOR_L2B_N20_ONLY
 ```
 
-This packet signs L2b-4 / n20 only. It does not execute L2b-4 during packet
-preparation and does not authorize Fireworks API execution.
+This packet records the original signed L2b-4 / n20 authorization and its
+partial Wave 1 launch attempt. It no longer authorizes continuing the existing
+`l2b_n20` sequence because the create-only target namespace now exists. Future
+clean relaunch requires a separate signed packet or amended packet targeting a
+fresh namespace such as `l2b_n20_attempt2`. This packet does not authorize
+Fireworks API execution.
+
+## Partial Wave 1 Archive
+
+The first Wave 1 launch attempt from commit
+`430c342e9743c969fbeb627576a80dcdd7b97a8e` wrote a partial create-only
+provenance record under the authorized `l2b_n20` namespace, then failed at the
+launch surface before Wave 1 completion.
+
+```text
+partial_result_jsonl_files: 3
+partial_content_hash_sidecars: 3
+partial_observability_jsonl_files: 3
+partial_observability_hash_sidecars: 3
+partial_observability_summary_sidecars: 0
+completed_waves: 0
+analyzer_report_billing_run: no
+retry_resume_overwrite_run: no
+classification: L2B_N20_PARTIAL_WAVE1_ARCHIVED_LAUNCH_SURFACE_GAP
+```
+
+Partial cells:
+
+```text
+elementwise__fp32/grammar_off__c_off__p_off
+elementwise__fp16/grammar_off__c_off__p_off
+elementwise__bf16/grammar_off__c_off__p_off
+```
+
+The previous launcher surfaced interrupted or missing signed-run results as an
+`AttributeError` at `cluster3/experiments/run_cluster3_modal.py:1798`. The local
+launcher now fails closed with
+`L2B_N20_RUN_FAILED_INTERRUPTED_OR_MISSING_RUN_RESULT` and preserves partial
+artifacts without retry or resume.
 
 ## L2b-2 Prerequisite
 
@@ -123,6 +160,11 @@ matmul fp32 scope. It must not block elementwise, reduction, fp16, or bf16 n20
 evidence.
 
 ## Command Bundle
+
+The commands below are retained as the original signed command bundle and for
+read-only planning validation. They are not authorization to continue the
+existing `l2b_n20` namespace after the partial Wave 1 attempt. A future clean
+relaunch must use a separately signed namespace such as `l2b_n20_attempt2`.
 
 Dry plan for all shards:
 

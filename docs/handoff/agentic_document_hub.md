@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.36
+Version: 1.37.37
 Date: 2026-06-07
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -88,6 +88,7 @@ treated as report-facing.
 | Full Pipeline L2b n=2 runtime-dispatch enable audit | `audits/l2b_n2_runtime_dispatch_enable_report.md` |
 | Full Pipeline L2b n=2 execution completion audit | `audits/l2b_n2_execution_completion_report.md` |
 | Full Pipeline L2b n=20 final authorization audit | `audits/l2b_n20_final_authorization_report.md` |
+| Full Pipeline L2b n=20 partial Wave 1 launch blocker audit | `audits/l2b_n20_partial_wave1_launch_surface_blocker_report.md` |
 | Full Pipeline L1a final signature packet report | `audits/l1a_final_signature_packet_report.md` |
 | Full Pipeline L1a executable 12-cell selector support audit | `audits/l1a_executable_12cell_selector_support_report.md` |
 | Full Pipeline L1a executable 12-cell selector support promotion audit | `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md` |
@@ -164,22 +165,24 @@ but no observability sidecars. The post-recovery dirty-worktree reconciliation
 is recorded in `audits/l2b_n2_post_recovery_dirty_worktree_reconciliation_report.md`
 at commit `28255c3afec51a2d61fcd59dbe9ee624b45e1306`.
 
-The final signed L2b-4 n20 packet is
+The original signed L2b-4 n20 packet is
 `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n20_full_coverage_authorization_packet.md`
-with audit `audits/l2b_n20_final_authorization_report.md`. It signs only token
-`FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N20_FULL_COVERAGE_AUTHORIZATION_PACKET_V1`
-for 9 repo-backed shards, 2160 planned rows, four bounded waves, long
-wall-clock budgets, n20-only output/artifact namespaces, no overwrite, no
-retry, no resume, post-wave billing reconciliation, and Fireworks separation.
-The runtime gate accepts the exact n20 token for `l2b_n20_full_coverage`, maps
-it to create mode without `--overwrite`, reaches mocked Modal dispatch in local
-tests, and fails closed for L2b-2 token reuse on n20. Future launch still
-requires a clean worktree, local/origin alignment, target path absence, and
-explicit execution handoff. Per-cell and per-shard timing diagnostics are
+with final authorization audit `audits/l2b_n20_final_authorization_report.md`.
+The first Wave 1 launch attempt wrote only three partial cells under
+`l2b_n20`, then exposed a launch-surface gap. The archive is recorded in
+`audits/l2b_n20_partial_wave1_launch_surface_blocker_report.md` with
+classification `L2B_N20_PARTIAL_WAVE1_ARCHIVED_LAUNCH_SURFACE_GAP`.
+
+Do not continue, retry, resume, overwrite, delete, or relaunch into the existing
+`l2b_n20` namespace. The launcher now fails closed with
+`L2B_N20_RUN_FAILED_INTERRUPTED_OR_MISSING_RUN_RESULT` when a signed run returns
+no result, and the packet validator command is backed by
+`cluster3.analysis.validate_l2b_full_coverage`. Future L2b n20 execution must
+use a separate signed packet or amended packet for a fresh namespace such as
+`l2b_n20_attempt2`. Per-cell and per-shard timing diagnostics remain
 sidecar-only operational metadata, not performance evidence. L2b-2 mutation,
 L2b-2 recovery mutation, Fireworks execution, L3, retry, resume, overwrite,
-profiler/benchmark/speedup, and paper claims remain blocked outside the signed
-L2b n20 packet boundaries.
+profiler/benchmark/speedup, and paper claims remain blocked.
 
 Cluster 3 diagnostic evidence is provenance-frozen through
 `audits/cluster3_phase13b_commit_provenance_freeze_report.md`. Phase 14e froze

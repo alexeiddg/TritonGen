@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from cluster3.analysis import validate_l2b_full_coverage as l2b_validator
 import cluster3.experiments.run_cluster3_modal as runner_mod
 from cluster2.constants import DEFAULT_REPAIR_BUDGET
 from cluster2.feedback.repair_loop import RepairFeedbackInput, RepairGenerationInput
@@ -2633,6 +2634,119 @@ def test_l2b_n20_signed_one_shard_reaches_mocked_modal_dispatch_boundary(
         )
         for call in calls
     )
+
+
+def test_l2b_n20_signed_missing_run_result_fails_with_classification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MockModalContext:
+        def __enter__(self) -> None:
+            return None
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    calls = 0
+
+    def missing_result(
+        _config: runner_mod.Cluster3RunnerConfig,
+        *,
+        shards: tuple[runner_mod.L2BFullCoverageShardPlan, ...],
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        assert len(shards) == 1
+        return None
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "_signed_l2b_modal_app_context",
+        MockModalContext,
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "_run_signed_l2b_selector_with_modal_context",
+        missing_result,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="L2B_N20_RUN_FAILED_INTERRUPTED_OR_MISSING_RUN_RESULT",
+    ):
+        runner_mod.main(_signed_l2b_n20_selector_args())
+
+    assert calls == 1
+
+
+def test_l2b_n20_create_only_rerun_rejects_existing_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    existing = (
+        tmp_path
+        / runner_mod.L2B_N20_OUTPUT_ROOT
+        / "elementwise__fp32"
+    )
+    existing.mkdir(parents=True)
+    monkeypatch.setattr(runner_mod, "REPO_ROOT", tmp_path)
+
+    with pytest.raises(FileExistsError, match="retry/resume/delete is not authorized"):
+        runner_mod._require_absent_target(
+            f"{runner_mod.L2B_N20_OUTPUT_ROOT}/elementwise__fp32",
+            label="output root",
+        )
+
+
+def test_l2b_validator_entrypoint_exists_and_detects_duplicate_logical_keys(
+    tmp_path: Path,
+) -> None:
+    assert l2b_validator.main is not None
+    grammar_root = tmp_path / "cluster1/grammar"
+    grammar_root.mkdir(parents=True)
+    (grammar_root / "triton_kernel.gbnf").write_text(
+        "root ::= \"kernel\"\n",
+        encoding="utf-8",
+    )
+    (grammar_root / "triton_kernel_agnostic.gbnf").write_text(
+        "root ::= \"kernel\"\n",
+        encoding="utf-8",
+    )
+    result_path = (
+        tmp_path
+        / runner_mod.L2B_N2_OUTPUT_ROOT
+        / "elementwise__fp32"
+        / "grammar_off__c_off__p_off.jsonl"
+    )
+    result_path.parent.mkdir(parents=True)
+    payload = {
+        "base_seed": 0,
+        "kernel_class": "elementwise",
+        "dtype": "fp32",
+        "condition": "none",
+    }
+    result_path.write_text(
+        json.dumps(payload) + "\n" + json.dumps(payload) + "\n",
+        encoding="utf-8",
+    )
+
+    result = l2b_validator.validate_l2b_full_coverage(
+        stage=runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        wave_id=None,
+        expected_rows=216,
+        expected_shards=9,
+        repo_root=tmp_path,
+    )
+
+    assert result.actual_rows == 2
+    assert result.duplicate_logical_keys == 1
+    assert result.missing_logical_keys > 0
+    assert result.ok is False
 
 
 def test_l2b_n2_unsigned_runtime_fails_closed() -> None:
