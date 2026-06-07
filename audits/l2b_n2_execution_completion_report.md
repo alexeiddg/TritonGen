@@ -17,11 +17,26 @@ No retry, resume, second launch, analyzer refresh, report refresh, billing
 query, profiler, benchmark, speedup analysis, L2b-4/L3 launch, or MLflow
 runtime write was run.
 
+The existing partial L2b-2 output and observability artifacts are archived as
+the terminal record of this one signed attempt. This archive is not complete
+L2b-2 validation and does not authorize any retry, resume, overwrite, rerun,
+additional generation, analyzer/report refresh, billing reconciliation, or
+L2b-4/n20 action.
+
 ## Exact Command Run
 
 ```bash
 TRITONGEN_MLFLOW=0 .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --l2b-stage l2b_n2_full_coverage --l2b-shard-selector all --kernel-class all --scale-tier development --n 2 --dtypes fp32,fp16,bf16 --repair-history-policy agentic_transcript_v1 --signed-l2b-authorization FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N2_FULL_COVERAGE_AUTHORIZATION_PACKET_V1 --overwrite
 ```
+
+## Command Caveat
+
+The signed command contained `--overwrite`, while earlier L2b authorization
+language emphasized `fail_if_any_target_path_exists=true`. Preflight target-path
+checks found the L2b-2 target namespaces absent before launch, so this is not
+known to have corrupted existing artifacts. For any future packet or recovery
+command, remove `--overwrite` unless the packet explicitly signs overwrite
+semantics.
 
 ## Terminal Failure
 
@@ -114,6 +129,13 @@ billing files under l2b_n2: 0
 mlruns mutation: none observed
 ```
 
+Archived namespaces:
+
+```text
+outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n2/
+artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n2/
+```
+
 ## Validation Run
 
 Partial JSONL parse validation:
@@ -149,12 +171,19 @@ No `artifacts/analysis`, `artifacts/reports`, `artifacts/billing`, `mlruns`, or
 ## Classification
 
 ```text
-L2B_N2_RUN_FAILED_EXECUTION_SLOW_CELL_BUDGET_EXCEEDED
+L2B_N2_PARTIAL_ARTIFACTS_ARCHIVED_SLOW_CELL_STOP
+L2B_N2_TERMINAL_PARTIAL_SLOW_CELL_STOP
 ```
+
+Scientific/reporting interpretation: L2b-2 was attempted once under signed
+full-coverage smoke authorization. It did not complete; it produced partial
+operational evidence showing slow-tail behavior severe enough to trigger the
+signed stop policy. Therefore L2b-4 remains blocked, and no full-coverage
+validation claim is made.
 
 ## Next-Step Recommendation
 
 Do not treat this run as L2b-2 validation. Prepare a separate signed recovery
-packet if the project wants to resume, retry, archive, overwrite, or rerun any
-partial shard. Keep L2b-4 blocked until L2b-2 completes and validates under a
-separate approval.
+packet if the project wants to resume, retry, overwrite, rerun, clean up, or
+otherwise mutate any partial shard. Keep L2b-4 blocked until L2b-2 completes
+and validates under a separate approval.

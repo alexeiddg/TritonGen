@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.34
+Version: 1.37.35
 Date: 2026-06-07
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -181,9 +181,14 @@ slow-cell policy as `SLOW_CELL_BUDGET_EXCEEDED` in shard `matmul__fp32`, cell
 `template_upper_bound__c_on__p_off`, after 188 of 216 planned rows. The
 execution completion audit is recorded in
 `audits/l2b_n2_execution_completion_report.md`. Treat this as incomplete
-operational slow-cell state, not validated L2b-2 evidence. L2b-4 is unsigned,
-non-authorizing, and blocked until L2b-2 completes and validates under a
-separate signed recovery or rerun packet.
+operational slow-cell state, not validated L2b-2 evidence. The existing partial
+L2b-2 output and observability namespaces are archived under
+`L2B_N2_PARTIAL_ARTIFACTS_ARCHIVED_SLOW_CELL_STOP`; the project-level terminal
+classification is `L2B_N2_TERMINAL_PARTIAL_SLOW_CELL_STOP`. The signed command
+included `--overwrite`; preflight target paths were absent, but future packets
+must remove `--overwrite` unless overwrite semantics are explicitly signed.
+L2b-4 is unsigned, non-authorizing, and blocked until L2b-2 completes and
+validates under a separate signed recovery or rerun packet.
 Per-cell and per-shard timing diagnostics are sidecar-only operational
 metadata, not performance evidence. Retry, resume, L2b-4, L3, analyzer/report
 refresh, billing reconciliation, profiler/benchmark/speedup, paper-scale claim,
