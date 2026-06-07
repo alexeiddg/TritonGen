@@ -444,6 +444,37 @@ def test_l2b_n2_shard_plan_uses_deterministic_namespaces() -> None:
     assert shard.slow_cell_stop_policy["preserve_partial_shard_audit"] is True
 
 
+def test_l2b_n2_shard_plan_supports_recovery_cell_subset() -> None:
+    plan = build_l2b_full_coverage_shard_plan(
+        stage_id=L2B_N2_SELECTOR_PROFILE_ID,
+        shard_selector="reduction__fp16",
+        cell_selector=(
+            "task_agnostic__c_off__p_off",
+            "task_agnostic__c_on__p_off",
+            "task_agnostic__c_off__p_on",
+            "task_agnostic__c_on__p_on",
+        ),
+        repair_history_policy="agentic_transcript_v1",
+    )
+
+    assert len(plan) == 1
+    shard = plan[0]
+    assert shard.shard_id == "reduction__fp16"
+    assert shard.planned_cells == 4
+    assert shard.planned_rows == 8
+    assert "--l2b-recovery-cells task_agnostic__c_off__p_off,task_agnostic__c_on__p_off,task_agnostic__c_off__p_on,task_agnostic__c_on__p_on" in shard.future_command
+
+
+def test_l2b_n2_shard_plan_rejects_recovery_cell_selector_duplicates() -> None:
+    with pytest.raises(ValueError, match="duplicate selector"):
+        build_l2b_full_coverage_shard_plan(
+            stage_id=L2B_N2_SELECTOR_PROFILE_ID,
+            shard_selector="reduction__fp16",
+            cell_selector=("task_agnostic__c_on__p_off", "task_agnostic__c_on__p_off"),
+            repair_history_policy="agentic_transcript_v1",
+        )
+
+
 def test_l2b_wave_selector_returns_bounded_shard_window() -> None:
     plan = build_l2b_full_coverage_shard_plan(
         stage_id=L2B_N20_SELECTOR_PROFILE_ID,

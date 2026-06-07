@@ -529,6 +529,7 @@ def build_l2b_full_coverage_shard_plan(
     *,
     stage_id: str,
     shard_selector: str = "all",
+    cell_selector: str | tuple[str, ...] = "all",
     repair_history_policy: str = P_HISTORY_POLICY_V1,
     command_mode: str = "executable",
     repo_root: str | Path | None = None,
@@ -554,7 +555,7 @@ def build_l2b_full_coverage_shard_plan(
         artifact_namespace = f"{stage.observability_root}/{shard_id}"
         cell_plans = build_l1a_launcher_executable_plan(
             repair_history_policy=repair_history_policy,
-            cell_selector="all",
+            cell_selector=cell_selector,
             output_root=output_namespace,
             observability_root=artifact_namespace,
             run_id_prefix=f"{stage.run_id_prefix}__{shard_id}",
@@ -607,14 +608,15 @@ def build_l2b_full_coverage_shard_plan(
                     "billing_namespace_glob": f"{stage.billing_root}/{shard_id}*",
                 },
                 future_command=_l2b_future_selector_command(
-                    stage=stage,
-                    shard_id=shard_id,
-                    kernel_class=kernel_class,
-                    dtype_variant=dtype_variant,
-                    repair_history_policy=repair_history_policy,
-                    command_mode=command_mode,
-                    signed_authorization_placeholder=signed_authorization_placeholder,
-                    signed_authorization_option=signed_authorization_option,
+                stage=stage,
+                shard_id=shard_id,
+                kernel_class=kernel_class,
+                dtype_variant=dtype_variant,
+                repair_history_policy=repair_history_policy,
+                cell_selector=cell_selector,
+                command_mode=command_mode,
+                signed_authorization_placeholder=signed_authorization_placeholder,
+                signed_authorization_option=signed_authorization_option,
                 ),
                 cell_commands=tuple(cell.executable_command for cell in cell_plans),
                 concurrency_limits=stage.concurrency_limits,
@@ -687,6 +689,7 @@ def _l2b_future_selector_command(
     kernel_class: str,
     dtype_variant: str,
     repair_history_policy: str,
+    cell_selector: str | tuple[str, ...] = "all",
     command_mode: str,
     signed_authorization_placeholder: str,
     signed_authorization_option: str,
@@ -723,6 +726,12 @@ def _l2b_future_selector_command(
                 "--overwrite",
             ]
         )
+    if cell_selector != "all":
+        selectors = (
+            (cell_selector,) if isinstance(cell_selector, str) else tuple(cell_selector)
+        )
+        if selectors:
+            parts.extend(["--l2b-recovery-cells", ",".join(selectors)])
     return " ".join(parts)
 
 
@@ -782,17 +791,29 @@ def l1a_grammar_mode_cell_selector_choices() -> tuple[str, ...]:
 def _select_cells(
     cells: tuple[GrammarModeCellSpec, ...],
     *,
-    cell_selector: str,
+    cell_selector: str | tuple[str, ...],
 ) -> tuple[GrammarModeCellSpec, ...]:
     if cell_selector == "all":
         return cells
-    selected = tuple(cell for cell in cells if cell.output_namespace_suffix == cell_selector)
-    if not selected:
-        allowed = ", ".join(l1a_grammar_mode_cell_selector_choices())
+    selectors = (cell_selector,) if isinstance(cell_selector, str) else tuple(cell_selector)
+    if len(selectors) != len(set(selectors)):
         raise ValueError(
-            f"grammar_mode_cell must be one of: {allowed}; got {cell_selector!r}"
+            "grammar_mode_cell selectors must be unique; duplicate selector found"
         )
-    return selected
+    selected: list[GrammarModeCellSpec] = []
+    allowed = ", ".join(l1a_grammar_mode_cell_selector_choices())
+    for selector in selectors:
+        matched = tuple(
+            cell for cell in cells if cell.output_namespace_suffix == selector
+        )
+        if not matched:
+            raise ValueError(
+                f"grammar_mode_cell must be one of: {allowed}; got {selector!r}"
+            )
+        selected.extend(matched)
+    if len(selected) != len(set(selectors)):
+        raise ValueError("grammar_mode_cell selectors must not include duplicates")
+    return tuple(selected)
 
 
 def _launcher_plan_for_cell(

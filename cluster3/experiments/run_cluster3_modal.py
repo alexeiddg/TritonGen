@@ -105,7 +105,9 @@ from cluster3.planning.grammar_mode_matrix import (
     build_l1a_launcher_dry_plan,
     build_l1a_launcher_executable_plan,
     build_l2b_full_coverage_shard_plan,
+    build_l1a_grammar_mode_cp_matrix,
     l1a_grammar_mode_cell_selector_choices,
+    _select_cells,
     l2b_full_coverage_shard_ids,
     l2b_full_coverage_stage_choices,
     l2b_full_coverage_stage_spec,
@@ -168,6 +170,63 @@ SCALE_TIER_CHOICES: tuple[str, ...] = ("smoke", "development", "paper")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLUSTER3_RUNNER_PATH = "cluster3/experiments/run_cluster3_modal.py"
 OBSERVABILITY_MODE_CHOICES: tuple[str, ...] = ("off", "best_effort", "required")
+
+_L2B_N2_MISSING_ROWS_SHARD_TO_CELL_SELECTORS: dict[str, tuple[str, ...]] = {
+    "reduction__fp16": (
+        "task_agnostic__c_off__p_off",
+        "task_agnostic__c_on__p_off",
+        "task_agnostic__c_off__p_on",
+        "task_agnostic__c_on__p_on",
+    ),
+    "reduction__bf16": (
+        "task_agnostic__c_off__p_off",
+        "task_agnostic__c_on__p_off",
+        "task_agnostic__c_off__p_on",
+        "task_agnostic__c_on__p_on",
+    ),
+    "matmul__fp32": (
+        "template_upper_bound__c_off__p_on",
+        "template_upper_bound__c_on__p_on",
+        "task_agnostic__c_off__p_off",
+        "task_agnostic__c_on__p_off",
+        "task_agnostic__c_off__p_on",
+        "task_agnostic__c_on__p_on",
+    ),
+}
+
+
+def _normalize_l2b_recovery_cells(
+    *,
+    recovery_cells: str | tuple[str, ...],
+) -> tuple[str, ...] | str:
+    if recovery_cells == "all":
+        return "all"
+    if isinstance(recovery_cells, str):
+        if "," in recovery_cells:
+            selectors = tuple(
+                cell_selector.strip()
+                for cell_selector in recovery_cells.split(",")
+                if cell_selector.strip()
+            )
+        else:
+            selectors = (recovery_cells.strip(),)
+    else:
+        selectors = tuple(recovery_cells)
+    if not selectors:
+        raise ValueError("l2b_recovery_cells must not be empty")
+    normalized = tuple(
+        cell_selector.strip() for cell_selector in selectors if cell_selector.strip()
+    )
+    if not normalized:
+        raise ValueError("l2b_recovery_cells must not be empty")
+    return normalized
+
+
+def _recovery_cells_expected_for_shard(shard_id: str) -> tuple[str, ...]:
+    expected = _L2B_N2_MISSING_ROWS_SHARD_TO_CELL_SELECTORS.get(shard_id)
+    if expected is None:
+        raise ValueError(f"recovery planning does not authorize shard {shard_id!r}")
+    return expected
 L1A_DRY_PLAN_PLACEHOLDER_OUTPUT = f"{L1A_OUTPUT_ROOT}/__dry_plan__.jsonl"
 L1A_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT = f"{L1A_OUTPUT_ROOT}/__selector__.jsonl"
 L1A_SIGNED_AUTHORIZATION_TOKEN = (
@@ -248,6 +307,7 @@ class Cluster3RunnerConfig:
     grammar_mode_cell: str = "all"
     l2b_stage: str | None = None
     l2b_shard_selector: str = "all"
+    l2b_recovery_cells: str | tuple[str, ...] = "all"
     signed_l1a_authorization: str | None = None
     diagnostic_seed_source: str | None = None
     diagnostic_expected_initial_failure: str | None = None
@@ -291,8 +351,21 @@ class Cluster3RunnerConfig:
                     "l2b_shard_selector must be one of: "
                     f"{allowed}; got {self.l2b_shard_selector!r}"
                 )
+            recovery_cells = _normalize_l2b_recovery_cells(
+                recovery_cells=self.l2b_recovery_cells,
+            )
+            object.__setattr__(self, "l2b_recovery_cells", recovery_cells)
+            if recovery_cells != "all":
+                _select_cells(
+                    build_l1a_grammar_mode_cp_matrix(
+                        repair_history_policy=self.repair_history_policy,
+                    ),
+                    cell_selector=recovery_cells,
+                )
         elif self.l2b_shard_selector != "all":
             raise ValueError("--l2b-shard-selector requires --l2b-stage")
+        elif self.l2b_recovery_cells != "all":
+            raise ValueError("--l2b-recovery-cells requires --l2b-stage")
         if (
             (self.dry_plan or self.execution_plan)
             and self.condition != L1A_GRAMMAR_MODE_CP_SELECTOR
@@ -443,6 +516,7 @@ class Cluster3RunnerConfig:
             grammar_mode_cell=namespace.grammar_mode_cell,
             l2b_stage=namespace.l2b_stage or None,
             l2b_shard_selector=namespace.l2b_shard_selector,
+            l2b_recovery_cells=namespace.l2b_recovery_cells,
             signed_l1a_authorization=namespace.signed_l1a_authorization or None,
             diagnostic_seed_source=namespace.diagnostic_seed_source or None,
             diagnostic_expected_initial_failure=(
@@ -1321,6 +1395,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         choices=l2b_full_coverage_stage_choices(),
     )
     parser.add_argument("--l2b-shard-selector", default="all")
+    parser.add_argument("--l2b-recovery-cells", default="all")
     parser.add_argument("--signed-l1a-authorization", default=None)
     parser.add_argument(
         "--signed-l1b-authorization",
@@ -1505,6 +1580,7 @@ def build_l2b_full_coverage_plan_payload(
     shards = build_l2b_full_coverage_shard_plan(
         stage_id=config.l2b_stage,
         shard_selector=config.l2b_shard_selector,
+        cell_selector=config.l2b_recovery_cells,
         repair_history_policy=config.repair_history_policy,
         command_mode=command_mode,
         repo_root=REPO_ROOT,
@@ -1513,7 +1589,7 @@ def build_l2b_full_coverage_plan_payload(
         or "--signed-l2b-authorization",
     )
     selected_shard_count = len(shards)
-    total_planned_rows = selected_shard_count * stage.rows_per_shard
+    total_planned_rows = sum(shard.planned_rows for shard in shards)
     return {
         "selector": L1A_GRAMMAR_MODE_CP_SELECTOR,
         "selector_profile_id": profile.profile_id,
@@ -1522,7 +1598,7 @@ def build_l2b_full_coverage_plan_payload(
         "l2b_rung": stage.rung,
         "dry_plan_only": config.dry_plan,
         "execution_plan_only": config.execution_plan,
-        "cell_selector": config.grammar_mode_cell,
+        "cell_selector": config.l2b_recovery_cells,
         "shard_selector": config.l2b_shard_selector,
         "total_shards": stage.total_shards,
         "selected_shard_count": selected_shard_count,
@@ -1817,7 +1893,7 @@ def _l2b_cell_plans_for_shard(
     stage = l2b_full_coverage_stage_spec(config.l2b_stage)
     cells = build_l1a_launcher_executable_plan(
         repair_history_policy=config.repair_history_policy,
-        cell_selector="all",
+        cell_selector=config.l2b_recovery_cells,
         output_root=shard.output_namespace,
         observability_root=shard.artifact_namespace,
         run_id_prefix=f"{stage.run_id_prefix}__{shard.shard_id}",
@@ -2082,6 +2158,7 @@ def _validate_l2b_runtime_authorization(
     shards = build_l2b_full_coverage_shard_plan(
         stage_id=config.l2b_stage,
         shard_selector=config.l2b_shard_selector,
+        cell_selector=config.l2b_recovery_cells,
         repair_history_policy=config.repair_history_policy,
         command_mode="executable",
         repo_root=REPO_ROOT,
@@ -2091,6 +2168,23 @@ def _validate_l2b_runtime_authorization(
     )
     if not shards:
         raise ValueError("signed L2b-2 requires a non-empty shard plan")
+    if config.l2b_recovery_cells != "all":
+        if config.l2b_shard_selector == "all" or config.l2b_shard_selector.startswith(
+            "wave:"
+        ):
+            raise ValueError(
+                "signed L2b-2 recovery requires a single partial shard selector"
+            )
+        expected_cells = _recovery_cells_expected_for_shard(config.l2b_shard_selector)
+        configured_cells = tuple(config.l2b_recovery_cells)
+        if len(configured_cells) != len(expected_cells):
+            raise ValueError("signed L2b-2 recovery selector has an invalid cell count")
+        if tuple(sorted(configured_cells)) != tuple(sorted(expected_cells)):
+            raise ValueError(
+                "signed L2b-2 recovery selector must target only missing rows"
+            )
+        if len(shards) != 1:
+            raise ValueError("signed L2b-2 recovery requires exactly one shard")
     if config.l2b_shard_selector == "all":
         if config.kernel_class != "all":
             raise ValueError("signed L2b-2 all-shards command requires --kernel-class all")
@@ -2106,8 +2200,6 @@ def _validate_l2b_runtime_authorization(
         if config.dtypes != DTYPE_NAMES:
             raise ValueError("signed L2b-2 wave command requires all signed dtypes")
     else:
-        if len(shards) != 1:
-            raise ValueError("signed L2b-2 one-shard command requires exactly one shard")
         shard = shards[0]
         if config.kernel_class != shard.kernel_class:
             raise ValueError(
@@ -2117,23 +2209,32 @@ def _validate_l2b_runtime_authorization(
             raise ValueError("signed L2b-2 one-shard command requires matching --dtypes")
 
     for shard in shards:
-        _validate_l2b_runtime_shard_plan(stage=stage, shard=shard)
+        _validate_l2b_runtime_shard_plan(
+            stage=stage,
+            config=config,
+            shard=shard,
+        )
     return shards
 
 
 def _validate_l2b_runtime_shard_plan(
     *,
     stage: Any,
+    config: Cluster3RunnerConfig,
     shard: L2BFullCoverageShardPlan,
 ) -> None:
     expected_output_namespace = f"{stage.output_root}/{shard.shard_id}"
     expected_artifact_namespace = f"{stage.observability_root}/{shard.shard_id}"
     if shard.shard_id != f"{shard.kernel_class}__{shard.dtype_variant}":
         raise ValueError("signed L2b-2 shard id must equal kernel_class__dtype_variant")
-    if shard.planned_cells != 12:
-        raise ValueError("signed L2b-2 requires 12 planned cells per shard")
-    if shard.planned_rows != 24:
-        raise ValueError("signed L2b-2 requires 24 planned rows per shard")
+    if config.l2b_recovery_cells == "all":
+        if shard.planned_cells != 12:
+            raise ValueError("signed L2b-2 requires 12 planned cells per shard")
+        if shard.planned_rows != 24:
+            raise ValueError("signed L2b-2 requires 24 planned rows per shard")
+    else:
+        if shard.planned_rows != len(config.l2b_recovery_cells) * stage.n:
+            raise ValueError("signed L2b-2 recovery requires exact planned missing rows")
     if shard.backend != "modal_local_model":
         raise ValueError("signed L2b-2 requires backend=modal_local_model")
     if shard.output_namespace != expected_output_namespace:

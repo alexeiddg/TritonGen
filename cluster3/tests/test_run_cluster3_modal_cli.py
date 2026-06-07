@@ -2114,6 +2114,154 @@ def test_l2b_n2_execution_plan_lists_one_exact_shard_fail_closed() -> None:
     )
 
 
+def test_l2b_n2_execution_plan_with_recovery_selector_targets_exact_missing_rows() -> None:
+    recovery_cells = (
+        "task_agnostic__c_off__p_off,"
+        "task_agnostic__c_on__p_off,"
+        "task_agnostic__c_off__p_on,"
+        "task_agnostic__c_on__p_on"
+    )
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--l2b-stage",
+            runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+            "--l2b-recovery-cells",
+            recovery_cells,
+            "--l2b-shard-selector",
+            "reduction__fp16",
+            "--kernel-class",
+            "reduction",
+            "--scale-tier",
+            "development",
+            "--n",
+            "2",
+            "--dtypes",
+            "fp16",
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--execution-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_execution_plan_payload(config)
+
+    assert payload["selected_shard_count"] == 1
+    assert payload["total_planned_rows"] == 8
+    assert payload["cell_selector"] == tuple(recovery_cells.split(","))
+    shard = payload["shards"][0]
+    assert shard["planned_cells"] == 4
+    assert shard["planned_rows"] == 8
+    assert (
+        "--l2b-recovery-cells task_agnostic__c_off__p_off,"
+        "task_agnostic__c_on__p_off,task_agnostic__c_off__p_on,"
+        "task_agnostic__c_on__p_on" in shard["future_command"]
+    )
+
+
+def test_l2b_n2_recovery_authorization_passes_prelaunch_with_expected_shard_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(
+        _signed_l2b_selector_args(
+            "--l2b-recovery-cells",
+            "task_agnostic__c_off__p_off,task_agnostic__c_on__p_off,"
+            "task_agnostic__c_off__p_on,task_agnostic__c_on__p_on",
+            "--l2b-shard-selector",
+            "reduction__fp16",
+            "--kernel-class",
+            "reduction",
+            "--dtypes",
+            "fp16",
+        )
+    )
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert len(shards) == 1
+    assert shards[0].shard_id == "reduction__fp16"
+    assert shards[0].planned_cells == 4
+    assert shards[0].planned_rows == 8
+
+
+def test_l2b_n2_recovery_duplicate_selector_rejected() -> None:
+    with pytest.raises(ValueError, match="duplicate selector found"):
+        parse_args(
+            _signed_l2b_selector_args(
+                "--l2b-recovery-cells",
+                "task_agnostic__c_on__p_off,task_agnostic__c_on__p_off",
+                "--l2b-shard-selector",
+                "reduction__fp16",
+                "--kernel-class",
+                "reduction",
+                "--dtypes",
+                "fp16",
+            )
+        )
+
+
+def test_l2b_n2_recovery_completed_shard_selector_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        _signed_l2b_selector_args(
+            "--l2b-recovery-cells",
+            "task_agnostic__c_off__p_off,task_agnostic__c_on__p_off,"
+            "task_agnostic__c_off__p_on,task_agnostic__c_on__p_on",
+            "--l2b-shard-selector",
+            "elementwise__fp32",
+            "--kernel-class",
+            "elementwise",
+            "--dtypes",
+            "fp32",
+        )
+    )
+
+    with pytest.raises(ValueError, match="does not authorize shard"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n20_recovery_selector_fails_under_l2b_2_blocker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--l2b-stage",
+            runner_mod.L2B_N20_SELECTOR_PROFILE_ID,
+            "--l2b-shard-selector",
+            "all",
+            "--kernel-class",
+            "all",
+            "--scale-tier",
+            "paper",
+            "--n",
+            "20",
+            "--dtypes",
+            "fp32,fp16,bf16",
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--l2b-recovery-cells",
+            "task_agnostic__c_off__p_off,task_agnostic__c_on__p_off",
+            "--signed-l2b-authorization",
+            runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+            "--overwrite",
+        ]
+    )
+
+    with pytest.raises(RuntimeError, match="L2b-4 remains unsigned"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
 def test_l2b_n20_execution_plan_lists_bounded_wave_blocked_on_l2b2() -> None:
     config = parse_args(
         [
@@ -2583,6 +2731,64 @@ def test_l2b_n2_namespace_escape_fails_prelaunch(
     output_paths["result_files"] = (
         "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/"
         "l2b_n20/elementwise__fp32/escaped.jsonl",
+    )
+    bad_shard = replace(shard, output_paths=output_paths)
+    monkeypatch.setattr(
+        runner_mod,
+        "build_l2b_full_coverage_shard_plan",
+        lambda **_kwargs: (bad_shard,),
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(ValueError, match="outside shard namespace"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n2_recovery_namespace_escape_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    recovery_cells = (
+        "task_agnostic__c_off__p_off,"
+        "task_agnostic__c_on__p_off,"
+        "task_agnostic__c_off__p_on,"
+        "task_agnostic__c_on__p_on"
+    )
+    config = parse_args(
+        _signed_l2b_selector_args(
+            "--l2b-recovery-cells",
+            recovery_cells,
+            "--l2b-shard-selector",
+            "reduction__fp16",
+            "--kernel-class",
+            "reduction",
+            "--dtypes",
+            "fp16",
+        )
+    )
+    shard = runner_mod.build_l2b_full_coverage_shard_plan(
+        stage_id=runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        shard_selector="reduction__fp16",
+        cell_selector=(
+            "task_agnostic__c_off__p_off",
+            "task_agnostic__c_on__p_off",
+            "task_agnostic__c_off__p_on",
+            "task_agnostic__c_on__p_on",
+        ),
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2b-authorization",
+    )[0]
+    output_paths = dict(shard.output_paths)
+    output_paths["result_files"] = (
+        "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/"
+        "l2b_n2_recovery_missing28/reduction__fp16/escaped.jsonl",
     )
     bad_shard = replace(shard, output_paths=output_paths)
     monkeypatch.setattr(
