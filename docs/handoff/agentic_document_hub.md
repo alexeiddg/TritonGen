@@ -1,7 +1,7 @@
 # Agentic Documentation Hub
 
-Version: 1.37.27
-Date: 2026-06-06
+Version: 1.37.28
+Date: 2026-06-07
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
 Citation status: routing document only; do not cite as methodology
@@ -76,6 +76,7 @@ treated as report-facing.
 | Full Pipeline L2 n=20 final authorization promotion audit | `audits/l2_n20_final_authorization_promotion_audit_report.md` |
 | Full Pipeline L2 n=20 runtime-gate enable report | `audits/l2_n20_runtime_gate_enable_report.md` |
 | Full Pipeline L2 n=20 runtime-gate promotion audit | `audits/l2_n20_runtime_gate_enable_promotion_audit_report.md` |
+| Full Pipeline L2 n=20 execution completion report | `audits/l2_n20_execution_completion_report.md` |
 | Full Pipeline L1a final signature packet report | `audits/l1a_final_signature_packet_report.md` |
 | Full Pipeline L1a executable 12-cell selector support audit | `audits/l1a_executable_12cell_selector_support_report.md` |
 | Full Pipeline L1a executable 12-cell selector support promotion audit | `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md` |
@@ -104,7 +105,7 @@ treated as report-facing.
 
 ## Current Cluster 3 Planning Gate
 
-Post-L2-final-authorization update: the L2 n=20 authorization packet now exists at
+Post-L2-execution update: the L2 n=20 authorization packet exists at
 `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2_n20_authorization_packet.md`
 with audits `audits/l2_n20_authorization_packet_draft_report.md` and
 `audits/l2_n20_selector_profile_support_report.md`, and the selector/profile
@@ -119,6 +120,8 @@ The L2 runtime-gate enablement report is recorded in
 `audits/l2_n20_runtime_gate_enable_report.md`.
 The L2 runtime-gate promotion audit is recorded in
 `audits/l2_n20_runtime_gate_enable_promotion_audit_report.md`.
+The L2 execution completion report is recorded in
+`audits/l2_n20_execution_completion_report.md`.
 Promoted commit `27493c0 Add L2 n20 selector profile support` adds local-only
 selector/profile support for `grammar_mode_cp_12cell`, `scale_tier=paper`,
 `n=20`, and 240 planned rows. The packet is now signed as
@@ -130,14 +133,16 @@ and `bd84940 Authorize L2 n20 execution` is promoted into
 exact signed L2 n=20 selector command can pass pre-launch validation; wrong
 tokens, L1a/L1b token reuse, wrong `n`, non-elementwise kernels, non-fp32
 dtypes, MLflow-enabled runtime, resume, path collisions, row/cell mismatch, and
-namespace mismatch remain fail-closed. The runtime-gate promotion did not
-execute L2. Run L2 only from the signed operational prompt after target-path
-absence and plan checks pass. Do not run L3, additional Modal/GPU generation,
-billing queries outside the post-run L2 reconciliation scope, output/artifact
-mutation outside authorized L2 n=20 namespaces, MLflow runtime writes,
-analyzer/report refresh before valid L2 outputs, performance profiling, speedup
-analysis, cost-per-success analysis, or economic claims outside this signed
-packet.
+namespace mismatch remain fail-closed. The signed L2 n=20 command was run once
+and failed validation with 228 of 240 expected rows: all 12 cell files exist,
+but `task_agnostic__c_on__p_on` has only 8 of 20 rows. The analyzer/report
+command was not run, and no L2 paper-scale graph/report/result claim is
+unblocked. A redacted low-confidence UTC-window billing artifact is preserved;
+raw billing output is not committed. Do not retry, resume, overwrite, rerun, run
+L3, run additional Modal/GPU generation, run analyzer/report refresh, mutate
+outside preserved L2 namespaces, enable MLflow runtime writes, perform
+performance profiling, run speedup analysis, compute cost-per-success, or make
+economic claims without a new signed recovery packet.
 
 Cluster 3 diagnostic evidence is provenance-frozen through
 `audits/cluster3_phase13b_commit_provenance_freeze_report.md`. Phase 14e froze
