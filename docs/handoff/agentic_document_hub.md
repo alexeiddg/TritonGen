@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.28
+Version: 1.37.29
 Date: 2026-06-07
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -47,6 +47,7 @@ treated as report-facing.
 
 | Need | File |
 |---|---|
+| Fireworks API + Modal integration plan (Cluster FW) | `docs/implementation_plans/fireworks_api_modal_integration_plan.md` |
 | Full path-by-path markdown inventory and document versions | `docs/handoff/document_version_registry.md` |
 | Code-to-doc update rules | `docs/handoff/code_update_documentation_policy.md` |
 | Current project scope and trust policy | `docs/00_project_map.md` |
