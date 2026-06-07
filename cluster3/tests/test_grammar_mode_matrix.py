@@ -13,10 +13,13 @@ from cluster3.planning.grammar_mode_matrix import (
     L1A_SIGNED_AUTHORIZATION_PLACEHOLDER,
     L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_KNOWN_HIGH_COST_CELL_ID,
+    L2B_N20_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_N20_OUTPUT_ROOT,
     L2B_N20_OBSERVABILITY_ROOT,
     L2B_N20_SELECTOR_PROFILE_ID,
+    L2B_N20_SIGNATURE_STATUS,
+    L2B_N20_SIGNED_AUTHORIZATION_TOKEN,
     L2B_N2_OUTPUT_ROOT,
     L2B_N2_OBSERVABILITY_ROOT,
     L2B_N2_SELECTOR_PROFILE_ID,
@@ -356,20 +359,13 @@ def test_l2b_stage_specs_define_compressed_sharded_ladder() -> None:
     assert n20.full_matrix_planned_rows == 2160
     assert n20.output_root == L2B_N20_OUTPUT_ROOT
     assert n20.observability_root == L2B_N20_OBSERVABILITY_ROOT
-    assert n20.concurrency_limits["first_wave_max_gpu_concurrency"] <= 4
-    assert n20.concurrency_limits["first_wave_max_container_concurrency"] <= 40
-    assert (
-        n20.concurrency_limits[
-            "second_wave_max_gpu_concurrency_after_first_wave_validation"
-        ]
-        <= 8
-    )
-    assert (
-        n20.concurrency_limits[
-            "second_wave_max_container_concurrency_after_first_wave_validation"
-        ]
-        <= 80
-    )
+    assert n20.runtime_execution_enabled is True
+    assert n20.signed_authorization_available is True
+    assert n20.signature_status == L2B_N20_SIGNATURE_STATUS
+    assert n20.concurrency_limits["max_gpu_concurrency"] <= 4
+    assert n20.concurrency_limits["max_container_concurrency"] <= 40
+    assert n20.concurrency_limits["wave_4_max_gpu_concurrency"] <= 2
+    assert n20.concurrency_limits["wave_4_max_container_concurrency"] <= 20
     assert n20.timing_observability["required_diagnostics"] == (
         L2B_TIMING_OBSERVABILITY_REQUIRED_DIAGNOSTICS
     )
@@ -490,6 +486,10 @@ def test_l2b_wave_selector_returns_bounded_shard_window() -> None:
     for shard in plan:
         assert shard.output_namespace.startswith(L2B_N20_OUTPUT_ROOT + "/")
         assert shard.artifact_namespace.startswith(L2B_N20_OBSERVABILITY_ROOT + "/")
+        assert shard.support_status == L2B_N20_EXECUTABLE_SELECTOR_SUPPORT_STATUS
+        assert L2B_N20_SIGNED_AUTHORIZATION_TOKEN in shard.future_command
+        assert "--overwrite" not in shard.future_command
+        assert all("--overwrite" not in command for command in shard.cell_commands)
 
 
 def test_l2b_wave_selector_rejects_unbounded_window() -> None:

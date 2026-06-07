@@ -1,6 +1,6 @@
 # Agentic Documentation Hub
 
-Version: 1.37.35
+Version: 1.37.36
 Date: 2026-06-07
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
@@ -80,13 +80,14 @@ treated as report-facing.
 | Full Pipeline L2 n=20 execution completion report | `audits/l2_n20_execution_completion_report.md` |
 | Full Pipeline L2b compressed full-coverage plan packet | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_full_coverage_authorization_packet.md` |
 | Full Pipeline L2b n=2 final signed packet | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n2_full_coverage_authorization_packet.md` |
-| Full Pipeline L2b n=20 unsigned blocked packet draft | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n20_full_coverage_authorization_packet.md` |
+| Full Pipeline L2b n=20 final signed packet | `docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n20_full_coverage_authorization_packet.md` |
 | Full Pipeline L2b Fireworks-ready Modal plan | `docs/implementation_plans/l2b_full_coverage_fireworks_ready_modal_plan.md` |
 | Full Pipeline L2b plan/selector audit | `audits/l2b_full_coverage_plan_and_selector_report.md` |
 | Full Pipeline L2b n=2 final authorization audit | `audits/l2b_n2_final_authorization_report.md` |
 | Full Pipeline L2b n=2 runtime-gate enable audit | `audits/l2b_n2_runtime_gate_enable_report.md` |
 | Full Pipeline L2b n=2 runtime-dispatch enable audit | `audits/l2b_n2_runtime_dispatch_enable_report.md` |
 | Full Pipeline L2b n=2 execution completion audit | `audits/l2b_n2_execution_completion_report.md` |
+| Full Pipeline L2b n=20 final authorization audit | `audits/l2b_n20_final_authorization_report.md` |
 | Full Pipeline L1a final signature packet report | `audits/l1a_final_signature_packet_report.md` |
 | Full Pipeline L1a executable 12-cell selector support audit | `audits/l1a_executable_12cell_selector_support_report.md` |
 | Full Pipeline L1a executable 12-cell selector support promotion audit | `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md` |
@@ -154,46 +155,31 @@ outside preserved L2 namespaces, enable MLflow runtime writes, perform
 performance profiling, run speedup analysis, compute cost-per-success, or make
 economic claims without a new signed recovery packet.
 
-L2b planning/selector support is reconciled from
-`codex/l2b-full-coverage-plan-and-selector` onto current trunk commit
-`9974770 Promote Fireworks Modal planning doc` as local-only planning. It
-models mandatory shards as exact `kernel_class__dtype_variant` tuples for the
-repo-backed 9-shard scope `elementwise/reduction/matmul x fp32/fp16/bf16`.
-The L2b-2 target is 12 cells x n=2 per shard, 24 rows per shard, 216 rows
-total, with deterministic per-shard output/artifact namespaces and
-fail-if-target-path-exists behavior. The L2b-2 packet is now final signed as
-`SIGNED_FOR_L2B_N2_ONLY` at target baseline
-`eab664f560404cc40e309caa8d4202346452ecc3`, and commit `b770521` is pushed on
-`codex-track-handoff-context`. The L2b-2 runtime-gate enablement report is
-recorded in `audits/l2b_n2_runtime_gate_enable_report.md`: the signed packet
-token/profile/path can pass local pre-launch validation for all shards, one
-shard, or a bounded wave, while unsigned, wrong-token, L1/L2 token reuse,
-L2b-4/n20, unknown-shard, row/shard-count mismatch, MLflow-enabled,
-retry/resume, target-path collision, and namespace-escape variants remain
-fail-closed. The follow-up runtime-dispatch enablement report is recorded in
-`audits/l2b_n2_runtime_dispatch_enable_report.md`: the remaining no-dispatch
-guard is removed only for the validated signed L2b-2 shard plan, with mocked
-Modal-boundary tests proving all-shards expansion to 9 shards x 12 cells and
-216 planned rows. No L2b execution occurred during gate or dispatch enablement.
-After dispatch enablement, the exact signed L2b-2 command was launched once
-from `4cb911f84734211e5d5508399820aba671989be3` and stopped under the signed
-slow-cell policy as `SLOW_CELL_BUDGET_EXCEEDED` in shard `matmul__fp32`, cell
-`template_upper_bound__c_on__p_off`, after 188 of 216 planned rows. The
-execution completion audit is recorded in
-`audits/l2b_n2_execution_completion_report.md`. Treat this as incomplete
-operational slow-cell state, not validated L2b-2 evidence. The existing partial
-L2b-2 output and observability namespaces are archived under
-`L2B_N2_PARTIAL_ARTIFACTS_ARCHIVED_SLOW_CELL_STOP`; the project-level terminal
-classification is `L2B_N2_TERMINAL_PARTIAL_SLOW_CELL_STOP`. The signed command
-included `--overwrite`; preflight target paths were absent, but future packets
-must remove `--overwrite` unless overwrite semantics are explicitly signed.
-L2b-4 is unsigned, non-authorizing, and blocked until L2b-2 completes and
-validates under a separate signed recovery or rerun packet.
-Per-cell and per-shard timing diagnostics are sidecar-only operational
-metadata, not performance evidence. Retry, resume, L2b-4, L3, analyzer/report
-refresh, billing reconciliation, profiler/benchmark/speedup, paper-scale claim,
-and L2a artifact mutation remain blocked outside the signed L2b-2 packet
-boundaries.
+L2b planning/selector support now has a satisfied L2b-2 prerequisite and a
+signed L2b-4 n20 authorization packet. The L2b-2 base run produced 188 rows and
+the missing-28 recovery produced 28 rows, for 216/216 logical rows, 0 duplicate
+logical keys, 0 missing logical keys, and all 9 shards complete. Carry forward
+the caveat that the `reduction__fp16` recovery has result rows and hash sidecars
+but no observability sidecars. The post-recovery dirty-worktree reconciliation
+is recorded in `audits/l2b_n2_post_recovery_dirty_worktree_reconciliation_report.md`
+at commit `28255c3afec51a2d61fcd59dbe9ee624b45e1306`.
+
+The final signed L2b-4 n20 packet is
+`docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n20_full_coverage_authorization_packet.md`
+with audit `audits/l2b_n20_final_authorization_report.md`. It signs only token
+`FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N20_FULL_COVERAGE_AUTHORIZATION_PACKET_V1`
+for 9 repo-backed shards, 2160 planned rows, four bounded waves, long
+wall-clock budgets, n20-only output/artifact namespaces, no overwrite, no
+retry, no resume, post-wave billing reconciliation, and Fireworks separation.
+The runtime gate accepts the exact n20 token for `l2b_n20_full_coverage`, maps
+it to create mode without `--overwrite`, reaches mocked Modal dispatch in local
+tests, and fails closed for L2b-2 token reuse on n20. Future launch still
+requires a clean worktree, local/origin alignment, target path absence, and
+explicit execution handoff. Per-cell and per-shard timing diagnostics are
+sidecar-only operational metadata, not performance evidence. L2b-2 mutation,
+L2b-2 recovery mutation, Fireworks execution, L3, retry, resume, overwrite,
+profiler/benchmark/speedup, and paper claims remain blocked outside the signed
+L2b n20 packet boundaries.
 
 Cluster 3 diagnostic evidence is provenance-frozen through
 `audits/cluster3_phase13b_commit_provenance_freeze_report.md`. Phase 14e froze

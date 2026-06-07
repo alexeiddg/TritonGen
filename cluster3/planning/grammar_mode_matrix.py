@@ -118,8 +118,12 @@ L2B_N20_RUN_ID_PREFIX = (
 L2B_N2_SIGNED_AUTHORIZATION_TOKEN = (
     "FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N2_FULL_COVERAGE_AUTHORIZATION_PACKET_V1"
 )
+L2B_N20_SIGNED_AUTHORIZATION_TOKEN = (
+    "FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N20_FULL_COVERAGE_AUTHORIZATION_PACKET_V1"
+)
 L2B_N2_RECOVERY_MISSING28_AUTHORIZATION_MARKER = "RECOVERY_MISSING28"
 L2B_N2_SIGNATURE_STATUS = "SIGNED_FOR_L2B_N2_ONLY"
+L2B_N20_SIGNATURE_STATUS = "SIGNED_FOR_L2B_N20_ONLY"
 L1A_PATH_COLLISION_POLICY = "fail_if_any_target_path_exists"
 L1A_SIGNED_AUTHORIZATION_PLACEHOLDER = "SIGNED_L1A_PACKET_ID_REQUIRED"
 L1B_SIGNED_AUTHORIZATION_PLACEHOLDER = "SIGNED_L1B_PACKET_ID_REQUIRED"
@@ -133,6 +137,9 @@ L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS = (
 )
 L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS = (
     "L2B_N2_SIGNED_RUNTIME_GATE_ENABLED_NO_EXECUTION"
+)
+L2B_N20_EXECUTABLE_SELECTOR_SUPPORT_STATUS = (
+    "L2B_N20_SIGNED_RUNTIME_GATE_ENABLED_NO_EXECUTION"
 )
 L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS = (
     "L2B_LOCAL_PLAN_ONLY_RUNTIME_DISABLED_NO_SIGNED_TOKEN"
@@ -486,7 +493,7 @@ def l2b_full_coverage_stage_spec(stage_id: str) -> L2BFullCoverageStageSpec:
         return L2BFullCoverageStageSpec(
             selector_profile_id=L2B_N20_SELECTOR_PROFILE_ID,
             rung="L2b-4",
-            label="L2b-4 n=20 sharded full coverage unsigned blocked plan",
+            label="L2b-4 n=20 sharded full coverage signed-ready plan",
             scale_tier="paper",
             n=n,
             scale_namespace=L2B_N20_SCALE_NAMESPACE,
@@ -501,22 +508,24 @@ def l2b_full_coverage_stage_spec(stage_id: str) -> L2BFullCoverageStageSpec:
             rows_per_shard=rows_per_shard,
             full_matrix_planned_rows=L2B_TOTAL_SHARDS * rows_per_shard,
             backend=L2B_BACKEND_CURRENT,
-            runtime_execution_enabled=False,
-            runtime_block_reason=(
-                "L2b-4 is unsigned and blocked until L2b-2 completes and "
-                "validates cleanly"
-            ),
-            signed_authorization_available=False,
-            signature_status="UNSIGNED_BLOCKED_ON_L2B_2_VALIDATION",
-            dependency_gate="L2b-2 completion and validation",
+            runtime_execution_enabled=True,
+            runtime_block_reason=None,
+            signed_authorization_available=True,
+            signature_status=L2B_N20_SIGNATURE_STATUS,
+            dependency_gate="L2b-2 recovery completion and clean n20 authorization",
             concurrency_limits={
-                "first_wave_max_gpu_concurrency": 4,
-                "first_wave_max_container_concurrency": 40,
-                "second_wave_max_gpu_concurrency_after_first_wave_validation": 8,
-                "second_wave_max_container_concurrency_after_first_wave_validation": 80,
-                "disallowed_without_l2b2_and_first_wave_validation": (
-                    "10 GPUs / 100 containers"
-                ),
+                "max_gpu_concurrency": 4,
+                "max_container_concurrency": 40,
+                "wave_1_max_gpu_concurrency": 4,
+                "wave_1_max_container_concurrency": 40,
+                "wave_2_max_gpu_concurrency": 4,
+                "wave_2_max_container_concurrency": 40,
+                "wave_3_max_gpu_concurrency": 4,
+                "wave_3_max_container_concurrency": 40,
+                "wave_4_max_gpu_concurrency": 2,
+                "wave_4_max_container_concurrency": 20,
+                "max_estimated_cost_usd": 400,
+                "max_reconciled_billing_cost_usd": 500,
                 "backend": L2B_BACKEND_CURRENT,
             },
             timing_observability=l2b_timing_observability_contract(),
@@ -552,6 +561,11 @@ def build_l2b_full_coverage_shard_plan(
         and signed_authorization_placeholder == L2B_SIGNED_AUTHORIZATION_PLACEHOLDER
     ):
         signed_authorization_placeholder = L2B_N2_SIGNED_AUTHORIZATION_TOKEN
+    if (
+        stage_id == L2B_N20_SELECTOR_PROFILE_ID
+        and signed_authorization_placeholder == L2B_SIGNED_AUTHORIZATION_PLACEHOLDER
+    ):
+        signed_authorization_placeholder = L2B_N20_SIGNED_AUTHORIZATION_TOKEN
     effective_output_root = (
         str(output_root) if output_root is not None else str(stage.output_root)
     )
@@ -592,6 +606,8 @@ def build_l2b_full_coverage_shard_plan(
             support_status=(
                 L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS
                 if stage_id == L2B_N2_SELECTOR_PROFILE_ID
+                else L2B_N20_EXECUTABLE_SELECTOR_SUPPORT_STATUS
+                if stage_id == L2B_N20_SELECTOR_PROFILE_ID
                 else L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS
             ),
         )
@@ -650,6 +666,8 @@ def build_l2b_full_coverage_shard_plan(
                 support_status=(
                     L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS
                     if stage_id == L2B_N2_SELECTOR_PROFILE_ID
+                    else L2B_N20_EXECUTABLE_SELECTOR_SUPPORT_STATUS
+                    if stage_id == L2B_N20_SELECTOR_PROFILE_ID
                     else L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS
                 ),
             )
@@ -743,9 +761,7 @@ def _l2b_future_selector_command(
         parts.append("--dry-plan")
     else:
         parts.extend([signed_authorization_option, signed_authorization_placeholder])
-        if not _is_l2b_n2_recovery_missing28_placeholder(
-            signed_authorization_placeholder
-        ):
+        if not _is_l2b_create_only_signed_placeholder(signed_authorization_placeholder):
             parts.append("--overwrite")
     if cell_selector != "all":
         selectors = (
@@ -1001,9 +1017,7 @@ def _command_selector_for_cell(
         "--output",
         output_path,
     ]
-    if not _is_l2b_n2_recovery_missing28_placeholder(
-        signed_authorization_placeholder
-    ):
+    if not _is_l2b_create_only_signed_placeholder(signed_authorization_placeholder):
         parts.append("--overwrite")
     if command_grammar_argument is not None:
         parts.extend(command_grammar_argument.split(" "))
@@ -1012,6 +1026,13 @@ def _command_selector_for_cell(
 
 def _is_l2b_n2_recovery_missing28_placeholder(value: str | None) -> bool:
     return bool(value and L2B_N2_RECOVERY_MISSING28_AUTHORIZATION_MARKER in value)
+
+
+def _is_l2b_create_only_signed_placeholder(value: str | None) -> bool:
+    return (
+        _is_l2b_n2_recovery_missing28_placeholder(value)
+        or value == L2B_N20_SIGNED_AUTHORIZATION_TOKEN
+    )
 
 
 def _result_hash_path(result_path: Path) -> Path:

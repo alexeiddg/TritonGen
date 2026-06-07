@@ -1728,6 +1728,30 @@ def _signed_l2b_selector_args(*extra: str, token: str | None = None) -> list[str
     ]
 
 
+def _signed_l2b_n20_selector_args(*extra: str, token: str | None = None) -> list[str]:
+    return [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--l2b-stage",
+        runner_mod.L2B_N20_SELECTOR_PROFILE_ID,
+        "--l2b-shard-selector",
+        "elementwise__fp32",
+        "--kernel-class",
+        "elementwise",
+        "--scale-tier",
+        "paper",
+        "--n",
+        "20",
+        "--dtypes",
+        "fp32",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l2b-authorization",
+        token or runner_mod.L2B_N20_SIGNED_AUTHORIZATION_TOKEN,
+        *extra,
+    ]
+
+
 def test_l1a_12cell_dry_plan_cli_parses_without_output_or_write_mode() -> None:
     config = parse_args(
         [
@@ -2256,16 +2280,15 @@ def test_l2b_n20_recovery_selector_fails_under_l2b_2_blocker(
             "--l2b-recovery-cells",
             "task_agnostic__c_off__p_off,task_agnostic__c_on__p_off",
             "--signed-l2b-authorization",
-            runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
-            "--overwrite",
+            runner_mod.L2B_N20_SIGNED_AUTHORIZATION_TOKEN,
         ]
     )
 
-    with pytest.raises(RuntimeError, match="L2b-4 remains unsigned"):
+    with pytest.raises(ValueError, match="recovery scope requires"):
         runner_mod._validate_l2b_runtime_authorization(config)
 
 
-def test_l2b_n20_execution_plan_lists_bounded_wave_blocked_on_l2b2() -> None:
+def test_l2b_n20_execution_plan_lists_signed_bounded_wave() -> None:
     config = parse_args(
         [
             "--condition",
@@ -2292,12 +2315,14 @@ def test_l2b_n20_execution_plan_lists_bounded_wave_blocked_on_l2b2() -> None:
     assert config.output == runner_mod.L2B_N20_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
     assert payload["selector_profile_id"] == runner_mod.L2B_N20_SELECTOR_PROFILE_ID
     assert payload["authorization_profile"] == (
-        "L2b-4 n=20 sharded full coverage unsigned blocked plan"
+        "L2b-4 n=20 sharded full coverage signed runtime gate"
     )
-    assert payload["signature_status"] == "UNSIGNED_BLOCKED_ON_L2B_2_VALIDATION"
-    assert payload["dependency_gate"] == "L2b-2 completion and validation"
+    assert payload["signature_status"] == "SIGNED_FOR_L2B_N20_ONLY"
+    assert payload["dependency_gate"] == (
+        "L2b-2 recovery completion and clean n20 authorization"
+    )
     assert payload["requires_signed_authorization"] is True
-    assert payload["signed_authorization_available"] is False
+    assert payload["signed_authorization_available"] is True
     assert payload["total_shards"] == 9
     assert payload["selected_shard_count"] == 3
     assert payload["rows_per_shard"] == 240
@@ -2312,23 +2337,10 @@ def test_l2b_n20_execution_plan_lists_bounded_wave_blocked_on_l2b2() -> None:
     )
     assert payload["slow_cell_stop_policy"]["automatic_retry_authorized"] is False
     assert payload["slow_cell_stop_policy"]["automatic_resume_authorized"] is False
-    assert payload["concurrency_limits"]["first_wave_max_gpu_concurrency"] <= 4
-    assert (
-        payload["concurrency_limits"]["first_wave_max_container_concurrency"]
-        <= 40
-    )
-    assert (
-        payload["concurrency_limits"][
-            "second_wave_max_gpu_concurrency_after_first_wave_validation"
-        ]
-        <= 8
-    )
-    assert (
-        payload["concurrency_limits"][
-            "second_wave_max_container_concurrency_after_first_wave_validation"
-        ]
-        <= 80
-    )
+    assert payload["concurrency_limits"]["max_gpu_concurrency"] <= 4
+    assert payload["concurrency_limits"]["max_container_concurrency"] <= 40
+    assert payload["concurrency_limits"]["wave_4_max_gpu_concurrency"] <= 2
+    assert payload["concurrency_limits"]["wave_4_max_container_concurrency"] <= 20
     assert [shard["shard_id"] for shard in payload["shards"]] == [
         "matmul__fp32",
         "matmul__fp16",
@@ -2344,6 +2356,8 @@ def test_l2b_n20_execution_plan_lists_bounded_wave_blocked_on_l2b2() -> None:
             runner_mod.L2B_N20_OBSERVABILITY_ROOT + "/"
         )
         assert "--signed-l2b-authorization" in shard["future_command"]
+        assert runner_mod.L2B_N20_SIGNED_AUTHORIZATION_TOKEN in shard["future_command"]
+        assert "--overwrite" not in shard["future_command"]
         assert "--dry-plan" not in shard["future_command"]
 
 
@@ -2536,6 +2550,91 @@ def test_l2b_n2_signed_wave_passes_prelaunch_without_modal(
     assert sum(shard.planned_rows for shard in shards) == 96
 
 
+def test_l2b_n20_signed_one_shard_uses_create_mode_without_overwrite(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(_signed_l2b_n20_selector_args())
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert config.write_mode == "create"
+    assert len(shards) == 1
+    shard = shards[0]
+    assert shard.shard_id == "elementwise__fp32"
+    assert shard.planned_cells == 12
+    assert shard.planned_rows == 240
+    assert shard.output_namespace == (
+        f"{runner_mod.L2B_N20_OUTPUT_ROOT}/elementwise__fp32"
+    )
+    assert runner_mod.L2B_N20_SIGNED_AUTHORIZATION_TOKEN in shard.future_command
+    assert "--overwrite" not in shard.future_command
+    assert all("--overwrite" not in command for command in shard.cell_commands)
+
+
+def test_l2b_n20_signed_one_shard_reaches_mocked_modal_dispatch_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[runner_mod.Cluster3RunnerConfig] = []
+    modal_events: list[str] = []
+
+    class MockModalContext:
+        def __enter__(self) -> None:
+            modal_events.append("enter")
+
+        def __exit__(self, *_args: object) -> None:
+            modal_events.append("exit")
+
+    def fake_run(config: runner_mod.Cluster3RunnerConfig) -> runner_mod.Cluster3RunResult:
+        calls.append(config)
+        return runner_mod.Cluster3RunResult(
+            rows=tuple(object() for _ in range(config.n)),  # type: ignore[arg-type]
+            route_audit=(),
+            output=config.output,
+            write_mode=config.write_mode,
+        )
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "_signed_l2b_modal_app_context",
+        MockModalContext,
+    )
+    monkeypatch.setattr(runner_mod, "run_cluster3", fake_run)
+
+    result = runner_mod.main(_signed_l2b_n20_selector_args())
+    printed = json.loads(capsys.readouterr().out)
+
+    assert isinstance(result, runner_mod.Cluster3RunResult)
+    assert modal_events == ["enter", "exit"]
+    assert len(calls) == 12
+    assert printed["rows"] == 240
+    assert printed["output"] == runner_mod.L2B_N20_OUTPUT_ROOT
+    assert {call.write_mode for call in calls} == {"create"}
+    assert {call.n for call in calls} == {20}
+    assert {call.l2b_stage for call in calls} == {None}
+    assert {call.signed_l1a_authorization for call in calls} == {None}
+    assert {call.observability_mode for call in calls} == {"best_effort"}
+    assert all(call.output.startswith(runner_mod.L2B_N20_OUTPUT_ROOT + "/") for call in calls)
+    assert all(
+        (call.observability_output or "").startswith(
+            runner_mod.L2B_N20_OBSERVABILITY_ROOT + "/"
+        )
+        for call in calls
+    )
+
+
 def test_l2b_n2_unsigned_runtime_fails_closed() -> None:
     with pytest.raises(ValueError, match="signed-l1a-authorization"):
         parse_args(
@@ -2599,7 +2698,7 @@ def test_l2b_n20_fails_under_l2b_n2_token(
         ]
     )
 
-    with pytest.raises(RuntimeError, match="L2b-4 remains unsigned"):
+    with pytest.raises(ValueError, match="does not match --l2b-stage"):
         runner_mod._validate_l2b_runtime_authorization(config)
 
 

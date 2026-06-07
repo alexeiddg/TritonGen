@@ -84,19 +84,20 @@ from cluster3.planning.grammar_mode_matrix import (
     L1B_RUN_ID_PREFIX,
     L1B_SIGNED_AUTHORIZATION_PLACEHOLDER,
     L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
-    L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_N20_OBSERVABILITY_ROOT,
     L2B_N20_OUTPUT_ROOT,
     L2B_N20_RUN_ID_PREFIX,
     L2B_N20_SELECTOR_PROFILE_ID,
+    L2B_N20_SIGNATURE_STATUS,
+    L2B_N20_SIGNED_AUTHORIZATION_TOKEN,
+    L2B_N20_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_N2_OBSERVABILITY_ROOT,
     L2B_N2_OUTPUT_ROOT,
     L2B_N2_RUN_ID_PREFIX,
     L2B_N2_SELECTOR_PROFILE_ID,
     L2B_N2_SIGNATURE_STATUS,
     L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
-    L2B_SIGNED_AUTHORIZATION_PLACEHOLDER,
     L2_OUTPUT_ROOT,
     L2_OBSERVABILITY_ROOT,
     L2_RUN_ID_PREFIX,
@@ -287,6 +288,8 @@ DIAGNOSTIC_EXPECTED_INITIAL_FAILURES: tuple[str, ...] = (
     "F2_NUMERIC_LARGE",
 )
 L2B_N2_SIGNED_WALL_CLOCK_SECONDS_PER_CELL = 1800.0
+L2B_N20_SIGNED_WALL_CLOCK_SECONDS_PER_CELL = 7200.0
+L2B_N20_SIGNED_WALL_CLOCK_SECONDS_FOR_MATMUL_FP32_CELL = 10800.0
 
 GenerationAdapter = Callable[..., Any]
 CorrectnessAdapter = Callable[[Cluster3CorrectnessRequest], Any]
@@ -541,7 +544,7 @@ class Cluster3RunnerConfig:
                 else "resume"
                 if namespace.resume
                 else "create"
-                if _is_l2b_n2_recovery_missing28_token(
+                if _is_l2b_create_only_signed_token(
                     namespace.signed_l1a_authorization
                 )
                 else "overwrite"
@@ -658,9 +661,9 @@ L2B_N2_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
 )
 L2B_N20_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
     profile_id=L2B_N20_SELECTOR_PROFILE_ID,
-    label="L2b-4 n=20 sharded full coverage unsigned blocked plan",
-    signed_authorization_token=None,
-    signed_authorization_placeholder=L2B_SIGNED_AUTHORIZATION_PLACEHOLDER,
+    label="L2b-4 n=20 sharded full coverage signed runtime gate",
+    signed_authorization_token=L2B_N20_SIGNED_AUTHORIZATION_TOKEN,
+    signed_authorization_placeholder=L2B_N20_SIGNED_AUTHORIZATION_TOKEN,
     signed_authorization_option="--signed-l2b-authorization",
     output_root=L2B_N20_OUTPUT_ROOT,
     observability_root=L2B_N20_OBSERVABILITY_ROOT,
@@ -671,11 +674,9 @@ L2B_N20_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
     expected_planned_rows=2160,
     kernel_class_selector="all",
     dtypes=DTYPE_NAMES,
-    runtime_execution_enabled=False,
-    runtime_block_reason=(
-        "L2b-4 is unsigned and blocked until L2b-2 completes and validates"
-    ),
-    support_status=L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+    runtime_execution_enabled=True,
+    runtime_block_reason=None,
+    support_status=L2B_N20_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
 )
 SELECTOR_PROFILES: tuple[_GrammarModeSelectorProfile, ...] = (
     L1A_SELECTOR_PROFILE,
@@ -806,6 +807,13 @@ def _selector_profile_for_authorization(
 
 def _is_l2b_n2_recovery_missing28_token(token: str | None) -> bool:
     return token in L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_TOKENS
+
+
+def _is_l2b_create_only_signed_token(token: str | None) -> bool:
+    return (
+        _is_l2b_n2_recovery_missing28_token(token)
+        or token == L2B_N20_SIGNED_AUTHORIZATION_TOKEN
+    )
 
 
 @dataclass(frozen=True)
@@ -1496,11 +1504,11 @@ def _validate_cli_namespace(
             )
         return
     if namespace.condition == L1A_GRAMMAR_MODE_CP_SELECTOR:
-        is_recovery_token = _is_l2b_n2_recovery_missing28_token(
+        is_create_only_signed_token = _is_l2b_create_only_signed_token(
             getattr(namespace, "signed_l1a_authorization", None)
         )
         if not namespace.overwrite:
-            if is_recovery_token:
+            if is_create_only_signed_token:
                 return
             parser.error(
                 f"--condition {L1A_GRAMMAR_MODE_CP_SELECTOR} requires --overwrite "
@@ -1886,12 +1894,12 @@ def _run_signed_l2b_selector(
     shards: tuple[L2BFullCoverageShardPlan, ...],
     dependencies: RunnerDependencies | None = None,
 ) -> Cluster3RunResult:
-    """Expand the signed L2b-2 selector into validated shard/cell runs."""
+    """Expand a signed L2b selector into validated shard/cell runs."""
 
     if config.condition != L1A_GRAMMAR_MODE_CP_SELECTOR:
         raise ValueError("signed L2b selector runner requires grammar_mode_cp_12cell")
-    if config.l2b_stage != L2B_N2_SELECTOR_PROFILE_ID:
-        raise ValueError(f"signed L2b selector requires {L2B_N2_SELECTOR_PROFILE_ID}")
+    if config.l2b_stage not in (L2B_N2_SELECTOR_PROFILE_ID, L2B_N20_SELECTOR_PROFILE_ID):
+        raise ValueError("signed L2b selector requires an approved L2b stage")
     if not shards:
         raise ValueError("signed L2b selector requires at least one shard")
 
@@ -1962,12 +1970,15 @@ def _run_signed_l2b_shard(
         cell_elapsed = time.perf_counter() - cell_start
         rows.extend(cell_result.rows)
         audits.extend(cell_result.route_audit)
-        if cell_elapsed > L2B_N2_SIGNED_WALL_CLOCK_SECONDS_PER_CELL:
+        max_cell_seconds = _signed_l2b_wall_clock_seconds_per_cell(
+            stage_id=config.l2b_stage,
+            shard_id=shard.shard_id,
+        )
+        if cell_elapsed > max_cell_seconds:
             raise RuntimeError(
                 "SLOW_CELL_BUDGET_EXCEEDED: signed L2b shard "
                 f"{shard.shard_id} cell {cell.condition_id} took "
-                f"{cell_elapsed:.3f}s, exceeding "
-                f"{L2B_N2_SIGNED_WALL_CLOCK_SECONDS_PER_CELL:.0f}s"
+                f"{cell_elapsed:.3f}s, exceeding {max_cell_seconds:.0f}s"
             )
 
     if len(rows) != shard.planned_rows:
@@ -1986,18 +1997,30 @@ def _run_signed_l2b_shard(
 def _signed_l2b_max_shard_workers(*, stage: Any, selected: int) -> int:
     limit = int(stage.concurrency_limits.get("max_gpu_concurrency", 1))
     if limit < 1:
-        raise ValueError("signed L2b-2 requires max_gpu_concurrency >= 1")
+        raise ValueError("signed L2b requires max_gpu_concurrency >= 1")
     if limit > 4:
-        raise ValueError("signed L2b-2 requires max_gpu_concurrency <= 4")
+        raise ValueError("signed L2b requires max_gpu_concurrency <= 4")
     return max(1, min(selected, limit))
+
+
+def _signed_l2b_wall_clock_seconds_per_cell(
+    *,
+    stage_id: str | None,
+    shard_id: str,
+) -> float:
+    if stage_id == L2B_N20_SELECTOR_PROFILE_ID:
+        if shard_id == "matmul__fp32":
+            return L2B_N20_SIGNED_WALL_CLOCK_SECONDS_FOR_MATMUL_FP32_CELL
+        return L2B_N20_SIGNED_WALL_CLOCK_SECONDS_PER_CELL
+    return L2B_N2_SIGNED_WALL_CLOCK_SECONDS_PER_CELL
 
 
 def _l2b_cell_plans_for_shard(
     config: Cluster3RunnerConfig,
     shard: L2BFullCoverageShardPlan,
 ) -> tuple[GrammarModeLauncherCellPlan, ...]:
-    if config.l2b_stage != L2B_N2_SELECTOR_PROFILE_ID:
-        raise ValueError(f"signed L2b cell plans require {L2B_N2_SELECTOR_PROFILE_ID}")
+    if config.l2b_stage not in (L2B_N2_SELECTOR_PROFILE_ID, L2B_N20_SELECTOR_PROFILE_ID):
+        raise ValueError("signed L2b cell plans require an approved L2b stage")
     stage = l2b_full_coverage_stage_spec(config.l2b_stage)
     cells = build_l1a_launcher_executable_plan(
         repair_history_policy=config.repair_history_policy,
@@ -2011,9 +2034,17 @@ def _l2b_cell_plans_for_shard(
         dtypes=(shard.dtype_variant,),
         repo_root=REPO_ROOT,
         signed_authorization_placeholder=config.signed_l1a_authorization
-        or L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        or (
+            L2B_N20_SIGNED_AUTHORIZATION_TOKEN
+            if config.l2b_stage == L2B_N20_SELECTOR_PROFILE_ID
+            else L2B_N2_SIGNED_AUTHORIZATION_TOKEN
+        ),
         signed_authorization_option="--signed-l2b-authorization",
-        support_status=L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+        support_status=(
+            L2B_N20_EXECUTABLE_SELECTOR_SUPPORT_STATUS
+            if config.l2b_stage == L2B_N20_SELECTOR_PROFILE_ID
+            else L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS
+        ),
     )
     if len(cells) != shard.planned_cells:
         raise ValueError("signed L2b shard cell count mismatch")
@@ -2184,32 +2215,28 @@ def _validate_l1a_runtime_authorization(
 def _validate_l2b_runtime_authorization(
     config: Cluster3RunnerConfig,
 ) -> tuple[L2BFullCoverageShardPlan, ...]:
-    """Validate the exact signed L2b-2 shard selector before launch."""
+    """Validate the exact signed L2b shard selector before launch."""
 
     if config.condition != L1A_GRAMMAR_MODE_CP_SELECTOR:
         raise ValueError("L2b authorization is only valid for grammar_mode_cp_12cell")
-    if config.l2b_stage == L2B_N20_SELECTOR_PROFILE_ID:
-        raise RuntimeError("L2b-4 remains unsigned and blocked on L2b-2 validation")
-    if config.l2b_stage != L2B_N2_SELECTOR_PROFILE_ID:
-        raise ValueError(f"signed L2b-2 requires --l2b-stage {L2B_N2_SELECTOR_PROFILE_ID}")
+    if config.l2b_stage not in (L2B_N2_SELECTOR_PROFILE_ID, L2B_N20_SELECTOR_PROFILE_ID):
+        raise ValueError("signed L2b requires an approved --l2b-stage")
 
-    is_full_coverage_auth_token = (
-        config.signed_l1a_authorization == L2B_N2_SIGNED_AUTHORIZATION_TOKEN
-    )
     is_recovery_missing28_auth_token = _is_l2b_n2_recovery_missing28_token(
         config.signed_l1a_authorization
     )
-    if not is_full_coverage_auth_token and not is_recovery_missing28_auth_token:
-        raise ValueError(
-            "signed selector authorization for L2b-2 requires "
-            "--signed-l2b-authorization "
-            f"{L2B_N2_SIGNED_AUTHORIZATION_TOKEN}"
-        )
     profile = _selector_profile_for_authorization(config)
-    if profile.profile_id != L2B_N2_SELECTOR_PROFILE_ID:
+    if profile.profile_id != config.l2b_stage:
         raise ValueError(
-            "signed L2b-2 requires --signed-l2b-authorization "
-            f"{L2B_N2_SIGNED_AUTHORIZATION_TOKEN}"
+            "signed L2b authorization token does not match --l2b-stage"
+        )
+    if (
+        config.signed_l1a_authorization != profile.signed_authorization_token
+        and not is_recovery_missing28_auth_token
+    ):
+        raise ValueError(
+            "signed selector authorization for L2b requires "
+            f"{profile.signed_authorization_option} {profile.signed_authorization_token}"
         )
     if is_recovery_missing28_auth_token and config.l2b_recovery_cells == "all":
         raise ValueError(
@@ -2222,24 +2249,28 @@ def _validate_l2b_runtime_authorization(
         )
     stage = l2b_full_coverage_stage_spec(config.l2b_stage)
     if not stage.runtime_execution_enabled:
-        raise RuntimeError(stage.runtime_block_reason or "L2b-2 runtime gate is blocked")
+        raise RuntimeError(stage.runtime_block_reason or "L2b runtime gate is blocked")
     if not stage.signed_authorization_available:
-        raise RuntimeError("signed L2b-2 runtime gate requires signed authorization")
-    if (
-        not is_recovery_missing28_auth_token
-        and stage.signature_status != L2B_N2_SIGNATURE_STATUS
-    ):
-        raise RuntimeError(f"signed L2b-2 requires signature status {L2B_N2_SIGNATURE_STATUS}")
+        raise RuntimeError("signed L2b runtime gate requires signed authorization")
+    expected_signature_status = (
+        L2B_N20_SIGNATURE_STATUS
+        if config.l2b_stage == L2B_N20_SELECTOR_PROFILE_ID
+        else L2B_N2_SIGNATURE_STATUS
+    )
+    if not is_recovery_missing28_auth_token and stage.signature_status != expected_signature_status:
+        raise RuntimeError(
+            f"signed L2b requires signature status {expected_signature_status}"
+        )
     if stage.total_shards != 9:
-        raise ValueError("signed L2b-2 requires exactly 9 total shards")
-    if stage.rows_per_shard != 24:
-        raise ValueError("signed L2b-2 requires exactly 24 rows per shard")
-    if stage.full_matrix_planned_rows != 216:
-        raise ValueError("signed L2b-2 requires exactly 216 total planned rows")
+        raise ValueError("signed L2b requires exactly 9 total shards")
+    if stage.rows_per_shard != 12 * stage.n:
+        raise ValueError("signed L2b rows per shard do not match signed n")
+    if stage.full_matrix_planned_rows != 9 * 12 * stage.n:
+        raise ValueError("signed L2b total planned rows do not match signed n")
     if LOCKED_KERNEL_CLASSES != ("elementwise", "reduction", "matmul"):
-        raise ValueError("signed L2b-2 requires elementwise/reduction/matmul kernels")
+        raise ValueError("signed L2b requires elementwise/reduction/matmul kernels")
     if DTYPE_NAMES != ("fp32", "fp16", "bf16"):
-        raise ValueError("signed L2b-2 requires fp32/fp16/bf16 dtype variants")
+        raise ValueError("signed L2b requires fp32/fp16/bf16 dtype variants")
     if l2b_full_coverage_shard_ids() != (
         "elementwise__fp32",
         "elementwise__fp16",
@@ -2251,45 +2282,44 @@ def _validate_l2b_runtime_authorization(
         "matmul__fp16",
         "matmul__bf16",
     ):
-        raise ValueError("signed L2b-2 shard ids do not match the signed packet")
+        raise ValueError("signed L2b shard ids do not match the signed packet")
 
     limits = stage.concurrency_limits
     if limits.get("max_gpu_concurrency", 0) > 4:
-        raise ValueError("signed L2b-2 requires max_gpu_concurrency <= 4")
+        raise ValueError("signed L2b requires max_gpu_concurrency <= 4")
     if limits.get("max_container_concurrency", 0) > 40:
-        raise ValueError("signed L2b-2 requires max_container_concurrency <= 40")
+        raise ValueError("signed L2b requires max_container_concurrency <= 40")
     if os.environ.get("TRITONGEN_MLFLOW") != "0":
-        raise RuntimeError("TRITONGEN_MLFLOW=0 is required for signed L2b-2")
-    if is_recovery_missing28_auth_token:
+        raise RuntimeError("TRITONGEN_MLFLOW=0 is required for signed L2b")
+    if is_recovery_missing28_auth_token or config.l2b_stage == L2B_N20_SELECTOR_PROFILE_ID:
         if config.write_mode != "create":
             raise ValueError(
-                "signed L2b-2 recovery requires create mode and forbids "
-                "overwrite/resume"
+                "signed L2b create-only launch forbids overwrite/resume"
             )
     elif config.write_mode != "overwrite":
         raise ValueError("signed L2b-2 requires --overwrite and forbids resume")
     if config.output != profile.selector_placeholder_output:
-        raise ValueError("signed L2b-2 selector command must not override --output")
+        raise ValueError("signed L2b selector command must not override --output")
     if config.grammar_mode_cell != "all":
-        raise ValueError("signed L2b-2 selector command must plan all 12 cells")
+        raise ValueError("signed L2b selector command must plan all 12 cells")
     if config.scale_tier != stage.scale_tier:
-        raise ValueError(f"signed L2b-2 requires --scale-tier {stage.scale_tier}")
-    if config.n != 2:
-        raise ValueError("signed L2b-2 requires --n 2")
+        raise ValueError(f"signed L2b requires --scale-tier {stage.scale_tier}")
+    if config.n != stage.n:
+        raise ValueError(f"signed L2b requires --n {stage.n}")
     if config.repair_history_policy != "agentic_transcript_v1":
         raise ValueError(
-            "signed L2b-2 requires --repair-history-policy agentic_transcript_v1"
+            "signed L2b requires --repair-history-policy agentic_transcript_v1"
         )
     if config.dry_plan or config.execution_plan:
         raise ValueError("runtime authorization does not apply to planning modes")
     if config.observability_mode != "off":
-        raise ValueError("selector-level signed L2b-2 must not override observability")
+        raise ValueError("selector-level signed L2b must not override observability")
     if (
         config.observability_experiment_id is not None
         or config.observability_run_id is not None
         or config.observability_output is not None
     ):
-        raise ValueError("selector-level signed L2b-2 must not set observability paths")
+        raise ValueError("selector-level signed L2b must not set observability paths")
 
     shards = build_l2b_full_coverage_shard_plan(
         stage_id=config.l2b_stage,
@@ -2324,12 +2354,12 @@ def _validate_l2b_runtime_authorization(
             else None
         ),
         signed_authorization_placeholder=config.signed_l1a_authorization
-        or L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        or str(profile.signed_authorization_token),
         signed_authorization_option=profile.signed_authorization_option
         or "--signed-l2b-authorization",
     )
     if not shards:
-        raise ValueError("signed L2b-2 requires a non-empty shard plan")
+        raise ValueError("signed L2b requires a non-empty shard plan")
     if config.l2b_recovery_cells != "all":
         if config.l2b_shard_selector == "all" or config.l2b_shard_selector.startswith(
             "wave:"
@@ -2349,26 +2379,29 @@ def _validate_l2b_runtime_authorization(
             raise ValueError("signed L2b-2 recovery requires exactly one shard")
     if config.l2b_shard_selector == "all":
         if config.kernel_class != "all":
-            raise ValueError("signed L2b-2 all-shards command requires --kernel-class all")
+            raise ValueError("signed L2b all-shards command requires --kernel-class all")
         if config.dtypes != DTYPE_NAMES:
-            raise ValueError("signed L2b-2 all-shards command requires all signed dtypes")
+            raise ValueError("signed L2b all-shards command requires all signed dtypes")
         if len(shards) != stage.total_shards:
-            raise ValueError("signed L2b-2 all-shards command requires exactly 9 shards")
+            raise ValueError("signed L2b all-shards command requires exactly 9 shards")
         if sum(shard.planned_rows for shard in shards) != stage.full_matrix_planned_rows:
-            raise ValueError("signed L2b-2 all-shards command requires 216 planned rows")
+            raise ValueError(
+                "signed L2b all-shards command requires "
+                f"{stage.full_matrix_planned_rows} planned rows"
+            )
     elif config.l2b_shard_selector.startswith("wave:"):
         if config.kernel_class != "all":
-            raise ValueError("signed L2b-2 wave command requires --kernel-class all")
+            raise ValueError("signed L2b wave command requires --kernel-class all")
         if config.dtypes != DTYPE_NAMES:
-            raise ValueError("signed L2b-2 wave command requires all signed dtypes")
+            raise ValueError("signed L2b wave command requires all signed dtypes")
     else:
         shard = shards[0]
         if config.kernel_class != shard.kernel_class:
             raise ValueError(
-                "signed L2b-2 one-shard command requires matching --kernel-class"
+                "signed L2b one-shard command requires matching --kernel-class"
             )
         if config.dtypes != (shard.dtype_variant,):
-            raise ValueError("signed L2b-2 one-shard command requires matching --dtypes")
+            raise ValueError("signed L2b one-shard command requires matching --dtypes")
 
     for shard in shards:
         _validate_l2b_runtime_shard_plan(
@@ -2425,43 +2458,46 @@ def _validate_l2b_runtime_shard_plan(
     reports_root = reports_namespace_root or stage.reports_root
     billing_root = billing_namespace_root or stage.billing_root
     if shard.shard_id != f"{shard.kernel_class}__{shard.dtype_variant}":
-        raise ValueError("signed L2b-2 shard id must equal kernel_class__dtype_variant")
+        raise ValueError("signed L2b shard id must equal kernel_class__dtype_variant")
     if config.l2b_recovery_cells == "all":
         if shard.planned_cells != 12:
-            raise ValueError("signed L2b-2 requires 12 planned cells per shard")
-        if shard.planned_rows != 24:
-            raise ValueError("signed L2b-2 requires 24 planned rows per shard")
+            raise ValueError("signed L2b requires 12 planned cells per shard")
+        if shard.planned_rows != stage.rows_per_shard:
+            raise ValueError(
+                f"signed L2b requires {stage.rows_per_shard} planned rows per shard"
+            )
     else:
         if shard.planned_rows != len(config.l2b_recovery_cells) * stage.n:
             raise ValueError("signed L2b-2 recovery requires exact planned missing rows")
     if shard.backend != "modal_local_model":
-        raise ValueError("signed L2b-2 requires backend=modal_local_model")
+        raise ValueError("signed L2b requires backend=modal_local_model")
     if shard.output_namespace != expected_output_namespace:
-        raise ValueError("signed L2b-2 output namespace does not match shard id")
+        raise ValueError("signed L2b output namespace does not match shard id")
     if shard.artifact_namespace != expected_artifact_namespace:
-        raise ValueError("signed L2b-2 artifact namespace does not match shard id")
+        raise ValueError("signed L2b artifact namespace does not match shard id")
     if not shard.fail_if_any_target_path_exists:
-        raise ValueError("signed L2b-2 requires fail_if_any_target_path_exists=true")
+        raise ValueError("signed L2b requires fail_if_any_target_path_exists=true")
     if shard.path_collision_policy != L1A_PATH_COLLISION_POLICY:
-        raise ValueError("signed L2b-2 shard plan must fail if target paths exist")
+        raise ValueError("signed L2b shard plan must fail if target paths exist")
     if shard.concurrency_limits.get("max_gpu_concurrency", 0) > 4:
-        raise ValueError("signed L2b-2 shard requires max_gpu_concurrency <= 4")
+        raise ValueError("signed L2b shard requires max_gpu_concurrency <= 4")
     if shard.concurrency_limits.get("max_container_concurrency", 0) > 40:
-        raise ValueError("signed L2b-2 shard requires max_container_concurrency <= 40")
+        raise ValueError("signed L2b shard requires max_container_concurrency <= 40")
     if shard.timing_observability.get("performance_evidence_authorized") is not False:
-        raise ValueError("signed L2b-2 timing observability is sidecar-only")
+        raise ValueError("signed L2b timing observability is sidecar-only")
     if shard.slow_cell_stop_policy.get("automatic_retry_authorized") is not False:
-        raise ValueError("signed L2b-2 forbids automatic retry")
+        raise ValueError("signed L2b forbids automatic retry")
     if shard.slow_cell_stop_policy.get("automatic_resume_authorized") is not False:
-        raise ValueError("signed L2b-2 forbids automatic resume")
+        raise ValueError("signed L2b forbids automatic resume")
     if not any(
         token in shard.future_command
         for token in (
             L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+            L2B_N20_SIGNED_AUTHORIZATION_TOKEN,
             *L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_TOKENS,
         )
     ):
-        raise ValueError("signed L2b-2 future command must contain the signed token")
+        raise ValueError("signed L2b future command must contain the signed token")
 
     _require_l1a_path(
         shard.output_namespace,

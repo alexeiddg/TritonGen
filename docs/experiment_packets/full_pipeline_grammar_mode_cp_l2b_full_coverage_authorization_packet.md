@@ -3,54 +3,53 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_COMPRESSED_FULL_COVERAGE_PACKET_V2`
-packet_version: `0.4.0-l2b-n2-signed-boundary`
-packet_type: compressed ladder planning packet and L2b-2 signature boundary record
+packet_version: `0.5.0-l2b-n20-signed-boundary`
+packet_type: compressed ladder planning packet and L2b n20 signature boundary record
 branch: `codex/l2b-full-coverage-plan-and-selector`
 target_branch: `codex-track-handoff-context`
-baseline_commit: `9974770 Promote Fireworks Modal planning doc`
-execution_code_target_commit: `eab664f560404cc40e309caa8d4202346452ecc3`
-status: `L2B_2_SIGNED_L2B_4_BLOCKED_NO_EXECUTION_YET`
-signature_status: `SIGNED_FOR_L2B_N2_ONLY`
-classification: `L2B_N2_FINAL_AUTHORIZATION_READY`
-AUTHORIZES_EXECUTION: YES_L2B_N2_ONLY
+baseline_commit: `28255c3afec51a2d61fcd59dbe9ee624b45e1306`
+execution_code_target_commit: `28255c3afec51a2d61fcd59dbe9ee624b45e1306`
+status: `L2B_N2_COMPLETE_WITH_CAVEAT_L2B_N20_SIGNED_NO_EXECUTION_DURING_DRAFT`
+signature_status: `SIGNED_FOR_L2B_N20_ONLY_BY_SEPARATE_PACKET`
+classification: `L2B_N20_FINAL_AUTHORIZATION_READY`
+AUTHORIZES_EXECUTION: YES_L2B_N20_ONLY_BY_SEPARATE_PACKET
 
 Execution authorization flags:
 
 ```text
-MODAL_AUTHORIZED: YES_L2B_N2_ONLY
-GPU_AUTHORIZED: YES_L2B_N2_ONLY
-GENERATION_AUTHORIZED: YES_L2B_N2_ONLY
-EXPERIMENT_EXECUTION_AUTHORIZED: YES_L2B_N2_ONLY
-OUTPUT_MUTATION_AUTHORIZED: YES_L2B_N2_NAMESPACES_ONLY
-ARTIFACT_MUTATION_AUTHORIZED: YES_L2B_N2_NAMESPACES_ONLY
-BILLING_QUERY_AUTHORIZED: YES_L2B_N2_RECONCILIATION_ONLY_AFTER_RUN
-ANALYZER_REFRESH_AUTHORIZED: NO
-REPORT_REFRESH_AUTHORIZED: NO
+MODAL_AUTHORIZED: YES_L2B_N20_ONLY_BY_SEPARATE_PACKET
+GPU_AUTHORIZED: YES_L2B_N20_ONLY_BY_SEPARATE_PACKET
+GENERATION_AUTHORIZED: YES_L2B_N20_ONLY_BY_SEPARATE_PACKET
+EXPERIMENT_EXECUTION_AUTHORIZED: YES_L2B_N20_ONLY_BY_SEPARATE_PACKET
+OUTPUT_MUTATION_AUTHORIZED: YES_L2B_N20_NAMESPACES_ONLY_BY_SEPARATE_PACKET
+ARTIFACT_MUTATION_AUTHORIZED: YES_L2B_N20_NAMESPACES_ONLY_BY_SEPARATE_PACKET
+BILLING_QUERY_AUTHORIZED: YES_L2B_N20_RECONCILIATION_ONLY_AFTER_WAVES
+ANALYZER_REFRESH_AUTHORIZED: YES_AFTER_2160_VALIDATED_ROWS_OR_EXPLICIT_PARTIAL_CAVEAT
+REPORT_REFRESH_AUTHORIZED: YES_AFTER_2160_VALIDATED_ROWS_OR_EXPLICIT_PARTIAL_CAVEAT
 MLFLOW_TRACKING_EXECUTION_AUTHORIZED: NO
 FIREWORKS_API_CALLS_AUTHORIZED: NO
 RETRY_AUTHORIZED: NO
 RESUME_AUTHORIZED: NO
-L2B_4_AUTHORIZED: NO
+OVERWRITE_AUTHORIZED: NO
+L2B_4_AUTHORIZED: YES_L2B_N20_ONLY_BY_SEPARATE_PACKET
 ```
 
-This umbrella now records that the separate L2b-2 packet is signed for the
-216-row n=2 shard scope only. No execution occurred during packet drafting. This
-umbrella does not sign L2b-4, does not authorize retry or resume, and does not
-change runtime launcher behavior; a separate execution-readiness step must
-verify or enable only the exact signed L2b-2 token/profile/path before launch.
+This umbrella records the current L2b ladder boundary. The separate L2b-2 packet
+and recovery packet together satisfy the 216-row prerequisite with an
+observability caveat. The separate L2b-4 n20 packet signs only the 2160-row n20
+scope. No execution occurred during packet drafting. Retry, resume, overwrite,
+Fireworks execution, L2b-2 mutation, L2b-2 recovery mutation, and L3 remain
+unauthorized.
 
 ## Reconciliation Context
 
-Current trunk is `codex-track-handoff-context` at `9974770 Promote Fireworks
-Modal planning doc`. The signed L2a n=20 attempt is preserved at `04d2eef
-Record failed L2 n20 validation` as an incomplete wall-clock/slow-tail run:
-228 of 240 rows completed, with only `task_agnostic__c_on__p_on` stopped at 8
-of 20 rows. This is not treated here as a scientific evidence failure; analyzer,
-report, paper-scale, retry, resume, overwrite, and rerun work remain blocked.
-
-L2b planning is reconciled on top of that trunk state and must not modify the
-preserved L2a output, observability, billing, report, analysis, or `mlruns`
-surfaces.
+Current trunk is `codex-track-handoff-context` at
+`28255c3afec51a2d61fcd59dbe9ee624b45e1306`. L2b-2 has 188 base rows plus 28
+recovery rows for 216/216 logical rows, 0 duplicate logical keys, 0 missing
+logical keys, and all 9 shards complete. Carry forward the caveat that the
+`reduction__fp16` recovery rows have result/hash sidecars but no observability
+sidecars. L2b-4 must use create-only output and observability logger support and
+must require observability sidecars for every n20 shard.
 
 ## Ladder
 
@@ -59,14 +58,14 @@ Do not run L2b-1.
 | Rung | Selector profile | Scope | Status |
 |---|---|---|---|
 | L2b-0 | local planning only | selector/profile and shard-plan support | implemented locally; no execution |
-| L2b-2 | `l2b_n2_full_coverage` | full repo-backed coverage at `n=2` | signed for L2b-2 only; no execution yet |
-| L2b-4 | `l2b_n20_full_coverage` | same full coverage at `n=20` | unsigned and blocked on L2b-2 completion/validation |
+| L2b-2 | `l2b_n2_full_coverage` | full repo-backed coverage at `n=2` | complete and validated with observability caveat |
+| L2b-4 | `l2b_n20_full_coverage` | same full coverage at `n=20` | signed by separate n20 packet only |
 
-The branch may prepare L2b-4 selector/profile support and an unsigned packet
-draft only. L2b-4 can be signed only after L2b-2 completes and validates. The
-L2b-2 packet is now signed, but the target code still has no registered signed
-L2b runtime token because this packet-preparation step intentionally did not
-change runtime launcher behavior.
+The L2b-4 packet token is
+`FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N20_FULL_COVERAGE_AUTHORIZATION_PACKET_V1`.
+The runtime gate must accept only that token for `l2b_n20_full_coverage`, use
+create mode without `--overwrite`, reach mocked Modal dispatch in tests, and
+fail closed for dirty worktree or local/remote drift before future launch.
 
 ## Repo-Backed Scope
 
@@ -283,14 +282,17 @@ max_container_concurrency <= 40
 L2b-4 staged caps:
 
 ```text
-first_wave_max_gpu_concurrency <= 4
-first_wave_max_container_concurrency <= 40
-second_wave_after_first_wave_validation_max_gpu_concurrency <= 8
-second_wave_after_first_wave_validation_max_container_concurrency <= 80
+wave_1_max_gpu_concurrency <= 4
+wave_1_max_container_concurrency <= 40
+wave_2_max_gpu_concurrency <= 4
+wave_2_max_container_concurrency <= 40
+wave_3_max_gpu_concurrency <= 4
+wave_3_max_container_concurrency <= 40
+wave_4_matmul_fp32_max_gpu_concurrency <= 2
+wave_4_matmul_fp32_max_container_concurrency <= 20
 ```
 
-Do not use 10 GPUs or 100 containers unless L2b-2 passes and the first L2b-4
-wave validates cleanly.
+Do not use 10 GPUs or 100 containers. `matmul__fp32` must remain isolated last.
 
 ## Packet Files
 
@@ -300,7 +302,7 @@ The signed L2b-2 packet is:
 docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n2_full_coverage_authorization_packet.md
 ```
 
-The L2b-4 blocked draft is:
+The signed L2b-4 n20 packet is:
 
 ```text
 docs/experiment_packets/full_pipeline_grammar_mode_cp_l2b_n20_full_coverage_authorization_packet.md
@@ -321,4 +323,4 @@ Protected mutation scan must show no changed files under `outputs`,
 
 ## Classification
 
-`L2B_N2_FINAL_AUTHORIZATION_READY`
+`L2B_N20_FINAL_AUTHORIZATION_READY`
