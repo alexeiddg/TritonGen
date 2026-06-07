@@ -1550,6 +1550,8 @@ def build_l2b_full_coverage_plan_payload(
         "signed_authorization_option": profile.signed_authorization_option,
         "support_status": profile.support_status,
         "concurrency_limits": dict(stage.concurrency_limits),
+        "timing_observability": dict(stage.timing_observability),
+        "slow_cell_stop_policy": dict(stage.slow_cell_stop_policy),
         "writes_outputs": False,
         "writes_artifacts": False,
         "writes_mlruns": False,

@@ -3,6 +3,7 @@
 ## Summary
 
 status: `L2B_COMPRESSED_FULL_COVERAGE_PLAN_READY_FOR_SIGNATURE`
+report_version: `1.1.1`
 branch: `codex/l2b-full-coverage-plan-and-selector`
 baseline_commit: `4b85c246795f4b6042852dfeb7219c053cc77760`
 AUTHORIZES_EXECUTION: NO
@@ -159,6 +160,53 @@ second_wave_after_first_wave_validation_max_container_concurrency <= 80
 Do not use 10 GPUs or 100 containers unless L2b-2 passes and the first L2b-4
 wave validates cleanly.
 
+## Timing Observability And Slow Cells
+
+The L2b plan now records per-cell and per-shard timing diagnostics as
+sidecar-only metadata. These fields are planning/runtime observability metadata,
+not scientific result rows, analyzer inputs, report evidence, profiler data,
+benchmark data, speedup evidence, or performance evidence.
+
+Required diagnostics:
+
+```text
+wall_clock_seconds_per_row
+generation_attempt_count
+compile_attempt_count
+correctness_call_count
+p_repair_attempt_count
+c_repair_attempt_count
+terminal_failure_type
+timeout_or_stop_reason if applicable
+```
+
+Permitted use is limited to operational budgeting and identifying slow cells.
+Speedup, performance, throughput, latency, profiler, benchmark, or paper-evidence
+claims are explicitly disallowed.
+
+Known high-cost cell:
+
+```text
+task_agnostic__c_on__p_on
+```
+
+Risk note: `task_agnostic__c_on__p_on` is expected to be the slowest cell
+because it combines the broadest grammar mode with both P and C repair pathways.
+L2b budget estimates must not assume uniform row time across cells. For L2b
+execution design, this is another reason sharding is mandatory: one slow
+`task_agnostic__c_on__p_on` path must not block every kernel/dtype result.
+
+The future signed-runtime stop policy is:
+
+```text
+signed per-cell wall-clock budget: required
+if any single cell exceeds budget: finish active row if safe, stop shard
+classification: SLOW_CELL_BUDGET_EXCEEDED
+automatic retry: no
+automatic resume: no
+preserve partial shard audit: yes
+```
+
 ## Fireworks Boundary
 
 The shard abstraction records:
@@ -218,6 +266,8 @@ No planning blocker remains. Execution blockers remain:
 
 - L2b-2 is unsigned until reviewed and signed.
 - L2b-4 is unsigned and blocked on L2b-2 completion and validation.
+- A concrete per-cell wall-clock budget is required before any L2b execution
+  signature.
 - No L2b output/artifact/billing/analyzer/report evidence exists.
 - Fireworks API integration remains TODO-only.
 

@@ -3,7 +3,7 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_COMPRESSED_FULL_COVERAGE_PACKET_V2`
-packet_version: `0.2.0-plan-only`
+packet_version: `0.2.1-plan-only`
 packet_type: compressed ladder planning packet and local selector/profile record
 branch: `codex/l2b-full-coverage-plan-and-selector`
 target_branch: `codex-track-handoff-context`
@@ -141,6 +141,72 @@ C in {off, on}
 P in {off, on}
 ```
 
+## Timing Observability
+
+L2b requires per-cell and per-shard timing diagnostics as sidecar metadata only.
+These fields are not scientific result rows, analyzer inputs, paper evidence,
+profiler outputs, benchmark data, or performance evidence.
+
+Required sidecar diagnostics:
+
+```text
+wall_clock_seconds_per_row
+generation_attempt_count
+compile_attempt_count
+correctness_call_count
+p_repair_attempt_count
+c_repair_attempt_count
+terminal_failure_type
+timeout_or_stop_reason if applicable
+```
+
+Allowed use:
+
+```text
+operational_budgeting
+slow_cell_identification
+```
+
+Forbidden use:
+
+```text
+speedup claims
+performance claims
+paper evidence
+throughput or latency claims
+```
+
+Known high-cost cell:
+
+```text
+task_agnostic__c_on__p_on
+```
+
+Risk note: `task_agnostic__c_on__p_on` is expected to be the slowest cell
+because it combines the broadest grammar mode with both P and C repair pathways.
+L2b budget estimates must not assume uniform row time across cells. For L2b
+execution design, this is another reason sharding is mandatory. One slow
+`task_agnostic__c_on__p_on` path must not block every kernel/dtype result.
+
+## Slow-Cell Stop Policy
+
+Each signed L2b packet must provide a concrete wall-clock budget before any
+execution. If any single cell exceeds that signed wall-clock budget, future
+runtime must finish the active row if safe, then stop only that shard and
+classify:
+
+```text
+SLOW_CELL_BUDGET_EXCEEDED
+```
+
+Required behavior:
+
+```text
+automatic retry: no
+automatic resume: no
+preserve partial shard audit: yes
+```
+
 ## Selector Commands
 
 L2b-2 all-shard dry plan:
@@ -169,7 +235,8 @@ TRITONGEN_MLFLOW=0 .venv/bin/python -m cluster3.experiments.run_cluster3_modal -
 
 The execution-plan JSON must report `total_shards`, `rows_per_shard`,
 `total_planned_rows`, per-shard command, per-shard output paths, per-shard
-artifact paths, concurrency limits, and `fail_if_any_target_path_exists=true`.
+artifact paths, concurrency limits, timing observability contract, slow-cell
+stop policy, and `fail_if_any_target_path_exists=true`.
 
 ## Parallelism Plan
 

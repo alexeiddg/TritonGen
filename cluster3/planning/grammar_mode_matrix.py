@@ -133,6 +133,62 @@ L2B_BACKEND_CURRENT = "modal_local_model"
 L2B_BACKEND_TODO = "fireworks_api"
 L2B_TOTAL_SHARDS = len(LOCKED_KERNEL_CLASSES) * len(DTYPE_NAMES)
 L2B_PLANNED_CELLS_PER_SHARD = 12
+L2B_TIMING_OBSERVABILITY_REQUIRED_DIAGNOSTICS = (
+    "wall_clock_seconds_per_row",
+    "generation_attempt_count",
+    "compile_attempt_count",
+    "correctness_call_count",
+    "p_repair_attempt_count",
+    "c_repair_attempt_count",
+    "terminal_failure_type",
+    "timeout_or_stop_reason",
+)
+L2B_KNOWN_HIGH_COST_CELL_ID = "task_agnostic__c_on__p_on"
+L2B_KNOWN_HIGH_COST_CELL_RISK_NOTE = (
+    "task_agnostic__c_on__p_on is expected to be the slowest cell because it "
+    "combines the broadest grammar mode with both P and C repair pathways. "
+    "L2b budget estimates must not assume uniform row time across cells, and "
+    "this is another reason sharding is mandatory so one slow path does not "
+    "block every kernel/dtype result."
+)
+L2B_SLOW_CELL_STOP_CLASSIFICATION = "SLOW_CELL_BUDGET_EXCEEDED"
+
+
+def l2b_timing_observability_contract() -> dict[str, object]:
+    """Return the sidecar-only L2b timing metadata contract."""
+
+    return {
+        "scope": "per_cell_and_per_shard_sidecar_metadata_only",
+        "required_diagnostics": L2B_TIMING_OBSERVABILITY_REQUIRED_DIAGNOSTICS,
+        "scientific_result_row_schema_mutation": False,
+        "performance_evidence_authorized": False,
+        "allowed_uses": (
+            "operational_budgeting",
+            "slow_cell_identification",
+        ),
+        "disallowed_uses": (
+            "speedup_claims",
+            "performance_claims",
+            "paper_evidence",
+        ),
+        "known_high_cost_cell": L2B_KNOWN_HIGH_COST_CELL_ID,
+        "known_high_cost_cell_risk_note": L2B_KNOWN_HIGH_COST_CELL_RISK_NOTE,
+    }
+
+
+def l2b_slow_cell_stop_policy() -> dict[str, object]:
+    """Return the signed-runtime stop policy for slow L2b cells."""
+
+    return {
+        "signed_wall_clock_budget_required": True,
+        "budget_value": "REQUIRED_IN_SIGNED_PACKET",
+        "trigger": "any_single_cell_exceeds_signed_wall_clock_budget",
+        "active_row_policy": "finish_active_row_if_safe_then_stop_shard",
+        "classification": L2B_SLOW_CELL_STOP_CLASSIFICATION,
+        "automatic_retry_authorized": False,
+        "automatic_resume_authorized": False,
+        "preserve_partial_shard_audit": True,
+    }
 
 
 @dataclass(frozen=True)
@@ -204,6 +260,8 @@ class L2BFullCoverageStageSpec:
     signature_status: str
     dependency_gate: str
     concurrency_limits: Mapping[str, object]
+    timing_observability: Mapping[str, object]
+    slow_cell_stop_policy: Mapping[str, object]
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -227,6 +285,8 @@ class L2BFullCoverageShardPlan:
     future_command: str
     cell_commands: tuple[str, ...]
     concurrency_limits: Mapping[str, object]
+    timing_observability: Mapping[str, object]
+    slow_cell_stop_policy: Mapping[str, object]
     fail_if_any_target_path_exists: bool
     path_collision_policy: str
     support_status: str
@@ -412,6 +472,8 @@ def l2b_full_coverage_stage_spec(stage_id: str) -> L2BFullCoverageStageSpec:
                 "policy": "aggressive_but_bounded_smoke_parallelism",
                 "backend": L2B_BACKEND_CURRENT,
             },
+            timing_observability=l2b_timing_observability_contract(),
+            slow_cell_stop_policy=l2b_slow_cell_stop_policy(),
         )
     if stage_id == L2B_N20_SELECTOR_PROFILE_ID:
         n = 20
@@ -452,6 +514,8 @@ def l2b_full_coverage_stage_spec(stage_id: str) -> L2BFullCoverageStageSpec:
                 ),
                 "backend": L2B_BACKEND_CURRENT,
             },
+            timing_observability=l2b_timing_observability_contract(),
+            slow_cell_stop_policy=l2b_slow_cell_stop_policy(),
         )
     allowed = ", ".join(l2b_full_coverage_stage_choices())
     raise ValueError(f"l2b_stage must be one of: {allowed}; got {stage_id!r}")
@@ -541,6 +605,8 @@ def build_l2b_full_coverage_shard_plan(
                 ),
                 cell_commands=tuple(cell.executable_command for cell in cell_plans),
                 concurrency_limits=stage.concurrency_limits,
+                timing_observability=stage.timing_observability,
+                slow_cell_stop_policy=stage.slow_cell_stop_policy,
                 fail_if_any_target_path_exists=True,
                 path_collision_policy=L1A_PATH_COLLISION_POLICY,
                 support_status=L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS,

@@ -13,13 +13,16 @@ from cluster3.planning.grammar_mode_matrix import (
     L1A_SIGNED_AUTHORIZATION_PLACEHOLDER,
     L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+    L2B_KNOWN_HIGH_COST_CELL_ID,
     L2B_N20_OUTPUT_ROOT,
     L2B_N20_OBSERVABILITY_ROOT,
     L2B_N20_SELECTOR_PROFILE_ID,
     L2B_N2_OUTPUT_ROOT,
     L2B_N2_OBSERVABILITY_ROOT,
     L2B_N2_SELECTOR_PROFILE_ID,
+    L2B_SLOW_CELL_STOP_CLASSIFICATION,
     L2B_SIGNED_AUTHORIZATION_PLACEHOLDER,
+    L2B_TIMING_OBSERVABILITY_REQUIRED_DIAGNOSTICS,
     L2_OBSERVABILITY_ROOT,
     L2_OUTPUT_ROOT,
     L2_RUN_ID_PREFIX,
@@ -328,6 +331,19 @@ def test_l2b_stage_specs_define_compressed_sharded_ladder() -> None:
     assert n2.observability_root == L2B_N2_OBSERVABILITY_ROOT
     assert n2.concurrency_limits["max_gpu_concurrency"] <= 4
     assert n2.concurrency_limits["max_container_concurrency"] <= 40
+    assert n2.timing_observability["required_diagnostics"] == (
+        L2B_TIMING_OBSERVABILITY_REQUIRED_DIAGNOSTICS
+    )
+    assert n2.timing_observability["performance_evidence_authorized"] is False
+    assert n2.timing_observability["known_high_cost_cell"] == (
+        L2B_KNOWN_HIGH_COST_CELL_ID
+    )
+    assert (
+        n2.slow_cell_stop_policy["classification"]
+        == L2B_SLOW_CELL_STOP_CLASSIFICATION
+    )
+    assert n2.slow_cell_stop_policy["automatic_retry_authorized"] is False
+    assert n2.slow_cell_stop_policy["automatic_resume_authorized"] is False
 
     assert n20.rung == "L2b-4"
     assert n20.n == 20
@@ -350,6 +366,10 @@ def test_l2b_stage_specs_define_compressed_sharded_ladder() -> None:
         ]
         <= 80
     )
+    assert n20.timing_observability["required_diagnostics"] == (
+        L2B_TIMING_OBSERVABILITY_REQUIRED_DIAGNOSTICS
+    )
+    assert n20.timing_observability["performance_evidence_authorized"] is False
 
 
 def test_l2b_shard_ids_are_exact_kernel_dtype_tuples() -> None:
@@ -409,6 +429,14 @@ def test_l2b_n2_shard_plan_uses_deterministic_namespaces() -> None:
     assert "--dtypes fp32" in shard.future_command
     assert "--signed-l2b-authorization" in shard.future_command
     assert L2B_SIGNED_AUTHORIZATION_PLACEHOLDER in shard.future_command
+    assert shard.timing_observability["scope"] == (
+        "per_cell_and_per_shard_sidecar_metadata_only"
+    )
+    assert shard.timing_observability["performance_evidence_authorized"] is False
+    assert shard.slow_cell_stop_policy["classification"] == (
+        L2B_SLOW_CELL_STOP_CLASSIFICATION
+    )
+    assert shard.slow_cell_stop_policy["preserve_partial_shard_audit"] is True
 
 
 def test_l2b_wave_selector_returns_bounded_shard_window() -> None:

@@ -1996,6 +1996,20 @@ def test_l2b_n2_full_coverage_dry_plan_builds_sharded_matrix() -> None:
     assert payload["observability_root"] == runner_mod.L2B_N2_OBSERVABILITY_ROOT
     assert payload["backend"] == "modal_local_model"
     assert payload["future_backend_todo"] == "fireworks_api"
+    assert payload["timing_observability"]["scope"] == (
+        "per_cell_and_per_shard_sidecar_metadata_only"
+    )
+    assert "wall_clock_seconds_per_row" in payload["timing_observability"][
+        "required_diagnostics"
+    ]
+    assert payload["timing_observability"]["performance_evidence_authorized"] is False
+    assert payload["timing_observability"]["known_high_cost_cell"] == (
+        "task_agnostic__c_on__p_on"
+    )
+    assert payload["slow_cell_stop_policy"]["classification"] == (
+        "SLOW_CELL_BUDGET_EXCEEDED"
+    )
+    assert payload["slow_cell_stop_policy"]["preserve_partial_shard_audit"] is True
     assert payload["execution_authorized"] is False
     assert payload["runtime_execution_enabled"] is False
     assert payload["signed_authorization_available"] is False
@@ -2016,6 +2030,10 @@ def test_l2b_n2_full_coverage_dry_plan_builds_sharded_matrix() -> None:
     for shard in payload["shards"]:
         assert shard["planned_cells"] == 12
         assert shard["planned_rows"] == 24
+        assert shard["timing_observability"]["performance_evidence_authorized"] is False
+        assert shard["slow_cell_stop_policy"]["classification"] == (
+            "SLOW_CELL_BUDGET_EXCEEDED"
+        )
         assert shard["output_namespace"].startswith(runner_mod.L2B_N2_OUTPUT_ROOT + "/")
         assert shard["artifact_namespace"].startswith(
             runner_mod.L2B_N2_OBSERVABILITY_ROOT + "/"
@@ -2130,6 +2148,15 @@ def test_l2b_n20_execution_plan_lists_bounded_wave_blocked_on_l2b2() -> None:
     assert payload["rows_per_shard"] == 240
     assert payload["total_planned_rows"] == 720
     assert payload["full_matrix_planned_rows"] == 2160
+    assert payload["timing_observability"]["known_high_cost_cell"] == (
+        "task_agnostic__c_on__p_on"
+    )
+    assert (
+        "performance_claims"
+        in payload["timing_observability"]["disallowed_uses"]
+    )
+    assert payload["slow_cell_stop_policy"]["automatic_retry_authorized"] is False
+    assert payload["slow_cell_stop_policy"]["automatic_resume_authorized"] is False
     assert payload["concurrency_limits"]["first_wave_max_gpu_concurrency"] <= 4
     assert (
         payload["concurrency_limits"]["first_wave_max_container_concurrency"]

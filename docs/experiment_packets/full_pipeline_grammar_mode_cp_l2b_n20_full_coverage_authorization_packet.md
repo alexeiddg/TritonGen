@@ -3,7 +3,7 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N20_FULL_COVERAGE_AUTHORIZATION_PACKET_V1`
-packet_version: `0.1.0-unsigned-blocked`
+packet_version: `0.1.1-unsigned-blocked`
 packet_type: unsigned blocked authorization packet draft
 branch: `codex/l2b-full-coverage-plan-and-selector`
 target_branch: `codex-track-handoff-context`
@@ -71,6 +71,36 @@ retry_policy: no retry
 resume_policy: no resume
 ```
 
+## Timing Observability
+
+Future L2b-4 execution must emit per-cell and per-shard timing diagnostics as
+sidecar metadata only, under the signed shard observability namespace. These
+diagnostics must not mutate result-row schemas and must not be used for
+speedup, performance, throughput, latency, profiler, benchmark, or paper
+evidence claims.
+
+Required diagnostics:
+
+```text
+wall_clock_seconds_per_row
+generation_attempt_count
+compile_attempt_count
+correctness_call_count
+p_repair_attempt_count
+c_repair_attempt_count
+terminal_failure_type
+timeout_or_stop_reason if applicable
+```
+
+Allowed use is limited to operational budgeting and identifying slow cells.
+
+Known high-cost cell risk note: `task_agnostic__c_on__p_on` is expected to be
+the slowest cell because it combines the broadest grammar mode with both P and C
+repair pathways. L2b budget estimates must not assume uniform row time across
+cells. For L2b execution design, this is another reason sharding is mandatory.
+One slow `task_agnostic__c_on__p_on` path must not block every kernel/dtype
+result.
+
 ## Planning Commands
 
 Dry plan:
@@ -105,6 +135,21 @@ second_wave_after_first_wave_validation_max_container_concurrency <= 80
 Do not use 10 GPUs or 100 containers unless L2b-2 passes and the first L2b-4
 wave validates cleanly.
 
+## Slow-Cell Stop Policy
+
+L2b-4 cannot be signed until L2b-2 completes and validates. Any future signed
+L2b-4 packet must also provide a concrete per-cell wall-clock budget before
+execution. If any single cell exceeds that signed budget, finish the active row
+if safe, then stop the current shard and classify:
+
+```text
+SLOW_CELL_BUDGET_EXCEEDED
+```
+
+Do not retry or resume automatically. Preserve the partial shard audit, including
+completed rows, sidecar events, terminal failure type, and timeout or stop reason
+if applicable.
+
 ## Blockers Before Signature
 
 ```text
@@ -114,6 +159,7 @@ L2b-2 hash sidecars validated: required
 L2b-2 observability sidecars validated: required
 L2b-2 billing/audit metadata reviewed: required
 L2b-4 target-path absence verified: required
+L2b-4 signed per-cell wall-clock budget: required
 ```
 
 ## Signature Block

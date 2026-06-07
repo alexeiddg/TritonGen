@@ -3,6 +3,7 @@
 ## Status
 
 status: `PLAN_ONLY_LOCAL_SELECTOR_SUPPORT`
+plan_version: `0.2.1`
 branch: `codex/l2b-full-coverage-plan-and-selector`
 baseline_commit: `4b85c246795f4b6042852dfeb7219c053cc77760`
 classification: `L2B_COMPRESSED_FULL_COVERAGE_PLAN_READY_FOR_SIGNATURE`
@@ -32,8 +33,11 @@ analyzer refresh
 report refresh
 Fireworks API calls
 dependency or lockfile changes
-profiler, benchmark, speedup, timing, or performance claims
+profiler, benchmark, speedup, or performance claims
 ```
+
+Timing observability is allowed only as planned sidecar metadata and only after a
+future signed execution packet. It is not performance evidence.
 
 ## Repo-Backed Discovery
 
@@ -134,11 +138,73 @@ per-shard future_command
 per-shard output_paths
 per-shard artifact_paths
 concurrency_limits
+timing_observability
+slow_cell_stop_policy
 fail_if_any_target_path_exists=true
 writes_outputs=false
 writes_artifacts=false
 writes_mlruns=false
 ```
+
+## Timing Observability
+
+The L2b planner records a sidecar-only timing observability contract for every
+stage and shard. Future execution must keep these diagnostics out of result-row
+schemas and analyzer/report evidence:
+
+```text
+wall_clock_seconds_per_row
+generation_attempt_count
+compile_attempt_count
+correctness_call_count
+p_repair_attempt_count
+c_repair_attempt_count
+terminal_failure_type
+timeout_or_stop_reason if applicable
+```
+
+Allowed use:
+
+```text
+operational budgeting
+identifying slow cells
+```
+
+Disallowed use:
+
+```text
+speedup claims
+performance claims
+throughput or latency claims
+profiler or benchmark evidence
+paper evidence
+```
+
+Known high-cost cell:
+
+```text
+task_agnostic__c_on__p_on
+```
+
+`task_agnostic__c_on__p_on` is expected to be the slowest cell because it
+combines the broadest grammar mode with both P and C repair pathways. L2b budget
+estimates must not assume uniform row time across cells. For L2b execution
+design, this is another reason sharding is mandatory: one slow
+`task_agnostic__c_on__p_on` path must not block every kernel/dtype result.
+
+## Slow-Cell Stop Policy
+
+Every signed L2b execution packet must provide a concrete per-cell wall-clock
+budget. If any single cell exceeds that signed budget, future runtime must finish
+the active row if safe, then stop the shard and classify:
+
+```text
+SLOW_CELL_BUDGET_EXCEEDED
+```
+
+Automatic retry and automatic resume remain disallowed. The partial shard audit
+must be preserved, including completed rows, sidecar events, terminal failure
+type, and timeout or stop reason if applicable.
 
 ## Commands
 
@@ -216,7 +282,8 @@ Protected mutation scan must show no changed files under `outputs`,
 - L2b is sharded by exact `<kernel_class>__<dtype_variant>`;
 - L2b-2 and L2b-4 selector profiles exist;
 - execution plans support all shards, one shard, and bounded waves;
-- execution plans list shard commands, paths, row counts, and concurrency caps;
+- execution plans list shard commands, paths, row counts, concurrency caps,
+  sidecar-only timing observability, and slow-cell stop policy;
 - runtime remains unsigned and fail-closed;
 - L2b-4 remains blocked on L2b-2 validation;
 - no Modal/GPU/generation/billing/output/artifact/mlruns mutation occurred.

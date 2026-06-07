@@ -3,7 +3,7 @@
 ## Packet Identity
 
 packet_id: `FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N2_FULL_COVERAGE_AUTHORIZATION_PACKET_V1`
-packet_version: `0.1.0-unsigned-signature-ready`
+packet_version: `0.1.1-unsigned-signature-ready`
 packet_type: unsigned authorization packet draft
 branch: `codex/l2b-full-coverage-plan-and-selector`
 target_branch: `codex-track-handoff-context`
@@ -71,6 +71,36 @@ retry_policy: no retry
 resume_policy: no resume
 ```
 
+## Timing Observability
+
+Future L2b-2 execution must emit per-cell and per-shard timing diagnostics as
+sidecar metadata only, under the signed shard observability namespace. These
+diagnostics must not mutate result-row schemas and must not be used for
+speedup, performance, throughput, latency, profiler, benchmark, or paper
+evidence claims.
+
+Required diagnostics:
+
+```text
+wall_clock_seconds_per_row
+generation_attempt_count
+compile_attempt_count
+correctness_call_count
+p_repair_attempt_count
+c_repair_attempt_count
+terminal_failure_type
+timeout_or_stop_reason if applicable
+```
+
+Allowed use is limited to operational budgeting and identifying slow cells.
+
+Known high-cost cell risk note: `task_agnostic__c_on__p_on` is expected to be
+the slowest cell because it combines the broadest grammar mode with both P and C
+repair pathways. L2b budget estimates must not assume uniform row time across
+cells. For L2b execution design, this is another reason sharding is mandatory.
+One slow `task_agnostic__c_on__p_on` path must not block every kernel/dtype
+result.
+
 ## Planning Commands
 
 Dry plan:
@@ -104,12 +134,27 @@ The plan may use Modal parallelism after signature, but this branch does not
 call Modal. Modal `.spawn_map` and `max_containers` remain future implementation
 surfaces, not code changes here.
 
+## Slow-Cell Stop Policy
+
+The signed L2b-2 packet must provide a concrete per-cell wall-clock budget before
+execution. If any single cell exceeds that signed budget, finish the active row
+if safe, then stop the current shard and classify:
+
+```text
+SLOW_CELL_BUDGET_EXCEEDED
+```
+
+Do not retry or resume automatically. Preserve the partial shard audit, including
+completed rows, sidecar events, terminal failure type, and timeout or stop reason
+if applicable.
+
 ## Stop Conditions
 
 Stop before launch if any target path exists, if shard ids do not match the
 repo-backed kernel/dtype Cartesian product, if row counts are not 24 per shard
 and 216 total, if any live L2a path would be touched, if C/P/grammar semantics
-would change, or if analyzer/report paper gates must be loosened.
+would change, if analyzer/report paper gates must be loosened, or if the signed
+per-cell wall-clock budget is missing.
 
 ## Signature Block
 
