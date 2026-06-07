@@ -82,6 +82,11 @@ from cluster3.planning.grammar_mode_matrix import (
     L1B_RUN_ID_PREFIX,
     L1B_SIGNED_AUTHORIZATION_PLACEHOLDER,
     L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+    L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+    L2B_OBSERVABILITY_ROOT,
+    L2B_OUTPUT_ROOT,
+    L2B_RUN_ID_PREFIX,
+    L2B_SIGNED_AUTHORIZATION_PLACEHOLDER,
     L2_OUTPUT_ROOT,
     L2_OBSERVABILITY_ROOT,
     L2_RUN_ID_PREFIX,
@@ -163,6 +168,8 @@ L2_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT = f"{L2_OUTPUT_ROOT}/__selector__.jsonl
 L2_SIGNED_AUTHORIZATION_TOKEN = (
     "FULL_PIPELINE_GRAMMAR_MODE_CP_L2_N20_AUTHORIZATION_PACKET_V1"
 )
+L2B_DRY_PLAN_PLACEHOLDER_OUTPUT = f"{L2B_OUTPUT_ROOT}/__dry_plan__.jsonl"
+L2B_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT = f"{L2B_OUTPUT_ROOT}/__selector__.jsonl"
 DIAGNOSTIC_F1_SEED_CONDITIONS: tuple[str, ...] = ("P", "G+P")
 DIAGNOSTIC_F2_SEED_CONDITIONS: tuple[str, ...] = ("C+P", "G+C+P")
 DIAGNOSTIC_EXPECTED_INITIAL_FAILURES: tuple[str, ...] = (
@@ -402,9 +409,9 @@ class Cluster3RunnerConfig:
 @dataclass(frozen=True)
 class _GrammarModeSelectorProfile:
     label: str
-    signed_authorization_token: str
+    signed_authorization_token: str | None
     signed_authorization_placeholder: str
-    signed_authorization_option: str
+    signed_authorization_option: str | None
     output_root: str
     observability_root: str
     run_id_prefix: str
@@ -412,6 +419,8 @@ class _GrammarModeSelectorProfile:
     scale_tier: str
     n: int
     expected_planned_rows: int
+    kernel_class_selector: str = "elementwise"
+    dtypes: tuple[str, ...] = ("fp32",)
     runtime_execution_enabled: bool = True
     runtime_block_reason: str | None = None
     support_status: str = L1A_EXECUTABLE_SELECTOR_SUPPORT_STATUS
@@ -457,10 +466,31 @@ L2_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
     expected_planned_rows=240,
     support_status=L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
 )
+L2B_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
+    label="L2b n=20 full coverage local plan",
+    signed_authorization_token=None,
+    signed_authorization_placeholder=L2B_SIGNED_AUTHORIZATION_PLACEHOLDER,
+    signed_authorization_option="--signed-l2-authorization",
+    output_root=L2B_OUTPUT_ROOT,
+    observability_root=L2B_OBSERVABILITY_ROOT,
+    run_id_prefix=L2B_RUN_ID_PREFIX,
+    selector_placeholder_output=L2B_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT,
+    scale_tier="paper",
+    n=20,
+    expected_planned_rows=2160,
+    kernel_class_selector="all",
+    dtypes=DTYPE_NAMES,
+    runtime_execution_enabled=False,
+    runtime_block_reason=(
+        "L2b full coverage is planning-only; no signed execution token exists"
+    ),
+    support_status=L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+)
 SELECTOR_PROFILES: tuple[_GrammarModeSelectorProfile, ...] = (
     L1A_SELECTOR_PROFILE,
     L1B_SELECTOR_PROFILE,
     L2_SELECTOR_PROFILE,
+    L2B_SELECTOR_PROFILE,
 )
 
 
@@ -469,9 +499,11 @@ def _output_from_namespace(namespace: argparse.Namespace) -> str:
         return namespace.output
     if namespace.dry_plan:
         if namespace.condition == L1A_GRAMMAR_MODE_CP_SELECTOR:
-            profile = _selector_profile_for_scale(
+            profile = _selector_profile_for_namespace(
                 scale_tier=namespace.scale_tier,
                 n=namespace.n,
+                kernel_class=namespace.kernel_class,
+                dtypes=parse_dtypes(namespace.dtypes),
             )
             return f"{profile.output_root}/__dry_plan__.jsonl"
         return L1A_DRY_PLAN_PLACEHOLDER_OUTPUT
@@ -479,13 +511,48 @@ def _output_from_namespace(namespace: argparse.Namespace) -> str:
         signed_authorization = getattr(namespace, "signed_l1a_authorization", None)
         if signed_authorization:
             for profile in SELECTOR_PROFILES:
-                if signed_authorization == profile.signed_authorization_token:
+                if (
+                    profile.signed_authorization_token is not None
+                    and signed_authorization == profile.signed_authorization_token
+                ):
                     return profile.selector_placeholder_output
-        return _selector_profile_for_scale(
+        return _selector_profile_for_namespace(
             scale_tier=namespace.scale_tier,
             n=namespace.n,
+            kernel_class=namespace.kernel_class,
+            dtypes=parse_dtypes(namespace.dtypes),
         ).selector_placeholder_output
     return ""
+
+
+def _selector_profile_for_config(
+    config: Cluster3RunnerConfig,
+) -> _GrammarModeSelectorProfile:
+    return _selector_profile_for_namespace(
+        scale_tier=config.scale_tier,
+        n=config.n,
+        kernel_class=config.kernel_class,
+        dtypes=config.dtypes,
+    )
+
+
+def _selector_profile_for_namespace(
+    *,
+    scale_tier: str,
+    n: int,
+    kernel_class: str,
+    dtypes: tuple[str, ...],
+) -> _GrammarModeSelectorProfile:
+    for profile in SELECTOR_PROFILES:
+        if (
+            profile.runtime_execution_enabled is False
+            and scale_tier == profile.scale_tier
+            and n == profile.n
+            and kernel_class == profile.kernel_class_selector
+            and dtypes == profile.dtypes
+        ):
+            return profile
+    return _selector_profile_for_scale(scale_tier=scale_tier, n=n)
 
 
 def _selector_profile_for_scale(
@@ -494,10 +561,16 @@ def _selector_profile_for_scale(
     n: int,
 ) -> _GrammarModeSelectorProfile:
     for profile in SELECTOR_PROFILES:
-        if scale_tier == profile.scale_tier and n == profile.n:
+        if (
+            profile.runtime_execution_enabled is True
+            and scale_tier == profile.scale_tier
+            and n == profile.n
+        ):
             return profile
     supported = ", ".join(
-        f"{profile.scale_tier}/n={profile.n}" for profile in SELECTOR_PROFILES
+        f"{profile.scale_tier}/n={profile.n}"
+        for profile in SELECTOR_PROFILES
+        if profile.runtime_execution_enabled is True
     )
     raise ValueError(
         f"{L1A_GRAMMAR_MODE_CP_SELECTOR} supports only {supported}; "
@@ -509,9 +582,16 @@ def _selector_profile_for_authorization(
     config: Cluster3RunnerConfig,
 ) -> _GrammarModeSelectorProfile:
     for profile in SELECTOR_PROFILES:
-        if config.signed_l1a_authorization == profile.signed_authorization_token:
+        if (
+            profile.signed_authorization_token is not None
+            and config.signed_l1a_authorization == profile.signed_authorization_token
+        ):
             return profile
-    supported = ", ".join(profile.signed_authorization_token for profile in SELECTOR_PROFILES)
+    supported = ", ".join(
+        profile.signed_authorization_token
+        for profile in SELECTOR_PROFILES
+        if profile.signed_authorization_token is not None
+    )
     raise ValueError(
         "signed selector authorization must match one of the approved tokens: "
         f"{supported}"
@@ -1201,7 +1281,7 @@ def _validate_cli_namespace(
 def build_l1a_dry_plan_payload(config: Cluster3RunnerConfig) -> dict[str, Any]:
     if not config.dry_plan:
         raise ValueError("build_l1a_dry_plan_payload requires dry_plan=True")
-    profile = _selector_profile_for_scale(scale_tier=config.scale_tier, n=config.n)
+    profile = _selector_profile_for_config(config)
     cells = build_l1a_launcher_dry_plan(
         repair_history_policy=config.repair_history_policy,
         cell_selector=config.grammar_mode_cell,
@@ -1210,6 +1290,8 @@ def build_l1a_dry_plan_payload(config: Cluster3RunnerConfig) -> dict[str, Any]:
         run_id_prefix=profile.run_id_prefix,
         scale_tier=profile.scale_tier,
         n=profile.n,
+        kernel_class_selector=profile.kernel_class_selector,
+        dtypes=profile.dtypes,
         repo_root=REPO_ROOT,
     )
     return {
@@ -1221,11 +1303,20 @@ def build_l1a_dry_plan_payload(config: Cluster3RunnerConfig) -> dict[str, Any]:
         "authorization_profile": profile.label,
         "scale_tier": profile.scale_tier,
         "n": profile.n,
+        "kernel_class_selector": profile.kernel_class_selector,
+        "kernel_classes": config.kernel_classes,
+        "dtypes": profile.dtypes,
+        "expected_planned_rows": profile.expected_planned_rows,
         "experiment_id": L1A_EXPERIMENT_ID,
         "output_root": profile.output_root,
         "observability_root": profile.observability_root,
         "path_collision_policy": L1A_PATH_COLLISION_POLICY,
         "execution_authorized": False,
+        "runtime_execution_enabled": profile.runtime_execution_enabled,
+        "runtime_block_reason": profile.runtime_block_reason,
+        "signed_authorization_available": (
+            profile.signed_authorization_token is not None
+        ),
         "writes_outputs": False,
         "writes_artifacts": False,
         "writes_mlruns": False,
@@ -1238,7 +1329,7 @@ def build_l1a_execution_plan_payload(config: Cluster3RunnerConfig) -> dict[str, 
         raise ValueError(
             "build_l1a_execution_plan_payload requires execution_plan=True"
         )
-    profile = _selector_profile_for_scale(scale_tier=config.scale_tier, n=config.n)
+    profile = _selector_profile_for_config(config)
     cells = build_l1a_launcher_executable_plan(
         repair_history_policy=config.repair_history_policy,
         cell_selector=config.grammar_mode_cell,
@@ -1247,9 +1338,12 @@ def build_l1a_execution_plan_payload(config: Cluster3RunnerConfig) -> dict[str, 
         run_id_prefix=profile.run_id_prefix,
         scale_tier=profile.scale_tier,
         n=profile.n,
+        kernel_class_selector=profile.kernel_class_selector,
+        dtypes=profile.dtypes,
         repo_root=REPO_ROOT,
         signed_authorization_placeholder=profile.signed_authorization_placeholder,
-        signed_authorization_option=profile.signed_authorization_option,
+        signed_authorization_option=profile.signed_authorization_option
+        or "--signed-l1a-authorization",
         support_status=profile.support_status,
     )
     return {
@@ -1262,12 +1356,23 @@ def build_l1a_execution_plan_payload(config: Cluster3RunnerConfig) -> dict[str, 
         "authorization_profile": profile.label,
         "scale_tier": profile.scale_tier,
         "n": profile.n,
+        "kernel_class_selector": profile.kernel_class_selector,
+        "kernel_classes": config.kernel_classes,
+        "dtypes": profile.dtypes,
+        "expected_planned_rows": profile.expected_planned_rows,
         "experiment_id": L1A_EXPERIMENT_ID,
         "output_root": profile.output_root,
         "observability_root": profile.observability_root,
         "path_collision_policy": L1A_PATH_COLLISION_POLICY,
         "execution_authorized": False,
-        "requires_signed_authorization": True,
+        "runtime_execution_enabled": profile.runtime_execution_enabled,
+        "runtime_block_reason": profile.runtime_block_reason,
+        "requires_signed_authorization": (
+            profile.signed_authorization_token is not None
+        ),
+        "signed_authorization_available": (
+            profile.signed_authorization_token is not None
+        ),
         "requires_signed_l1a_authorization": (
             profile is L1A_SELECTOR_PROFILE
         ),
@@ -1432,10 +1537,15 @@ def _validate_l1a_runtime_authorization(
         )
     if config.n != profile.n:
         raise ValueError(f"signed {profile.label} requires --n {profile.n}")
-    if config.kernel_class != "elementwise":
-        raise ValueError(f"signed {profile.label} requires --kernel-class elementwise")
-    if config.dtypes != ("fp32",):
-        raise ValueError(f"signed {profile.label} requires --dtypes fp32")
+    if config.kernel_class != profile.kernel_class_selector:
+        raise ValueError(
+            f"signed {profile.label} requires "
+            f"--kernel-class {profile.kernel_class_selector}"
+        )
+    if config.dtypes != profile.dtypes:
+        raise ValueError(
+            f"signed {profile.label} requires --dtypes {','.join(profile.dtypes)}"
+        )
     if config.repair_history_policy != "agentic_transcript_v1":
         raise ValueError(
             f"signed {profile.label} requires "
@@ -1460,9 +1570,12 @@ def _validate_l1a_runtime_authorization(
         run_id_prefix=profile.run_id_prefix,
         scale_tier=profile.scale_tier,
         n=profile.n,
+        kernel_class_selector=profile.kernel_class_selector,
+        dtypes=profile.dtypes,
         repo_root=REPO_ROOT,
         signed_authorization_placeholder=profile.signed_authorization_token,
-        signed_authorization_option=profile.signed_authorization_option,
+        signed_authorization_option=profile.signed_authorization_option
+        or "--signed-l1a-authorization",
     )
     if len(cells) != 12:
         raise ValueError(f"signed {profile.label} requires exactly 12 planned cells")

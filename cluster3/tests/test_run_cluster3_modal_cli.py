@@ -1930,6 +1930,113 @@ def test_l2_12cell_execution_plan_builds_signed_l2_command_surfaces() -> None:
         )
 
 
+def test_l2b_full_coverage_dry_plan_builds_kernel_dtype_matrix() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--kernel-class",
+            "all",
+            "--scale-tier",
+            "paper",
+            "--n",
+            "20",
+            "--dtypes",
+            "fp32,fp16,bf16",
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--dry-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_dry_plan_payload(config)
+
+    assert config.output == runner_mod.L2B_DRY_PLAN_PLACEHOLDER_OUTPUT
+    assert payload["cell_count"] == 12
+    assert payload["planned_rows"] == 2160
+    assert payload["expected_planned_rows"] == 2160
+    assert payload["authorization_profile"] == "L2b n=20 full coverage local plan"
+    assert payload["kernel_class_selector"] == "all"
+    assert payload["kernel_classes"] == ("elementwise", "reduction", "matmul")
+    assert payload["dtypes"] == ("fp32", "fp16", "bf16")
+    assert payload["output_root"] == runner_mod.L2B_OUTPUT_ROOT
+    assert payload["observability_root"] == runner_mod.L2B_OBSERVABILITY_ROOT
+    assert payload["execution_authorized"] is False
+    assert payload["runtime_execution_enabled"] is False
+    assert payload["signed_authorization_available"] is False
+    for planned_cell in payload["cells"]:
+        assert "--kernel-class all" in planned_cell["command_selector"]
+        assert "--dtypes fp32,fp16,bf16" in planned_cell["command_selector"]
+        assert planned_cell["output_path"].startswith(runner_mod.L2B_OUTPUT_ROOT + "/")
+
+
+def test_l2b_full_coverage_execution_plan_is_local_only_fail_closed() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--kernel-class",
+            "all",
+            "--scale-tier",
+            "paper",
+            "--n",
+            "20",
+            "--dtypes",
+            "fp32,fp16,bf16",
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--execution-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_execution_plan_payload(config)
+
+    assert config.output == runner_mod.L2B_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
+    assert payload["cell_count"] == 12
+    assert payload["planned_rows"] == 2160
+    assert payload["authorization_profile"] == "L2b n=20 full coverage local plan"
+    assert payload["requires_signed_authorization"] is False
+    assert payload["signed_authorization_available"] is False
+    assert payload["runtime_execution_enabled"] is False
+    assert "no signed execution token" in payload["runtime_block_reason"]
+    assert payload["writes_outputs"] is False
+    assert payload["writes_artifacts"] is False
+    assert payload["writes_mlruns"] is False
+    for planned_cell in payload["cells"]:
+        assert planned_cell["support_status"] == (
+            "L2B_LOCAL_PLAN_ONLY_RUNTIME_DISABLED_NO_SIGNED_TOKEN"
+        )
+        assert "--kernel-class all" in planned_cell["command_selector"]
+        assert "--dtypes fp32,fp16,bf16" in planned_cell["command_selector"]
+        assert runner_mod.L2B_SIGNED_AUTHORIZATION_PLACEHOLDER in planned_cell[
+            "command_selector"
+        ]
+        assert planned_cell["output_path"].startswith(runner_mod.L2B_OUTPUT_ROOT + "/")
+
+
+def test_l2b_full_coverage_runtime_without_token_fails_closed(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match="signed-l1a-authorization"):
+        parse_args(
+            [
+                "--condition",
+                runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+                "--kernel-class",
+                "all",
+                "--scale-tier",
+                "paper",
+                "--n",
+                "20",
+                "--dtypes",
+                "fp32,fp16,bf16",
+                "--repair-history-policy",
+                "agentic_transcript_v1",
+                "--output",
+                str(tmp_path / "out.jsonl"),
+                "--overwrite",
+            ]
+        )
+
+
 def test_l1a_12cell_selector_rejects_execution_without_dry_plan(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="signed-l1a-authorization"):
         parse_args(

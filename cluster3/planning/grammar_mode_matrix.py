@@ -67,15 +67,31 @@ L2_OBSERVABILITY_ROOT = (
     "artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l2_n20"
 )
 L2_RUN_ID_PREFIX = "full_pipeline_grammar_mode_cp_factorial_v1_l2_n20"
+L2B_SCALE_NAMESPACE = "l2b_full_coverage_n20"
+L2B_OUTPUT_ROOT = (
+    "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/"
+    "l2b_full_coverage_n20"
+)
+L2B_OBSERVABILITY_ROOT = (
+    "artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/"
+    "l2b_full_coverage_n20"
+)
+L2B_RUN_ID_PREFIX = (
+    "full_pipeline_grammar_mode_cp_factorial_v1_l2b_full_coverage_n20"
+)
 L1A_PATH_COLLISION_POLICY = "fail_if_any_target_path_exists"
 L1A_SIGNED_AUTHORIZATION_PLACEHOLDER = "SIGNED_L1A_PACKET_ID_REQUIRED"
 L1B_SIGNED_AUTHORIZATION_PLACEHOLDER = "SIGNED_L1B_PACKET_ID_REQUIRED"
 L2_SIGNED_AUTHORIZATION_PLACEHOLDER = "SIGNED_L2_PACKET_ID_REQUIRED"
+L2B_SIGNED_AUTHORIZATION_PLACEHOLDER = "SIGNED_L2B_PACKET_NOT_APPROVED"
 L1A_EXECUTABLE_SELECTOR_SUPPORT_STATUS = (
     "EXECUTABLE_SELECTOR_PRESENT_AUTHORIZATION_REQUIRED_NO_EXECUTION"
 )
 L2_EXECUTABLE_SELECTOR_SUPPORT_STATUS = (
     "L2_SIGNED_RUNTIME_GATE_ENABLED_NO_EXECUTION"
+)
+L2B_EXECUTABLE_SELECTOR_SUPPORT_STATUS = (
+    "L2B_LOCAL_PLAN_ONLY_RUNTIME_DISABLED_NO_SIGNED_TOKEN"
 )
 
 
@@ -187,6 +203,8 @@ def build_l1a_launcher_dry_plan(
     run_id_prefix: str = L1A_RUN_ID_PREFIX,
     scale_tier: str = "smoke",
     n: int = 1,
+    kernel_class_selector: str = "elementwise",
+    dtypes: tuple[str, ...] = ("fp32",),
     repo_root: str | Path | None = None,
 ) -> tuple[GrammarModeLauncherCellPlan, ...]:
     """Return deterministic dry-plan entries for the 12-cell selector."""
@@ -199,6 +217,8 @@ def build_l1a_launcher_dry_plan(
         run_id_prefix=run_id_prefix,
         scale_tier=scale_tier,
         n=n,
+        kernel_class_selector=kernel_class_selector,
+        dtypes=dtypes,
         repo_root=repo_root,
         command_mode="dry_plan",
     )
@@ -213,6 +233,8 @@ def build_l1a_launcher_executable_plan(
     run_id_prefix: str = L1A_RUN_ID_PREFIX,
     scale_tier: str = "smoke",
     n: int = 1,
+    kernel_class_selector: str = "elementwise",
+    dtypes: tuple[str, ...] = ("fp32",),
     repo_root: str | Path | None = None,
     signed_authorization_placeholder: str = L1A_SIGNED_AUTHORIZATION_PLACEHOLDER,
     signed_authorization_option: str = "--signed-l1a-authorization",
@@ -228,6 +250,8 @@ def build_l1a_launcher_executable_plan(
         run_id_prefix=run_id_prefix,
         scale_tier=scale_tier,
         n=n,
+        kernel_class_selector=kernel_class_selector,
+        dtypes=dtypes,
         repo_root=repo_root,
         command_mode="executable",
         signed_authorization_placeholder=signed_authorization_placeholder,
@@ -245,6 +269,8 @@ def _build_l1a_launcher_plan(
     run_id_prefix: str,
     scale_tier: str,
     n: int,
+    kernel_class_selector: str,
+    dtypes: tuple[str, ...],
     repo_root: str | Path | None,
     command_mode: str,
     signed_authorization_placeholder: str | None = None,
@@ -267,6 +293,8 @@ def _build_l1a_launcher_plan(
             run_id_prefix=run_id_prefix,
             scale_tier=scale_tier,
             n=n,
+            kernel_class_selector=kernel_class_selector,
+            dtypes=dtypes,
             repo_root=resolved_repo_root,
             command_mode=command_mode,
             signed_authorization_placeholder=signed_authorization_placeholder,
@@ -310,6 +338,8 @@ def _launcher_plan_for_cell(
     run_id_prefix: str,
     scale_tier: str,
     n: int,
+    kernel_class_selector: str,
+    dtypes: tuple[str, ...],
     repo_root: Path,
     command_mode: str,
     signed_authorization_placeholder: str | None,
@@ -344,6 +374,8 @@ def _launcher_plan_for_cell(
         run_id_prefix=run_id_prefix,
         scale_tier=scale_tier,
         n=n,
+        kernel_class_selector=kernel_class_selector,
+        dtypes=dtypes,
         repair_history_policy=repair_history_policy,
         signed_authorization_placeholder=signed_authorization_placeholder,
         signed_authorization_option=signed_authorization_option,
@@ -404,6 +436,8 @@ def _command_selector_for_cell(
     run_id_prefix: str,
     scale_tier: str,
     n: int,
+    kernel_class_selector: str,
+    dtypes: tuple[str, ...],
     repair_history_policy: str,
     signed_authorization_placeholder: str | None,
     signed_authorization_option: str,
@@ -415,13 +449,13 @@ def _command_selector_for_cell(
             "--grammar-mode-cell",
             condition_id,
             "--kernel-class",
-            "elementwise",
+            kernel_class_selector,
             "--scale-tier",
             scale_tier,
             "--n",
             str(n),
             "--dtypes",
-            "fp32",
+            ",".join(dtypes),
             "--repair-history-policy",
             repair_history_policy,
             "--dry-plan",
@@ -437,13 +471,13 @@ def _command_selector_for_cell(
         "--grammar-mode-cell",
         condition_id,
         "--kernel-class",
-        "elementwise",
+        kernel_class_selector,
         "--scale-tier",
         scale_tier,
         "--n",
         str(n),
         "--dtypes",
-        "fp32",
+        ",".join(dtypes),
         "--repair-history-policy",
         repair_history_policy,
         "--observability-mode",
