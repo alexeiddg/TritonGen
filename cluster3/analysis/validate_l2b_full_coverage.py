@@ -206,7 +206,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--stage",
         required=True,
-        choices=(L2B_N2_SELECTOR_PROFILE_ID, L2B_N20_SELECTOR_PROFILE_ID),
+        choices=tuple(sorted(L2B_SELECTOR_PROFILE_IDS)),
     )
     parser.add_argument("--wave-id")
     parser.add_argument("--expected-rows", type=int, required=True)
