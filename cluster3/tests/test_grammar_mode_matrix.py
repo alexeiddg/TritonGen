@@ -19,6 +19,16 @@ from cluster3.planning.grammar_mode_matrix import (
     L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
     L2B_N20_ATTEMPT2_SIGNATURE_STATUS,
     L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN,
+    L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNATURE_STATUS,
+    L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN,
+    L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OBSERVABILITY_ROOT,
+    L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OUTPUT_ROOT,
+    L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SCALE_NAMESPACE,
+    L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
+    L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OBSERVABILITY_ROOT,
+    L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OUTPUT_ROOT,
+    L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SCALE_NAMESPACE,
+    L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
     L2B_N20_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_N20_OUTPUT_ROOT,
@@ -416,6 +426,95 @@ def test_l2b_n20_attempt2_namespace_is_distinct_future_relaunch_target() -> None
     )
     assert all(
         L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN in shard.future_command
+        for shard in shards
+    )
+    assert all("--overwrite" not in shard.future_command for shard in shards)
+
+
+def test_l2b_n20_attempt2_two_lane_rescue_namespaces_are_distinct() -> None:
+    lane_a = l2b_full_coverage_stage_spec(
+        L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID
+    )
+    lane_b = l2b_full_coverage_stage_spec(
+        L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID
+    )
+
+    assert lane_a.scale_namespace == L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SCALE_NAMESPACE
+    assert lane_b.scale_namespace == L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SCALE_NAMESPACE
+    assert lane_a.output_root == L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OUTPUT_ROOT
+    assert lane_b.output_root == L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OUTPUT_ROOT
+    assert lane_a.observability_root == (
+        L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OBSERVABILITY_ROOT
+    )
+    assert lane_b.observability_root == (
+        L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OBSERVABILITY_ROOT
+    )
+    assert lane_a.output_root != L2B_N20_ATTEMPT2_OUTPUT_ROOT
+    assert lane_b.output_root != L2B_N20_ATTEMPT2_OUTPUT_ROOT
+    assert lane_a.signature_status == L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNATURE_STATUS
+    assert lane_b.signature_status == L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNATURE_STATUS
+    assert lane_a.concurrency_limits["max_concurrent_lanes"] == 2
+    assert lane_b.concurrency_limits["max_concurrent_lanes"] == 2
+
+
+def test_l2b_n20_attempt2_lane_a_missing360_plan_is_cell_scoped() -> None:
+    missing_cells = (
+        "template_upper_bound__c_off__p_on",
+        "template_upper_bound__c_on__p_on",
+        "task_agnostic__c_off__p_off",
+        "task_agnostic__c_on__p_off",
+        "task_agnostic__c_off__p_on",
+        "task_agnostic__c_on__p_on",
+    )
+    shards = build_l2b_full_coverage_shard_plan(
+        stage_id=L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
+        shard_selector="wave:3:3",
+        cell_selector=missing_cells,
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+    )
+
+    assert [shard.shard_id for shard in shards] == [
+        "reduction__fp32",
+        "reduction__fp16",
+        "reduction__bf16",
+    ]
+    assert {shard.planned_cells for shard in shards} == {6}
+    assert sum(shard.planned_rows for shard in shards) == 360
+    assert all(
+        shard.output_namespace.startswith(
+            L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OUTPUT_ROOT + "/"
+        )
+        for shard in shards
+    )
+    assert all(
+        L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
+        in shard.future_command
+        for shard in shards
+    )
+    assert all("--overwrite" not in shard.future_command for shard in shards)
+
+
+def test_l2b_n20_attempt2_lane_b_wave3_plan_is_matmul_fp16_bf16_only() -> None:
+    shards = build_l2b_full_coverage_shard_plan(
+        stage_id=L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
+        shard_selector="wave:7:2",
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+    )
+
+    assert [shard.shard_id for shard in shards] == ["matmul__fp16", "matmul__bf16"]
+    assert {shard.planned_cells for shard in shards} == {12}
+    assert sum(shard.planned_rows for shard in shards) == 480
+    assert all(
+        shard.output_namespace.startswith(
+            L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OUTPUT_ROOT + "/"
+        )
+        for shard in shards
+    )
+    assert all(
+        L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
+        in shard.future_command
         for shard in shards
     )
     assert all("--overwrite" not in shard.future_command for shard in shards)

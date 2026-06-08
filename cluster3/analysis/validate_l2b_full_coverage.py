@@ -104,10 +104,22 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _normalize_cell_selector(value: str | tuple[str, ...]) -> str | tuple[str, ...]:
+    if value == "all":
+        return "all"
+    if isinstance(value, str):
+        selectors = tuple(part.strip() for part in value.split(",") if part.strip())
+        if not selectors:
+            raise ValueError("l2b_recovery_cells must not be empty")
+        return selectors
+    return value
+
+
 def validate_l2b_full_coverage(
     *,
     stage: str,
     wave_id: str | None = None,
+    l2b_recovery_cells: str | tuple[str, ...] = "all",
     expected_rows: int,
     expected_shards: int | None = None,
     require_content_hash_sidecars: bool = False,
@@ -118,6 +130,7 @@ def validate_l2b_full_coverage(
         raise ValueError(f"unsupported L2b stage: {stage}")
 
     stage_spec = l2b_full_coverage_stage_spec(stage)
+    normalized_cell_selector = _normalize_cell_selector(l2b_recovery_cells)
     stage_n = stage_spec.n
     plans = tuple(
         shard
@@ -125,6 +138,7 @@ def validate_l2b_full_coverage(
         for shard in build_l2b_full_coverage_shard_plan(
             stage_id=stage,
             shard_selector=selector,
+            cell_selector=normalized_cell_selector,
             repair_history_policy="agentic_transcript_v1",
             repo_root=repo_root,
         )
@@ -209,6 +223,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=tuple(sorted(L2B_SELECTOR_PROFILE_IDS)),
     )
     parser.add_argument("--wave-id")
+    parser.add_argument("--l2b-recovery-cells", default="all")
     parser.add_argument("--expected-rows", type=int, required=True)
     parser.add_argument("--expected-shards", type=int)
     parser.add_argument("--require-content-hash-sidecars", action="store_true")
@@ -221,6 +236,7 @@ def main(argv: list[str] | None = None) -> int:
     result = validate_l2b_full_coverage(
         stage=args.stage,
         wave_id=args.wave_id,
+        l2b_recovery_cells=args.l2b_recovery_cells,
         expected_rows=args.expected_rows,
         expected_shards=args.expected_shards,
         require_content_hash_sidecars=args.require_content_hash_sidecars,

@@ -92,6 +92,16 @@ from cluster3.planning.grammar_mode_matrix import (
     L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
     L2B_N20_ATTEMPT2_SIGNATURE_STATUS,
     L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN,
+    L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNATURE_STATUS,
+    L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN,
+    L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OBSERVABILITY_ROOT,
+    L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OUTPUT_ROOT,
+    L2B_N20_ATTEMPT2_WAVE2_RECOVERY_RUN_ID_PREFIX,
+    L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
+    L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OBSERVABILITY_ROOT,
+    L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OUTPUT_ROOT,
+    L2B_N20_ATTEMPT2_WAVE3_PARALLEL_RUN_ID_PREFIX,
+    L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
     L2B_N20_OBSERVABILITY_ROOT,
     L2B_N20_OUTPUT_ROOT,
     L2B_N20_RUN_ID_PREFIX,
@@ -303,6 +313,8 @@ DIAGNOSTIC_EXPECTED_INITIAL_FAILURES: tuple[str, ...] = (
 L2B_N2_SIGNED_WALL_CLOCK_SECONDS_PER_CELL = 1800.0
 L2B_N20_SIGNED_WALL_CLOCK_SECONDS_PER_CELL = 7200.0
 L2B_N20_SIGNED_WALL_CLOCK_SECONDS_FOR_MATMUL_FP32_CELL = 10800.0
+L2B_N20_ATTEMPT2_RESCUE_REDUCTION_WALL_CLOCK_SECONDS_PER_CELL = 18000.0
+L2B_N20_ATTEMPT2_RESCUE_MATMUL_WALL_CLOCK_SECONDS_PER_CELL = 14400.0
 
 GenerationAdapter = Callable[..., Any]
 CorrectnessAdapter = Callable[[Cluster3CorrectnessRequest], Any]
@@ -710,6 +722,56 @@ L2B_N20_ATTEMPT2_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
     runtime_block_reason=None,
     support_status=L2B_N20_ATTEMPT2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
 )
+L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
+    profile_id=L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
+    label="L2b-4 n=20 attempt2 Wave 2 missing-key rescue lane",
+    signed_authorization_token=(
+        L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
+    ),
+    signed_authorization_placeholder=(
+        L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
+    ),
+    signed_authorization_option="--signed-l2b-authorization",
+    output_root=L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OUTPUT_ROOT,
+    observability_root=L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OBSERVABILITY_ROOT,
+    run_id_prefix=L2B_N20_ATTEMPT2_WAVE2_RECOVERY_RUN_ID_PREFIX,
+    selector_placeholder_output=(
+        f"{L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OUTPUT_ROOT}/__selector__.jsonl"
+    ),
+    scale_tier="paper",
+    n=20,
+    expected_planned_rows=360,
+    kernel_class_selector="all",
+    dtypes=DTYPE_NAMES,
+    runtime_execution_enabled=True,
+    runtime_block_reason=None,
+    support_status=L2B_N20_ATTEMPT2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+)
+L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
+    profile_id=L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
+    label="L2b-4 n=20 attempt2 Wave 3 parallel rescue lane",
+    signed_authorization_token=(
+        L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
+    ),
+    signed_authorization_placeholder=(
+        L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
+    ),
+    signed_authorization_option="--signed-l2b-authorization",
+    output_root=L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OUTPUT_ROOT,
+    observability_root=L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OBSERVABILITY_ROOT,
+    run_id_prefix=L2B_N20_ATTEMPT2_WAVE3_PARALLEL_RUN_ID_PREFIX,
+    selector_placeholder_output=(
+        f"{L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OUTPUT_ROOT}/__selector__.jsonl"
+    ),
+    scale_tier="paper",
+    n=20,
+    expected_planned_rows=480,
+    kernel_class_selector="all",
+    dtypes=DTYPE_NAMES,
+    runtime_execution_enabled=True,
+    runtime_block_reason=None,
+    support_status=L2B_N20_ATTEMPT2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+)
 SELECTOR_PROFILES: tuple[_GrammarModeSelectorProfile, ...] = (
     L1A_SELECTOR_PROFILE,
     L1B_SELECTOR_PROFILE,
@@ -717,6 +779,8 @@ SELECTOR_PROFILES: tuple[_GrammarModeSelectorProfile, ...] = (
     L2B_N2_SELECTOR_PROFILE,
     L2B_N20_SELECTOR_PROFILE,
     L2B_N20_ATTEMPT2_SELECTOR_PROFILE,
+    L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE,
+    L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE,
 )
 
 
@@ -802,6 +866,8 @@ def _selector_profile_for_scale(
                 L2B_N2_SELECTOR_PROFILE_ID,
                 L2B_N20_SELECTOR_PROFILE_ID,
                 L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
+                L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
+                L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
             )
             and scale_tier == profile.scale_tier
             and n == profile.n
@@ -825,6 +891,13 @@ def _selector_profile_for_authorization(
         _is_l2b_n2_recovery_missing28_token(config.signed_l1a_authorization)
     ):
         return L2B_N2_SELECTOR_PROFILE
+    for profile in SELECTOR_PROFILES:
+        if (
+            config.l2b_stage == profile.profile_id
+            and profile.signed_authorization_token is not None
+            and config.signed_l1a_authorization == profile.signed_authorization_token
+        ):
+            return profile
     for profile in SELECTOR_PROFILES:
         if (
             profile.signed_authorization_token is not None
@@ -851,6 +924,7 @@ def _is_l2b_create_only_signed_token(token: str | None) -> bool:
         _is_l2b_n2_recovery_missing28_token(token)
         or token == L2B_N20_SIGNED_AUTHORIZATION_TOKEN
         or token == L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN
+        or token == L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
     )
 
 
@@ -2058,6 +2132,10 @@ def _signed_l2b_wall_clock_seconds_per_cell(
     stage_id: str | None,
     shard_id: str,
 ) -> float:
+    if stage_id == L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID:
+        return L2B_N20_ATTEMPT2_RESCUE_REDUCTION_WALL_CLOCK_SECONDS_PER_CELL
+    if stage_id == L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID:
+        return L2B_N20_ATTEMPT2_RESCUE_MATMUL_WALL_CLOCK_SECONDS_PER_CELL
     if stage_id in (L2B_N20_SELECTOR_PROFILE_ID, L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID):
         if shard_id == "matmul__fp32":
             return L2B_N20_SIGNED_WALL_CLOCK_SECONDS_FOR_MATMUL_FP32_CELL
@@ -2073,6 +2151,8 @@ def _l2b_cell_plans_for_shard(
         L2B_N2_SELECTOR_PROFILE_ID,
         L2B_N20_SELECTOR_PROFILE_ID,
         L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
+        L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
+        L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
     ):
         raise ValueError("signed L2b cell plans require an approved L2b stage")
     stage = l2b_full_coverage_stage_spec(config.l2b_stage)
@@ -2089,6 +2169,13 @@ def _l2b_cell_plans_for_shard(
         repo_root=REPO_ROOT,
         signed_authorization_placeholder=config.signed_l1a_authorization
         or (
+            L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
+            if config.l2b_stage
+            in (
+                L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
+                L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
+            )
+            else
             L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN
             if config.l2b_stage == L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID
             else L2B_N20_SIGNED_AUTHORIZATION_TOKEN
@@ -2097,6 +2184,13 @@ def _l2b_cell_plans_for_shard(
         ),
         signed_authorization_option="--signed-l2b-authorization",
         support_status=(
+            L2B_N20_ATTEMPT2_EXECUTABLE_SELECTOR_SUPPORT_STATUS
+            if config.l2b_stage
+            in (
+                L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
+                L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
+            )
+            else
             L2B_N20_ATTEMPT2_EXECUTABLE_SELECTOR_SUPPORT_STATUS
             if config.l2b_stage == L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID
             else L2B_N20_EXECUTABLE_SELECTOR_SUPPORT_STATUS
@@ -2281,11 +2375,17 @@ def _validate_l2b_runtime_authorization(
         L2B_N2_SELECTOR_PROFILE_ID,
         L2B_N20_SELECTOR_PROFILE_ID,
         L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
+        L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
+        L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
     ):
         raise ValueError("signed L2b requires an approved --l2b-stage")
 
     is_recovery_missing28_auth_token = _is_l2b_n2_recovery_missing28_token(
         config.signed_l1a_authorization
+    )
+    is_two_lane_rescue_auth_token = (
+        config.signed_l1a_authorization
+        == L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
     )
     profile = _selector_profile_for_authorization(config)
     if profile.profile_id != config.l2b_stage:
@@ -2304,7 +2404,11 @@ def _validate_l2b_runtime_authorization(
         raise ValueError(
             "signed recovery token requires --l2b-recovery-cells and single-shard scope"
         )
-    if not is_recovery_missing28_auth_token and config.l2b_recovery_cells != "all":
+    if (
+        not is_recovery_missing28_auth_token
+        and not is_two_lane_rescue_auth_token
+        and config.l2b_recovery_cells != "all"
+    ):
         raise ValueError(
             "recovery scope requires "
             "FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N2_RECOVERY_MISSING28_AUTHORIZATION_TOKEN"
@@ -2315,6 +2419,13 @@ def _validate_l2b_runtime_authorization(
     if not stage.signed_authorization_available:
         raise RuntimeError("signed L2b runtime gate requires signed authorization")
     expected_signature_status = (
+        L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNATURE_STATUS
+        if config.l2b_stage
+        in (
+            L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
+            L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
+        )
+        else
         L2B_N20_ATTEMPT2_SIGNATURE_STATUS
         if config.l2b_stage == L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID
         else L2B_N20_SIGNATURE_STATUS
@@ -2357,6 +2468,7 @@ def _validate_l2b_runtime_authorization(
         raise RuntimeError("TRITONGEN_MLFLOW=0 is required for signed L2b")
     if (
         is_recovery_missing28_auth_token
+        or is_two_lane_rescue_auth_token
         or config.l2b_stage
         in (L2B_N20_SELECTOR_PROFILE_ID, L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID)
     ):
@@ -2428,7 +2540,29 @@ def _validate_l2b_runtime_authorization(
     )
     if not shards:
         raise ValueError("signed L2b requires a non-empty shard plan")
-    if config.l2b_recovery_cells != "all":
+    if config.l2b_stage == L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID:
+        expected_cells = (
+            "template_upper_bound__c_off__p_on",
+            "template_upper_bound__c_on__p_on",
+            "task_agnostic__c_off__p_off",
+            "task_agnostic__c_on__p_off",
+            "task_agnostic__c_off__p_on",
+            "task_agnostic__c_on__p_on",
+        )
+        configured_cells = tuple(config.l2b_recovery_cells)
+        if len(configured_cells) != len(expected_cells):
+            raise ValueError("signed Lane A recovery selector has an invalid cell count")
+        if tuple(sorted(configured_cells)) != tuple(sorted(expected_cells)):
+            raise ValueError(
+                "signed Lane A recovery selector must target only missing Wave 2 rows"
+            )
+        if config.l2b_shard_selector != "wave:3:3":
+            raise ValueError("signed Lane A recovery requires Wave 2 shard selector")
+        if len(shards) != 3:
+            raise ValueError("signed Lane A recovery requires exactly three shards")
+        if sum(shard.planned_rows for shard in shards) != 360:
+            raise ValueError("signed Lane A recovery requires exactly 360 rows")
+    elif config.l2b_recovery_cells != "all":
         if config.l2b_shard_selector == "all" or config.l2b_shard_selector.startswith(
             "wave:"
         ):
@@ -2445,6 +2579,13 @@ def _validate_l2b_runtime_authorization(
             )
         if len(shards) != 1:
             raise ValueError("signed L2b-2 recovery requires exactly one shard")
+    if config.l2b_stage == L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID:
+        if config.l2b_shard_selector != "wave:7:2":
+            raise ValueError("signed Lane B requires Wave 3 shard selector")
+        if config.l2b_recovery_cells != "all":
+            raise ValueError("signed Lane B must run all Wave 3 cells")
+        if len(shards) != 2 or sum(shard.planned_rows for shard in shards) != 480:
+            raise ValueError("signed Lane B requires exactly 480 rows")
     if config.l2b_shard_selector == "all":
         if config.kernel_class != "all":
             raise ValueError("signed L2b all-shards command requires --kernel-class all")
@@ -2563,6 +2704,7 @@ def _validate_l2b_runtime_shard_plan(
             L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
             L2B_N20_SIGNED_AUTHORIZATION_TOKEN,
             L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN,
+            L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN,
             *L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_TOKENS,
         )
     ):

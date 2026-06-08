@@ -1786,6 +1786,72 @@ def _signed_l2b_n20_attempt2_selector_args(
     ]
 
 
+def _signed_l2b_n20_attempt2_lane_a_selector_args(
+    *extra: str,
+    token: str | None = None,
+) -> list[str]:
+    missing_cells = (
+        "template_upper_bound__c_off__p_on,"
+        "template_upper_bound__c_on__p_on,"
+        "task_agnostic__c_off__p_off,"
+        "task_agnostic__c_on__p_off,"
+        "task_agnostic__c_off__p_on,"
+        "task_agnostic__c_on__p_on"
+    )
+    return [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--l2b-stage",
+        runner_mod.L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
+        "--l2b-shard-selector",
+        "wave:3:3",
+        "--l2b-recovery-cells",
+        missing_cells,
+        "--kernel-class",
+        "all",
+        "--scale-tier",
+        "paper",
+        "--n",
+        "20",
+        "--dtypes",
+        "fp32,fp16,bf16",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l2b-authorization",
+        token
+        or runner_mod.L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN,
+        *extra,
+    ]
+
+
+def _signed_l2b_n20_attempt2_lane_b_selector_args(
+    *extra: str,
+    token: str | None = None,
+) -> list[str]:
+    return [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--l2b-stage",
+        runner_mod.L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
+        "--l2b-shard-selector",
+        "wave:7:2",
+        "--kernel-class",
+        "all",
+        "--scale-tier",
+        "paper",
+        "--n",
+        "20",
+        "--dtypes",
+        "fp32,fp16,bf16",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l2b-authorization",
+        token
+        or runner_mod.L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN,
+        *extra,
+    ]
+
+
 def test_l1a_12cell_dry_plan_cli_parses_without_output_or_write_mode() -> None:
     config = parse_args(
         [
@@ -2748,6 +2814,99 @@ def test_l2b_n20_attempt2_signed_one_shard_uses_distinct_create_namespace(
     assert runner_mod.L2B_N20_SIGNED_AUTHORIZATION_TOKEN not in shard.future_command
     assert "--overwrite" not in shard.future_command
     assert all("--overwrite" not in command for command in shard.cell_commands)
+
+
+def test_l2b_n20_attempt2_two_lane_rescue_lane_a_is_missing360_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(_signed_l2b_n20_attempt2_lane_a_selector_args())
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert config.write_mode == "create"
+    assert config.output == (
+        runner_mod.L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OUTPUT_ROOT
+        + "/__selector__.jsonl"
+    )
+    assert [shard.shard_id for shard in shards] == [
+        "reduction__fp32",
+        "reduction__fp16",
+        "reduction__bf16",
+    ]
+    assert {shard.planned_cells for shard in shards} == {6}
+    assert sum(shard.planned_rows for shard in shards) == 360
+    assert all(
+        shard.output_namespace.startswith(
+            runner_mod.L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OUTPUT_ROOT + "/"
+        )
+        for shard in shards
+    )
+    assert all(
+        runner_mod.L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
+        in shard.future_command
+        for shard in shards
+    )
+    assert all("--overwrite" not in shard.future_command for shard in shards)
+
+
+def test_l2b_n20_attempt2_two_lane_rescue_lane_b_is_wave3_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(_signed_l2b_n20_attempt2_lane_b_selector_args())
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert config.write_mode == "create"
+    assert config.output == (
+        runner_mod.L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OUTPUT_ROOT
+        + "/__selector__.jsonl"
+    )
+    assert [shard.shard_id for shard in shards] == ["matmul__fp16", "matmul__bf16"]
+    assert {shard.planned_cells for shard in shards} == {12}
+    assert sum(shard.planned_rows for shard in shards) == 480
+    assert all(
+        shard.output_namespace.startswith(
+            runner_mod.L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OUTPUT_ROOT + "/"
+        )
+        for shard in shards
+    )
+    assert all(
+        runner_mod.L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
+        in shard.future_command
+        for shard in shards
+    )
+    assert all("--overwrite" not in shard.future_command for shard in shards)
+
+
+def test_l2b_n20_attempt2_two_lane_rescue_rejects_wave4(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        _signed_l2b_n20_attempt2_lane_b_selector_args(
+            "--l2b-shard-selector",
+            "matmul__fp32",
+            "--kernel-class",
+            "matmul",
+            "--dtypes",
+            "fp32",
+        )
+    )
+
+    with pytest.raises(ValueError, match="Lane B requires Wave 3"):
+        runner_mod._validate_l2b_runtime_authorization(config)
 
 
 def test_l2b_n20_attempt2_token_rejects_original_n20_namespace(
