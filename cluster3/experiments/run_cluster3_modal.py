@@ -2022,6 +2022,8 @@ def _run_signed_l2b_selector(
         L2B_N2_SELECTOR_PROFILE_ID,
         L2B_N20_SELECTOR_PROFILE_ID,
         L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
+        L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
+        L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
     ):
         raise ValueError("signed L2b selector requires an approved L2b stage")
     if not shards:
