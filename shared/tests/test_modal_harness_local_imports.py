@@ -64,6 +64,11 @@ def test_shared_generation_does_not_load_heavy_deps() -> None:
     assert not leaked, f"shared generation module pulled heavy modules: {leaked}"
 
 
+def test_fireworks_generation_does_not_load_heavy_deps() -> None:
+    leaked = _heavy_modules_after_import("shared.modal_harness.fireworks_generation")
+    assert not leaked, f"Fireworks generation module pulled heavy modules: {leaked}"
+
+
 def test_run_cluster1_modal_does_not_load_heavy_deps() -> None:
     """The Phase 5 Modal runner must be importable without the GPU stack.
 

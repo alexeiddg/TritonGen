@@ -29,6 +29,11 @@ triton_compile_image = (
     .add_local_python_source("cluster1", "cluster2", "shared")
 )
 
+fireworks_api_image = (
+    modal.Image.debian_slim(python_version=PYTHON_VERSION)
+    .add_local_python_source("cluster_fw", "shared")
+)
+
 llm_generation_image = (
     modal.Image.debian_slim(python_version=PYTHON_VERSION)
     .uv_pip_install(
