@@ -1,7 +1,7 @@
 # Agentic Documentation Hub
 
-Version: 1.37.38
-Date: 2026-06-07
+Version: 1.37.39
+Date: 2026-06-08
 Status: agent-facing operational index
 Audience: Codex, Claude Code, and future engineering agents
 Citation status: routing document only; do not cite as methodology
@@ -91,6 +91,10 @@ treated as report-facing.
 | Full Pipeline L2b n=20 final authorization audit | `audits/l2b_n20_final_authorization_report.md` |
 | Full Pipeline L2b n=20 partial Wave 1 launch blocker audit | `audits/l2b_n20_partial_wave1_launch_surface_blocker_report.md` |
 | Full Pipeline L2b n=20 attempt2 authorization audit | `audits/l2b_n20_attempt2_authorization_report.md` |
+| Fireworks GBNF n20 combined validation report | `audits/fireworks_gbnf_n20_combined_validation_report.md` |
+| Fireworks GBNF n20 Wave 4 validation report | `audits/fireworks_gbnf_n20_wave4_validation_report.md` |
+| Fireworks GBNF n20 wave completion contract | `docs/experiment_packets/fireworks_gbnf_n20_wave_completion_contract.md` |
+| L2b n20 Fireworks branch reconciliation report | `audits/l2b_n20_fireworks_branch_reconciliation_report.md` |
 | Full Pipeline L1a final signature packet report | `audits/l1a_final_signature_packet_report.md` |
 | Full Pipeline L1a executable 12-cell selector support audit | `audits/l1a_executable_12cell_selector_support_report.md` |
 | Full Pipeline L1a executable 12-cell selector support promotion audit | `audits/l1a_executable_12cell_selector_support_promotion_audit_report.md` |
@@ -187,6 +191,16 @@ per-shard timing diagnostics remain sidecar-only operational metadata, not
 performance evidence. L2b-2 mutation, L2b-2 recovery mutation, original
 `l2b_n20` mutation, Fireworks execution, L3, retry, resume, overwrite,
 profiler/benchmark/speedup, and paper claims remain blocked.
+
+Fireworks GBNF n20 validation docs from
+`origin/codex/fireworks-api-modal-implementation-plan` are reconciled as a
+separate evidence stream in
+`audits/l2b_n20_fireworks_branch_reconciliation_report.md`. They report
+2160/2160 Fireworks rows under
+`outputs/cluster_fw/fireworks_api_modal_v1/l2_n20_gbnf`, not completion of the
+current Modal `l2b_n20_attempt2*` stream. Current Modal Wave 4 remains a
+separate signed decision, and analyzer/report refresh remains blocked without
+separate authorization and raw-artifact availability.
 
 Cluster 3 diagnostic evidence is provenance-frozen through
 `audits/cluster3_phase13b_commit_provenance_freeze_report.md`. Phase 14e froze
