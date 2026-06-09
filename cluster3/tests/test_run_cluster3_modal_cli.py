@@ -1852,6 +1852,33 @@ def _signed_l2b_n20_attempt2_lane_b_selector_args(
     ]
 
 
+def _signed_l2b_n20_attempt2_wave4_selector_args(
+    *extra: str,
+    token: str | None = None,
+) -> list[str]:
+    return [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--l2b-stage",
+        runner_mod.L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID,
+        "--l2b-shard-selector",
+        "matmul__fp32",
+        "--kernel-class",
+        "matmul",
+        "--scale-tier",
+        "paper",
+        "--n",
+        "20",
+        "--dtypes",
+        "fp32",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l2b-authorization",
+        token or runner_mod.L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN,
+        *extra,
+    ]
+
+
 def test_l1a_12cell_dry_plan_cli_parses_without_output_or_write_mode() -> None:
     config = parse_args(
         [
@@ -3105,6 +3132,220 @@ def test_l2b_n20_attempt2_two_lane_rescue_wrong_namespace_fails(
         runner_mod,
         "build_l2b_full_coverage_shard_plan",
         lambda **_kwargs: (bad_shard, *shards[1:]),
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(ValueError, match="output namespace does not match shard id"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n20_attempt2_wave4_is_matmul_fp32_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(_signed_l2b_n20_attempt2_wave4_selector_args())
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert config.write_mode == "create"
+    assert config.output == (
+        runner_mod.L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OUTPUT_ROOT
+        + "/__selector__.jsonl"
+    )
+    assert [shard.shard_id for shard in shards] == ["matmul__fp32"]
+    assert {shard.planned_cells for shard in shards} == {12}
+    assert sum(shard.planned_rows for shard in shards) == 240
+    assert all(
+        shard.output_namespace.startswith(
+            runner_mod.L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OUTPUT_ROOT + "/"
+        )
+        for shard in shards
+    )
+    assert all(
+        runner_mod.L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN
+        in shard.future_command
+        for shard in shards
+    )
+    assert all("--overwrite" not in shard.future_command for shard in shards)
+
+
+def test_l2b_n20_attempt2_wave4_reaches_mocked_modal_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[runner_mod.Cluster3RunnerConfig] = []
+    modal_events: list[str] = []
+
+    class MockModalContext:
+        def __enter__(self) -> None:
+            modal_events.append("enter")
+
+        def __exit__(self, *_args: object) -> None:
+            modal_events.append("exit")
+
+    def fake_run(config: runner_mod.Cluster3RunnerConfig) -> runner_mod.Cluster3RunResult:
+        calls.append(config)
+        return runner_mod.Cluster3RunResult(
+            rows=tuple(object() for _ in range(config.n)),  # type: ignore[arg-type]
+            route_audit=(),
+            output=config.output,
+            write_mode=config.write_mode,
+        )
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(runner_mod, "_signed_l2b_modal_app_context", MockModalContext)
+    monkeypatch.setattr(runner_mod, "run_cluster3", fake_run)
+
+    result = runner_mod.main(_signed_l2b_n20_attempt2_wave4_selector_args())
+    printed = json.loads(capsys.readouterr().out)
+
+    assert isinstance(result, runner_mod.Cluster3RunResult)
+    assert modal_events == ["enter", "exit"]
+    assert len(calls) == 12
+    assert printed["rows"] == 240
+    assert printed["output"] == runner_mod.L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OUTPUT_ROOT
+    assert {call.write_mode for call in calls} == {"create"}
+    assert {call.n for call in calls} == {20}
+    assert {call.kernel_class for call in calls} == {"matmul"}
+    assert {call.dtypes for call in calls} == {("fp32",)}
+    assert all(
+        call.output.startswith(
+            runner_mod.L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OUTPUT_ROOT + "/"
+        )
+        for call in calls
+    )
+    assert all(
+        (call.observability_output or "").startswith(
+            runner_mod.L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OBSERVABILITY_ROOT + "/"
+        )
+        for call in calls
+    )
+
+
+def test_l2b_n20_attempt2_wave4_wrong_tokens_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    wrong_tokens = (
+        runner_mod.L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN,
+        runner_mod.L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN,
+        runner_mod.L2B_N20_SIGNED_AUTHORIZATION_TOKEN,
+    )
+
+    for token in wrong_tokens:
+        config = parse_args(
+            _signed_l2b_n20_attempt2_wave4_selector_args(token=token)
+        )
+        with pytest.raises(ValueError, match="token does not match --l2b-stage"):
+            runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n20_attempt2_wave4_token_cannot_run_other_scopes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    original_attempt2 = parse_args(
+        _signed_l2b_n20_attempt2_selector_args(
+            token=runner_mod.L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN,
+        )
+    )
+    with pytest.raises(ValueError, match="token does not match --l2b-stage"):
+        runner_mod._validate_l2b_runtime_authorization(original_attempt2)
+
+    lane_a = parse_args(
+        _signed_l2b_n20_attempt2_lane_a_selector_args(
+            token=runner_mod.L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN,
+        )
+    )
+    with pytest.raises(ValueError, match="token does not match --l2b-stage"):
+        runner_mod._validate_l2b_runtime_authorization(lane_a)
+
+    lane_b = parse_args(
+        _signed_l2b_n20_attempt2_lane_b_selector_args(
+            token=runner_mod.L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN,
+        )
+    )
+    with pytest.raises(ValueError, match="token does not match --l2b-stage"):
+        runner_mod._validate_l2b_runtime_authorization(lane_b)
+
+
+def test_l2b_n20_attempt2_wave4_rejects_wrong_scope_and_n(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+
+    wave3_scope = parse_args(
+        _signed_l2b_n20_attempt2_wave4_selector_args(
+            "--l2b-shard-selector",
+            "wave:7:2",
+            "--kernel-class",
+            "all",
+            "--dtypes",
+            "fp32,fp16,bf16",
+        )
+    )
+    with pytest.raises(ValueError, match="Wave 4 requires matmul__fp32"):
+        runner_mod._validate_l2b_runtime_authorization(wave3_scope)
+
+    with pytest.raises(ValueError, match="requires --n 20"):
+        parse_args(_signed_l2b_n20_attempt2_wave4_selector_args("--n", "2"))
+
+
+def test_l2b_n20_attempt2_wave4_rejects_overwrite_retry_resume_and_mlflow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    with pytest.raises(SystemExit):
+        parse_args(_signed_l2b_n20_attempt2_wave4_selector_args("--overwrite"))
+    with pytest.raises(SystemExit):
+        parse_args(_signed_l2b_n20_attempt2_wave4_selector_args("--resume"))
+    with pytest.raises(SystemExit):
+        parse_args(_signed_l2b_n20_attempt2_wave4_selector_args("--retry"))
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "1")
+    mlflow_enabled = parse_args(_signed_l2b_n20_attempt2_wave4_selector_args())
+    with pytest.raises(RuntimeError, match="TRITONGEN_MLFLOW=0"):
+        runner_mod._validate_l2b_runtime_authorization(mlflow_enabled)
+
+
+def test_l2b_n20_attempt2_wave4_wrong_namespace_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2b_n20_attempt2_wave4_selector_args())
+    shards = runner_mod.build_l2b_full_coverage_shard_plan(
+        stage_id=runner_mod.L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID,
+        shard_selector="matmul__fp32",
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=(
+            runner_mod.L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN
+        ),
+        signed_authorization_option="--signed-l2b-authorization",
+    )
+    bad_shard = replace(
+        shards[0],
+        output_namespace=f"{runner_mod.L2B_N20_ATTEMPT2_OUTPUT_ROOT}/matmul__fp32",
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "build_l2b_full_coverage_shard_plan",
+        lambda **_kwargs: (bad_shard,),
     )
     monkeypatch.setattr(
         runner_mod,

@@ -29,6 +29,12 @@ from cluster3.planning.grammar_mode_matrix import (
     L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OUTPUT_ROOT,
     L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SCALE_NAMESPACE,
     L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
+    L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OBSERVABILITY_ROOT,
+    L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OUTPUT_ROOT,
+    L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SCALE_NAMESPACE,
+    L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID,
+    L2B_N20_ATTEMPT2_WAVE4_SIGNATURE_STATUS,
+    L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN,
     L2B_N20_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_N2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
     L2B_N20_OUTPUT_ROOT,
@@ -455,6 +461,44 @@ def test_l2b_n20_attempt2_two_lane_rescue_namespaces_are_distinct() -> None:
     assert lane_b.signature_status == L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNATURE_STATUS
     assert lane_a.concurrency_limits["max_concurrent_lanes"] == 2
     assert lane_b.concurrency_limits["max_concurrent_lanes"] == 2
+
+
+def test_l2b_n20_attempt2_wave4_namespace_is_distinct_matmul_fp32_scope() -> None:
+    wave4 = l2b_full_coverage_stage_spec(
+        L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID
+    )
+
+    assert wave4.scale_namespace == L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SCALE_NAMESPACE
+    assert wave4.output_root == L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OUTPUT_ROOT
+    assert wave4.observability_root == (
+        L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OBSERVABILITY_ROOT
+    )
+    assert wave4.output_root != L2B_N20_ATTEMPT2_OUTPUT_ROOT
+    assert wave4.signature_status == L2B_N20_ATTEMPT2_WAVE4_SIGNATURE_STATUS
+    assert wave4.concurrency_limits["max_gpu_concurrency"] <= 2
+    assert wave4.concurrency_limits["max_container_concurrency"] <= 20
+
+    shards = build_l2b_full_coverage_shard_plan(
+        stage_id=L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID,
+        shard_selector="matmul__fp32",
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+    )
+
+    assert [shard.shard_id for shard in shards] == ["matmul__fp32"]
+    assert {shard.planned_cells for shard in shards} == {12}
+    assert sum(shard.planned_rows for shard in shards) == 240
+    assert all(
+        shard.output_namespace.startswith(
+            L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OUTPUT_ROOT + "/"
+        )
+        for shard in shards
+    )
+    assert all(
+        L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN in shard.future_command
+        for shard in shards
+    )
+    assert all("--overwrite" not in shard.future_command for shard in shards)
 
 
 def test_l2b_n20_attempt2_lane_a_missing360_plan_is_cell_scoped() -> None:

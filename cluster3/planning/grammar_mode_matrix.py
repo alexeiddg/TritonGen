@@ -79,12 +79,16 @@ L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID = (
 L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID = (
     "l2b_n20_attempt2_wave3_parallel_full_coverage"
 )
+L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID = (
+    "l2b_n20_attempt2_wave4_parallel_full_coverage"
+)
 L2B_SELECTOR_PROFILE_IDS = (
     L2B_N2_SELECTOR_PROFILE_ID,
     L2B_N20_SELECTOR_PROFILE_ID,
     L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
     L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
     L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
+    L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID,
 )
 L2B_N2_SCALE_NAMESPACE = "l2b_n2"
 L2B_N20_SCALE_NAMESPACE = "l2b_n20"
@@ -94,6 +98,9 @@ L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SCALE_NAMESPACE = (
 )
 L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SCALE_NAMESPACE = (
     "l2b_n20_attempt2_wave3_parallel"
+)
+L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SCALE_NAMESPACE = (
+    "l2b_n20_attempt2_wave4_parallel"
 )
 L2B_N2_OUTPUT_ROOT = (
     "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n2"
@@ -111,6 +118,10 @@ L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OUTPUT_ROOT = (
 L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OUTPUT_ROOT = (
     "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/"
     "l2b_n20_attempt2_wave3_parallel"
+)
+L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OUTPUT_ROOT = (
+    "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/"
+    "l2b_n20_attempt2_wave4_parallel"
 )
 L2B_N2_OBSERVABILITY_ROOT = (
     "artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n2"
@@ -131,6 +142,10 @@ L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OBSERVABILITY_ROOT = (
     "artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/"
     "l2b_n20_attempt2_wave3_parallel"
 )
+L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OBSERVABILITY_ROOT = (
+    "artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/"
+    "l2b_n20_attempt2_wave4_parallel"
+)
 L2B_N2_ANALYSIS_ROOT = (
     "artifacts/analysis/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n2"
 )
@@ -147,6 +162,10 @@ L2B_N20_ATTEMPT2_WAVE2_RECOVERY_ANALYSIS_ROOT = (
 L2B_N20_ATTEMPT2_WAVE3_PARALLEL_ANALYSIS_ROOT = (
     "artifacts/analysis/full_pipeline_grammar_mode_cp_factorial_v1/"
     "l2b_n20_attempt2_wave3_parallel"
+)
+L2B_N20_ATTEMPT2_WAVE4_PARALLEL_ANALYSIS_ROOT = (
+    "artifacts/analysis/full_pipeline_grammar_mode_cp_factorial_v1/"
+    "l2b_n20_attempt2_wave4_parallel"
 )
 L2B_N2_REPORTS_ROOT = (
     "artifacts/reports/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n2"
@@ -165,6 +184,10 @@ L2B_N20_ATTEMPT2_WAVE3_PARALLEL_REPORTS_ROOT = (
     "artifacts/reports/full_pipeline_grammar_mode_cp_factorial_v1/"
     "l2b_n20_attempt2_wave3_parallel"
 )
+L2B_N20_ATTEMPT2_WAVE4_PARALLEL_REPORTS_ROOT = (
+    "artifacts/reports/full_pipeline_grammar_mode_cp_factorial_v1/"
+    "l2b_n20_attempt2_wave4_parallel"
+)
 L2B_N2_BILLING_ROOT = (
     "artifacts/billing/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n2"
 )
@@ -181,6 +204,10 @@ L2B_N20_ATTEMPT2_WAVE2_RECOVERY_BILLING_ROOT = (
 L2B_N20_ATTEMPT2_WAVE3_PARALLEL_BILLING_ROOT = (
     "artifacts/billing/full_pipeline_grammar_mode_cp_factorial_v1/"
     "l2b_n20_attempt2_wave3_parallel"
+)
+L2B_N20_ATTEMPT2_WAVE4_PARALLEL_BILLING_ROOT = (
+    "artifacts/billing/full_pipeline_grammar_mode_cp_factorial_v1/"
+    "l2b_n20_attempt2_wave4_parallel"
 )
 L2B_N2_RUN_ID_PREFIX = (
     "full_pipeline_grammar_mode_cp_factorial_v1_l2b_n2_full_coverage"
@@ -199,6 +226,10 @@ L2B_N20_ATTEMPT2_WAVE3_PARALLEL_RUN_ID_PREFIX = (
     "full_pipeline_grammar_mode_cp_factorial_v1_"
     "l2b_n20_attempt2_wave3_parallel"
 )
+L2B_N20_ATTEMPT2_WAVE4_PARALLEL_RUN_ID_PREFIX = (
+    "full_pipeline_grammar_mode_cp_factorial_v1_"
+    "l2b_n20_attempt2_wave4_parallel"
+)
 L2B_N2_SIGNED_AUTHORIZATION_TOKEN = (
     "FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N2_FULL_COVERAGE_AUTHORIZATION_PACKET_V1"
 )
@@ -211,12 +242,18 @@ L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN = (
 L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN = (
     "FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_AUTHORIZATION_PACKET_V1"
 )
+L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN = (
+    "FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N20_ATTEMPT2_WAVE4_AUTHORIZATION_PACKET_V1"
+)
 L2B_N2_RECOVERY_MISSING28_AUTHORIZATION_MARKER = "RECOVERY_MISSING28"
 L2B_N2_SIGNATURE_STATUS = "SIGNED_FOR_L2B_N2_ONLY"
 L2B_N20_SIGNATURE_STATUS = "SIGNED_FOR_L2B_N20_ONLY"
 L2B_N20_ATTEMPT2_SIGNATURE_STATUS = "SIGNED_FOR_L2B_N20_ATTEMPT2_ONLY"
 L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNATURE_STATUS = (
     "SIGNED_FOR_L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_ONLY"
+)
+L2B_N20_ATTEMPT2_WAVE4_SIGNATURE_STATUS = (
+    "SIGNED_FOR_L2B_N20_ATTEMPT2_WAVE4_ONLY"
 )
 L1A_PATH_COLLISION_POLICY = "fail_if_any_target_path_exists"
 L1A_SIGNED_AUTHORIZATION_PLACEHOLDER = "SIGNED_L1A_PACKET_ID_REQUIRED"
@@ -752,6 +789,44 @@ def l2b_full_coverage_stage_spec(stage_id: str) -> L2BFullCoverageStageSpec:
             timing_observability=l2b_timing_observability_contract(),
             slow_cell_stop_policy=l2b_slow_cell_stop_policy(),
         )
+    if stage_id == L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID:
+        n = 20
+        rows_per_shard = L2B_PLANNED_CELLS_PER_SHARD * n
+        return L2BFullCoverageStageSpec(
+            selector_profile_id=L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID,
+            rung="L2b-4",
+            label="L2b-4 n=20 attempt2 Wave 4 matmul fp32-only lane",
+            scale_tier="paper",
+            n=n,
+            scale_namespace=L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SCALE_NAMESPACE,
+            output_root=L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OUTPUT_ROOT,
+            observability_root=L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OBSERVABILITY_ROOT,
+            analysis_root=L2B_N20_ATTEMPT2_WAVE4_PARALLEL_ANALYSIS_ROOT,
+            reports_root=L2B_N20_ATTEMPT2_WAVE4_PARALLEL_REPORTS_ROOT,
+            billing_root=L2B_N20_ATTEMPT2_WAVE4_PARALLEL_BILLING_ROOT,
+            run_id_prefix=L2B_N20_ATTEMPT2_WAVE4_PARALLEL_RUN_ID_PREFIX,
+            total_shards=L2B_TOTAL_SHARDS,
+            planned_cells_per_shard=L2B_PLANNED_CELLS_PER_SHARD,
+            rows_per_shard=rows_per_shard,
+            full_matrix_planned_rows=L2B_TOTAL_SHARDS * rows_per_shard,
+            backend=L2B_BACKEND_CURRENT,
+            runtime_execution_enabled=True,
+            runtime_block_reason=None,
+            signed_authorization_available=True,
+            signature_status=L2B_N20_ATTEMPT2_WAVE4_SIGNATURE_STATUS,
+            dependency_gate="at least one attempt2 rescue lane completed or stopped",
+            concurrency_limits={
+                "max_gpu_concurrency": 2,
+                "max_container_concurrency": 20,
+                "wave_4_max_gpu_concurrency": 2,
+                "wave_4_max_container_concurrency": 20,
+                "max_estimated_cost_usd": 150,
+                "max_reconciled_billing_cost_usd": 200,
+                "backend": L2B_BACKEND_CURRENT,
+            },
+            timing_observability=l2b_timing_observability_contract(),
+            slow_cell_stop_policy=l2b_slow_cell_stop_policy(),
+        )
     allowed = ", ".join(l2b_full_coverage_stage_choices())
     raise ValueError(f"l2b_stage must be one of: {allowed}; got {stage_id!r}")
 
@@ -802,6 +877,13 @@ def build_l2b_full_coverage_shard_plan(
     ):
         signed_authorization_placeholder = (
             L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
+        )
+    if (
+        stage_id == L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID
+        and signed_authorization_placeholder == L2B_SIGNED_AUTHORIZATION_PLACEHOLDER
+    ):
+        signed_authorization_placeholder = (
+            L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN
         )
     effective_output_root = (
         str(output_root) if output_root is not None else str(stage.output_root)
@@ -1285,6 +1367,7 @@ def _is_l2b_create_only_signed_placeholder(value: str | None) -> bool:
         or value == L2B_N20_SIGNED_AUTHORIZATION_TOKEN
         or value == L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN
         or value == L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
+        or value == L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN
     )
 
 

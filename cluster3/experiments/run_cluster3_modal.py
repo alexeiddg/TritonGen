@@ -102,6 +102,12 @@ from cluster3.planning.grammar_mode_matrix import (
     L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OUTPUT_ROOT,
     L2B_N20_ATTEMPT2_WAVE3_PARALLEL_RUN_ID_PREFIX,
     L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
+    L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OBSERVABILITY_ROOT,
+    L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OUTPUT_ROOT,
+    L2B_N20_ATTEMPT2_WAVE4_PARALLEL_RUN_ID_PREFIX,
+    L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID,
+    L2B_N20_ATTEMPT2_WAVE4_SIGNATURE_STATUS,
+    L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN,
     L2B_N20_OBSERVABILITY_ROOT,
     L2B_N20_OUTPUT_ROOT,
     L2B_N20_RUN_ID_PREFIX,
@@ -315,6 +321,7 @@ L2B_N20_SIGNED_WALL_CLOCK_SECONDS_PER_CELL = 7200.0
 L2B_N20_SIGNED_WALL_CLOCK_SECONDS_FOR_MATMUL_FP32_CELL = 10800.0
 L2B_N20_ATTEMPT2_RESCUE_REDUCTION_WALL_CLOCK_SECONDS_PER_CELL = 18000.0
 L2B_N20_ATTEMPT2_RESCUE_MATMUL_WALL_CLOCK_SECONDS_PER_CELL = 14400.0
+L2B_N20_ATTEMPT2_WAVE4_WALL_CLOCK_SECONDS_PER_CELL = 10800.0
 
 GenerationAdapter = Callable[..., Any]
 CorrectnessAdapter = Callable[[Cluster3CorrectnessRequest], Any]
@@ -772,6 +779,27 @@ L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
     runtime_block_reason=None,
     support_status=L2B_N20_ATTEMPT2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
 )
+L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE = _GrammarModeSelectorProfile(
+    profile_id=L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID,
+    label="L2b-4 n=20 attempt2 Wave 4 matmul fp32-only lane",
+    signed_authorization_token=L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN,
+    signed_authorization_placeholder=L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN,
+    signed_authorization_option="--signed-l2b-authorization",
+    output_root=L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OUTPUT_ROOT,
+    observability_root=L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OBSERVABILITY_ROOT,
+    run_id_prefix=L2B_N20_ATTEMPT2_WAVE4_PARALLEL_RUN_ID_PREFIX,
+    selector_placeholder_output=(
+        f"{L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OUTPUT_ROOT}/__selector__.jsonl"
+    ),
+    scale_tier="paper",
+    n=20,
+    expected_planned_rows=240,
+    kernel_class_selector="matmul",
+    dtypes=("fp32",),
+    runtime_execution_enabled=True,
+    runtime_block_reason=None,
+    support_status=L2B_N20_ATTEMPT2_EXECUTABLE_SELECTOR_SUPPORT_STATUS,
+)
 SELECTOR_PROFILES: tuple[_GrammarModeSelectorProfile, ...] = (
     L1A_SELECTOR_PROFILE,
     L1B_SELECTOR_PROFILE,
@@ -781,6 +809,7 @@ SELECTOR_PROFILES: tuple[_GrammarModeSelectorProfile, ...] = (
     L2B_N20_ATTEMPT2_SELECTOR_PROFILE,
     L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE,
     L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE,
+    L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE,
 )
 
 
@@ -868,6 +897,7 @@ def _selector_profile_for_scale(
                 L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
                 L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
                 L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
+                L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID,
             )
             and scale_tier == profile.scale_tier
             and n == profile.n
@@ -925,6 +955,7 @@ def _is_l2b_create_only_signed_token(token: str | None) -> bool:
         or token == L2B_N20_SIGNED_AUTHORIZATION_TOKEN
         or token == L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN
         or token == L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
+        or token == L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN
     )
 
 
@@ -2024,6 +2055,7 @@ def _run_signed_l2b_selector(
         L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
         L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
         L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
+        L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID,
     ):
         raise ValueError("signed L2b selector requires an approved L2b stage")
     if not shards:
@@ -2138,6 +2170,8 @@ def _signed_l2b_wall_clock_seconds_per_cell(
         return L2B_N20_ATTEMPT2_RESCUE_REDUCTION_WALL_CLOCK_SECONDS_PER_CELL
     if stage_id == L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID:
         return L2B_N20_ATTEMPT2_RESCUE_MATMUL_WALL_CLOCK_SECONDS_PER_CELL
+    if stage_id == L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID:
+        return L2B_N20_ATTEMPT2_WAVE4_WALL_CLOCK_SECONDS_PER_CELL
     if stage_id in (L2B_N20_SELECTOR_PROFILE_ID, L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID):
         if shard_id == "matmul__fp32":
             return L2B_N20_SIGNED_WALL_CLOCK_SECONDS_FOR_MATMUL_FP32_CELL
@@ -2155,6 +2189,7 @@ def _l2b_cell_plans_for_shard(
         L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
         L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
         L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
+        L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID,
     ):
         raise ValueError("signed L2b cell plans require an approved L2b stage")
     stage = l2b_full_coverage_stage_spec(config.l2b_stage)
@@ -2178,6 +2213,10 @@ def _l2b_cell_plans_for_shard(
                 L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
             )
             else
+            L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN
+            if config.l2b_stage
+            == L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID
+            else
             L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN
             if config.l2b_stage == L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID
             else L2B_N20_SIGNED_AUTHORIZATION_TOKEN
@@ -2191,6 +2230,7 @@ def _l2b_cell_plans_for_shard(
             in (
                 L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
                 L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
+                L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID,
             )
             else
             L2B_N20_ATTEMPT2_EXECUTABLE_SELECTOR_SUPPORT_STATUS
@@ -2379,6 +2419,7 @@ def _validate_l2b_runtime_authorization(
         L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
         L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
         L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
+        L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID,
     ):
         raise ValueError("signed L2b requires an approved --l2b-stage")
 
@@ -2388,6 +2429,10 @@ def _validate_l2b_runtime_authorization(
     is_two_lane_rescue_auth_token = (
         config.signed_l1a_authorization
         == L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
+    )
+    is_wave4_auth_token = (
+        config.signed_l1a_authorization
+        == L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN
     )
     profile = _selector_profile_for_authorization(config)
     if profile.profile_id != config.l2b_stage:
@@ -2409,6 +2454,7 @@ def _validate_l2b_runtime_authorization(
     if (
         not is_recovery_missing28_auth_token
         and not is_two_lane_rescue_auth_token
+        and not is_wave4_auth_token
         and config.l2b_recovery_cells != "all"
     ):
         raise ValueError(
@@ -2427,6 +2473,9 @@ def _validate_l2b_runtime_authorization(
             L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
             L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
         )
+        else
+        L2B_N20_ATTEMPT2_WAVE4_SIGNATURE_STATUS
+        if config.l2b_stage == L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID
         else
         L2B_N20_ATTEMPT2_SIGNATURE_STATUS
         if config.l2b_stage == L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID
@@ -2471,6 +2520,7 @@ def _validate_l2b_runtime_authorization(
     if (
         is_recovery_missing28_auth_token
         or is_two_lane_rescue_auth_token
+        or is_wave4_auth_token
         or config.l2b_stage
         in (L2B_N20_SELECTOR_PROFILE_ID, L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID)
     ):
@@ -2588,6 +2638,19 @@ def _validate_l2b_runtime_authorization(
             raise ValueError("signed Lane B must run all Wave 3 cells")
         if len(shards) != 2 or sum(shard.planned_rows for shard in shards) != 480:
             raise ValueError("signed Lane B requires exactly 480 rows")
+    if config.l2b_stage == L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID:
+        if config.l2b_shard_selector != "matmul__fp32":
+            raise ValueError("signed Wave 4 requires matmul__fp32 shard selector")
+        if config.kernel_class != "matmul":
+            raise ValueError("signed Wave 4 requires --kernel-class matmul")
+        if config.dtypes != ("fp32",):
+            raise ValueError("signed Wave 4 requires --dtypes fp32")
+        if config.l2b_recovery_cells != "all":
+            raise ValueError("signed Wave 4 must run all 12 cells")
+        if len(shards) != 1 or sum(shard.planned_rows for shard in shards) != 240:
+            raise ValueError("signed Wave 4 requires exactly 240 rows")
+        if shards[0].shard_id != "matmul__fp32":
+            raise ValueError("signed Wave 4 requires exactly matmul__fp32")
     if config.l2b_shard_selector == "all":
         if config.kernel_class != "all":
             raise ValueError("signed L2b all-shards command requires --kernel-class all")
@@ -2707,6 +2770,7 @@ def _validate_l2b_runtime_shard_plan(
             L2B_N20_SIGNED_AUTHORIZATION_TOKEN,
             L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN,
             L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN,
+            L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN,
             *L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_TOKENS,
         )
     ):
