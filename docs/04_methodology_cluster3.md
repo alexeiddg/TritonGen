@@ -159,7 +159,6 @@ explicitly authorized run and a new artifact-registration pass.
 | Durable logger | `cluster3/results/logger.py` |
 | No-P pair resolver | `cluster3/replay/no_p_pairs.py` |
 | No-P manifest builder | `cluster3/replay/build_no_p_pair_manifest.py` |
-| L2b wave launch helpers | `scripts/run_l2b_n20_attempt2_waves*.sh` |
 | Analyzer support | `shared/analysis/factorial.py` |
 | Boundary tests | `cluster3/tests/test_cluster3_boundary.py` |
 | F1 fixture smoke tests | `cluster3/tests/test_p_repair_f1_fixtures.py` |

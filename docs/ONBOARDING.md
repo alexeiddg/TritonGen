@@ -204,8 +204,7 @@ TritonGen/
 │   ├── 17_structural_task_analyzer_metadata_implementation_spec.md
 │   ├── 18_agentic_transcript_v1_implementation_spec.md
 │   ├── handoff/              ← Guía de handoff, estado de orquestación, run packets
-│   ├── tracking/             ← Onboarding y política de MLflow
-│   └── preliminary_report/   ← Borrador del paper
+│   └── tracking/             ← Onboarding y política de MLflow
 │
 ├── audits/                   ← Registros históricos de verificación (evidencia, no fuente de verdad)
 ├── .contracts/
@@ -2074,7 +2073,6 @@ Los docs en `docs/` son citation-grade. Los de `audits/` son evidencia históric
 | `docs/18_agentic_transcript_v1_implementation_spec.md` | Spec completa de A0-A6: evidencia, ranking, rendering | Vigente |
 | `docs/handoff/experiment_change_orchestration_state.md` | Estado vivo de qué runs están aprobados/pendientes | Vigente |
 | `docs/handoff/codebase_handoff_guide.md` | Guía para el próximo que retome el trabajo | Vigente |
-| `docs/preliminary_report/preliminary_report.md` | Borrador del paper con resultados placeholder | Borrador |
 | `docs/tracking/README.md` | Onboarding para el sistema MLflow | Vigente |
 | **`docs/ONBOARDING.md`** | **← Este documento** | Vigente |
 

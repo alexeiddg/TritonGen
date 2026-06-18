@@ -329,7 +329,7 @@ Recommended include list:
 | Modal/Qwen row hashes | All `.hashes.json` files paired with the selected Modal JSONL files |
 | Modal/Qwen observability | The four matching `artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n20_attempt2*` directories if provenance/observability is in scope |
 | Fireworks/MiniMax raw result evidence | The five JSONL files under `outputs/fireworks_gbnf_n20_validated_outputs/outputs/cluster_fw/fireworks_api_modal_v1/l2_n20_gbnf/` |
-| Pipeline code | `cluster1/`, `cluster2/`, `cluster3/`, `shared/`, `scripts/run_l2b_n20_attempt2*.sh`, `pyproject.toml`, `requirements.txt`, `.env.example` |
+| Pipeline code | `cluster1/`, `cluster2/`, `cluster3/`, `shared/`, `pyproject.toml`, `requirements.txt`, `.env.example` |
 
 Recommended exclude list:
 

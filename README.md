@@ -25,7 +25,6 @@ pipeline code and the row evidence needed to inspect the current results.
 | `cluster2/` | Correctness evaluation, replay controls, and `C` repair logic. |
 | `cluster3/` | Full `G`/`C`/`P` pipeline, Modal runner, row schema, durable logger, replay pairing, and validation helpers. |
 | `shared/` | Shared evaluation ladder, failure taxonomy, Modal harness, factor definitions, tracking hooks, observability, and repair-history utilities. |
-| `scripts/` | Launch recipes for the L2b Modal/Qwen waves. Treat these as reproducibility references before rerunning remote jobs. |
 | `outputs/` | Selected raw JSONL result evidence and row-hash sidecars. Most generated outputs remain ignored unless explicitly selected. |
 | `artifacts/observability/` | Selected observability sidecars matching the included Modal/Qwen result rows. |
 | `docs/` | Methodology, artifact registry, analysis caveats, infrastructure notes, and navigation documents. |
@@ -146,7 +145,6 @@ anything:
 | --- | --- |
 | Cluster 3 Modal runner | `cluster3/experiments/run_cluster3_modal.py` |
 | Grammar-mode matrix planning | `cluster3/planning/grammar_mode_matrix.py` |
-| L2b wave launch recipes | `scripts/run_l2b_n20_attempt2_waves*.sh` |
 | L2b coverage validation | `cluster3/analysis/validate_l2b_full_coverage.py` |
 | L2b rescue validation | `cluster3/analysis/validate_l2b_two_lane_rescue_union.py` |
 | Modal infrastructure notes | `docs/04_modal_infrastructure.md` |
@@ -157,9 +155,10 @@ in `shared/modal_harness/secrets.py`; the expected environment variable is
 `TRITONGEN_MODAL_HF_SECRET`.
 
 Before any remote rerun, verify the active command against the current code and
-record a new artifact-registration pass. Historical launch scripts are useful
-for reconstructing the completed waves, but they should not be treated as an
-automatic command to run.
+record a new artifact-registration pass. Historical launch scripts were removed
+from the research handoff because they reflected old branch and coverage
+assumptions; reconstruct reruns from the current runner, planner, and artifact
+inventory instead.
 
 ## Analysis Status
 
