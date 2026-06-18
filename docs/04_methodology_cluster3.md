@@ -2,14 +2,21 @@
 
 ## Status
 
-- Status: v1 implemented locally through Phase 10.
-- Phase 11 Modal smoke has not been run unless a later report explicitly registers it.
-- Phase 11 n=1 Modal smoke requires explicit user approval.
-- Paper-scale Cluster 3 results are deferred; paper-scale deferred remains the active scale policy.
-- Cluster 3 v1 is development/pre-Modal-smoke until Phase 11 is explicitly authorized and run.
+- Status: the G/C/P Cluster 3 pipeline is implemented with Modal runner support,
+  durable row logging, row-hash sidecars, and observability sidecars.
+- The current committee package includes Modal/Qwen L2b attempt2 row evidence
+  under `outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n20_attempt2*`.
+- The Modal/Qwen evidence is partial paper-scale evidence: 2,040 / 2,160 rows
+  are on disk. Missing rows are explicitly listed in
+  `docs/results/research_committee_candidate_inventory.md`.
+- The Fireworks/MiniMax stream is a separate imported validation stream, not a
+  Modal Level-2 correctness stream.
+- The canonical analyzer is not reportable for the current Modal/Qwen or
+  Fireworks/MiniMax streams without schema work.
 
 This document describes implemented local v1 surfaces and claim boundaries. It
-does not register output rows, measured lift, or paper-scale results.
+does not authorize new Modal, Fireworks, GPU, generation, billing, or benchmark
+execution.
 
 ## Factor Definition
 
@@ -101,8 +108,11 @@ output, not raw Cluster 3 rows.
 analyzer-derived `p_helped` diagnostic is conservative and `PENDING_RESEARCH`.
 
 A three-way interaction is reportable only when all eight cells are populated.
-Current Cluster 3 v1 local implementation does not populate all eight cells and
-does not support full 2^3 result claims.
+The current Modal/Qwen evidence has most but not all planned primary cells:
+grammar-off plus task-agnostic rows are 1,360 / 1,440, with the missing rows
+concentrated in the documented `matmul__fp32/task_agnostic` C/P cells. Template
+upper-bound rows are diagnostic, not the primary G effect. Current Cluster 3
+evidence therefore does not support complete 2^3 result claims.
 
 ## Replay And No-P Controls
 
@@ -121,12 +131,16 @@ cluster3/contracts/no_p_pair_manifest.json
 
 ## Scale Policy
 
-Cluster 3 runs local tests first. Phase 11 n=1 Modal smoke requires explicit
-user approval. Phase 12 n=5 development scale requires explicit user approval.
-Paper-scale n=20 is deferred until smoke/dev gates pass.
+Cluster 3 scale policy separates branch diagnostics, development matrix cells,
+and paper-scale evidence. Earlier smoke and development artifacts remain
+registered in `docs/05_artifacts_and_results_registry.md`; the current committee
+package uses the n=20 L2b attempt2 evidence recorded in
+`docs/results/research_committee_candidate_inventory.md`.
 
-No Phase 11, Phase 12, or paper-scale P artifacts are registered by this
-document.
+The current Modal/Qwen n=20 evidence is intentionally preserved as a partial
+candidate inventory, not silently completed: 2,040 / 2,160 planned rows are on
+disk. Any future completion of the missing `matmul__fp32` cells requires a new
+explicitly authorized run and a new artifact-registration pass.
 
 ## Implementation Traceability
 
@@ -138,15 +152,19 @@ document.
 | P prompt construction | `cluster3/feedback/prompts.py` |
 | P sanitizer | `cluster3/feedback/sanitizer.py` |
 | C-loop adapter | `cluster3/feedback/c_loop_adapter.py` |
+| Modal run entrypoint | `cluster3/experiments/run_cluster3_modal.py` |
+| Grammar-mode matrix planner | `cluster3/planning/grammar_mode_matrix.py` |
 | Correctness adapter | `cluster3/modal/correctness_runner.py` |
 | Row dataclass and schema version | `cluster3/results/dataclass.py` |
 | Durable logger | `cluster3/results/logger.py` |
 | No-P pair resolver | `cluster3/replay/no_p_pairs.py` |
 | No-P manifest builder | `cluster3/replay/build_no_p_pair_manifest.py` |
+| L2b wave launch helpers | `scripts/run_l2b_n20_attempt2_waves*.sh` |
 | Analyzer support | `shared/analysis/factorial.py` |
 | Boundary tests | `cluster3/tests/test_cluster3_boundary.py` |
 | F1 fixture smoke tests | `cluster3/tests/test_p_repair_f1_fixtures.py` |
 
-Cluster 3 correctness evaluation is local and reuses existing Cluster 2 Modal
-surfaces through adapters. Cluster 3 v1 does not create a new Modal correctness
-surface.
+Cluster 3 correctness evaluation reuses existing Cluster 2 Modal correctness
+surfaces through adapters. Cluster 3 adds condition routing, P-loop handling,
+durable Cluster 3 rows, grammar-mode matrix planning, and sidecar observability
+around those shared evaluation surfaces.

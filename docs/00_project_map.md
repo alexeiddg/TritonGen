@@ -92,11 +92,14 @@ When sources disagree, use this hierarchy:
 6. `audits/` provides historical evidence and verification records.
 7. Agentic/internal documents provide maintenance context only.
 
-## Remaining Work Before Final Branch
+## Merge-Readiness Notes
 
-- Review and approve the include/exclude policy in
+- The committee-facing cut-list is recorded in
   `docs/results/research_committee_candidate_inventory.md`.
-- Create a final branch from `main` only after the cut-list is accepted.
-- Selectively add ignored result evidence rather than broadly unignoring
-  `outputs/`.
+- The final branch should preserve the selected ignored result evidence by
+  force-tracking only cited files, not by broadly unignoring `outputs/`.
+- Modal/Qwen remains partial at 2,040 / 2,160 rows; do not merge or report it as
+  complete Modal coverage.
+- Fireworks/MiniMax is complete for its imported compile-and-run metric, but it
+  is not directly comparable to Modal Level-2 `functional_success`.
 - Run only local verification unless explicit execution authorization is given.
