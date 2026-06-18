@@ -6,8 +6,9 @@ from cluster3.feedback.dispatcher import DispatchDecision, dispatch, is_p_eligib
 from shared.eval.failure_taxonomy import FAILURE_CODES
 
 
-CONDITIONS = ("P", "G+P", "C+P", "G+C+P")
-C_ACTIVE_CONDITIONS = {"C+P", "G+C+P"}
+CONDITIONS = ("none", "G", "C", "G+C", "P", "G+P", "C+P", "G+C+P")
+P_ACTIVE_CONDITIONS = {"P", "G+P", "C+P", "G+C+P"}
+C_ACTIVE_CONDITIONS = {"C", "G+C", "C+P", "G+C+P"}
 LEVELS = (0, 1, 2, None)
 FAILURE_CODES_AND_SUCCESS = tuple(sorted(FAILURE_CODES)) + (None,)
 
@@ -34,8 +35,12 @@ def test_dispatch_table_all_failure_codes_levels_and_conditions(
 def test_dispatch_p_eligible_only_f1_compile_at_level1(condition: str) -> None:
     decision = dispatch(condition, "F1_COMPILE", 1)
 
-    assert decision.route == "p_loop"
-    assert decision.reason == "p_eligible"
+    if condition in P_ACTIVE_CONDITIONS:
+        assert decision.route == "p_loop"
+        assert decision.reason == "p_eligible"
+    else:
+        assert decision.route == "terminate"
+        assert decision.reason == "f1_compile_terminal_no_p"
     assert decision.failure_code == "F1_COMPILE"
     assert decision.c_loop_source == "none"
 
@@ -109,7 +114,7 @@ def test_dispatch_initial_f2_marks_c_loop_source_initial_f2(condition: str) -> N
 
 def test_dispatcher_rejects_unknown_condition() -> None:
     with pytest.raises(ValueError, match="condition"):
-        dispatch("none", None, 2)
+        dispatch("X", None, 2)
 
 
 def test_dispatcher_rejects_unknown_failure_code() -> None:
@@ -119,7 +124,7 @@ def test_dispatcher_rejects_unknown_failure_code() -> None:
 
 def test_dispatcher_rejects_unknown_condition_before_success_shortcut() -> None:
     with pytest.raises(ValueError, match="condition"):
-        dispatch("none", None, 2, functional_success=True)
+        dispatch("X", None, 2, functional_success=True)
 
 
 def test_dispatcher_rejects_unknown_failure_code_before_level0_terminal() -> None:
@@ -176,6 +181,12 @@ def _expected_decision(
     if failure_code == "F1_COMPILE":
         if level_reached != 1:
             return ValueError
+        if condition not in P_ACTIVE_CONDITIONS:
+            return DispatchDecision(
+                route="terminate",
+                reason="f1_compile_terminal_no_p",
+                failure_code=failure_code,
+            )
         return DispatchDecision(
             route="p_loop",
             reason="p_eligible",

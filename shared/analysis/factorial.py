@@ -41,6 +41,18 @@ from shared.eval.constants import (
     SIGNIFICANCE_ALPHA,
 )
 from shared.eval.reporting.grammar_language import grammar_condition_label_for_variants
+from shared.factors.grammar_modes import (
+    GRAMMAR_MODE_VALUES,
+    grammar_mode_from_active_variant,
+    normalize_grammar_mode,
+    validate_grammar_mode_binding,
+)
+from shared.repair_history.policies import (
+    AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1,
+    LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1,
+    REPAIR_HISTORY_POLICIES_V1,
+    UNKNOWN_LEGACY_REPAIR_HISTORY_POLICY,
+)
 
 
 CANONICAL_CONDITIONS = (
@@ -86,6 +98,138 @@ REQUESTED_SCALE_TIER_COLUMN = "_requested_scale_tier"
 SCALE_TIER_SOURCE_RAW = "raw_row"
 SCALE_TIER_SOURCE_MISSING_DEFAULT = "raw_missing_default_unspecified"
 SCALE_TIER_SOURCE_ANALYSIS_ANNOTATION = "analysis_cli_annotation"
+REPAIR_HISTORY_POLICY_COLUMN = "repair_history_policy"
+REPAIR_HISTORY_POLICY_STATE_COLUMN = "repair_history_policy_state"
+RAW_REPAIR_HISTORY_POLICY_COLUMN = "_raw_repair_history_policy"
+REPAIR_HISTORY_POLICY_EXPLICIT_COLUMN = "_repair_history_policy_explicit"
+REPAIR_HISTORY_MISSING_METADATA_COLUMN = "repair_history_missing_agentic_metadata"
+REPAIR_HISTORY_STATE_KNOWN_LEGACY_MISSING = "known_legacy_missing_policy"
+REPAIR_HISTORY_STATE_EXPLICIT_LEGACY = "explicit_last_attempt_only"
+REPAIR_HISTORY_STATE_EXPLICIT_AGENTIC = "explicit_agentic_transcript"
+REPAIR_HISTORY_STATE_UNKNOWN_POLICY = "unknown_policy"
+REPAIR_HISTORY_STATE_MIXED_POLICY_ARTIFACT = "mixed_policy_artifact"
+REPAIR_HISTORY_STATE_INCOMPLETE_AGENTIC = "incomplete_agentic_metadata"
+REPAIR_HISTORY_GROUPING_COLUMNS = (
+    REPAIR_HISTORY_POLICY_COLUMN,
+    "repair_prompt_template_version",
+    "repair_prompt_renderer_version",
+    "repair_max_prompt_chars",
+    "repair_include_latest_source",
+)
+REPAIR_HISTORY_ARTIFACT_HOMOGENEITY_COLUMNS = (
+    "repair_prompt_template_version",
+    "repair_prompt_renderer_version",
+    "repair_max_prompt_chars",
+    "repair_include_latest_source",
+)
+REPAIR_HISTORY_ATTEMPT_INDEX_SIGNAL_FIELDS = (
+    "attempt_index",
+    "generation_index",
+    "terminal_attempt_index",
+    "p_repair_attempt_count",
+    "c_attempt_count",
+)
+REPAIR_HISTORY_ATTEMPT_BOOL_SIGNAL_FIELDS = (
+    "p_repair_attempted",
+)
+REPAIR_HISTORY_AGENTIC_REQUIRED_METADATA = (
+    "repair_prompt_template_version",
+    "repair_prompt_renderer_version",
+    "repair_anchor_attempt_index",
+    "repair_latest_attempt_index",
+    "repair_history_attempt_count",
+    "repair_prompt_sha256",
+    "repair_prompt_char_count",
+    "repair_max_prompt_chars",
+    "repair_include_latest_source",
+    "repair_anchor_source_hash",
+    "repair_latest_source_hash",
+    "repair_history_summary_sha256",
+)
+REPAIR_HISTORY_FIELD_ALIASES = {
+    REPAIR_HISTORY_POLICY_COLUMN: (
+        "repair_history_policy",
+        "c_history_policy",
+        "p_history_policy",
+    ),
+    "repair_prompt_template_version": (
+        "repair_prompt_template_version",
+        "c_repair_prompt_template_version",
+        "p_repair_prompt_template_version",
+    ),
+    "repair_prompt_renderer_version": (
+        "repair_prompt_renderer_version",
+        "c_repair_prompt_renderer_version",
+        "p_repair_prompt_renderer_version",
+    ),
+    "repair_anchor_attempt_index": (
+        "repair_anchor_attempt_index",
+        "c_repair_anchor_attempt_index",
+        "p_repair_anchor_attempt_index",
+    ),
+    "repair_latest_attempt_index": (
+        "repair_latest_attempt_index",
+        "c_repair_latest_attempt_index",
+        "p_repair_latest_attempt_index",
+    ),
+    "repair_history_attempt_count": (
+        "repair_history_attempt_count",
+        "c_repair_history_attempt_count",
+        "p_repair_history_attempt_count",
+    ),
+    "repair_prompt_sha256": (
+        "repair_prompt_sha256",
+        "c_repair_prompt_sha256",
+        "p_repair_prompt_sha256",
+    ),
+    "repair_prompt_char_count": (
+        "repair_prompt_char_count",
+        "c_repair_prompt_char_count",
+        "p_repair_prompt_char_count",
+    ),
+    "repair_max_prompt_chars": (
+        "repair_max_prompt_chars",
+        "c_repair_max_prompt_chars",
+        "p_repair_max_prompt_chars",
+    ),
+    "repair_include_latest_source": (
+        "repair_include_latest_source",
+        "c_repair_include_latest_source",
+        "p_repair_include_latest_source",
+    ),
+    "repair_anchor_source_hash": (
+        "repair_anchor_source_hash",
+        "c_repair_anchor_source_hash",
+        "p_repair_anchor_source_hash",
+    ),
+    "repair_latest_source_hash": (
+        "repair_latest_source_hash",
+        "c_repair_latest_source_hash",
+        "p_repair_latest_source_hash",
+    ),
+    "repair_history_summary_sha256": (
+        "repair_history_summary_sha256",
+        "c_repair_history_summary_sha256",
+        "p_repair_history_summary_sha256",
+    ),
+    "repair_history_error_code": (
+        "repair_history_error_code",
+        "c_repair_history_error_code",
+        "p_repair_history_error_code",
+    ),
+}
+REPAIR_HISTORY_ANALYZER_COLUMNS = (
+    REPAIR_HISTORY_POLICY_COLUMN,
+    REPAIR_HISTORY_POLICY_STATE_COLUMN,
+    RAW_REPAIR_HISTORY_POLICY_COLUMN,
+    REPAIR_HISTORY_POLICY_EXPLICIT_COLUMN,
+    REPAIR_HISTORY_MISSING_METADATA_COLUMN,
+    *(
+        field
+        for field in REPAIR_HISTORY_FIELD_ALIASES
+        if field != REPAIR_HISTORY_POLICY_COLUMN
+    ),
+)
 
 PAIRED_REPLAY_COMPARISONS = {"C": "none", "G+C": "G"}
 P_PAIRED_REPLAY_COMPARISONS: dict[str, str] = {
@@ -121,6 +265,25 @@ P_CELL_DEFERRAL_STATEMENT = (
 CURRENT_STATUS_SCOPE_STATEMENT = (
     "This is a current-status scope statement, not a methodology realignment."
 )
+OUTCOME_FAMILY_SCHEMA_VERSION = "outcome_family_v1"
+METRIC_REGISTRY_SCHEMA_VERSION = "metric_registry_v1"
+REGISTRY_PROVENANCE_SCHEMA_VERSION = "registry_provenance_v1"
+STRUCTURAL_TASK_SOURCE_DOC_VERSIONS = {
+    "docs/14_structural_vs_task_outcome_reporting_plan.md": "0.1.1",
+    "docs/17_structural_task_analyzer_metadata_implementation_spec.md": "0.1.3",
+}
+REQUIRED_METRIC_REGISTRY_KEYS = (
+    "level2_functional_success_rate",
+    "level1_compile_success_rate",
+    "grammar_valid_rate",
+    "syntax_valid_rate",
+    "terminal_failure_distribution",
+    "compile_pass_at_k",
+    "correctness_pass_at_k",
+    "repair_set_success_rate",
+    "eval_set_success_rate",
+    "benchmarkable_pass_at_k",
+)
 
 
 def effective_paired_replay_comparisons(
@@ -141,6 +304,7 @@ def load_results(
     *,
     input_role: str | None = None,
     scale_tier_annotation: str | None = None,
+    missing_repair_history_policy_artifact_kind: str = "known_legacy",
 ) -> pd.DataFrame:
     """Load and normalize one EvalResult-shaped JSONL file."""
 
@@ -154,6 +318,9 @@ def load_results(
         source_path=str(jsonl_path),
         input_role=input_role,
         scale_tier_annotation=scale_tier_annotation,
+        missing_repair_history_policy_artifact_kind=(
+            missing_repair_history_policy_artifact_kind
+        ),
     )
 
 
@@ -162,6 +329,7 @@ def load_result_paths(
     *,
     input_roles: Sequence[str | None] | None = None,
     scale_tier_annotation: str | None = None,
+    missing_repair_history_policy_artifact_kind: str = "known_legacy",
 ) -> pd.DataFrame:
     """Load and normalize one or more EvalResult JSONL paths."""
 
@@ -177,6 +345,9 @@ def load_result_paths(
             path,
             input_role=input_role,
             scale_tier_annotation=scale_tier_annotation,
+            missing_repair_history_policy_artifact_kind=(
+                missing_repair_history_policy_artifact_kind
+            ),
         )
         for path, input_role in zip(paths, role_list, strict=True)
     ]
@@ -205,6 +376,7 @@ def normalize_result_rows(
     source_path: str | None = None,
     input_role: str | None = None,
     scale_tier_annotation: str | None = None,
+    missing_repair_history_policy_artifact_kind: str = "known_legacy",
 ) -> pd.DataFrame:
     """Normalize current EvalResult and Cluster 2 row shapes for analysis."""
 
@@ -272,6 +444,48 @@ def normalize_result_rows(
             source_path=source_path,
             row_index=row_index,
         )
+        grammar_variant = _first_present(
+            payload,
+            "grammar_variant",
+            nested=generated_metadata,
+            default=None,
+        )
+        grammar_claim_scope = _first_present(
+            payload,
+            "grammar_claim_scope",
+            nested=generated_metadata,
+            default=None,
+        )
+        grammar_path = _first_present(
+            payload,
+            "grammar_path",
+            nested=generated_metadata,
+            default=None,
+        )
+        grammar_active = _grammar_active_for_row(
+            payload,
+            generated_metadata=generated_metadata,
+            condition=condition,
+        )
+        grammar_mode, grammar_mode_source = _normalize_grammar_mode_for_row(
+            payload,
+            generated_metadata=generated_metadata,
+            condition=condition,
+            grammar_active=grammar_active,
+            grammar_variant=grammar_variant,
+            grammar_path=grammar_path,
+            grammar_claim_scope=grammar_claim_scope,
+        )
+        repair_history_metadata = _repair_history_metadata_from_payload(
+            payload,
+            generated_metadata=generated_metadata,
+            replay_metadata=replay_metadata,
+            source_path=source_path,
+            row_index=row_index,
+            missing_policy_artifact_kind=(
+                missing_repair_history_policy_artifact_kind
+            ),
+        )
         record = dict(payload)
         record.update(
             {
@@ -311,18 +525,11 @@ def normalize_result_rows(
                 RAW_SCALE_TIER_EXPLICIT_COLUMN: raw_scale_tier_explicit,
                 SCALE_TIER_SOURCE_COLUMN: scale_tier_source,
                 REQUESTED_SCALE_TIER_COLUMN: requested_scale_tier,
-                "grammar_variant": _first_present(
-                    payload,
-                    "grammar_variant",
-                    nested=generated_metadata,
-                    default=None,
-                ),
-                "grammar_claim_scope": _first_present(
-                    payload,
-                    "grammar_claim_scope",
-                    nested=generated_metadata,
-                    default=None,
-                ),
+                "grammar_active": grammar_active,
+                "grammar_mode": grammar_mode,
+                "grammar_mode_source": grammar_mode_source,
+                "grammar_variant": grammar_variant,
+                "grammar_claim_scope": grammar_claim_scope,
                 "grammar_valid": _bool_or_none(
                     _first_present(
                         payload,
@@ -373,12 +580,14 @@ def normalize_result_rows(
                 "source_path": source_path,
                 "source_row_index": row_index,
                 **cluster3_diagnostics,
+                **repair_history_metadata,
             }
         )
         for factor, active in _condition_factors(condition).items():
             record[factor] = active
         normalized.append(record)
-    return pd.DataFrame(normalized)
+    df = pd.DataFrame(normalized)
+    return _validate_repair_history_artifacts(df)
 
 
 def analyze_factorial(
@@ -419,6 +628,9 @@ def analyze_factorial(
         )
     df = _ensure_pair_identity_columns(df)
     df = _ensure_cluster3_analysis_columns(df)
+    df = _ensure_repair_history_analysis_columns(df)
+    df = _validate_repair_history_artifacts(df)
+    _validate_single_repair_history_analysis_group(df)
 
     _validate_conditions(df)
     scale_tiers = _validate_scale_tiers(df, allow_mixed_scale=allow_mixed_scale)
@@ -448,6 +660,9 @@ def analyze_factorial(
     if scope == "primary_functional":
         _require_current_primary_cells(populated_cells)
 
+    metric_registry = _metric_registry()
+    _validate_metric_registry(metric_registry)
+
     cell_outcomes = _cell_outcome_frame(df, response_variable=response_variable)
     summary_variables = [response_variable]
     if _should_emit_secondary_compile_summary(df, response_variable=response_variable):
@@ -473,6 +688,7 @@ def analyze_factorial(
     if _should_emit_secondary_compile_summary(df, response_variable=response_variable):
         secondary_compile_comparisons = _secondary_compile_comparison_rows(
             df,
+            scope=scope,
             populated_cells=populated_cells,
             bootstrap_samples=bootstrap_samples,
             bootstrap_seed=bootstrap_seed,
@@ -483,10 +699,20 @@ def analyze_factorial(
             )
         )
 
+    _annotate_metric_rows(cell_summaries, metric_registry)
+    _annotate_metric_rows(paired_comparisons, metric_registry)
+
+    reportable_output = _is_reportable_output(
+        scope=scope,
+        scale_tiers=scale_tiers,
+        allow_mixed_scale=allow_mixed_scale,
+        populated_cells=populated_cells,
+    )
     factorial_model = _factorial_model(
         cell_outcomes,
         response_variable=response_variable,
         populated_cells=populated_cells,
+        reportable_output=reportable_output,
     )
     diagnostics = _diagnostics(
         df,
@@ -514,6 +740,16 @@ def analyze_factorial(
         ],
         "scale_tiers": scale_tiers,
         **scale_tier_metadata,
+        **_repair_history_policy_metadata(df),
+        "outcome_family_schema_version": OUTCOME_FAMILY_SCHEMA_VERSION,
+        "outcome_families": _outcome_families(),
+        "metric_registry_schema_version": METRIC_REGISTRY_SCHEMA_VERSION,
+        "metric_registry": metric_registry,
+        "metric_aliases": _metric_aliases(metric_registry),
+        "registry_provenance": _registry_provenance(
+            df,
+            scale_tiers=scale_tiers,
+        ),
         "cells_populated": list(populated_cells),
         "cells_missing": list(missing_cells),
         "cells_status": cell_status,
@@ -524,12 +760,7 @@ def analyze_factorial(
             "multiple_testing_method": MULTIPLE_TESTING_METHOD,
             "significance_alpha": SIGNIFICANCE_ALPHA,
         },
-        "reportable": _is_reportable_output(
-            scope=scope,
-            scale_tiers=scale_tiers,
-            allow_mixed_scale=allow_mixed_scale,
-            populated_cells=populated_cells,
-        ),
+        "reportable": reportable_output,
         "interpretation_flags": global_flags,
         **_f3_and_coverage_metadata(df),
     }
@@ -541,15 +772,29 @@ def analyze_factorial(
                 "(rate_GCP - rate_GC) - (rate_GP - rate_G) - "
                 "(rate_CP - rate_C) + (rate_P - rate_none)"
             ),
-            "reportable": True,
+            "reportable": reportable_output,
             "response_variable": response_variable,
         }
+        if not reportable_output:
+            metadata["three_way_interaction"]["reason"] = (
+                "requires_reportable_primary_paper_scale_output"
+            )
     elif any(condition in populated_cells for condition in P_CONDITIONS):
         metadata["three_way_interaction"] = {
             "reportable": False,
             "reason": "requires_all_eight_cells",
             "response_variable": response_variable,
         }
+    diagnostics["level_reach_rates"] = _level_reach_rates(df, populated_cells)
+    diagnostics["feedback_activation"] = _feedback_activation_diagnostics(
+        df,
+        populated_cells,
+    )
+    diagnostics["metric_availability"] = _metric_availability(
+        df,
+        metric_registry=metric_registry,
+        reportable_output=metadata["reportable"],
+    )
     result = {
         "metadata": metadata,
         "condition_rates": _condition_rate_summaries(df),
@@ -567,11 +812,15 @@ def factorial_summary(df: pd.DataFrame) -> pd.DataFrame:
 
     normalized = df if "dtype_original" in df else normalize_result_rows(df.to_dict("records"))
     normalized = _ensure_cluster3_analysis_columns(normalized)
+    normalized = _validate_repair_history_artifacts(
+        _ensure_repair_history_analysis_columns(normalized)
+    )
     _validate_response(normalized, SECONDARY_RESPONSE_VARIABLE, "secondary_compile_diagnostic")
-    group_cols = _factorial_summary_group_columns(normalized)
+    summary_frame = _repair_history_effective_group_frame(normalized)
+    group_cols = _factorial_summary_group_columns(summary_frame)
     group_cols.extend(["kernel_class", "dtype"])
     return (
-        normalized.groupby(group_cols, dropna=False)[SECONDARY_RESPONSE_VARIABLE]
+        summary_frame.groupby(group_cols, dropna=False)[SECONDARY_RESPONSE_VARIABLE]
         .agg(["sum", "count"])
         .rename(columns={"sum": "n_correct", "count": "n_total"})
         .assign(pass_at_1=lambda frame: frame["n_correct"] / frame["n_total"])
@@ -683,12 +932,12 @@ def paired_condition_summary(
     """Return paired binary outcomes for arbitrary tuple-matched conditions."""
 
     df = _ensure_pair_identity_columns(df)
-    key_columns = tuple(pair_key_columns or PAIR_KEY_COLUMNS)
+    subset = df[df["condition"].isin({treatment_condition, control_condition})]
+    key_columns = tuple(pair_key_columns or _comparison_pair_key_columns(subset))
     _require_columns(
         df,
         ("condition", response_variable, "attempt_index", *key_columns),
     )
-    subset = df[df["condition"].isin({treatment_condition, control_condition})]
     non_nullable_key_columns = tuple(
         column for column in key_columns if column not in set(nullable_pair_key_columns)
     )
@@ -771,6 +1020,18 @@ def paired_condition_summary(
     return paired
 
 
+def _comparison_pair_key_columns(df: pd.DataFrame) -> tuple[str, ...]:
+    base_cols = tuple(PAIR_KEY_COLUMNS)
+    if "grammar_mode" not in df.columns or df.empty:
+        return base_cols
+    duplicate_condition_attempts = df.duplicated(
+        ["condition", *base_cols, "attempt_index"]
+    ).any()
+    if duplicate_condition_attempts:
+        return (*base_cols, "grammar_mode")
+    return base_cols
+
+
 def paired_p_factor_summary(
     df: pd.DataFrame,
     *,
@@ -839,6 +1100,7 @@ def _p_nullable_pair_key_columns(pair_key_columns: Sequence[str]) -> tuple[str, 
 
 
 P_PAIR_GRAMMAR_METADATA_COLUMNS: tuple[str, ...] = (
+    "grammar_mode",
     "grammar_variant",
     "grammar_claim_scope",
     "grammar_sha",
@@ -1012,6 +1274,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             "raw scale_tier. Explicit conflicting raw tiers are rejected."
         ),
     )
+    parser.add_argument(
+        "--missing-repair-history-policy-artifact-kind",
+        choices=("known_legacy", "unknown"),
+        default="known_legacy",
+        help=(
+            "How to classify artifacts whose rows omit repair_history_policy. "
+            "The default preserves known legacy analyzer compatibility; unknown "
+            "artifacts are quarantined."
+        ),
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--markdown-output", type=Path)
     parser.add_argument("--bootstrap-samples", type=int, default=BOOTSTRAP_SAMPLES)
@@ -1023,6 +1295,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         input_paths,
         input_roles=input_roles,
         scale_tier_annotation=args.scale_tier,
+        missing_repair_history_policy_artifact_kind=(
+            args.missing_repair_history_policy_artifact_kind
+        ),
     )
     result = analyze_factorial(
         df,
@@ -1049,6 +1324,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             render_factorial_markdown_report(result) + "\n",
             encoding="utf-8",
         )
+    # Seam D: optionally mirror analyzer aggregates into MLflow (post-hoc,
+    # opt-in). The analyzer output written above is the source of truth; this
+    # never changes it. Imported locally so the analyzer stays
+    # infrastructure-agnostic and the pure functions never touch tracking.
+    from shared import tracking
+
+    with tracking.run_context(backend="local"):
+        meta = result.get("metadata", {})
+        tags = {"kind": "factorial_analysis"}
+        for field in ("response_variable", "analysis_scope", "analyzer_version"):
+            value = meta.get(field)
+            if value:
+                tags[field] = str(value)
+        tracking.set_tags(tags)
+        tracking.log_factorial_summary(result)
     return 0
 
 
@@ -1521,6 +1811,67 @@ def _condition_factors(condition: str) -> dict[str, bool]:
     }
 
 
+def _grammar_active_for_row(
+    payload: Mapping[str, Any],
+    *,
+    generated_metadata: Mapping[str, Any],
+    condition: str,
+) -> bool:
+    condition_value = _condition_factors(condition)["grammar_active"]
+    explicit = _first_present(
+        payload,
+        "grammar_active",
+        nested=generated_metadata,
+        default=None,
+    )
+    if explicit is None or _is_missing_value(explicit):
+        return condition_value
+    explicit_value = bool(explicit)
+    if explicit_value is not condition_value:
+        raise ValueError("grammar_active must match condition G factor")
+    return explicit_value
+
+
+def _normalize_grammar_mode_for_row(
+    payload: Mapping[str, Any],
+    *,
+    generated_metadata: Mapping[str, Any],
+    condition: str,
+    grammar_active: bool,
+    grammar_variant: str | None,
+    grammar_path: str | None,
+    grammar_claim_scope: str | None,
+) -> tuple[str | None, str]:
+    del condition
+    explicit = _first_present(
+        payload,
+        "grammar_mode",
+        nested=generated_metadata,
+        default=None,
+    )
+    if explicit is not None and not _is_missing_value(explicit):
+        mode = normalize_grammar_mode(str(explicit))
+        validate_grammar_mode_binding(
+            grammar_mode=mode,
+            grammar_active=grammar_active,
+            grammar_variant=grammar_variant,
+            grammar_path=grammar_path,
+            grammar_claim_scope=grammar_claim_scope,
+        )
+        return mode, "explicit"
+    if grammar_variant is not None and not _is_missing_value(grammar_variant):
+        return (
+            grammar_mode_from_active_variant(
+                grammar_active=grammar_active,
+                grammar_variant=str(grammar_variant),
+            ),
+            "derived_from_grammar_variant",
+        )
+    if not grammar_active:
+        return "grammar_off", "derived_from_inactive_grammar"
+    return None, "legacy_missing_grammar_mode"
+
+
 def _factors_to_condition(factors: Mapping[str, bool]) -> str:
     labels = []
     if factors.get("G"):
@@ -1670,6 +2021,405 @@ def _cluster3_scalar_diagnostic_value(
     )
 
 
+def _repair_history_metadata_from_payload(
+    payload: Mapping[str, Any],
+    *,
+    generated_metadata: Mapping[str, Any] | None,
+    replay_metadata: Mapping[str, Any] | None,
+    source_path: str | None,
+    row_index: int,
+    missing_policy_artifact_kind: str,
+) -> dict[str, Any]:
+    if missing_policy_artifact_kind not in {"known_legacy", "unknown"}:
+        raise ValueError(
+            "missing_repair_history_policy_artifact_kind must be known_legacy "
+            "or unknown"
+        )
+
+    values = {
+        field: _repair_history_alias_value(
+            payload,
+            generated_metadata=generated_metadata,
+            replay_metadata=replay_metadata,
+            field=field,
+            source_path=source_path,
+            row_index=row_index,
+        )
+        for field in REPAIR_HISTORY_FIELD_ALIASES
+    }
+    raw_policy = values[REPAIR_HISTORY_POLICY_COLUMN]
+    explicit_policy = not _is_missing_value(raw_policy)
+    policy, state = _classify_repair_history_policy(
+        raw_policy,
+        missing_policy_artifact_kind=missing_policy_artifact_kind,
+    )
+    missing_agentic_metadata: list[str] = []
+    if (
+        policy == AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1
+        and (
+            _has_rendered_repair_history_metadata(values)
+            or _row_requires_rendered_repair_history_metadata(
+                payload,
+                generated_metadata=generated_metadata,
+                replay_metadata=replay_metadata,
+            )
+        )
+    ):
+        missing_agentic_metadata = [
+            field
+            for field in REPAIR_HISTORY_AGENTIC_REQUIRED_METADATA
+            if _is_missing_value(values.get(field))
+        ]
+        if missing_agentic_metadata:
+            state = REPAIR_HISTORY_STATE_INCOMPLETE_AGENTIC
+
+    result = {
+        REPAIR_HISTORY_POLICY_COLUMN: policy,
+        REPAIR_HISTORY_POLICY_STATE_COLUMN: state,
+        RAW_REPAIR_HISTORY_POLICY_COLUMN: (
+            None if _is_missing_value(raw_policy) else str(raw_policy)
+        ),
+        REPAIR_HISTORY_POLICY_EXPLICIT_COLUMN: explicit_policy,
+        REPAIR_HISTORY_MISSING_METADATA_COLUMN: missing_agentic_metadata,
+    }
+    for field, value in values.items():
+        if field == REPAIR_HISTORY_POLICY_COLUMN:
+            continue
+        result[field] = _normalize_repair_history_field_value(field, value)
+    return result
+
+
+def _repair_history_alias_value(
+    payload: Mapping[str, Any],
+    *,
+    generated_metadata: Mapping[str, Any] | None,
+    replay_metadata: Mapping[str, Any] | None,
+    field: str,
+    source_path: str | None,
+    row_index: int,
+) -> Any:
+    candidates = REPAIR_HISTORY_FIELD_ALIASES[field]
+    values: list[Any] = []
+    for candidate in candidates:
+        value = payload.get(candidate)
+        if not _is_missing_value(value):
+            values.append(value)
+        for nested in (generated_metadata, replay_metadata):
+            if nested is None:
+                continue
+            value = nested.get(candidate)
+            if not _is_missing_value(value):
+                values.append(value)
+    unique = {_repair_history_comparable_value(value) for value in values}
+    if len(unique) > 1:
+        raise ValueError(
+            "conflicting repair-history metadata aliases"
+            f" for field={field!r}, source_path={source_path!r}, "
+            f"row_index={row_index}: {sorted(unique)}"
+        )
+    return values[0] if values else None
+
+
+def _repair_history_comparable_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, np.integer)):
+        return str(int(value))
+    return str(value)
+
+
+def _has_rendered_repair_history_metadata(values: Mapping[str, Any]) -> bool:
+    return any(
+        not _is_missing_value(values.get(field))
+        for field in REPAIR_HISTORY_AGENTIC_REQUIRED_METADATA
+    )
+
+
+def _row_requires_rendered_repair_history_metadata(
+    payload: Mapping[str, Any],
+    *,
+    generated_metadata: Mapping[str, Any] | None,
+    replay_metadata: Mapping[str, Any] | None,
+) -> bool:
+    for field in REPAIR_HISTORY_ATTEMPT_INDEX_SIGNAL_FIELDS:
+        value = _metadata_first_present(
+            payload,
+            generated_metadata,
+            replay_metadata,
+            field,
+            default=None,
+        )
+        if _is_missing_value(value):
+            continue
+        if int(value) > 0:
+            return True
+    for field in REPAIR_HISTORY_ATTEMPT_BOOL_SIGNAL_FIELDS:
+        value = _metadata_first_present(
+            payload,
+            generated_metadata,
+            replay_metadata,
+            field,
+            default=None,
+        )
+        if _is_missing_value(value):
+            continue
+        if _bool_or_none(value) is True:
+            return True
+    return False
+
+
+def _classify_repair_history_policy(
+    raw_policy: Any,
+    *,
+    missing_policy_artifact_kind: str,
+) -> tuple[str, str]:
+    if _is_missing_value(raw_policy):
+        if missing_policy_artifact_kind == "known_legacy":
+            return (
+                LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1,
+                REPAIR_HISTORY_STATE_KNOWN_LEGACY_MISSING,
+            )
+        return (
+            UNKNOWN_LEGACY_REPAIR_HISTORY_POLICY,
+            REPAIR_HISTORY_STATE_UNKNOWN_POLICY,
+        )
+    if not isinstance(raw_policy, str):
+        return (str(raw_policy), REPAIR_HISTORY_STATE_UNKNOWN_POLICY)
+    if raw_policy == LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1:
+        return (raw_policy, REPAIR_HISTORY_STATE_EXPLICIT_LEGACY)
+    if raw_policy == AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1:
+        return (raw_policy, REPAIR_HISTORY_STATE_EXPLICIT_AGENTIC)
+    if raw_policy not in REPAIR_HISTORY_POLICIES_V1:
+        return (raw_policy, REPAIR_HISTORY_STATE_UNKNOWN_POLICY)
+    return (raw_policy, REPAIR_HISTORY_STATE_UNKNOWN_POLICY)
+
+
+def _normalize_repair_history_field_value(field: str, value: Any) -> Any:
+    if _is_missing_value(value):
+        return None
+    if field in {
+        "repair_anchor_attempt_index",
+        "repair_latest_attempt_index",
+        "repair_history_attempt_count",
+        "repair_prompt_char_count",
+        "repair_max_prompt_chars",
+    }:
+        return int(value)
+    if field == "repair_include_latest_source":
+        return _bool_or_none(value)
+    return str(value)
+
+
+def _ensure_repair_history_analysis_columns(df: pd.DataFrame) -> pd.DataFrame:
+    if all(column in df.columns for column in REPAIR_HISTORY_ANALYZER_COLUMNS):
+        return df.copy()
+
+    updated = df.copy()
+    rows: list[dict[str, Any]] = []
+    for row_index, (_, row) in enumerate(updated.iterrows()):
+        payload = row.to_dict()
+        rows.append(
+            _repair_history_metadata_from_payload(
+                payload,
+                generated_metadata=_metadata_dict(payload.get("generated_metadata")),
+                replay_metadata=_metadata_dict(payload.get("replay_metadata")),
+                source_path=(
+                    str(payload.get("source_path"))
+                    if not _is_missing_value(payload.get("source_path"))
+                    else None
+                ),
+                row_index=row_index,
+                missing_policy_artifact_kind="known_legacy",
+            )
+        )
+    for column in REPAIR_HISTORY_ANALYZER_COLUMNS:
+        updated[column] = [row[column] for row in rows]
+    return updated
+
+
+def _validate_repair_history_artifacts(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    normalized = _ensure_repair_history_analysis_columns(df)
+    for artifact_key, artifact in _repair_history_artifact_groups(normalized):
+        state_values = _repair_history_distinct_values(
+            artifact[REPAIR_HISTORY_POLICY_STATE_COLUMN]
+        )
+        if REPAIR_HISTORY_STATE_UNKNOWN_POLICY in state_values:
+            raise ValueError(
+                "quarantined repair-history artifact has unknown repair_history_policy"
+                f" for artifact={artifact_key!r}: {state_values}"
+            )
+        if REPAIR_HISTORY_STATE_INCOMPLETE_AGENTIC in state_values:
+            missing = _missing_agentic_metadata_by_artifact(artifact)
+            raise ValueError(
+                "quarantined repair-history artifact has incomplete "
+                "agentic_transcript_v1 metadata"
+                f" for artifact={artifact_key!r}: {missing}"
+            )
+        non_missing_states = [
+            state
+            for state in state_values
+            if not _is_missing_value(state)
+        ]
+        if len(non_missing_states) > 1:
+            normalized.loc[
+                artifact.index,
+                REPAIR_HISTORY_POLICY_STATE_COLUMN,
+            ] = REPAIR_HISTORY_STATE_MIXED_POLICY_ARTIFACT
+            raise ValueError(
+                "quarantined mixed_policy_artifact repair_history_policy artifact"
+                f" for artifact={artifact_key!r}: {non_missing_states}"
+            )
+        for column in REPAIR_HISTORY_ARTIFACT_HOMOGENEITY_COLUMNS:
+            values = _repair_history_distinct_values(artifact[column])
+            if len(values) > 1:
+                raise ValueError(
+                    "quarantined mixed repair-history prompt metadata"
+                    f" for artifact={artifact_key!r}, column={column!r}: {values}"
+                )
+    return normalized
+
+
+def _repair_history_artifact_groups(
+    df: pd.DataFrame,
+) -> Iterable[tuple[str, pd.DataFrame]]:
+    if "source_path" not in df.columns:
+        yield "<in_memory_rows>", df
+        return
+    artifact_keys = [
+        "<in_memory_rows>"
+        if _is_missing_value(value)
+        else str(value)
+        for value in df["source_path"].tolist()
+    ]
+    for artifact_key in sorted(set(artifact_keys)):
+        mask = [key == artifact_key for key in artifact_keys]
+        yield artifact_key, df.loc[mask]
+
+
+def _repair_history_distinct_values(series: pd.Series) -> list[Any]:
+    values = {
+        _repair_history_group_value(value)
+        for value in series.tolist()
+        if not _is_missing_value(value)
+    }
+    return sorted(values, key=lambda value: str(value))
+
+
+def _repair_history_group_value(value: Any) -> Any:
+    if isinstance(value, (np.bool_,)):
+        return bool(value)
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating,)):
+        return float(value)
+    return value
+
+
+def _missing_agentic_metadata_by_artifact(artifact: pd.DataFrame) -> dict[int, list[str]]:
+    result: dict[int, list[str]] = {}
+    for row_index, row in artifact.iterrows():
+        missing = row.get(REPAIR_HISTORY_MISSING_METADATA_COLUMN)
+        if _is_missing_value(missing):
+            continue
+        missing_values = list(missing)
+        if missing_values:
+            result[int(row_index)] = missing_values
+    return result
+
+
+def _repair_history_group_columns(df: pd.DataFrame) -> list[str]:
+    return [
+        column
+        for column in REPAIR_HISTORY_GROUPING_COLUMNS
+        if column in df.columns
+    ]
+
+
+def _repair_history_group_records(df: pd.DataFrame) -> list[dict[str, Any]]:
+    group_frame = _repair_history_effective_group_frame(df)
+    group_columns = _repair_history_group_columns(group_frame)
+    groups: list[dict[str, Any]] = []
+    if group_columns:
+        for key, group in group_frame.groupby(group_columns, sort=True, dropna=False):
+            key_tuple = key if isinstance(key, tuple) else (key,)
+            record = {
+                column: _repair_history_output_value(value)
+                for column, value in zip(group_columns, key_tuple, strict=True)
+            }
+            record["n_rows"] = int(len(group))
+            groups.append(record)
+    return groups
+
+
+def _repair_history_effective_group_frame(df: pd.DataFrame) -> pd.DataFrame:
+    grouped = df.copy()
+    if grouped.empty:
+        return grouped
+    for _, artifact in _repair_history_artifact_groups(grouped):
+        _fill_missing_repair_history_group_values(grouped, artifact.index)
+    if REPAIR_HISTORY_POLICY_COLUMN in grouped.columns:
+        for _, policy_group in grouped.groupby(
+            REPAIR_HISTORY_POLICY_COLUMN,
+            sort=True,
+            dropna=False,
+        ):
+            _fill_missing_repair_history_group_values(grouped, policy_group.index)
+    return grouped
+
+
+def _fill_missing_repair_history_group_values(
+    grouped: pd.DataFrame,
+    index: pd.Index,
+) -> None:
+    for column in REPAIR_HISTORY_ARTIFACT_HOMOGENEITY_COLUMNS:
+        if column not in grouped.columns:
+            continue
+        values = _repair_history_distinct_values(grouped.loc[index, column])
+        if len(values) != 1:
+            continue
+        fill_value = values[0]
+        missing_mask = [
+            _is_missing_value(value)
+            for value in grouped.loc[index, column].tolist()
+        ]
+        if any(missing_mask):
+            grouped.loc[index[missing_mask], column] = fill_value
+
+
+def _validate_single_repair_history_analysis_group(df: pd.DataFrame) -> None:
+    groups = _repair_history_group_records(df)
+    if len(groups) <= 1:
+        return
+    raise ValueError(
+        "quarantined mixed repair-history analysis groups; analyze each "
+        f"repair-history group separately: {groups}"
+    )
+
+
+def _repair_history_policy_metadata(df: pd.DataFrame) -> dict[str, Any]:
+    group_columns = _repair_history_group_columns(df)
+    groups = _repair_history_group_records(df)
+    return {
+        "repair_history_policy_states": _repair_history_distinct_values(
+            df[REPAIR_HISTORY_POLICY_STATE_COLUMN]
+        ),
+        "repair_history_policies": _repair_history_distinct_values(
+            df[REPAIR_HISTORY_POLICY_COLUMN]
+        ),
+        "repair_history_group_columns": group_columns,
+        "repair_history_groups": groups,
+        "repair_history_policy_quarantine": "reject_by_default",
+    }
+
+
+def _repair_history_output_value(value: Any) -> Any:
+    if _is_missing_value(value):
+        return None
+    return _repair_history_group_value(value)
+
+
 def _factorial_summary_group_columns(df: pd.DataFrame) -> list[str]:
     group_cols: list[str] = []
     for column in (
@@ -1680,6 +2430,7 @@ def _factorial_summary_group_columns(df: pd.DataFrame) -> list[str]:
     ):
         if column in df.columns:
             group_cols.append(column)
+    group_cols.extend(_repair_history_group_columns(df))
     return group_cols
 
 
@@ -1906,6 +2657,919 @@ def _is_reportable_output(
     return set(CURRENT_FOUR_CELL_CONDITIONS).issubset(populated)
 
 
+def _outcome_families() -> dict[str, dict[str, Any]]:
+    return {
+        "structural_code_surface": {
+            "key": "structural_code_surface",
+            "display_name": "Structural/code-surface quality",
+            "question_answered": (
+                "What improves generated-code structure, surface validity, "
+                "grammar acceptance, compile, or launch?"
+            ),
+            "level_gates": ["level0_parse_surface", "level1_compile_launch"],
+            "report_role": "secondary_or_diagnostic",
+            "schema_version": OUTCOME_FAMILY_SCHEMA_VERSION,
+        },
+        "task_functional": {
+            "key": "task_functional",
+            "display_name": "Task/functional quality",
+            "question_answered": (
+                "What improves numerical correctness under the Level 2 task harness?"
+            ),
+            "level_gates": ["level2_correctness"],
+            "report_role": "primary_current_c_comparisons",
+            "schema_version": OUTCOME_FAMILY_SCHEMA_VERSION,
+        },
+        "benchmarkable_performance": {
+            "key": "benchmarkable_performance",
+            "display_name": "Benchmarkable/performance quality",
+            "question_answered": (
+                "What would qualify a correct row for future performance evaluation?"
+            ),
+            "level_gates": ["level2_correctness", "level4_performance"],
+            "report_role": "future_only",
+            "schema_version": OUTCOME_FAMILY_SCHEMA_VERSION,
+        },
+        "mixed_diagnostic": {
+            "key": "mixed_diagnostic",
+            "display_name": "Mixed diagnostic",
+            "question_answered": (
+                "What explains failure movement or activation without being a "
+                "primary outcome?"
+            ),
+            "level_gates": ["failure_taxonomy"],
+            "report_role": "diagnostic_only",
+            "schema_version": OUTCOME_FAMILY_SCHEMA_VERSION,
+        },
+    }
+
+
+def _metric_registry() -> dict[str, dict[str, Any]]:
+    def entry(
+        metric_name: str,
+        *,
+        display_name: str,
+        aliases: Sequence[str],
+        outcome_family: str,
+        level_gate: str,
+        metric_gate: str,
+        response_variable: str | None,
+        analysis_role: str,
+        denominator_unit: str,
+        denominator_policy: str,
+        numerator_policy: str,
+        attempt_policy: str,
+        cluster_owner: str,
+        scope: str,
+        reportability: str,
+        current_status: str,
+        required_source_fields: Sequence[str],
+        evidence_policy: str,
+        missing_policy: str,
+        forbidden_interpretations: Sequence[str],
+        caveat: str,
+    ) -> dict[str, Any]:
+        return {
+            "metric_name": metric_name,
+            "display_name": display_name,
+            "aliases": list(aliases),
+            "outcome_family": outcome_family,
+            "level_gate": level_gate,
+            "metric_gate": metric_gate,
+            "response_variable": response_variable,
+            "analysis_role": analysis_role,
+            "denominator_unit": denominator_unit,
+            "denominator_policy": denominator_policy,
+            "numerator_policy": numerator_policy,
+            "attempt_policy": attempt_policy,
+            "cluster_owner": cluster_owner,
+            "scope": scope,
+            "reportability": reportability,
+            "current_status": current_status,
+            "required_source_fields": list(required_source_fields),
+            "evidence_policy": evidence_policy,
+            "missing_policy": missing_policy,
+            "forbidden_interpretations": list(forbidden_interpretations),
+            "caveat": caveat,
+            "schema_version": METRIC_REGISTRY_SCHEMA_VERSION,
+        }
+
+    registry = {
+        "level2_functional_success_rate": entry(
+            "level2_functional_success_rate",
+            display_name="Level 2 task/functional success rate",
+            aliases=("functional_success_rate", "task_functional_success_rate"),
+            outcome_family="task_functional",
+            level_gate="level2_correctness",
+            metric_gate=PRIMARY_RESPONSE_VARIABLE,
+            response_variable=PRIMARY_RESPONSE_VARIABLE,
+            analysis_role="primary",
+            denominator_unit="experimental_unit",
+            denominator_policy=(
+                "Current analyzer condition denominator after existing attempt "
+                "collapse and F3 policy; paper-primary only when reportable "
+                "four-cell paper-scale metadata is true."
+            ),
+            numerator_policy="Experimental units with functional_success=True.",
+            attempt_policy=(
+                "Replay controls use attempt_index 0; generated rows collapse "
+                "attempts by experimental unit using any success for the selected "
+                "response variable."
+            ),
+            cluster_owner="cross_cluster",
+            scope="current primary 2^2 G/C subset when reportable; diagnostic otherwise",
+            reportability="reportable_primary",
+            current_status="current_with_caveats",
+            required_source_fields=("condition", PRIMARY_RESPONSE_VARIABLE, *PAIR_KEY_COLUMNS),
+            evidence_policy="derived_with_policy",
+            missing_policy="Primary functional analysis rejects missing functional_success.",
+            forbidden_interpretations=(
+                "Do not treat Cluster 1 compile-only normalized false values as measured Level 2 failure.",
+                "Do not infer performance or benchmarkability from this metric.",
+            ),
+            caveat=(
+                "Cluster 1 controls may be normalized false/unproven under "
+                "current compile-only policy; this is not measured Level 2 failure."
+            ),
+        ),
+        "level1_compile_success_rate": entry(
+            "level1_compile_success_rate",
+            display_name="Level 1 structural compile/launch success rate",
+            aliases=("compile_success_rate", "compile_launch_success_rate"),
+            outcome_family="structural_code_surface",
+            level_gate="level1_compile_launch",
+            metric_gate=SECONDARY_RESPONSE_VARIABLE,
+            response_variable=SECONDARY_RESPONSE_VARIABLE,
+            analysis_role="secondary_diagnostic",
+            denominator_unit="experimental_unit",
+            denominator_policy=(
+                "Condition denominator after current analyzer attempt collapse; "
+                "F3_EVAL_PIPELINE rows remain excluded from compile-rate "
+                "condition summaries under the existing policy."
+            ),
+            numerator_policy="Experimental units with compile_success=True.",
+            attempt_policy="Same attempt collapse as current compile_success analyzer summaries.",
+            cluster_owner="cross_cluster",
+            scope="secondary structural/code-surface diagnostic",
+            reportability="reportable_secondary",
+            current_status="current_with_caveats",
+            required_source_fields=("condition", SECONDARY_RESPONSE_VARIABLE, *PAIR_KEY_COLUMNS),
+            evidence_policy="derived_with_policy",
+            missing_policy="Compile summaries are omitted when compile_success is unavailable.",
+            forbidden_interpretations=(
+                "Do not claim numerical correctness from compile success.",
+                "Do not combine compile and functional success under an unlabeled pass metric.",
+            ),
+            caveat="Compile success is structural/code-surface evidence, not task correctness.",
+        ),
+        "grammar_valid_rate": entry(
+            "grammar_valid_rate",
+            display_name="Grammar-valid rate",
+            aliases=("grammar_acceptance_rate", "grammar_valid"),
+            outcome_family="structural_code_surface",
+            level_gate="level0_parse_surface",
+            metric_gate="grammar_valid",
+            response_variable=None,
+            analysis_role="diagnostic",
+            denominator_unit="row_attempt",
+            denominator_policy="Rows with explicit grammar_valid evidence only.",
+            numerator_policy="Rows where grammar_valid=True.",
+            attempt_policy="Diagnostic row-attempt summary; not a primary condition comparison.",
+            cluster_owner="cluster1",
+            scope="diagnostic grammar acceptance metadata where explicit evidence exists",
+            reportability="diagnostic_only",
+            current_status="current_with_caveats",
+            required_source_fields=("grammar_valid",),
+            evidence_policy="explicit_only",
+            missing_policy="Unavailable when grammar_valid evidence is absent.",
+            forbidden_interpretations=(
+                "Do not treat grammar acceptance as Python syntax validity.",
+                "Do not treat grammar acceptance as compile or functional success.",
+            ),
+            caveat="Grammar validity is a structural diagnostic with schema-specific meaning.",
+        ),
+        "syntax_valid_rate": entry(
+            "syntax_valid_rate",
+            display_name="Syntax-valid rate",
+            aliases=("python_syntax_valid_rate",),
+            outcome_family="structural_code_surface",
+            level_gate="level0_parse_surface",
+            metric_gate="syntax_valid",
+            response_variable=None,
+            analysis_role="diagnostic",
+            denominator_unit="row_attempt",
+            denominator_policy=(
+                "Deferred until every included row has compatible explicit syntax "
+                "evidence and a shared syntax_valid_definition_id."
+            ),
+            numerator_policy="Rows with explicit Python syntax parse success.",
+            attempt_policy="Deferred; no mixed-schema aggregation in S1.",
+            cluster_owner="cross_cluster",
+            scope="planned deferred metric registry entry only",
+            reportability="not_reportable",
+            current_status="planned_deferred",
+            required_source_fields=("syntax_valid", "syntax_valid_definition_id"),
+            evidence_policy="not_computed",
+            missing_policy="Emit availability metadata instead of a mixed-schema rate.",
+            forbidden_interpretations=(
+                "Do not infer syntax validity from missing failure codes.",
+                "Do not infer syntax validity from compile_success.",
+                "Do not merge grammar, parser, and semantic-validator evidence under one syntax label.",
+            ),
+            caveat="S1 intentionally does not compute mixed-schema syntax_valid_rate.",
+        ),
+        "terminal_failure_distribution": entry(
+            "terminal_failure_distribution",
+            display_name="Terminal failure distribution",
+            aliases=("failure_code_distribution", "terminal_failure_rate"),
+            outcome_family="mixed_diagnostic",
+            level_gate="failure_taxonomy",
+            metric_gate="terminal_failure",
+            response_variable=None,
+            analysis_role="diagnostic",
+            denominator_unit="row_attempt",
+            denominator_policy="Rows with terminal failure_code or terminal diagnostic evidence.",
+            numerator_policy="Counts by terminal failure family or failure_code.",
+            attempt_policy="Diagnostic row-attempt distribution; not a primary rate.",
+            cluster_owner="cross_cluster",
+            scope="diagnostic failure movement and coverage explanation",
+            reportability="diagnostic_only",
+            current_status="current_with_caveats",
+            required_source_fields=("failure_code",),
+            evidence_policy="derived_with_policy",
+            missing_policy="Unavailable when terminal failure evidence is absent.",
+            forbidden_interpretations=(
+                "Do not convert F3_EVAL_PIPELINE into functional success.",
+                "Do not describe failure movement as a primary success metric.",
+            ),
+            caveat="Failure distributions are explanatory diagnostics.",
+        ),
+        "compile_pass_at_k": entry(
+            "compile_pass_at_k",
+            display_name="Compile pass-at-k with Level 1 gate",
+            aliases=("level1_compile_pass_at_k",),
+            outcome_family="structural_code_surface",
+            level_gate="level1_compile_launch",
+            metric_gate=SECONDARY_RESPONSE_VARIABLE,
+            response_variable=SECONDARY_RESPONSE_VARIABLE,
+            analysis_role="diagnostic",
+            denominator_unit="sample_group",
+            denominator_policy="Deferred unless gate-specific sample-group counts exist.",
+            numerator_policy="Sample groups with at least one compile_success=True member.",
+            attempt_policy="Requires explicit k/sample-group policy before computation.",
+            cluster_owner="cross_cluster",
+            scope="planned gate-specific diagnostic",
+            reportability="diagnostic_only",
+            current_status="planned_deferred",
+            required_source_fields=("sample_group", SECONDARY_RESPONSE_VARIABLE),
+            evidence_policy="not_computed",
+            missing_policy="Not populated until explicit k-group evidence exists.",
+            forbidden_interpretations=(
+                "Do not emit an ungated pass-at-k metric.",
+                "Do not treat compile pass-at-k as task correctness.",
+            ),
+            caveat="Gate-specific pass-at-k metadata only; no current S1 aggregate is computed.",
+        ),
+        "correctness_pass_at_k": entry(
+            "correctness_pass_at_k",
+            display_name="Correctness pass-at-k with Level 2 gate",
+            aliases=("level2_correctness_pass_at_k",),
+            outcome_family="task_functional",
+            level_gate="level2_correctness",
+            metric_gate=PRIMARY_RESPONSE_VARIABLE,
+            response_variable=PRIMARY_RESPONSE_VARIABLE,
+            analysis_role="primary",
+            denominator_unit="sample_group",
+            denominator_policy="Deferred until Level 2 sample groups exist.",
+            numerator_policy="Sample groups with at least one functional_success=True member.",
+            attempt_policy="Requires explicit k/sample-group policy before computation.",
+            cluster_owner="cross_cluster",
+            scope="planned deferred task/functional sample-group metric",
+            reportability="not_reportable",
+            current_status="planned_deferred",
+            required_source_fields=("sample_group", PRIMARY_RESPONSE_VARIABLE),
+            evidence_policy="not_computed",
+            missing_policy="Not populated until explicit Level 2 sample groups exist.",
+            forbidden_interpretations=(
+                "Do not emit an ungated pass-at-k metric.",
+                "Do not compute from compile-only evidence.",
+            ),
+            caveat="No current correctness pass-at-k aggregate is computed in S1.",
+        ),
+        "repair_set_success_rate": entry(
+            "repair_set_success_rate",
+            display_name="Repair-set task success rate",
+            aliases=("repair_success_rate",),
+            outcome_family="task_functional",
+            level_gate="level2_correctness",
+            metric_gate=PRIMARY_RESPONSE_VARIABLE,
+            response_variable=PRIMARY_RESPONSE_VARIABLE,
+            analysis_role="diagnostic",
+            denominator_unit="matched_pair",
+            denominator_policy="Deferred unless explicit repair-set evidence is available.",
+            numerator_policy="Repair-set rows with functional_success=True.",
+            attempt_policy="Requires explicit repair-set membership and attempt policy.",
+            cluster_owner="cross_cluster",
+            scope="planned or diagnostic repair-set evidence only",
+            reportability="diagnostic_only",
+            current_status="planned_deferred",
+            required_source_fields=("repair_set_id", PRIMARY_RESPONSE_VARIABLE),
+            evidence_policy="not_computed",
+            missing_policy="Not populated without explicit repair-set evidence.",
+            forbidden_interpretations=(
+                "Do not infer repair success from factor labels alone.",
+                "Do not claim repair-memory lift from this deferred registry entry.",
+            ),
+            caveat="Deferred until explicit repair-set evidence exists.",
+        ),
+        "eval_set_success_rate": entry(
+            "eval_set_success_rate",
+            display_name="Evaluation-set task success rate",
+            aliases=("evaluation_set_success_rate",),
+            outcome_family="task_functional",
+            level_gate="level2_correctness",
+            metric_gate=PRIMARY_RESPONSE_VARIABLE,
+            response_variable=PRIMARY_RESPONSE_VARIABLE,
+            analysis_role="diagnostic",
+            denominator_unit="sample_group",
+            denominator_policy="Deferred unless explicit eval-set evidence is available.",
+            numerator_policy="Eval-set rows with functional_success=True.",
+            attempt_policy="Requires explicit eval-set membership and attempt policy.",
+            cluster_owner="cross_cluster",
+            scope="planned eval-set diagnostic",
+            reportability="diagnostic_only",
+            current_status="planned_deferred",
+            required_source_fields=("eval_set_id", PRIMARY_RESPONSE_VARIABLE),
+            evidence_policy="not_computed",
+            missing_policy="Not populated without explicit eval-set evidence.",
+            forbidden_interpretations=(
+                "Do not infer eval-set success from compile-only evidence.",
+                "Do not describe as paper-scale evidence without an approved eval-set contract.",
+            ),
+            caveat="Deferred until explicit eval-set evidence exists.",
+        ),
+        "benchmarkable_pass_at_k": entry(
+            "benchmarkable_pass_at_k",
+            display_name="Benchmarkable pass-at-k with future performance gate",
+            aliases=("level4_benchmarkable_pass_at_k",),
+            outcome_family="benchmarkable_performance",
+            level_gate="level4_performance",
+            metric_gate="future_performance",
+            response_variable=None,
+            analysis_role="future_only",
+            denominator_unit="sample_group",
+            denominator_policy="Future-only; requires a later Level 4 performance contract.",
+            numerator_policy="Future sample groups that satisfy correctness and performance gates.",
+            attempt_policy="Future-only; no S1 computation.",
+            cluster_owner="cross_cluster",
+            scope="future benchmarkable/performance work only",
+            reportability="future_only",
+            current_status="future_only",
+            required_source_fields=("future_level4_performance_evidence",),
+            evidence_policy="not_computed",
+            missing_policy="Always unavailable in S1.",
+            forbidden_interpretations=(
+                "Do not claim performance, timing, speedup, or benchmarkability from S1 metadata.",
+                "Do not emit a current computed rate for this future-only metric.",
+            ),
+            caveat="Future-only metric; no current computation or paper claim is authorized.",
+        ),
+    }
+    _validate_metric_registry(registry)
+    return registry
+
+
+def _validate_metric_registry(registry: Mapping[str, Mapping[str, Any]]) -> None:
+    required_fields = {
+        "metric_name",
+        "display_name",
+        "aliases",
+        "outcome_family",
+        "level_gate",
+        "metric_gate",
+        "response_variable",
+        "analysis_role",
+        "denominator_unit",
+        "denominator_policy",
+        "numerator_policy",
+        "attempt_policy",
+        "cluster_owner",
+        "scope",
+        "reportability",
+        "current_status",
+        "required_source_fields",
+        "evidence_policy",
+        "missing_policy",
+        "forbidden_interpretations",
+        "caveat",
+        "schema_version",
+    }
+    optional_fields = {"definition_id", "compatibility_notes", "source_doc", "source_code", "source_tests"}
+    enum_fields = {
+        "outcome_family": {
+            "structural_code_surface",
+            "task_functional",
+            "benchmarkable_performance",
+            "mixed_diagnostic",
+        },
+        "level_gate": {
+            "level0_parse_surface",
+            "level1_compile_launch",
+            "level2_correctness",
+            "level4_performance",
+            "failure_taxonomy",
+            "not_applicable",
+        },
+        "analysis_role": {"primary", "secondary_diagnostic", "diagnostic", "future_only"},
+        "denominator_unit": {
+            "row_attempt",
+            "experimental_unit",
+            "matched_pair",
+            "sample_group",
+            "not_applicable",
+        },
+        "cluster_owner": {"cluster1", "cluster2", "cluster3", "shared", "cross_cluster"},
+        "reportability": {
+            "reportable_primary",
+            "reportable_secondary",
+            "diagnostic_only",
+            "not_reportable",
+            "future_only",
+        },
+        "current_status": {
+            "current",
+            "current_with_caveats",
+            "planned_deferred",
+            "future_only",
+            "legacy_alias",
+        },
+        "evidence_policy": {
+            "explicit_only",
+            "derived_with_policy",
+            "proxy_diagnostic",
+            "not_computed",
+        },
+    }
+    aliases_seen: dict[str, str] = {}
+    canonical_names = set(registry)
+    for key, entry in registry.items():
+        missing = sorted(required_fields - set(entry))
+        if missing:
+            raise ValueError(f"metric registry entry {key!r} missing required fields: {missing}")
+        unknown = sorted(
+            field
+            for field in entry
+            if field not in required_fields
+            and field not in optional_fields
+            and not field.startswith("x_")
+        )
+        if unknown:
+            raise ValueError(f"metric registry entry {key!r} has unknown fields: {unknown}")
+        if entry["metric_name"] != key:
+            raise ValueError(f"metric registry key/name mismatch for {key!r}")
+        if entry["schema_version"] != METRIC_REGISTRY_SCHEMA_VERSION:
+            raise ValueError(f"metric registry entry {key!r} has unsupported schema_version")
+        for field, allowed in enum_fields.items():
+            if entry[field] not in allowed:
+                raise ValueError(f"metric registry entry {key!r} has invalid {field}: {entry[field]!r}")
+        for list_field in ("aliases", "required_source_fields", "forbidden_interpretations"):
+            values = entry[list_field]
+            if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+                raise ValueError(f"metric registry entry {key!r} field {list_field} must be list[str]")
+        if entry["evidence_policy"] == "not_computed" and entry["current_status"] in {
+            "current",
+            "current_with_caveats",
+        }:
+            raise ValueError(f"current metric {key!r} cannot be marked not_computed")
+        if entry["evidence_policy"] == "not_computed" and entry["reportability"] in {
+            "reportable_primary",
+            "reportable_secondary",
+        }:
+            raise ValueError(f"reportable metric {key!r} cannot be marked not_computed")
+        if entry["current_status"] == "future_only" and entry["reportability"] in {
+            "reportable_primary",
+            "reportable_secondary",
+        }:
+            raise ValueError(f"future-only metric {key!r} cannot be reportable")
+        if entry["reportability"] == "future_only" and entry["current_status"] != "future_only":
+            raise ValueError(f"future-only reportability requires future_only status for {key!r}")
+        for alias in entry["aliases"]:
+            if alias == "":
+                continue
+            if alias in aliases_seen:
+                raise ValueError(
+                    f"metric alias collision for {alias!r}: {aliases_seen[alias]!r} and {key!r}"
+                )
+            if alias in canonical_names and alias != key:
+                raise ValueError(
+                    f"metric alias {alias!r} collides with canonical metric name"
+                )
+            aliases_seen[alias] = key
+        _validate_pass_at_k_gate(entry)
+
+
+def _validate_pass_at_k_gate(entry: Mapping[str, Any]) -> None:
+    metric_name = str(entry["metric_name"])
+    aliases = [str(alias) for alias in entry["aliases"]]
+    display_name = str(entry["display_name"]).lower()
+    pass_at_k_symbol = "pass" + "@k"
+    has_pass_at_k_semantics = (
+        "pass_at_k" in metric_name
+        or any("pass_at_k" in alias or pass_at_k_symbol in alias for alias in aliases)
+        or "pass-at-k" in display_name
+    )
+    if not has_pass_at_k_semantics:
+        return
+    gate_words = ("compile", "correctness", "benchmarkable", "level1", "level2", "level4")
+    searchable = " ".join([metric_name, display_name, *aliases]).lower()
+    if pass_at_k_symbol in aliases:
+        raise ValueError("bare pass-at-k alias is not allowed")
+    if not any(word in searchable for word in gate_words):
+        raise ValueError(f"pass-at-k metric {metric_name!r} must name its gate")
+
+
+def _metric_aliases(metric_registry: Mapping[str, Mapping[str, Any]]) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for metric_name, entry in metric_registry.items():
+        for alias in entry["aliases"]:
+            aliases[str(alias)] = metric_name
+    return dict(sorted(aliases.items()))
+
+
+def _registry_provenance(
+    df: pd.DataFrame,
+    *,
+    scale_tiers: Sequence[str],
+) -> dict[str, Any]:
+    return {
+        "schema_version": REGISTRY_PROVENANCE_SCHEMA_VERSION,
+        "generated_by_activity": "analyze_factorial",
+        "software_entity": "shared/analysis/factorial.py",
+        "analyzer_version": ANALYZER_VERSION,
+        "source_docs": list(STRUCTURAL_TASK_SOURCE_DOC_VERSIONS),
+        "source_doc_versions": dict(STRUCTURAL_TASK_SOURCE_DOC_VERSIONS),
+        "source_code": ["shared/analysis/factorial.py"],
+        "source_tests": ["shared/tests/test_factorial_analysis.py"],
+        "source_artifact_paths": _source_artifact_paths(df),
+        "row_count": int(len(df)),
+        "scale_tiers": list(scale_tiers),
+    }
+
+
+def _source_artifact_paths(df: pd.DataFrame) -> list[str]:
+    if "source_path" not in df.columns:
+        return []
+    paths = {
+        _safe_repo_relative_path(str(value))
+        for value in df["source_path"].tolist()
+        if not _is_missing_value(value)
+    }
+    return sorted(path for path in paths if path)
+
+
+def _safe_repo_relative_path(value: str) -> str:
+    path = Path(value)
+    if not path.is_absolute():
+        return path.as_posix()
+    repo_root = Path(__file__).resolve().parents[2]
+    try:
+        return path.resolve().relative_to(repo_root).as_posix()
+    except ValueError:
+        return path.name
+
+
+def _annotate_metric_rows(
+    rows: list[dict[str, Any]],
+    metric_registry: Mapping[str, Mapping[str, Any]],
+) -> None:
+    for row in rows:
+        metric_name = row.get("metric_name")
+        if not isinstance(metric_name, str):
+            continue
+        entry = metric_registry.get(metric_name)
+        if entry is None:
+            continue
+        row.update(
+            {
+                "outcome_family": entry["outcome_family"],
+                "level_gate": entry["level_gate"],
+                "metric_gate": entry["metric_gate"],
+                "metric_display_name": entry["display_name"],
+                "metric_reportability": entry["reportability"],
+                "metric_current_status": entry["current_status"],
+            }
+        )
+
+
+def _metric_availability(
+    df: pd.DataFrame,
+    *,
+    metric_registry: Mapping[str, Mapping[str, Any]],
+    reportable_output: bool,
+) -> dict[str, dict[str, Any]]:
+    availability: dict[str, dict[str, Any]] = {}
+    for metric_name in REQUIRED_METRIC_REGISTRY_KEYS:
+        entry = metric_registry[metric_name]
+        available = _metric_evidence_available(df, metric_name)
+        status = _metric_availability_status(
+            df,
+            metric_name=metric_name,
+            available=available,
+            current_status=str(entry["current_status"]),
+        )
+        computed_value_present = available and entry["current_status"] in {
+            "current",
+            "current_with_caveats",
+        }
+        if entry["current_status"] in {"planned_deferred", "future_only"}:
+            computed_value_present = False
+        availability[metric_name] = {
+            "metric_name": metric_name,
+            "outcome_family": entry["outcome_family"],
+            "level_gate": entry["level_gate"],
+            "metric_gate": entry["metric_gate"],
+            "reportability": entry["reportability"],
+            "current_status": entry["current_status"],
+            "available": available,
+            "availability_status": status,
+            "computed_value_present": computed_value_present,
+            "reportable_output": bool(reportable_output),
+            "reason": _metric_availability_reason(metric_name, status),
+        }
+    return availability
+
+
+def _metric_evidence_available(df: pd.DataFrame, metric_name: str) -> bool:
+    if metric_name == "level2_functional_success_rate":
+        return PRIMARY_RESPONSE_VARIABLE in df.columns and df[PRIMARY_RESPONSE_VARIABLE].notna().any()
+    if metric_name == "level1_compile_success_rate":
+        return SECONDARY_RESPONSE_VARIABLE in df.columns and df[SECONDARY_RESPONSE_VARIABLE].notna().any()
+    if metric_name == "grammar_valid_rate":
+        return "grammar_valid" in df.columns and df["grammar_valid"].notna().any()
+    if metric_name == "terminal_failure_distribution":
+        return "failure_code" in df.columns and df["failure_code"].notna().any()
+    return False
+
+
+def _metric_availability_status(
+    df: pd.DataFrame,
+    *,
+    metric_name: str,
+    available: bool,
+    current_status: str,
+) -> str:
+    if metric_name == "syntax_valid_rate":
+        return _syntax_valid_availability_status(df)
+    if current_status == "future_only":
+        return "future_only"
+    if current_status == "planned_deferred":
+        return "planned_deferred"
+    return "available" if available else "not_available"
+
+
+def _syntax_valid_availability_status(df: pd.DataFrame) -> str:
+    if "syntax_valid_definition_id" not in df.columns:
+        return "not_available_mixed_schema"
+    definitions = _non_missing_sorted_text_values(df["syntax_valid_definition_id"])
+    if len(definitions) != 1:
+        return "not_available_mixed_schema"
+    if "syntax_valid" not in df.columns or not df["syntax_valid"].notna().all():
+        return "not_available_mixed_schema"
+    return "planned_deferred"
+
+
+def _metric_availability_reason(metric_name: str, status: str) -> str:
+    if metric_name == "syntax_valid_rate":
+        return "S1 does not compute mixed-schema syntax validity aggregates."
+    if status == "planned_deferred":
+        return "Metric is registered but intentionally not computed in S1."
+    if status == "future_only":
+        return "Metric requires a future Level 4 or benchmarkable/performance contract."
+    if status == "not_available":
+        return "Required compatible source evidence is absent from this input."
+    return "Required source evidence is present under current analyzer policy."
+
+
+def _level_reach_rates(
+    df: pd.DataFrame,
+    populated_cells: Sequence[str],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for condition in populated_cells:
+        group = df[df["condition"] == condition]
+        level0_evaluable, level0_pass = _explicit_level0_syntax_counts(group)
+        level1_evaluable, level1_reached = _level1_compile_counts(group)
+        level2_evaluable, level2_reached = _level2_correctness_counts(group)
+        unavailable_reasons = []
+        caveats = []
+        if level0_evaluable == 0:
+            unavailable_reasons.append("level0_parse_surface_explicit_evidence_absent")
+            caveats.append("Level 0 syntax/surface pass is not inferred from missing failure codes.")
+        if condition in {"none", "G"}:
+            caveats.append(
+                "Cluster 1 replay controls may be compile-only in artifact-backed analyses; "
+                "normalized Level 2 false values are unproven, not measured failure."
+            )
+        rows.append(
+            {
+                "condition": condition,
+                "n_rows": int(len(group)),
+                "level0_parse_surface_evaluable_rows": level0_evaluable,
+                "level0_parse_surface_pass_rows": level0_pass,
+                "level0_parse_surface_pass_rate": _rate_or_none(level0_pass, level0_evaluable),
+                "level0_evidence_policy": (
+                    "explicit_only" if level0_evaluable else "not_available"
+                ),
+                "level1_compile_launch_evaluable_rows": level1_evaluable,
+                "level1_compile_launch_reached_rows": level1_reached,
+                "level1_compile_launch_reached_rate": _rate_or_none(
+                    level1_reached,
+                    level1_evaluable,
+                ),
+                "level1_evidence_policy": (
+                    "derived_with_policy" if level1_evaluable else "not_available"
+                ),
+                "level2_correctness_evaluable_rows": level2_evaluable,
+                "level2_correctness_reached_rows": level2_reached,
+                "level2_correctness_reached_rate": _rate_or_none(
+                    level2_reached,
+                    level2_evaluable,
+                ),
+                "level2_evidence_policy": (
+                    "derived_with_policy" if level2_evaluable else "not_available"
+                ),
+                "unavailable_reasons": unavailable_reasons,
+                "caveats": caveats,
+            }
+        )
+    return rows
+
+
+def _explicit_level0_syntax_counts(group: pd.DataFrame) -> tuple[int, int]:
+    if "syntax_valid" not in group.columns:
+        return 0, 0
+    evidence = group[group["syntax_valid"].notna()]
+    if evidence.empty:
+        return 0, 0
+    return int(len(evidence)), int(evidence["syntax_valid"].astype(bool).sum())
+
+
+def _level1_compile_counts(group: pd.DataFrame) -> tuple[int, int]:
+    if SECONDARY_RESPONSE_VARIABLE not in group.columns:
+        return 0, 0
+    evidence = group[group[SECONDARY_RESPONSE_VARIABLE].notna()]
+    if evidence.empty:
+        return 0, 0
+    return int(len(evidence)), int(evidence[SECONDARY_RESPONSE_VARIABLE].astype(bool).sum())
+
+
+def _level2_correctness_counts(group: pd.DataFrame) -> tuple[int, int]:
+    evidence_mask = _level2_evidence_mask(group)
+    evidence = group[evidence_mask]
+    if evidence.empty:
+        return 0, 0
+    reached = [
+        _row_has_level2_reach(row)
+        for _, row in evidence.iterrows()
+    ]
+    return int(len(evidence)), int(sum(reached))
+
+
+def _level2_evidence_mask(group: pd.DataFrame) -> pd.Series:
+    mask = pd.Series([False] * len(group), index=group.index)
+    if PRIMARY_RESPONSE_VARIABLE in group.columns:
+        mask |= group[PRIMARY_RESPONSE_VARIABLE].notna()
+    if "failure_code" in group.columns:
+        mask |= group["failure_code"].notna()
+    if "level_reached" in group.columns:
+        mask |= group["level_reached"].notna()
+    if "reached_level" in group.columns:
+        mask |= group["reached_level"].notna()
+    return mask
+
+
+def _row_has_level2_reach(row: pd.Series) -> bool:
+    if _level_reached_at_least_two(row.get("level_reached")):
+        return True
+    if _level_reached_at_least_two(row.get("reached_level")):
+        return True
+    failure_code = row.get("failure_code")
+    if isinstance(failure_code, str) and failure_code.startswith("F2_"):
+        return True
+    if not _is_missing_value(row.get(PRIMARY_RESPONSE_VARIABLE)):
+        return bool(row.get(PRIMARY_RESPONSE_VARIABLE))
+    return False
+
+
+def _feedback_activation_diagnostics(
+    df: pd.DataFrame,
+    populated_cells: Sequence[str],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for condition in populated_cells:
+        group = df[df["condition"] == condition]
+        c_active = "C" in _condition_factor_labels(str(condition))
+        p_active = "P" in _condition_factor_labels(str(condition))
+        f0_rows = _failure_prefix_count(group, "F0_")
+        f1_rows = _failure_prefix_count(group, "F1_")
+        f2_rows = _failure_prefix_count(group, "F2_")
+        f3_rows = _failure_code_count(group, CLUSTER2_EVAL_PIPELINE_FAILURE_CODE)
+        c_explicit_eligible = _feedback_initial_failure_count(group, "c_initial_failure_code", "F2_")
+        c_proxy_eligible = f2_rows if c_active else 0
+        c_loop_fired = _true_count(group, "c_loop_fired") if c_active else 0
+        p_eligible = _feedback_initial_failure_count(group, "p_initial_failure_code", "F1_")
+        p_loop_fired = _true_count(group, "p_repair_attempted") if p_active else 0
+        _level2_evaluable, level2_reached = _level2_correctness_counts(group)
+        caveats = []
+        if c_active and c_explicit_eligible == 0 and c_proxy_eligible == 0:
+            caveats.append(
+                f"C feedback eligibility = 0/{len(group)} unless explicit F2 initial-failure evidence exists."
+            )
+        if c_active and f0_rows:
+            caveats.append("F0 rows are not C-feedback eligible.")
+        if p_active and f1_rows == 0:
+            caveats.append("P feedback eligibility requires explicit F1_COMPILE evidence.")
+        rows.append(
+            {
+                "condition": condition,
+                "n_rows": int(len(group)),
+                "c_factor_active": c_active,
+                "p_factor_active": p_active,
+                "c_feedback_eligible_rows": int(c_explicit_eligible if c_active else 0),
+                "c_feedback_eligibility_proxy_rows": int(c_proxy_eligible if c_active else 0),
+                "c_feedback_loop_fired_rows": int(c_loop_fired),
+                "c_feedback_evidence_policy": (
+                    "explicit_only"
+                    if c_explicit_eligible
+                    else ("proxy_diagnostic" if c_proxy_eligible else "not_available")
+                ),
+                "p_feedback_eligible_rows": int(p_eligible if p_active else 0),
+                "p_feedback_loop_fired_rows": int(p_loop_fired),
+                "p_feedback_evidence_policy": (
+                    "explicit_only" if p_eligible or p_loop_fired else "not_available"
+                ),
+                "level2_reached_rows": int(level2_reached),
+                "level1_compile_failure_rows": int(f1_rows),
+                "f0_rows": int(f0_rows),
+                "f1_rows": int(f1_rows),
+                "f2_rows": int(f2_rows),
+                "f3_rows": int(f3_rows),
+                "caveats": caveats,
+            }
+        )
+    return rows
+
+
+def _feedback_initial_failure_count(
+    group: pd.DataFrame,
+    column: str,
+    prefix: str,
+) -> int:
+    if column not in group.columns:
+        return 0
+    return int(
+        sum(
+            isinstance(value, str) and value.startswith(prefix)
+            for value in group[column].tolist()
+        )
+    )
+
+
+def _failure_prefix_count(group: pd.DataFrame, prefix: str) -> int:
+    if "failure_code" not in group.columns:
+        return 0
+    return int(
+        sum(
+            isinstance(value, str) and value.startswith(prefix)
+            for value in group["failure_code"].tolist()
+        )
+    )
+
+
+def _failure_code_count(group: pd.DataFrame, code: str) -> int:
+    if "failure_code" not in group.columns:
+        return 0
+    return int(sum(value == code for value in group["failure_code"].tolist()))
+
+
+def _true_count(group: pd.DataFrame, column: str) -> int:
+    if column not in group.columns:
+        return 0
+    return int(
+        sum(
+            bool(value)
+            for value in group[column].tolist()
+            if not _is_missing_value(value)
+        )
+    )
+
+
+def _rate_or_none(numerator: int, denominator: int) -> float | None:
+    if denominator == 0:
+        return None
+    return numerator / denominator
+
+
 def _validate_response(df: pd.DataFrame, response_variable: str, scope: str) -> None:
     _require_columns(df, (response_variable,))
     missing = df[response_variable].isna()
@@ -1949,9 +3613,15 @@ def _cell_outcome_frame(
 ) -> pd.DataFrame:
     _require_columns(df, ("condition", *PAIR_KEY_COLUMNS, response_variable))
     rows: list[dict[str, Any]] = []
-    group_cols = ["condition", *PAIR_KEY_COLUMNS]
+    group_cols = _cell_outcome_group_columns(df)
     for key, group in df.groupby(group_cols, sort=True, dropna=False):
-        condition, kernel_class, kernel_id, dtype, base_seed = key
+        key_values = key if isinstance(key, tuple) else (key,)
+        keyed = dict(zip(group_cols, key_values, strict=True))
+        condition = keyed["condition"]
+        kernel_class = keyed["kernel_class"]
+        kernel_id = keyed["kernel_id"]
+        dtype = keyed["dtype"]
+        base_seed = keyed["base_seed"]
         if group.duplicated(["attempt_index"]).any():
             raise ValueError(f"duplicate attempt_index values for cell {key}")
         source_classes = set(group.get("source_class", pd.Series(dtype=object)).dropna())
@@ -1965,21 +3635,36 @@ def _cell_outcome_frame(
         else:
             success = bool(group[response_variable].astype(bool).any())
             attempts_considered = len(group)
-        rows.append(
-            {
-                "condition": condition,
-                "kernel_class": kernel_class,
-                "kernel_id": kernel_id,
-                "dtype": dtype,
-                "base_seed": int(base_seed),
-                **_condition_factors(str(condition)),
-                "response_variable": response_variable,
-                "success": success,
-                "attempts_observed": len(group),
-                "attempts_considered": attempts_considered,
-            }
-        )
+        record = {
+            "condition": condition,
+            "kernel_class": kernel_class,
+            "kernel_id": kernel_id,
+            "dtype": dtype,
+            "base_seed": int(base_seed),
+            **_condition_factors(str(condition)),
+            "response_variable": response_variable,
+            "success": success,
+            "attempts_observed": len(group),
+            "attempts_considered": attempts_considered,
+        }
+        if "grammar_mode" in keyed:
+            record["grammar_mode"] = keyed["grammar_mode"]
+        rows.append(record)
     return pd.DataFrame(rows)
+
+
+def _cell_outcome_group_columns(df: pd.DataFrame) -> list[str]:
+    base_cols = ["condition", *PAIR_KEY_COLUMNS]
+    if "grammar_mode" not in df.columns:
+        return base_cols
+    grammar_counts = (
+        df.groupby(base_cols, dropna=False)["grammar_mode"]
+        .nunique(dropna=True)
+        .tolist()
+    )
+    if any(count > 1 for count in grammar_counts):
+        return [*base_cols, "grammar_mode"]
+    return base_cols
 
 
 def _cell_summaries(
@@ -2242,6 +3927,8 @@ def _paired_comparison_rows(
         except ValueError as exc:
             if is_p_pair and _is_skippable_p_pair_error(exc):
                 continue
+            if _is_skippable_grammar_mode_selector_pair_error(scope, exc):
+                continue
             raise
         flags = []
         if response_variable == SECONDARY_RESPONSE_VARIABLE:
@@ -2275,9 +3962,35 @@ def _paired_comparison_rows(
     return rows
 
 
+GRAMMAR_MODE_SELECTOR_NON_PAPER_PAIR_SKIP_SCOPES = {
+    "l1a_grammar_mode_cp_smoke",
+    "l1b_grammar_mode_cp_dev",
+}
+
+
+def _is_skippable_grammar_mode_selector_pair_error(
+    scope: str,
+    exc: ValueError,
+) -> bool:
+    if scope not in GRAMMAR_MODE_SELECTOR_NON_PAPER_PAIR_SKIP_SCOPES:
+        return False
+    message = str(exc)
+    return (
+        "missing paired replay metadata" in message
+        or "metadata mismatch in paired replay dataframe" in message
+        or "paired replay dataframe has unmatched seed rows" in message
+        or "paired condition dataframe has no matched seed rows" in message
+        or "duplicate replay pair in dataframe" in message
+        or "duplicate generated pair attempt in dataframe" in message
+        or "metadata mismatch within paired P dataframe" in message
+        or "mixed grammar variants in paired P comparison" in message
+    )
+
+
 def _secondary_compile_comparison_rows(
     df: pd.DataFrame,
     *,
+    scope: str,
     populated_cells: Sequence[str],
     bootstrap_samples: int,
     bootstrap_seed: int,
@@ -2286,13 +3999,18 @@ def _secondary_compile_comparison_rows(
     for treatment_condition, control_condition in SECONDARY_COMPILE_COMPARISONS.items():
         if treatment_condition not in populated_cells or control_condition not in populated_cells:
             continue
-        paired = paired_condition_summary(
-            df,
-            treatment_condition=treatment_condition,
-            control_condition=control_condition,
-            response_variable=SECONDARY_RESPONSE_VARIABLE,
-            allow_incomplete_coverage=True,
-        )
+        try:
+            paired = paired_condition_summary(
+                df,
+                treatment_condition=treatment_condition,
+                control_condition=control_condition,
+                response_variable=SECONDARY_RESPONSE_VARIABLE,
+                allow_incomplete_coverage=True,
+            )
+        except ValueError as exc:
+            if _is_skippable_grammar_mode_selector_pair_error(scope, exc):
+                continue
+            raise
         flags = ["diagnostic_only", "strict_surface_metric"]
         if paired.attrs.get("missing_control_pairs") or paired.attrs.get(
             "missing_treatment_pairs"
@@ -2440,6 +4158,7 @@ def _factorial_model(
     *,
     response_variable: str,
     populated_cells: Sequence[str],
+    reportable_output: bool,
 ) -> dict[str, Any]:
     if cell_outcomes.empty:
         return {
@@ -2556,7 +4275,11 @@ def _factorial_model(
             "(rate_GCP - rate_GC) - (rate_GP - rate_G) - "
             "(rate_CP - rate_C) + (rate_P - rate_none)"
         )
-        result["three_way_interaction_reportable"] = True
+        result["three_way_interaction_reportable"] = reportable_output
+        if not reportable_output:
+            result["warnings"].append(
+                "three_way_interaction_requires_reportable_primary_paper_scale_output"
+            )
     elif has_p:
         result["three_way_interaction_reportable"] = False
     return result
@@ -2747,7 +4470,7 @@ def _diagnostics(
     global_flags: Sequence[str],
 ) -> dict[str, Any]:
     mode_collapse_rows = df[_mode_collapse_mask(df)]
-    return {
+    diagnostics = {
         "analysis_scope": scope,
         "response_variable": response_variable,
         "rows_loaded": int(len(df)),
@@ -2775,6 +4498,10 @@ def _diagnostics(
             MODE_COLLAPSE_TEXT if not mode_collapse_rows.empty else None
         ),
     }
+    grammar_mode_summary = _grammar_mode_summary(df)
+    if grammar_mode_summary is not None:
+        diagnostics["grammar_mode_summary"] = grammar_mode_summary
+    return diagnostics
 
 
 def _f3_and_coverage_metadata(df: pd.DataFrame) -> dict[str, Any]:
@@ -2987,6 +4714,52 @@ def _grammar_acceptance_summary(df: pd.DataFrame) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def _grammar_mode_summary(df: pd.DataFrame) -> dict[str, Any] | None:
+    if "grammar_mode" not in df.columns:
+        return None
+    sources = (
+        set(str(value) for value in df["grammar_mode_source"].dropna().tolist())
+        if "grammar_mode_source" in df.columns
+        else set()
+    )
+    if not sources and df["grammar_mode"].notna().any():
+        sources = {"explicit"}
+    if "explicit" not in sources and "legacy_missing_grammar_mode" not in sources:
+        return None
+    groups: list[dict[str, Any]] = []
+    subset = df[df["grammar_mode"].notna()]
+    if not subset.empty:
+        for grammar_mode, group in subset.groupby("grammar_mode", sort=True):
+            groups.append(
+                {
+                    "grammar_mode": str(grammar_mode),
+                    "n_rows": int(len(group)),
+                    "conditions": sorted(
+                        str(value) for value in set(group["condition"])
+                    ),
+                    "grammar_active_values": sorted(
+                        bool(value)
+                        for value in set(group["grammar_active"].dropna().tolist())
+                    ),
+                    "grammar_variants": sorted(
+                        str(value)
+                        for value in set(group["grammar_variant"].dropna().tolist())
+                    ),
+                }
+            )
+    return {
+        "status": (
+            "legacy_missing_grammar_mode"
+            if "legacy_missing_grammar_mode" in sources
+            else "explicit_grammar_mode"
+        ),
+        "grouping_policy": "group_by_grammar_mode_without_binary_G_collapse",
+        "supported_grammar_modes": list(GRAMMAR_MODE_VALUES),
+        "groups": groups,
+        "missing_grammar_mode_rows": int(df["grammar_mode"].isna().sum()),
+    }
 
 
 def _nullable_bool_mean(df: pd.DataFrame, column: str) -> float | None:
@@ -3693,6 +5466,10 @@ def _is_missing_value(value: object) -> bool:
 
 
 def _json_safe(value: Any) -> Any:
+    if isinstance(value, (pd.Timestamp, pd.Series, pd.Index, pd.DataFrame)):
+        raise ValueError(f"analyzer output contains non-JSON-safe pandas object: {type(value).__name__}")
+    if _is_missing_value(value):
+        return None
     if isinstance(value, dict):
         return {str(key): _json_safe(item) for key, item in value.items()}
     if isinstance(value, list):
@@ -3704,7 +5481,11 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, (np.integer,)):
         return int(value)
     if isinstance(value, (np.floating,)):
-        return float(value)
+        value = float(value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("analyzer output contains non-finite numeric value")
+        return value
     return value
 
 

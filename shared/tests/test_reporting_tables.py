@@ -204,6 +204,42 @@ def test_factorial_table_renderer_preserves_partial_scope_statements() -> None:
     assert "full 2³ factorial completion" in markdown
 
 
+def test_factorial_table_renderer_labels_l1b_development_as_non_paper() -> None:
+    analysis = {
+        "metadata": {
+            "analysis_scope": "l1b_grammar_mode_cp_dev",
+            "reportable": False,
+            "scale_tiers": ["development"],
+            "three_way_interaction": {"reportable": False},
+        },
+        "paper_tables": {
+            "table_1_cell_summaries": [],
+            "table_2_paired_comparisons": [],
+            "table_3_factorial_terms": [
+                {
+                    "response_variable": "functional_success",
+                    "model_type": "full_eight_cell",
+                    "model_family": "binary_logistic_irls",
+                    "model_fit_status": "not_fit",
+                    "term": "G:C:P",
+                    "coefficient": None,
+                    "direction": "unavailable",
+                    "model_warnings": [
+                        "three_way_interaction_requires_reportable_primary_paper_scale_output",
+                    ],
+                }
+            ],
+        },
+    }
+
+    markdown = render_factorial_markdown_report(analysis)
+
+    assert "L1b development-scale 2³ factorial diagnostic analysis" in markdown
+    assert "not paper-scale or reportable paper evidence" in markdown
+    assert "Three-way interaction fields are diagnostic only" in markdown
+    assert "Full 2³ factorial analysis" not in markdown
+
+
 def test_factorial_table_renderer_rejects_missing_paper_tables() -> None:
     with pytest.raises(ValueError, match="must contain paper_tables"):
         build_factorial_paper_tables({"metadata": {"analyzer_version": "stale"}})

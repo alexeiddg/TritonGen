@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import json
+import socket
+from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from cluster3.analysis import validate_l2b_full_coverage as l2b_validator
 import cluster3.experiments.run_cluster3_modal as runner_mod
 from cluster2.constants import DEFAULT_REPAIR_BUDGET
 from cluster2.feedback.repair_loop import RepairFeedbackInput, RepairGenerationInput
@@ -26,6 +30,15 @@ from cluster3.feedback.c_loop_adapter import (
 )
 from cluster3.replay.no_p_pairs import pair_for_condition, validate_pair_identity
 from cluster3.results.logger import default_content_hash_sidecar_path
+from cluster3.results.dataclass import Cluster3EvalRow
+from shared.observability import (
+    ObservabilityJsonlAppendLogger,
+    ObservabilitySummary,
+    default_observability_hash_path,
+    default_observability_summary_path,
+    file_sha256,
+    load_observability_events,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -55,6 +68,67 @@ def _config(tmp_path: Path, condition: str = "P", **overrides: object) -> Cluste
     }
     values.update(overrides)
     return Cluster3RunnerConfig(**values)  # type: ignore[arg-type]
+
+
+def _safe_modal_context() -> dict[str, object]:
+    return {
+        "modal_context_available": True,
+        "is_remote": True,
+        "function_call_id": "fc-123",
+        "input_id": "in-123",
+        "task_id": "task-123",
+        "image_id": "image-123",
+        "region": "us-east",
+        "cloud_provider": "aws",
+        "environment_name": "test",
+        "app_name": "tritongen",
+        "gpu_type": "L4",
+        "gpu_count": 1,
+        "cpu_cores": 2.0,
+        "memory_gib": 8.0,
+        "timeout_s": 300,
+        "container_started_at_utc": "2026-06-03T00:00:00Z",
+        "modal_context_source": "runner_config",
+    }
+
+
+def _safe_token_counts() -> dict[str, object]:
+    return {
+        "token_counts_available": True,
+        "prompt_tokens": 2,
+        "generated_tokens": 3,
+        "total_tokens": 5,
+        "token_count_source": "existing_generation_result",
+        "token_count_status": "available",
+    }
+
+
+def _safe_cost_estimate() -> dict[str, object]:
+    return {
+        "cost_estimate_available": True,
+        "estimated_input_cost": 0.12,
+        "estimated_output_cost": 0.03,
+        "estimated_total_cost": 0.15,
+        "currency": "USD",
+        "pricing_source": "test_fixture",
+        "pricing_source_version": "2026-06-03",
+        "cost_estimate_status": "estimated",
+        "cost_estimate_method": "test_fixture",
+    }
+
+
+def _unavailable_cost_summary() -> dict[str, object]:
+    return {
+        "cost_estimate_available": False,
+        "estimated_input_cost": None,
+        "estimated_output_cost": None,
+        "estimated_total_cost": None,
+        "currency": None,
+        "pricing_source": None,
+        "pricing_source_version": None,
+        "cost_estimate_status": "unavailable",
+        "cost_estimate_method": "unavailable",
+    }
 
 
 def _result(
@@ -211,6 +285,40 @@ class CLoopRecorder:
                     source_hash=_sha(source),
                 )
             )
+        repair_history_policy = kwargs["repair_history_config"].repair_history_policy
+        terminal_prompt_metadata: dict[str, Any] = {
+            "repair_history_policy": repair_history_policy,
+            "repair_prompt_template_version": None,
+            "repair_prompt_renderer_version": None,
+            "repair_anchor_attempt_index": None,
+            "repair_latest_attempt_index": None,
+            "repair_history_attempt_count": None,
+            "repair_prompt_sha256": None,
+            "repair_prompt_char_count": None,
+            "repair_max_prompt_chars": None,
+            "repair_include_latest_source": None,
+            "repair_anchor_source_hash": None,
+            "repair_latest_source_hash": None,
+            "repair_history_summary_sha256": None,
+            "repair_history_error_code": None,
+        }
+        if repair_history_policy == "agentic_transcript_v1" and self.c_attempt_count > 0:
+            terminal_prompt_metadata.update(
+                {
+                    "repair_prompt_template_version": "agentic_transcript_v1",
+                    "repair_prompt_renderer_version": "agentic_transcript_v1",
+                    "repair_anchor_attempt_index": 0,
+                    "repair_latest_attempt_index": 0,
+                    "repair_history_attempt_count": 1,
+                    "repair_prompt_sha256": prompt_hash,
+                    "repair_prompt_char_count": 512,
+                    "repair_max_prompt_chars": 24000,
+                    "repair_include_latest_source": False,
+                    "repair_anchor_source_hash": traces[0].source_hash,
+                    "repair_latest_source_hash": traces[0].source_hash,
+                    "repair_history_summary_sha256": _sha("c repair history summary"),
+                }
+            )
         return Cluster3CLoopResult(
             c_loop_fired=True,
             c_loop_source=kwargs["c_loop_source"],
@@ -227,11 +335,80 @@ class CLoopRecorder:
             terminal_prompt_hash_source=prompt_hash_source,
             terminal_attempt_index=terminal_index,
             terminal_correctness_result=result,
-            cluster2_repair_result={"trace_summaries": traces},
+            cluster2_repair_result={
+                "trace_summaries": traces,
+                "terminal_prompt_metadata": terminal_prompt_metadata,
+            },
             trace_summary_fragment={"outer_c3_condition": kwargs["outer_c3_condition"]},
             infrastructure_failure=False,
             f3_reason=None,
         )
+
+
+class FailingObservabilityLogger:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+
+    def open(self) -> None:
+        raise RuntimeError("observability logger unavailable")
+
+
+class ScriptedObservabilityLogger:
+    def __init__(
+        self,
+        *,
+        open_exc: BaseException | None = None,
+        append_exc: BaseException | None = None,
+        summary_exc: BaseException | None = None,
+    ) -> None:
+        self.open_exc = open_exc
+        self.append_exc = append_exc
+        self.summary_exc = summary_exc
+        self.opened = False
+        self.closed = False
+        self.append_calls = 0
+        self.summary_calls = 0
+
+    def open(self) -> None:
+        self.opened = True
+        if self.open_exc is not None:
+            raise self.open_exc
+
+    def append(self, event: Any) -> None:
+        del event
+        self.append_calls += 1
+        if self.append_exc is not None:
+            raise self.append_exc
+
+    def write_summary(self, summary: Any) -> None:
+        del summary
+        self.summary_calls += 1
+        if self.summary_exc is not None:
+            raise self.summary_exc
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class SummaryInterruptingObservabilityLogger(ObservabilityJsonlAppendLogger):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.opened = False
+        self.closed = False
+        self.summary_calls = 0
+
+    def open(self) -> None:
+        self.opened = True
+        super().open()
+
+    def write_summary(self, summary: Any) -> Any:
+        del summary
+        self.summary_calls += 1
+        raise KeyboardInterrupt()
+
+    def close(self) -> None:
+        self.closed = True
+        super().close()
 
 
 def _identity_dict(identity: Any) -> dict[str, Any]:
@@ -240,6 +417,15 @@ def _identity_dict(identity: Any) -> dict[str, Any]:
     if hasattr(identity, "model_dump"):
         return identity.model_dump()
     return dict(identity)
+
+
+def _completed_stages(event_path: Path) -> list[str]:
+    return [
+        event.stage
+        for event in load_observability_events(event_path)
+        if event.event_type == "stage_completed"
+        and event.stage is not None
+    ]
 
 
 def _run_with_results(
@@ -332,10 +518,9 @@ def test_runner_config_accepts_p_conditions(tmp_path: Path) -> None:
         assert _config(tmp_path, condition).condition == condition
 
 
-def test_runner_config_rejects_cluster2_conditions(tmp_path: Path) -> None:
+def test_runner_config_accepts_no_p_control_conditions(tmp_path: Path) -> None:
     for condition in ("none", "G", "C", "G+C"):
-        with pytest.raises(ValueError):
-            _config(tmp_path, condition)
+        assert _config(tmp_path, condition).condition == condition
 
 
 def test_runner_config_repair_budget_bounds(tmp_path: Path) -> None:
@@ -346,6 +531,89 @@ def test_runner_config_repair_budget_bounds(tmp_path: Path) -> None:
         _config(tmp_path, p_repair_budget=DEFAULT_P_REPAIR_BUDGET + 1)
     with pytest.raises(ValueError):
         _config(tmp_path, c_repair_budget=DEFAULT_REPAIR_BUDGET + 1)
+
+
+def test_runner_config_repair_history_defaults_are_legacy(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+
+    assert config.repair_history_policy == "last_attempt_only_v1"
+    assert config.repair_max_prompt_chars == 24000
+    assert config.repair_include_latest_source is False
+    assert config.repair_history_config.repair_history_policy == (
+        "last_attempt_only_v1"
+    )
+
+
+def test_cli_accepts_explicit_agentic_repair_history_policy(
+    tmp_path: Path,
+) -> None:
+    config = parse_args(
+        [
+            "--condition",
+            "P",
+            "--kernel-class",
+            "elementwise",
+            "--scale-tier",
+            "smoke",
+            "--n",
+            "1",
+            "--model-revision",
+            REV_A,
+            "--tokenizer-revision",
+            REV_B,
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--repair-max-prompt-chars",
+            "12000",
+            "--repair-include-latest-source",
+            "--output",
+            str(tmp_path / "out.jsonl"),
+            "--overwrite",
+        ]
+    )
+
+    assert config.repair_history_config.repair_history_policy == (
+        "agentic_transcript_v1"
+    )
+    assert config.repair_history_config.max_prompt_chars == 12000
+    assert config.repair_history_config.include_latest_source is True
+
+
+def test_cli_rejects_unknown_repair_history_policy(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "--condition",
+                "P",
+                "--kernel-class",
+                "elementwise",
+                "--scale-tier",
+                "smoke",
+                "--n",
+                "1",
+                "--model-revision",
+                REV_A,
+                "--tokenizer-revision",
+                REV_B,
+                "--repair-history-policy",
+                "unknown_policy",
+                "--output",
+                str(tmp_path / "out.jsonl"),
+                "--overwrite",
+            ]
+        )
+
+
+def test_config_rejects_invalid_repair_prompt_settings(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="max_prompt_chars must be a positive int"):
+        _config(tmp_path, repair_max_prompt_chars=0)
+    with pytest.raises(ValueError, match="max_prompt_chars must be a positive int"):
+        _config(tmp_path, repair_max_prompt_chars=True)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="include_latest_source must be a bool"):
+        _config(
+            tmp_path,
+            repair_include_latest_source="yes",  # type: ignore[arg-type]
+        )
 
 
 def test_runner_config_modal_gpus_match_cluster2_defaults(tmp_path: Path) -> None:
@@ -452,6 +720,10 @@ def test_run_cluster3_modal_entrypoint_delegates_to_cli(monkeypatch: pytest.Monk
         "5",
         "--c-repair-budget",
         "0",
+        "--repair-history-policy",
+        "last_attempt_only_v1",
+        "--repair-max-prompt-chars",
+        "24000",
         "--modal-generation-gpu",
         runner_mod.DEFAULT_C2_MODAL_GENERATION_GPU,
         "--modal-eval-gpu",
@@ -781,6 +1053,157 @@ def test_run_cluster3_dispatches_f1_compile_to_p_loop_with_seed_attempt(tmp_path
     assert row.p_initial_failure_code == "F1_COMPILE"
     assert len(generation.calls) == 2
     assert len(correctness.calls) == 2
+
+
+def test_run_cluster3_agentic_p_metadata_records_rendered_prompt(
+    tmp_path: Path,
+) -> None:
+    run, generation, _, _ = _run_with_results(
+        tmp_path,
+        "P",
+        _f1_result(),
+        _result(None),
+        repair_history_policy="agentic_transcript_v1",
+    )
+
+    row = run.rows[0]
+    metadata = row.generated_metadata
+    assert metadata is not None
+    assert row.p_history_policy == "agentic_transcript_v1"
+    assert metadata.p_history_policy == "agentic_transcript_v1"
+    assert metadata.p_repair_anchor_attempt_index == 0
+    assert metadata.p_repair_latest_attempt_index == 0
+    assert metadata.p_repair_history_attempt_count == 1
+    assert metadata.p_repair_prompt_sha256 == _sha(generation.calls[1]["prompt"])
+    assert metadata.p_repair_max_prompt_chars == 24000
+    assert metadata.p_repair_include_latest_source is False
+    assert row.p_repair_trace is not None
+    assert metadata.p_repair_anchor_source_hash == row.p_repair_trace[0].source_hash
+    assert metadata.p_repair_latest_source_hash == row.p_repair_trace[0].source_hash
+    assert row.terminal_prompt_hash == metadata.p_repair_prompt_sha256
+
+
+def test_run_cluster3_agentic_c_metadata_records_rendered_prompt(
+    tmp_path: Path,
+) -> None:
+    run, generation, _, _ = _run_with_results(
+        tmp_path,
+        "C",
+        _f2_result(),
+        _f2_result(),
+        repair_history_policy="agentic_transcript_v1",
+    )
+
+    row = run.rows[0]
+    metadata = row.generated_metadata
+    assert metadata is not None
+    assert row.c_loop_fired is True
+    assert metadata.c_history_policy == "agentic_transcript_v1"
+    assert metadata.c_repair_anchor_attempt_index == 0
+    assert metadata.c_repair_latest_attempt_index == 0
+    assert metadata.c_repair_history_attempt_count == 1
+    assert metadata.c_repair_prompt_sha256 == _sha("c repair prompt")
+    assert metadata.c_repair_max_prompt_chars == 24000
+    assert metadata.c_repair_include_latest_source is False
+    assert row.repair_trace is not None
+    assert metadata.c_repair_anchor_source_hash == _sha(SEED_SOURCE)
+    assert metadata.c_repair_latest_source_hash == _sha(SEED_SOURCE)
+    assert row.terminal_prompt_hash == metadata.c_repair_prompt_sha256
+
+
+def test_run_cluster3_default_p_metadata_records_legacy_policy(
+    tmp_path: Path,
+) -> None:
+    run, _, _, _ = _run_with_results(tmp_path, "P", _result(None))
+
+    metadata = run.rows[0].generated_metadata
+    assert metadata is not None
+    assert run.rows[0].p_history_policy == "last_attempt_only_v1"
+    assert metadata.p_history_policy == "last_attempt_only_v1"
+    assert metadata.p_repair_prompt_sha256 is None
+    assert metadata.p_repair_anchor_attempt_index is None
+
+
+def test_run_cluster3_agentic_initial_success_records_policy_only_metadata(
+    tmp_path: Path,
+) -> None:
+    run, generation, correctness, _ = _run_with_results(
+        tmp_path,
+        "P",
+        _result(None),
+        repair_history_policy="agentic_transcript_v1",
+    )
+
+    row = run.rows[0]
+    metadata = row.generated_metadata
+    assert metadata is not None
+    assert row.p_repair_attempted is False
+    assert row.p_history_policy == "agentic_transcript_v1"
+    assert metadata.p_history_policy == "agentic_transcript_v1"
+    assert metadata.p_repair_prompt_sha256 is None
+    assert metadata.p_repair_history_attempt_count is None
+    assert len(generation.calls) == 1
+    assert len(correctness.calls) == 1
+
+
+def test_run_cluster3_initial_f1_runtime_is_terminal_without_p_loop(
+    tmp_path: Path,
+) -> None:
+    run, generation, correctness, c_loop = _run_with_results(
+        tmp_path,
+        "P",
+        _result("F1_RUNTIME", level_reached=1, compile_success=False),
+        repair_history_policy="agentic_transcript_v1",
+    )
+
+    row = run.rows[0]
+    assert row.failure_code == "F1_RUNTIME"
+    assert row.p_repair_attempted is False
+    assert row.p_repair_stop_reason == "p_not_applicable"
+    assert len(generation.calls) == 1
+    assert len(correctness.calls) == 1
+    assert c_loop.calls == []
+
+
+def test_run_cluster3_initial_f2_is_not_p_repaired_under_p_only(
+    tmp_path: Path,
+) -> None:
+    run, generation, correctness, c_loop = _run_with_results(
+        tmp_path,
+        "P",
+        _f2_result(),
+        repair_history_policy="agentic_transcript_v1",
+    )
+
+    row = run.rows[0]
+    assert row.failure_code == "F2_NUMERIC_LARGE"
+    assert row.p_repair_attempted is False
+    assert len(generation.calls) == 1
+    assert len(correctness.calls) == 1
+    assert c_loop.calls == []
+
+
+def test_run_cluster3_does_not_pass_p_transcript_to_c_loop(
+    tmp_path: Path,
+) -> None:
+    run, _, _, c_loop = _run_with_results(
+        tmp_path,
+        "C+P",
+        _f1_result(),
+        _f2_result(),
+        repair_history_policy="agentic_transcript_v1",
+    )
+
+    assert run.rows[0].p_repair_attempted is True
+    assert run.rows[0].c_loop_fired is True
+    assert len(c_loop.calls) == 1
+    c_call = c_loop.calls[0]
+    repair_history_config = c_call["repair_history_config"]
+    assert repair_history_config.repair_history_policy == "agentic_transcript_v1"
+    assert "p_repair_trace" not in c_call
+    assert "p_repair_prompt" not in c_call
+    assert c_call["seed_candidate_evaluation"]["failure_code"] == "F2_NUMERIC_LARGE"
+    assert c_call["seed_candidate_prompt_hash_source"] == "p_repair_prompt"
 
 
 def test_run_cluster3_terminates_on_f0_parse(tmp_path: Path) -> None:
@@ -1212,6 +1635,4111 @@ def test_run_cluster3_cli_parses_args(tmp_path: Path) -> None:
     )
     assert config.condition == "C+P"
     assert config.c_repair_budget == 3
+    assert config.observability_mode == "off"
+    assert config.observability_experiment_id is None
+    assert config.observability_run_id is None
+    assert config.observability_output is None
+
+
+def _signed_l1a_selector_args(*extra: str, token: str | None = None) -> list[str]:
+    return [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--kernel-class",
+        "elementwise",
+        "--scale-tier",
+        "smoke",
+        "--n",
+        "1",
+        "--dtypes",
+        "fp32",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l1a-authorization",
+        token or runner_mod.L1A_SIGNED_AUTHORIZATION_TOKEN,
+        *extra,
+        "--overwrite",
+    ]
+
+
+def _signed_l1b_selector_args(*extra: str, token: str | None = None) -> list[str]:
+    return [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--kernel-class",
+        "elementwise",
+        "--scale-tier",
+        "development",
+        "--n",
+        "5",
+        "--dtypes",
+        "fp32",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l1b-authorization",
+        token or runner_mod.L1B_SIGNED_AUTHORIZATION_TOKEN,
+        *extra,
+        "--overwrite",
+    ]
+
+
+def _signed_l2_selector_args(*extra: str, token: str | None = None) -> list[str]:
+    return [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--kernel-class",
+        "elementwise",
+        "--scale-tier",
+        "paper",
+        "--n",
+        "20",
+        "--dtypes",
+        "fp32",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l2-authorization",
+        token or runner_mod.L2_SIGNED_AUTHORIZATION_TOKEN,
+        *extra,
+        "--overwrite",
+    ]
+
+
+def _signed_l2b_selector_args(
+    *extra: str,
+    token: str | None = None,
+    overwrite: bool = True,
+) -> list[str]:
+    args = [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--l2b-stage",
+        runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        "--l2b-shard-selector",
+        "elementwise__fp32",
+        "--kernel-class",
+        "elementwise",
+        "--scale-tier",
+        "development",
+        "--n",
+        "2",
+        "--dtypes",
+        "fp32",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l2b-authorization",
+        token or runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        *extra,
+    ]
+    if overwrite:
+        args.append("--overwrite")
+    return args
+
+
+def _signed_l2b_n20_selector_args(*extra: str, token: str | None = None) -> list[str]:
+    return [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--l2b-stage",
+        runner_mod.L2B_N20_SELECTOR_PROFILE_ID,
+        "--l2b-shard-selector",
+        "elementwise__fp32",
+        "--kernel-class",
+        "elementwise",
+        "--scale-tier",
+        "paper",
+        "--n",
+        "20",
+        "--dtypes",
+        "fp32",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l2b-authorization",
+        token or runner_mod.L2B_N20_SIGNED_AUTHORIZATION_TOKEN,
+        *extra,
+    ]
+
+
+def _signed_l2b_n20_attempt2_selector_args(
+    *extra: str,
+    token: str | None = None,
+) -> list[str]:
+    return [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--l2b-stage",
+        runner_mod.L2B_N20_ATTEMPT2_SELECTOR_PROFILE_ID,
+        "--l2b-shard-selector",
+        "elementwise__fp32",
+        "--kernel-class",
+        "elementwise",
+        "--scale-tier",
+        "paper",
+        "--n",
+        "20",
+        "--dtypes",
+        "fp32",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l2b-authorization",
+        token or runner_mod.L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN,
+        *extra,
+    ]
+
+
+def _signed_l2b_n20_attempt2_lane_a_selector_args(
+    *extra: str,
+    token: str | None = None,
+) -> list[str]:
+    missing_cells = (
+        "template_upper_bound__c_off__p_on,"
+        "template_upper_bound__c_on__p_on,"
+        "task_agnostic__c_off__p_off,"
+        "task_agnostic__c_on__p_off,"
+        "task_agnostic__c_off__p_on,"
+        "task_agnostic__c_on__p_on"
+    )
+    return [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--l2b-stage",
+        runner_mod.L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
+        "--l2b-shard-selector",
+        "wave:3:3",
+        "--l2b-recovery-cells",
+        missing_cells,
+        "--kernel-class",
+        "all",
+        "--scale-tier",
+        "paper",
+        "--n",
+        "20",
+        "--dtypes",
+        "fp32,fp16,bf16",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l2b-authorization",
+        token
+        or runner_mod.L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN,
+        *extra,
+    ]
+
+
+def _signed_l2b_n20_attempt2_lane_b_selector_args(
+    *extra: str,
+    token: str | None = None,
+) -> list[str]:
+    return [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--l2b-stage",
+        runner_mod.L2B_N20_ATTEMPT2_WAVE3_PARALLEL_SELECTOR_PROFILE_ID,
+        "--l2b-shard-selector",
+        "wave:7:2",
+        "--kernel-class",
+        "all",
+        "--scale-tier",
+        "paper",
+        "--n",
+        "20",
+        "--dtypes",
+        "fp32,fp16,bf16",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l2b-authorization",
+        token
+        or runner_mod.L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN,
+        *extra,
+    ]
+
+
+def _signed_l2b_n20_attempt2_wave4_selector_args(
+    *extra: str,
+    token: str | None = None,
+) -> list[str]:
+    return [
+        "--condition",
+        runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+        "--l2b-stage",
+        runner_mod.L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID,
+        "--l2b-shard-selector",
+        "matmul__fp32",
+        "--kernel-class",
+        "matmul",
+        "--scale-tier",
+        "paper",
+        "--n",
+        "20",
+        "--dtypes",
+        "fp32",
+        "--repair-history-policy",
+        "agentic_transcript_v1",
+        "--signed-l2b-authorization",
+        token or runner_mod.L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN,
+        *extra,
+    ]
+
+
+def test_l1a_12cell_dry_plan_cli_parses_without_output_or_write_mode() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--dry-plan",
+        ]
+    )
+
+    assert config.condition == runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR
+    assert config.dry_plan is True
+    assert config.write_mode == "dry_plan"
+    assert config.output == runner_mod.L1A_DRY_PLAN_PLACEHOLDER_OUTPUT
+    assert config.grammar_mode_cell == "all"
+
+
+def test_l1a_12cell_dry_plan_cli_selects_single_no_p_cell() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--grammar-mode-cell",
+            "task_agnostic__c_on__p_off",
+            "--dry-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_dry_plan_payload(config)
+
+    assert payload["cell_count"] == 1
+    cell = payload["cells"][0]
+    assert cell["condition_id"] == "task_agnostic__c_on__p_off"
+    assert cell["factor_cell"] == "G+C"
+    assert cell["execution_role"] == "no_p_control_cell"
+    assert cell["compile_feedback_active"] is False
+    assert cell["output_path"].startswith(
+        "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l1a_n1/"
+    )
+
+
+def test_l1a_12cell_execution_plan_cli_parses_without_output_or_write_mode() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--execution-plan",
+        ]
+    )
+
+    assert config.condition == runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR
+    assert config.execution_plan is True
+    assert config.dry_plan is False
+    assert config.write_mode == "execution_plan"
+    assert config.output == runner_mod.L1A_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
+    assert config.grammar_mode_cell == "all"
+
+
+def test_l1a_12cell_execution_plan_builds_executable_commands() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--grammar-mode-cell",
+            "grammar_off__c_on__p_off",
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--execution-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_execution_plan_payload(config)
+
+    assert payload["cell_count"] == 1
+    assert payload["execution_authorized"] is False
+    assert payload["requires_signed_l1a_authorization"] is True
+    assert payload["writes_outputs"] is False
+    assert payload["writes_artifacts"] is False
+    assert payload["writes_mlruns"] is False
+    cell = payload["cells"][0]
+    assert cell["condition_id"] == "grammar_off__c_on__p_off"
+    assert cell["command_mode"] == "executable"
+    assert cell["compile_feedback_active"] is False
+    assert cell["execution_role"] == "no_p_control_cell"
+    assert "--dry-plan" not in cell["command_selector"]
+    assert "--grammar-variant" not in cell["command_selector"]
+    assert "--signed-l1a-authorization" in cell["command_selector"]
+    assert "--output " + cell["output_path"] in cell["command_selector"]
+    assert (
+        "--observability-output " + cell["observability_event_path"]
+        in cell["command_selector"]
+    )
+
+
+def test_l1b_12cell_execution_plan_builds_n5_development_commands() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--scale-tier",
+            "development",
+            "--n",
+            "5",
+            "--dtypes",
+            "fp32",
+            "--execution-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_execution_plan_payload(config)
+
+    assert payload["cell_count"] == 12
+    assert payload["planned_rows"] == 60
+    assert payload["authorization_profile"] == "L1b n=5 development"
+    assert payload["output_root"] == runner_mod.L1B_OUTPUT_ROOT
+    assert payload["observability_root"] == runner_mod.L1B_OBSERVABILITY_ROOT
+    assert payload["requires_signed_authorization"] is True
+    assert payload["requires_signed_l1a_authorization"] is False
+    assert payload["signed_authorization_option"] == "--signed-l1b-authorization"
+    assert payload["writes_outputs"] is False
+    assert payload["writes_artifacts"] is False
+    assert payload["writes_mlruns"] is False
+    for planned_cell in payload["cells"]:
+        assert "--scale-tier development" in planned_cell["command_selector"]
+        assert "--n 5" in planned_cell["command_selector"]
+        assert "--signed-l1b-authorization" in planned_cell["command_selector"]
+        assert planned_cell["output_path"].startswith(runner_mod.L1B_OUTPUT_ROOT + "/")
+        assert planned_cell["observability_event_path"].startswith(
+            runner_mod.L1B_OBSERVABILITY_ROOT + "/"
+        )
+
+
+def test_l2_12cell_dry_plan_builds_n20_paper_rows() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--scale-tier",
+            "paper",
+            "--n",
+            "20",
+            "--dtypes",
+            "fp32",
+            "--dry-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_dry_plan_payload(config)
+
+    assert config.output == runner_mod.L2_DRY_PLAN_PLACEHOLDER_OUTPUT
+    assert payload["cell_count"] == 12
+    assert payload["planned_rows"] == 240
+    assert payload["authorization_profile"] == "L2 n=20 paper"
+    assert payload["scale_tier"] == "paper"
+    assert payload["n"] == 20
+    assert payload["output_root"] == runner_mod.L2_OUTPUT_ROOT
+    assert payload["observability_root"] == runner_mod.L2_OBSERVABILITY_ROOT
+    assert payload["execution_authorized"] is False
+    assert payload["writes_outputs"] is False
+    assert payload["writes_artifacts"] is False
+    assert payload["writes_mlruns"] is False
+    assert {
+        (
+            cell["grammar_mode"],
+            "on" if cell["correctness_feedback_active"] else "off",
+            "on" if cell["compile_feedback_active"] else "off",
+        )
+        for cell in payload["cells"]
+    } == {
+        (grammar_mode, c_state, p_state)
+        for grammar_mode in ("grammar_off", "template_upper_bound", "task_agnostic")
+        for c_state in ("off", "on")
+        for p_state in ("off", "on")
+    }
+    assert sum(not cell["compile_feedback_active"] for cell in payload["cells"]) == 6
+    assert sum(cell["compile_feedback_active"] for cell in payload["cells"]) == 6
+
+
+def test_l2_12cell_execution_plan_builds_signed_l2_command_surfaces() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--scale-tier",
+            "paper",
+            "--n",
+            "20",
+            "--dtypes",
+            "fp32",
+            "--execution-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_execution_plan_payload(config)
+
+    assert config.output == runner_mod.L2_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
+    assert payload["cell_count"] == 12
+    assert payload["planned_rows"] == 240
+    assert payload["authorization_profile"] == "L2 n=20 paper"
+    assert payload["output_root"] == runner_mod.L2_OUTPUT_ROOT
+    assert payload["observability_root"] == runner_mod.L2_OBSERVABILITY_ROOT
+    assert payload["requires_signed_authorization"] is True
+    assert payload["requires_signed_l1a_authorization"] is False
+    assert payload["signed_authorization_option"] == "--signed-l2-authorization"
+    assert payload["execution_authorized"] is False
+    assert payload["writes_outputs"] is False
+    assert payload["writes_artifacts"] is False
+    assert payload["writes_mlruns"] is False
+    for planned_cell in payload["cells"]:
+        assert "--scale-tier paper" in planned_cell["command_selector"]
+        assert "--n 20" in planned_cell["command_selector"]
+        assert "--signed-l2-authorization" in planned_cell["command_selector"]
+        assert runner_mod.L2_SIGNED_AUTHORIZATION_PLACEHOLDER in planned_cell[
+            "command_selector"
+        ]
+        assert planned_cell["support_status"] == (
+            "L2_SIGNED_RUNTIME_GATE_ENABLED_NO_EXECUTION"
+        )
+        assert planned_cell["output_path"].startswith(runner_mod.L2_OUTPUT_ROOT + "/")
+        assert planned_cell["observability_event_path"].startswith(
+            runner_mod.L2_OBSERVABILITY_ROOT + "/"
+        )
+
+
+def test_l2b_n2_full_coverage_dry_plan_builds_sharded_matrix() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--l2b-stage",
+            runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+            "--kernel-class",
+            "all",
+            "--scale-tier",
+            "development",
+            "--n",
+            "2",
+            "--dtypes",
+            "fp32,fp16,bf16",
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--dry-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_dry_plan_payload(config)
+
+    assert config.output == runner_mod.L2B_N2_DRY_PLAN_PLACEHOLDER_OUTPUT
+    assert payload["selector_profile_id"] == runner_mod.L2B_N2_SELECTOR_PROFILE_ID
+    assert payload["authorization_profile"] == (
+        "L2b-2 n=2 sharded full coverage signed runtime gate"
+    )
+    assert payload["total_shards"] == 9
+    assert payload["selected_shard_count"] == 9
+    assert payload["planned_cells_per_shard"] == 12
+    assert payload["rows_per_shard"] == 24
+    assert payload["total_planned_rows"] == 216
+    assert payload["full_matrix_planned_rows"] == 216
+    assert payload["expected_planned_rows"] == 216
+    assert payload["kernel_class_selector"] == "all"
+    assert payload["kernel_classes"] == ("elementwise", "reduction", "matmul")
+    assert payload["dtypes"] == ("fp32", "fp16", "bf16")
+    assert payload["output_root"] == runner_mod.L2B_N2_OUTPUT_ROOT
+    assert payload["observability_root"] == runner_mod.L2B_N2_OBSERVABILITY_ROOT
+    assert payload["backend"] == "modal_local_model"
+    assert payload["future_backend_todo"] == "fireworks_api"
+    assert payload["timing_observability"]["scope"] == (
+        "per_cell_and_per_shard_sidecar_metadata_only"
+    )
+    assert "wall_clock_seconds_per_row" in payload["timing_observability"][
+        "required_diagnostics"
+    ]
+    assert payload["timing_observability"]["performance_evidence_authorized"] is False
+    assert payload["timing_observability"]["known_high_cost_cell"] == (
+        "task_agnostic__c_on__p_on"
+    )
+    assert payload["slow_cell_stop_policy"]["classification"] == (
+        "SLOW_CELL_BUDGET_EXCEEDED"
+    )
+    assert payload["slow_cell_stop_policy"]["preserve_partial_shard_audit"] is True
+    assert payload["execution_authorized"] is False
+    assert payload["runtime_execution_enabled"] is True
+    assert payload["requires_signed_authorization"] is False
+    assert payload["signed_authorization_available"] is True
+    assert payload["signature_status"] == "SIGNED_FOR_L2B_N2_ONLY"
+    assert payload["fail_if_any_target_path_exists"] is True
+    assert payload["concurrency_limits"]["max_gpu_concurrency"] <= 4
+    assert payload["concurrency_limits"]["max_container_concurrency"] <= 40
+    assert [shard["shard_id"] for shard in payload["shards"]] == [
+        "elementwise__fp32",
+        "elementwise__fp16",
+        "elementwise__bf16",
+        "reduction__fp32",
+        "reduction__fp16",
+        "reduction__bf16",
+        "matmul__fp32",
+        "matmul__fp16",
+        "matmul__bf16",
+    ]
+    for shard in payload["shards"]:
+        assert shard["planned_cells"] == 12
+        assert shard["planned_rows"] == 24
+        assert shard["timing_observability"]["performance_evidence_authorized"] is False
+        assert shard["slow_cell_stop_policy"]["classification"] == (
+            "SLOW_CELL_BUDGET_EXCEEDED"
+        )
+        assert shard["output_namespace"].startswith(runner_mod.L2B_N2_OUTPUT_ROOT + "/")
+        assert shard["artifact_namespace"].startswith(
+            runner_mod.L2B_N2_OBSERVABILITY_ROOT + "/"
+        )
+        assert "--dry-plan" in shard["future_command"]
+        assert "--signed-l2b-authorization" not in shard["future_command"]
+
+
+def test_l2b_n2_execution_plan_lists_one_exact_shard_fail_closed() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--l2b-stage",
+            runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+            "--l2b-shard-selector",
+            "elementwise__fp32",
+            "--kernel-class",
+            "elementwise",
+            "--scale-tier",
+            "development",
+            "--n",
+            "2",
+            "--dtypes",
+            "fp32",
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--execution-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_execution_plan_payload(config)
+
+    assert config.output == runner_mod.L2B_N2_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
+    assert payload["selector_profile_id"] == runner_mod.L2B_N2_SELECTOR_PROFILE_ID
+    assert payload["total_shards"] == 9
+    assert payload["selected_shard_count"] == 1
+    assert payload["rows_per_shard"] == 24
+    assert payload["total_planned_rows"] == 24
+    assert payload["full_matrix_planned_rows"] == 216
+    assert payload["requires_signed_authorization"] is True
+    assert payload["signed_authorization_available"] is True
+    assert payload["runtime_execution_enabled"] is True
+    assert payload["runtime_block_reason"] is None
+    assert payload["fail_if_any_target_path_exists"] is True
+    assert payload["writes_outputs"] is False
+    assert payload["writes_artifacts"] is False
+    assert payload["writes_mlruns"] is False
+    shard = payload["shards"][0]
+    assert shard["shard_id"] == "elementwise__fp32"
+    assert shard["kernel_class"] == "elementwise"
+    assert shard["dtype_variant"] == "fp32"
+    assert shard["planned_cells"] == 12
+    assert shard["planned_rows"] == 24
+    assert shard["fail_if_any_target_path_exists"] is True
+    assert shard["output_namespace"] == (
+        f"{runner_mod.L2B_N2_OUTPUT_ROOT}/elementwise__fp32"
+    )
+    assert shard["artifact_namespace"] == (
+        f"{runner_mod.L2B_N2_OBSERVABILITY_ROOT}/elementwise__fp32"
+    )
+    assert "--l2b-stage l2b_n2_full_coverage" in shard["future_command"]
+    assert "--l2b-shard-selector elementwise__fp32" in shard["future_command"]
+    assert "--kernel-class elementwise" in shard["future_command"]
+    assert "--dtypes fp32" in shard["future_command"]
+    assert "--signed-l2b-authorization" in shard["future_command"]
+    assert runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN in shard["future_command"]
+    assert shard["support_status"] == (
+        "L2B_N2_SIGNED_RUNTIME_GATE_ENABLED_NO_EXECUTION"
+    )
+    assert shard["output_paths"]["result_root"] == shard["output_namespace"]
+    assert shard["artifact_paths"]["observability_root"] == shard[
+        "artifact_namespace"
+    ]
+    assert shard["artifact_paths"]["analysis_namespace_glob"].endswith(
+        "/elementwise__fp32*"
+    )
+
+
+def test_l2b_n2_execution_plan_with_recovery_selector_targets_exact_missing_rows() -> None:
+    recovery_cells = (
+        "task_agnostic__c_off__p_off,"
+        "task_agnostic__c_on__p_off,"
+        "task_agnostic__c_off__p_on,"
+        "task_agnostic__c_on__p_on"
+    )
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--l2b-stage",
+            runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+            "--l2b-recovery-cells",
+            recovery_cells,
+            "--l2b-shard-selector",
+            "reduction__fp16",
+            "--kernel-class",
+            "reduction",
+            "--scale-tier",
+            "development",
+            "--n",
+            "2",
+            "--dtypes",
+            "fp16",
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--execution-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_execution_plan_payload(config)
+
+    assert payload["selected_shard_count"] == 1
+    assert payload["total_planned_rows"] == 8
+    assert payload["cell_selector"] == tuple(recovery_cells.split(","))
+    shard = payload["shards"][0]
+    assert shard["planned_cells"] == 4
+    assert shard["planned_rows"] == 8
+    assert (
+        "--l2b-recovery-cells task_agnostic__c_off__p_off,"
+        "task_agnostic__c_on__p_off,task_agnostic__c_off__p_on,"
+        "task_agnostic__c_on__p_on" in shard["future_command"]
+    )
+
+
+def test_l2b_n2_recovery_authorization_passes_prelaunch_with_expected_shard_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(
+        _signed_l2b_selector_args(
+            "--l2b-recovery-cells",
+            "task_agnostic__c_off__p_off,task_agnostic__c_on__p_off,"
+            "task_agnostic__c_off__p_on,task_agnostic__c_on__p_on",
+            "--l2b-shard-selector",
+            "reduction__fp16",
+            "--kernel-class",
+            "reduction",
+            "--dtypes",
+            "fp16",
+            token=runner_mod.L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_PACKET_TOKEN,
+            overwrite=False,
+        )
+    )
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert len(shards) == 1
+    assert shards[0].shard_id == "reduction__fp16"
+    assert shards[0].planned_cells == 4
+    assert shards[0].planned_rows == 8
+
+
+def test_l2b_n2_recovery_duplicate_selector_rejected() -> None:
+    with pytest.raises(ValueError, match="duplicate selector found"):
+        parse_args(
+            _signed_l2b_selector_args(
+                "--l2b-recovery-cells",
+                "task_agnostic__c_on__p_off,task_agnostic__c_on__p_off",
+                "--l2b-shard-selector",
+                "reduction__fp16",
+                "--kernel-class",
+                "reduction",
+                "--dtypes",
+                "fp16",
+            )
+        )
+
+
+def test_l2b_n2_recovery_completed_shard_selector_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        _signed_l2b_selector_args(
+            "--l2b-recovery-cells",
+            "task_agnostic__c_off__p_off,task_agnostic__c_on__p_off,"
+            "task_agnostic__c_off__p_on,task_agnostic__c_on__p_on",
+            "--l2b-shard-selector",
+            "elementwise__fp32",
+            "--kernel-class",
+            "elementwise",
+            "--dtypes",
+            "fp32",
+            token=runner_mod.L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_PACKET_TOKEN,
+            overwrite=False,
+        )
+    )
+
+    with pytest.raises(ValueError, match="does not authorize shard"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n20_recovery_selector_fails_under_l2b_2_blocker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--l2b-stage",
+            runner_mod.L2B_N20_SELECTOR_PROFILE_ID,
+            "--l2b-shard-selector",
+            "all",
+            "--kernel-class",
+            "all",
+            "--scale-tier",
+            "paper",
+            "--n",
+            "20",
+            "--dtypes",
+            "fp32,fp16,bf16",
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--l2b-recovery-cells",
+            "task_agnostic__c_off__p_off,task_agnostic__c_on__p_off",
+            "--signed-l2b-authorization",
+            runner_mod.L2B_N20_SIGNED_AUTHORIZATION_TOKEN,
+        ]
+    )
+
+    with pytest.raises(ValueError, match="recovery scope requires"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n20_execution_plan_lists_signed_bounded_wave() -> None:
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--l2b-stage",
+            runner_mod.L2B_N20_SELECTOR_PROFILE_ID,
+            "--l2b-shard-selector",
+            "wave:6:3",
+            "--kernel-class",
+            "all",
+            "--scale-tier",
+            "paper",
+            "--n",
+            "20",
+            "--dtypes",
+            "fp32,fp16,bf16",
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--execution-plan",
+        ]
+    )
+    payload = runner_mod.build_l1a_execution_plan_payload(config)
+
+    assert config.output == runner_mod.L2B_N20_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
+    assert payload["selector_profile_id"] == runner_mod.L2B_N20_SELECTOR_PROFILE_ID
+    assert payload["authorization_profile"] == (
+        "L2b-4 n=20 sharded full coverage signed runtime gate"
+    )
+    assert payload["signature_status"] == "SIGNED_FOR_L2B_N20_ONLY"
+    assert payload["dependency_gate"] == (
+        "L2b-2 recovery completion and clean n20 authorization"
+    )
+    assert payload["requires_signed_authorization"] is True
+    assert payload["signed_authorization_available"] is True
+    assert payload["total_shards"] == 9
+    assert payload["selected_shard_count"] == 3
+    assert payload["rows_per_shard"] == 240
+    assert payload["total_planned_rows"] == 720
+    assert payload["full_matrix_planned_rows"] == 2160
+    assert payload["timing_observability"]["known_high_cost_cell"] == (
+        "task_agnostic__c_on__p_on"
+    )
+    assert (
+        "performance_claims"
+        in payload["timing_observability"]["disallowed_uses"]
+    )
+    assert payload["slow_cell_stop_policy"]["automatic_retry_authorized"] is False
+    assert payload["slow_cell_stop_policy"]["automatic_resume_authorized"] is False
+    assert payload["concurrency_limits"]["max_gpu_concurrency"] <= 4
+    assert payload["concurrency_limits"]["max_container_concurrency"] <= 40
+    assert payload["concurrency_limits"]["wave_4_max_gpu_concurrency"] <= 2
+    assert payload["concurrency_limits"]["wave_4_max_container_concurrency"] <= 20
+    assert [shard["shard_id"] for shard in payload["shards"]] == [
+        "matmul__fp32",
+        "matmul__fp16",
+        "matmul__bf16",
+    ]
+    for shard in payload["shards"]:
+        assert shard["planned_cells"] == 12
+        assert shard["planned_rows"] == 240
+        assert shard["output_namespace"].startswith(
+            runner_mod.L2B_N20_OUTPUT_ROOT + "/"
+        )
+        assert shard["artifact_namespace"].startswith(
+            runner_mod.L2B_N20_OBSERVABILITY_ROOT + "/"
+        )
+        assert "--signed-l2b-authorization" in shard["future_command"]
+        assert runner_mod.L2B_N20_SIGNED_AUTHORIZATION_TOKEN in shard["future_command"]
+        assert "--overwrite" not in shard["future_command"]
+        assert "--dry-plan" not in shard["future_command"]
+
+
+def test_l2b_n2_signed_all_shards_passes_prelaunch_without_modal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(
+        _signed_l2b_selector_args(
+            "--l2b-shard-selector",
+            "all",
+            "--kernel-class",
+            "all",
+            "--dtypes",
+            "fp32,fp16,bf16",
+        )
+    )
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert len(shards) == 9
+    assert [shard.shard_id for shard in shards] == list(
+        runner_mod.l2b_full_coverage_shard_ids()
+    )
+    assert {shard.planned_cells for shard in shards} == {12}
+    assert {shard.planned_rows for shard in shards} == {24}
+    assert sum(shard.planned_rows for shard in shards) == 216
+    assert all(
+        shard.output_namespace.startswith(runner_mod.L2B_N2_OUTPUT_ROOT + "/")
+        for shard in shards
+    )
+    assert all(
+        shard.artifact_namespace.startswith(
+            runner_mod.L2B_N2_OBSERVABILITY_ROOT + "/"
+        )
+        for shard in shards
+    )
+
+
+def test_l2b_n2_signed_all_shards_reaches_mocked_modal_dispatch_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[runner_mod.Cluster3RunnerConfig] = []
+    modal_events: list[str] = []
+    planned = runner_mod.build_l2b_full_coverage_shard_plan(
+        stage_id=runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        shard_selector="all",
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2b-authorization",
+    )
+    watched_paths = {
+        Path(path)
+        for shard in planned
+        for path in (
+            *shard.output_paths["result_files"],
+            *shard.output_paths["content_hash_sidecars"],
+            *shard.artifact_paths["observability_event_files"],
+            *shard.artifact_paths["observability_summary_files"],
+            *shard.artifact_paths["observability_hash_sidecars"],
+        )
+    } | {Path("mlruns")}
+    before = {path: path.exists() for path in watched_paths}
+
+    class MockModalContext:
+        def __enter__(self) -> None:
+            modal_events.append("enter")
+
+        def __exit__(self, *_args: object) -> None:
+            modal_events.append("exit")
+
+    def fake_run(config: runner_mod.Cluster3RunnerConfig) -> runner_mod.Cluster3RunResult:
+        calls.append(config)
+        return runner_mod.Cluster3RunResult(
+            rows=tuple(object() for _ in range(config.n)),  # type: ignore[arg-type]
+            route_audit=(),
+            output=config.output,
+            write_mode=config.write_mode,
+        )
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "_signed_l2b_modal_app_context",
+        MockModalContext,
+    )
+    monkeypatch.setattr(runner_mod, "run_cluster3", fake_run)
+
+    result = runner_mod.main(
+        _signed_l2b_selector_args(
+            "--l2b-shard-selector",
+            "all",
+            "--kernel-class",
+            "all",
+            "--dtypes",
+            "fp32,fp16,bf16",
+        )
+    )
+    printed = json.loads(capsys.readouterr().out)
+
+    assert isinstance(result, runner_mod.Cluster3RunResult)
+    assert modal_events == ["enter", "exit"]
+    assert len(calls) == 108
+    assert printed["rows"] == 216
+    assert printed["output"] == runner_mod.L2B_N2_OUTPUT_ROOT
+    assert {call.l2b_stage for call in calls} == {None}
+    assert {call.signed_l1a_authorization for call in calls} == {None}
+    assert {call.observability_mode for call in calls} == {"best_effort"}
+    assert {call.write_mode for call in calls} == {"overwrite"}
+    assert {call.n for call in calls} == {2}
+    assert {call.kernel_class for call in calls} == set(runner_mod.LOCKED_KERNEL_CLASSES)
+    assert {call.dtypes for call in calls} == {("fp32",), ("fp16",), ("bf16",)}
+    assert {call.condition for call in calls} == set(runner_mod.CLUSTER3_CONDITIONS)
+    assert all(call.output.startswith(runner_mod.L2B_N2_OUTPUT_ROOT + "/") for call in calls)
+    assert all(
+        (call.observability_output or "").startswith(
+            runner_mod.L2B_N2_OBSERVABILITY_ROOT + "/"
+        )
+        for call in calls
+    )
+    assert before == {path: path.exists() for path in watched_paths}
+
+
+def test_l2b_n2_signed_one_shard_passes_prelaunch_without_modal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(_signed_l2b_selector_args())
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert len(shards) == 1
+    shard = shards[0]
+    assert shard.shard_id == "elementwise__fp32"
+    assert shard.kernel_class == "elementwise"
+    assert shard.dtype_variant == "fp32"
+    assert shard.planned_cells == 12
+    assert shard.planned_rows == 24
+    assert shard.output_namespace == (
+        f"{runner_mod.L2B_N2_OUTPUT_ROOT}/elementwise__fp32"
+    )
+
+
+def test_l2b_n2_signed_wave_passes_prelaunch_without_modal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(
+        _signed_l2b_selector_args(
+            "--l2b-shard-selector",
+            "wave:0:4",
+            "--kernel-class",
+            "all",
+            "--dtypes",
+            "fp32,fp16,bf16",
+        )
+    )
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert [shard.shard_id for shard in shards] == [
+        "elementwise__fp32",
+        "elementwise__fp16",
+        "elementwise__bf16",
+        "reduction__fp32",
+    ]
+    assert sum(shard.planned_rows for shard in shards) == 96
+
+
+def test_l2b_n20_signed_one_shard_uses_create_mode_without_overwrite(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(_signed_l2b_n20_selector_args())
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert config.write_mode == "create"
+    assert len(shards) == 1
+    shard = shards[0]
+    assert shard.shard_id == "elementwise__fp32"
+    assert shard.planned_cells == 12
+    assert shard.planned_rows == 240
+    assert shard.output_namespace == (
+        f"{runner_mod.L2B_N20_OUTPUT_ROOT}/elementwise__fp32"
+    )
+    assert runner_mod.L2B_N20_SIGNED_AUTHORIZATION_TOKEN in shard.future_command
+    assert "--overwrite" not in shard.future_command
+    assert all("--overwrite" not in command for command in shard.cell_commands)
+
+
+def test_l2b_n20_signed_one_shard_reaches_mocked_modal_dispatch_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[runner_mod.Cluster3RunnerConfig] = []
+    modal_events: list[str] = []
+
+    class MockModalContext:
+        def __enter__(self) -> None:
+            modal_events.append("enter")
+
+        def __exit__(self, *_args: object) -> None:
+            modal_events.append("exit")
+
+    def fake_run(config: runner_mod.Cluster3RunnerConfig) -> runner_mod.Cluster3RunResult:
+        calls.append(config)
+        return runner_mod.Cluster3RunResult(
+            rows=tuple(object() for _ in range(config.n)),  # type: ignore[arg-type]
+            route_audit=(),
+            output=config.output,
+            write_mode=config.write_mode,
+        )
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "_signed_l2b_modal_app_context",
+        MockModalContext,
+    )
+    monkeypatch.setattr(runner_mod, "run_cluster3", fake_run)
+
+    result = runner_mod.main(_signed_l2b_n20_selector_args())
+    printed = json.loads(capsys.readouterr().out)
+
+    assert isinstance(result, runner_mod.Cluster3RunResult)
+    assert modal_events == ["enter", "exit"]
+    assert len(calls) == 12
+    assert printed["rows"] == 240
+    assert printed["output"] == runner_mod.L2B_N20_OUTPUT_ROOT
+    assert {call.write_mode for call in calls} == {"create"}
+    assert {call.n for call in calls} == {20}
+    assert {call.l2b_stage for call in calls} == {None}
+    assert {call.signed_l1a_authorization for call in calls} == {None}
+    assert {call.observability_mode for call in calls} == {"best_effort"}
+    assert all(call.output.startswith(runner_mod.L2B_N20_OUTPUT_ROOT + "/") for call in calls)
+    assert all(
+        (call.observability_output or "").startswith(
+            runner_mod.L2B_N20_OBSERVABILITY_ROOT + "/"
+        )
+        for call in calls
+    )
+
+
+def test_l2b_n20_signed_missing_run_result_fails_with_classification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MockModalContext:
+        def __enter__(self) -> None:
+            return None
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    calls = 0
+
+    def missing_result(
+        _config: runner_mod.Cluster3RunnerConfig,
+        *,
+        shards: tuple[runner_mod.L2BFullCoverageShardPlan, ...],
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        assert len(shards) == 1
+        return None
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "_signed_l2b_modal_app_context",
+        MockModalContext,
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "_run_signed_l2b_selector_with_modal_context",
+        missing_result,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="L2B_N20_RUN_FAILED_INTERRUPTED_OR_MISSING_RUN_RESULT",
+    ):
+        runner_mod.main(_signed_l2b_n20_selector_args())
+
+    assert calls == 1
+
+
+def test_l2b_n20_attempt2_signed_one_shard_uses_distinct_create_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(_signed_l2b_n20_attempt2_selector_args())
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert config.write_mode == "create"
+    assert config.output == runner_mod.L2B_N20_ATTEMPT2_EXECUTION_SELECTOR_PLACEHOLDER_OUTPUT
+    assert len(shards) == 1
+    shard = shards[0]
+    assert shard.shard_id == "elementwise__fp32"
+    assert shard.planned_rows == 240
+    assert shard.output_namespace == (
+        f"{runner_mod.L2B_N20_ATTEMPT2_OUTPUT_ROOT}/elementwise__fp32"
+    )
+    assert shard.artifact_namespace == (
+        f"{runner_mod.L2B_N20_ATTEMPT2_OBSERVABILITY_ROOT}/elementwise__fp32"
+    )
+    assert runner_mod.L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN in shard.future_command
+    assert runner_mod.L2B_N20_SIGNED_AUTHORIZATION_TOKEN not in shard.future_command
+    assert "--overwrite" not in shard.future_command
+    assert all("--overwrite" not in command for command in shard.cell_commands)
+
+
+def test_l2b_n20_attempt2_two_lane_rescue_lane_a_is_missing360_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(_signed_l2b_n20_attempt2_lane_a_selector_args())
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert config.write_mode == "create"
+    assert config.output == (
+        runner_mod.L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OUTPUT_ROOT
+        + "/__selector__.jsonl"
+    )
+    assert [shard.shard_id for shard in shards] == [
+        "reduction__fp32",
+        "reduction__fp16",
+        "reduction__bf16",
+    ]
+    assert {shard.planned_cells for shard in shards} == {6}
+    assert sum(shard.planned_rows for shard in shards) == 360
+    assert all(
+        shard.output_namespace.startswith(
+            runner_mod.L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OUTPUT_ROOT + "/"
+        )
+        for shard in shards
+    )
+    assert all(
+        runner_mod.L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
+        in shard.future_command
+        for shard in shards
+    )
+    assert all("--overwrite" not in shard.future_command for shard in shards)
+
+
+def test_l2b_n20_attempt2_two_lane_rescue_lane_b_is_wave3_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(_signed_l2b_n20_attempt2_lane_b_selector_args())
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert config.write_mode == "create"
+    assert config.output == (
+        runner_mod.L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OUTPUT_ROOT
+        + "/__selector__.jsonl"
+    )
+    assert [shard.shard_id for shard in shards] == ["matmul__fp16", "matmul__bf16"]
+    assert {shard.planned_cells for shard in shards} == {12}
+    assert sum(shard.planned_rows for shard in shards) == 480
+    assert all(
+        shard.output_namespace.startswith(
+            runner_mod.L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OUTPUT_ROOT + "/"
+        )
+        for shard in shards
+    )
+    assert all(
+        runner_mod.L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
+        in shard.future_command
+        for shard in shards
+    )
+    assert all("--overwrite" not in shard.future_command for shard in shards)
+
+
+def test_l2b_n20_attempt2_two_lane_rescue_lane_a_reaches_mocked_modal_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[runner_mod.Cluster3RunnerConfig] = []
+    modal_events: list[str] = []
+
+    class MockModalContext:
+        def __enter__(self) -> None:
+            modal_events.append("enter")
+
+        def __exit__(self, *_args: object) -> None:
+            modal_events.append("exit")
+
+    def fake_run(config: runner_mod.Cluster3RunnerConfig) -> runner_mod.Cluster3RunResult:
+        calls.append(config)
+        return runner_mod.Cluster3RunResult(
+            rows=tuple(object() for _ in range(config.n)),  # type: ignore[arg-type]
+            route_audit=(),
+            output=config.output,
+            write_mode=config.write_mode,
+        )
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(runner_mod, "_signed_l2b_modal_app_context", MockModalContext)
+    monkeypatch.setattr(runner_mod, "run_cluster3", fake_run)
+
+    result = runner_mod.main(_signed_l2b_n20_attempt2_lane_a_selector_args())
+    printed = json.loads(capsys.readouterr().out)
+
+    assert isinstance(result, runner_mod.Cluster3RunResult)
+    assert modal_events == ["enter", "exit"]
+    assert len(calls) == 18
+    assert printed["rows"] == 360
+    assert printed["output"] == runner_mod.L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OUTPUT_ROOT
+    assert {call.write_mode for call in calls} == {"create"}
+    assert {call.n for call in calls} == {20}
+    assert all(
+        call.output.startswith(
+            runner_mod.L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OUTPUT_ROOT + "/"
+        )
+        for call in calls
+    )
+    assert all(
+        (call.observability_output or "").startswith(
+            runner_mod.L2B_N20_ATTEMPT2_WAVE2_RECOVERY_OBSERVABILITY_ROOT + "/"
+        )
+        for call in calls
+    )
+
+
+def test_l2b_n20_attempt2_two_lane_rescue_lane_b_reaches_mocked_modal_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[runner_mod.Cluster3RunnerConfig] = []
+    modal_events: list[str] = []
+
+    class MockModalContext:
+        def __enter__(self) -> None:
+            modal_events.append("enter")
+
+        def __exit__(self, *_args: object) -> None:
+            modal_events.append("exit")
+
+    def fake_run(config: runner_mod.Cluster3RunnerConfig) -> runner_mod.Cluster3RunResult:
+        calls.append(config)
+        return runner_mod.Cluster3RunResult(
+            rows=tuple(object() for _ in range(config.n)),  # type: ignore[arg-type]
+            route_audit=(),
+            output=config.output,
+            write_mode=config.write_mode,
+        )
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(runner_mod, "_signed_l2b_modal_app_context", MockModalContext)
+    monkeypatch.setattr(runner_mod, "run_cluster3", fake_run)
+
+    result = runner_mod.main(_signed_l2b_n20_attempt2_lane_b_selector_args())
+    printed = json.loads(capsys.readouterr().out)
+
+    assert isinstance(result, runner_mod.Cluster3RunResult)
+    assert modal_events == ["enter", "exit"]
+    assert len(calls) == 24
+    assert printed["rows"] == 480
+    assert printed["output"] == runner_mod.L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OUTPUT_ROOT
+    assert {call.write_mode for call in calls} == {"create"}
+    assert {call.n for call in calls} == {20}
+    assert all(
+        call.output.startswith(
+            runner_mod.L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OUTPUT_ROOT + "/"
+        )
+        for call in calls
+    )
+    assert all(
+        (call.observability_output or "").startswith(
+            runner_mod.L2B_N20_ATTEMPT2_WAVE3_PARALLEL_OBSERVABILITY_ROOT + "/"
+        )
+        for call in calls
+    )
+
+
+def test_l2b_n20_attempt2_two_lane_rescue_wrong_tokens_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+
+    lane_a_wrong = parse_args(
+        _signed_l2b_n20_attempt2_lane_a_selector_args(
+            token=runner_mod.L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN,
+        )
+    )
+    with pytest.raises(ValueError, match="token does not match --l2b-stage"):
+        runner_mod._validate_l2b_runtime_authorization(lane_a_wrong)
+
+    lane_b_wrong = parse_args(
+        _signed_l2b_n20_attempt2_lane_b_selector_args(
+            token=runner_mod.L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN,
+        )
+    )
+    with pytest.raises(ValueError, match="token does not match --l2b-stage"):
+        runner_mod._validate_l2b_runtime_authorization(lane_b_wrong)
+
+    original_attempt2 = parse_args(
+        _signed_l2b_n20_attempt2_selector_args(
+            token=(
+                runner_mod
+                .L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
+            ),
+        )
+    )
+    with pytest.raises(ValueError, match="token does not match --l2b-stage"):
+        runner_mod._validate_l2b_runtime_authorization(original_attempt2)
+
+
+def test_l2b_n20_attempt2_two_lane_rescue_rejects_wave4(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        _signed_l2b_n20_attempt2_lane_b_selector_args(
+            "--l2b-shard-selector",
+            "matmul__fp32",
+            "--kernel-class",
+            "matmul",
+            "--dtypes",
+            "fp32",
+        )
+    )
+
+    with pytest.raises(ValueError, match="Lane B requires Wave 3"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n20_attempt2_two_lane_rescue_rejects_overwrite_retry_resume_and_mlflow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    with pytest.raises(SystemExit):
+        parse_args(_signed_l2b_n20_attempt2_lane_a_selector_args("--overwrite"))
+    with pytest.raises(SystemExit):
+        parse_args(_signed_l2b_n20_attempt2_lane_a_selector_args("--resume"))
+    with pytest.raises(SystemExit):
+        parse_args(_signed_l2b_n20_attempt2_lane_a_selector_args("--retry"))
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "1")
+    mlflow_enabled = parse_args(_signed_l2b_n20_attempt2_lane_a_selector_args())
+    with pytest.raises(RuntimeError, match="TRITONGEN_MLFLOW=0"):
+        runner_mod._validate_l2b_runtime_authorization(mlflow_enabled)
+
+
+def test_l2b_n20_attempt2_two_lane_rescue_wrong_namespace_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2b_n20_attempt2_lane_a_selector_args())
+    shards = runner_mod.build_l2b_full_coverage_shard_plan(
+        stage_id=runner_mod.L2B_N20_ATTEMPT2_WAVE2_RECOVERY_SELECTOR_PROFILE_ID,
+        shard_selector="wave:3:3",
+        cell_selector=(
+            "template_upper_bound__c_off__p_on",
+            "template_upper_bound__c_on__p_on",
+            "task_agnostic__c_off__p_off",
+            "task_agnostic__c_on__p_off",
+            "task_agnostic__c_off__p_on",
+            "task_agnostic__c_on__p_on",
+        ),
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=(
+            runner_mod.L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN
+        ),
+        signed_authorization_option="--signed-l2b-authorization",
+    )
+    bad_shard = replace(
+        shards[0],
+        output_namespace=(
+            f"{runner_mod.L2B_N20_ATTEMPT2_OUTPUT_ROOT}/{shards[0].shard_id}"
+        ),
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "build_l2b_full_coverage_shard_plan",
+        lambda **_kwargs: (bad_shard, *shards[1:]),
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(ValueError, match="output namespace does not match shard id"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n20_attempt2_wave4_is_matmul_fp32_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(_signed_l2b_n20_attempt2_wave4_selector_args())
+
+    shards = runner_mod._validate_l2b_runtime_authorization(config)
+
+    assert config.write_mode == "create"
+    assert config.output == (
+        runner_mod.L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OUTPUT_ROOT
+        + "/__selector__.jsonl"
+    )
+    assert [shard.shard_id for shard in shards] == ["matmul__fp32"]
+    assert {shard.planned_cells for shard in shards} == {12}
+    assert sum(shard.planned_rows for shard in shards) == 240
+    assert all(
+        shard.output_namespace.startswith(
+            runner_mod.L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OUTPUT_ROOT + "/"
+        )
+        for shard in shards
+    )
+    assert all(
+        runner_mod.L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN
+        in shard.future_command
+        for shard in shards
+    )
+    assert all("--overwrite" not in shard.future_command for shard in shards)
+
+
+def test_l2b_n20_attempt2_wave4_reaches_mocked_modal_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[runner_mod.Cluster3RunnerConfig] = []
+    modal_events: list[str] = []
+
+    class MockModalContext:
+        def __enter__(self) -> None:
+            modal_events.append("enter")
+
+        def __exit__(self, *_args: object) -> None:
+            modal_events.append("exit")
+
+    def fake_run(config: runner_mod.Cluster3RunnerConfig) -> runner_mod.Cluster3RunResult:
+        calls.append(config)
+        return runner_mod.Cluster3RunResult(
+            rows=tuple(object() for _ in range(config.n)),  # type: ignore[arg-type]
+            route_audit=(),
+            output=config.output,
+            write_mode=config.write_mode,
+        )
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(runner_mod, "_signed_l2b_modal_app_context", MockModalContext)
+    monkeypatch.setattr(runner_mod, "run_cluster3", fake_run)
+
+    result = runner_mod.main(_signed_l2b_n20_attempt2_wave4_selector_args())
+    printed = json.loads(capsys.readouterr().out)
+
+    assert isinstance(result, runner_mod.Cluster3RunResult)
+    assert modal_events == ["enter", "exit"]
+    assert len(calls) == 12
+    assert printed["rows"] == 240
+    assert printed["output"] == runner_mod.L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OUTPUT_ROOT
+    assert {call.write_mode for call in calls} == {"create"}
+    assert {call.n for call in calls} == {20}
+    assert {call.kernel_class for call in calls} == {"matmul"}
+    assert {call.dtypes for call in calls} == {("fp32",)}
+    assert all(
+        call.output.startswith(
+            runner_mod.L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OUTPUT_ROOT + "/"
+        )
+        for call in calls
+    )
+    assert all(
+        (call.observability_output or "").startswith(
+            runner_mod.L2B_N20_ATTEMPT2_WAVE4_PARALLEL_OBSERVABILITY_ROOT + "/"
+        )
+        for call in calls
+    )
+
+
+def test_l2b_n20_attempt2_wave4_wrong_tokens_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    wrong_tokens = (
+        runner_mod.L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN,
+        runner_mod.L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_SIGNED_AUTHORIZATION_TOKEN,
+        runner_mod.L2B_N20_SIGNED_AUTHORIZATION_TOKEN,
+    )
+
+    for token in wrong_tokens:
+        config = parse_args(
+            _signed_l2b_n20_attempt2_wave4_selector_args(token=token)
+        )
+        with pytest.raises(ValueError, match="token does not match --l2b-stage"):
+            runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n20_attempt2_wave4_token_cannot_run_other_scopes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    original_attempt2 = parse_args(
+        _signed_l2b_n20_attempt2_selector_args(
+            token=runner_mod.L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN,
+        )
+    )
+    with pytest.raises(ValueError, match="token does not match --l2b-stage"):
+        runner_mod._validate_l2b_runtime_authorization(original_attempt2)
+
+    lane_a = parse_args(
+        _signed_l2b_n20_attempt2_lane_a_selector_args(
+            token=runner_mod.L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN,
+        )
+    )
+    with pytest.raises(ValueError, match="token does not match --l2b-stage"):
+        runner_mod._validate_l2b_runtime_authorization(lane_a)
+
+    lane_b = parse_args(
+        _signed_l2b_n20_attempt2_lane_b_selector_args(
+            token=runner_mod.L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN,
+        )
+    )
+    with pytest.raises(ValueError, match="token does not match --l2b-stage"):
+        runner_mod._validate_l2b_runtime_authorization(lane_b)
+
+
+def test_l2b_n20_attempt2_wave4_rejects_wrong_scope_and_n(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+
+    wave3_scope = parse_args(
+        _signed_l2b_n20_attempt2_wave4_selector_args(
+            "--l2b-shard-selector",
+            "wave:7:2",
+            "--kernel-class",
+            "all",
+            "--dtypes",
+            "fp32,fp16,bf16",
+        )
+    )
+    with pytest.raises(ValueError, match="Wave 4 requires matmul__fp32"):
+        runner_mod._validate_l2b_runtime_authorization(wave3_scope)
+
+    with pytest.raises(ValueError, match="requires --n 20"):
+        parse_args(_signed_l2b_n20_attempt2_wave4_selector_args("--n", "2"))
+
+
+def test_l2b_n20_attempt2_wave4_rejects_overwrite_retry_resume_and_mlflow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    with pytest.raises(SystemExit):
+        parse_args(_signed_l2b_n20_attempt2_wave4_selector_args("--overwrite"))
+    with pytest.raises(SystemExit):
+        parse_args(_signed_l2b_n20_attempt2_wave4_selector_args("--resume"))
+    with pytest.raises(SystemExit):
+        parse_args(_signed_l2b_n20_attempt2_wave4_selector_args("--retry"))
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "1")
+    mlflow_enabled = parse_args(_signed_l2b_n20_attempt2_wave4_selector_args())
+    with pytest.raises(RuntimeError, match="TRITONGEN_MLFLOW=0"):
+        runner_mod._validate_l2b_runtime_authorization(mlflow_enabled)
+
+
+def test_l2b_n20_attempt2_wave4_wrong_namespace_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2b_n20_attempt2_wave4_selector_args())
+    shards = runner_mod.build_l2b_full_coverage_shard_plan(
+        stage_id=runner_mod.L2B_N20_ATTEMPT2_WAVE4_PARALLEL_SELECTOR_PROFILE_ID,
+        shard_selector="matmul__fp32",
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=(
+            runner_mod.L2B_N20_ATTEMPT2_WAVE4_SIGNED_AUTHORIZATION_TOKEN
+        ),
+        signed_authorization_option="--signed-l2b-authorization",
+    )
+    bad_shard = replace(
+        shards[0],
+        output_namespace=f"{runner_mod.L2B_N20_ATTEMPT2_OUTPUT_ROOT}/matmul__fp32",
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "build_l2b_full_coverage_shard_plan",
+        lambda **_kwargs: (bad_shard,),
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(ValueError, match="output namespace does not match shard id"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n20_attempt2_token_rejects_original_n20_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        _signed_l2b_n20_selector_args(
+            token=runner_mod.L2B_N20_ATTEMPT2_SIGNED_AUTHORIZATION_TOKEN,
+        )
+    )
+
+    with pytest.raises(ValueError, match="token does not match --l2b-stage"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n20_original_token_rejects_attempt2_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        _signed_l2b_n20_attempt2_selector_args(
+            token=runner_mod.L2B_N20_SIGNED_AUTHORIZATION_TOKEN,
+        )
+    )
+
+    with pytest.raises(ValueError, match="token does not match --l2b-stage"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n20_attempt2_rejects_overwrite_retry_resume_and_mlflow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    with pytest.raises(SystemExit):
+        parse_args(_signed_l2b_n20_attempt2_selector_args("--overwrite"))
+
+    with pytest.raises(SystemExit):
+        parse_args(_signed_l2b_n20_attempt2_selector_args("--resume"))
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "1")
+    mlflow_enabled = parse_args(_signed_l2b_n20_attempt2_selector_args())
+    with pytest.raises(RuntimeError, match="TRITONGEN_MLFLOW=0"):
+        runner_mod._validate_l2b_runtime_authorization(mlflow_enabled)
+
+
+def test_l2b_n20_attempt2_rejects_wrong_n(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    with pytest.raises(ValueError, match="requires --n 20"):
+        parse_args(_signed_l2b_n20_attempt2_selector_args("--n", "19"))
+
+
+def test_l2b_n20_attempt2_signed_one_shard_reaches_mocked_modal_dispatch_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[runner_mod.Cluster3RunnerConfig] = []
+    modal_events: list[str] = []
+
+    class MockModalContext:
+        def __enter__(self) -> None:
+            modal_events.append("enter")
+
+        def __exit__(self, *_args: object) -> None:
+            modal_events.append("exit")
+
+    def fake_run(config: runner_mod.Cluster3RunnerConfig) -> runner_mod.Cluster3RunResult:
+        calls.append(config)
+        return runner_mod.Cluster3RunResult(
+            rows=tuple(object() for _ in range(config.n)),  # type: ignore[arg-type]
+            route_audit=(),
+            output=config.output,
+            write_mode=config.write_mode,
+        )
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "_signed_l2b_modal_app_context",
+        MockModalContext,
+    )
+    monkeypatch.setattr(runner_mod, "run_cluster3", fake_run)
+
+    result = runner_mod.main(_signed_l2b_n20_attempt2_selector_args())
+    printed = json.loads(capsys.readouterr().out)
+
+    assert isinstance(result, runner_mod.Cluster3RunResult)
+    assert modal_events == ["enter", "exit"]
+    assert len(calls) == 12
+    assert printed["rows"] == 240
+    assert printed["output"] == runner_mod.L2B_N20_ATTEMPT2_OUTPUT_ROOT
+    assert {call.write_mode for call in calls} == {"create"}
+    assert {call.n for call in calls} == {20}
+    assert {call.l2b_stage for call in calls} == {None}
+    assert {call.signed_l1a_authorization for call in calls} == {None}
+    assert {call.observability_mode for call in calls} == {"best_effort"}
+    assert all(
+        call.output.startswith(runner_mod.L2B_N20_ATTEMPT2_OUTPUT_ROOT + "/")
+        for call in calls
+    )
+    assert all(
+        (call.observability_output or "").startswith(
+            runner_mod.L2B_N20_ATTEMPT2_OBSERVABILITY_ROOT + "/"
+        )
+        for call in calls
+    )
+
+
+def test_l2b_n20_create_only_rerun_rejects_existing_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    existing = (
+        tmp_path
+        / runner_mod.L2B_N20_OUTPUT_ROOT
+        / "elementwise__fp32"
+    )
+    existing.mkdir(parents=True)
+    monkeypatch.setattr(runner_mod, "REPO_ROOT", tmp_path)
+
+    with pytest.raises(FileExistsError, match="retry/resume/delete is not authorized"):
+        runner_mod._require_absent_target(
+            f"{runner_mod.L2B_N20_OUTPUT_ROOT}/elementwise__fp32",
+            label="output root",
+        )
+
+
+def test_l2b_validator_entrypoint_exists_and_detects_duplicate_logical_keys(
+    tmp_path: Path,
+) -> None:
+    assert l2b_validator.main is not None
+    grammar_root = tmp_path / "cluster1/grammar"
+    grammar_root.mkdir(parents=True)
+    (grammar_root / "triton_kernel.gbnf").write_text(
+        "root ::= \"kernel\"\n",
+        encoding="utf-8",
+    )
+    (grammar_root / "triton_kernel_agnostic.gbnf").write_text(
+        "root ::= \"kernel\"\n",
+        encoding="utf-8",
+    )
+    result_path = (
+        tmp_path
+        / runner_mod.L2B_N2_OUTPUT_ROOT
+        / "elementwise__fp32"
+        / "grammar_off__c_off__p_off.jsonl"
+    )
+    result_path.parent.mkdir(parents=True)
+    payload = {
+        "base_seed": 0,
+        "kernel_class": "elementwise",
+        "dtype": "fp32",
+        "condition": "none",
+    }
+    result_path.write_text(
+        json.dumps(payload) + "\n" + json.dumps(payload) + "\n",
+        encoding="utf-8",
+    )
+
+    result = l2b_validator.validate_l2b_full_coverage(
+        stage=runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        wave_id=None,
+        expected_rows=216,
+        expected_shards=9,
+        repo_root=tmp_path,
+    )
+
+    assert result.actual_rows == 2
+    assert result.duplicate_logical_keys == 1
+    assert result.missing_logical_keys > 0
+    assert result.ok is False
+
+
+def test_l2b_n2_unsigned_runtime_fails_closed() -> None:
+    with pytest.raises(ValueError, match="signed-l1a-authorization"):
+        parse_args(
+            [
+                "--condition",
+                runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+                "--l2b-stage",
+                runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+                "--l2b-shard-selector",
+                "elementwise__fp32",
+                "--kernel-class",
+                "elementwise",
+                "--scale-tier",
+                "development",
+                "--n",
+                "2",
+                "--dtypes",
+                "fp32",
+                "--repair-history-policy",
+                "agentic_transcript_v1",
+                "--overwrite",
+            ]
+        )
+
+
+def test_l2b_n2_wrong_token_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2b_selector_args(token="wrong-token"))
+
+    with pytest.raises(ValueError, match="signed selector authorization"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n20_fails_under_l2b_n2_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--l2b-stage",
+            runner_mod.L2B_N20_SELECTOR_PROFILE_ID,
+            "--l2b-shard-selector",
+            "all",
+            "--kernel-class",
+            "all",
+            "--scale-tier",
+            "paper",
+            "--n",
+            "20",
+            "--dtypes",
+            "fp32,fp16,bf16",
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--signed-l2b-authorization",
+            runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+            "--overwrite",
+        ]
+    )
+
+    with pytest.raises(ValueError, match="does not match --l2b-stage"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n2_unknown_shard_fails_closed() -> None:
+    with pytest.raises(ValueError, match="l2b_shard_selector"):
+        parse_args(
+            _signed_l2b_selector_args(
+                "--l2b-shard-selector",
+                "elementwise__tf32",
+            )
+        )
+
+
+def test_l2b_n2_all_shards_requires_9_selected_shards(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        _signed_l2b_selector_args(
+            "--l2b-shard-selector",
+            "all",
+            "--kernel-class",
+            "all",
+            "--dtypes",
+            "fp32,fp16,bf16",
+        )
+    )
+    shards = runner_mod.build_l2b_full_coverage_shard_plan(
+        stage_id=runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        shard_selector="all",
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2b-authorization",
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "build_l2b_full_coverage_shard_plan",
+        lambda **_kwargs: shards[:8],
+    )
+
+    with pytest.raises(ValueError, match="exactly 9 shards"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n2_shard_row_count_mismatch_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2b_selector_args())
+    shards = runner_mod.build_l2b_full_coverage_shard_plan(
+        stage_id=runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        shard_selector="elementwise__fp32",
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2b-authorization",
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "build_l2b_full_coverage_shard_plan",
+        lambda **_kwargs: (replace(shards[0], planned_rows=23),),
+    )
+
+    with pytest.raises(ValueError, match="24 planned rows"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n2_mlflow_enabled_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "1")
+    config = parse_args(_signed_l2b_selector_args())
+
+    with pytest.raises(RuntimeError, match="TRITONGEN_MLFLOW=0"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n2_resume_fails_closed() -> None:
+    args = _signed_l2b_selector_args()
+    args[args.index("--overwrite")] = "--resume"
+
+    with pytest.raises(SystemExit):
+        parse_args(args)
+
+
+def test_l2b_n2_existing_target_path_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2b_selector_args())
+    shard = runner_mod.build_l2b_full_coverage_shard_plan(
+        stage_id=runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        shard_selector="elementwise__fp32",
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2b-authorization",
+    )[0]
+    existing_target = runner_mod.REPO_ROOT / shard.output_paths["result_files"][0]
+    original_exists = runner_mod.Path.exists
+
+    def fake_exists(path: Path) -> bool:
+        if path == existing_target:
+            return True
+        return original_exists(path)
+
+    monkeypatch.setattr(runner_mod.Path, "exists", fake_exists)
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n2_namespace_escape_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2b_selector_args())
+    shard = runner_mod.build_l2b_full_coverage_shard_plan(
+        stage_id=runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        shard_selector="elementwise__fp32",
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2b-authorization",
+    )[0]
+    output_paths = dict(shard.output_paths)
+    output_paths["result_files"] = (
+        "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/"
+        "l2b_n20/elementwise__fp32/escaped.jsonl",
+    )
+    bad_shard = replace(shard, output_paths=output_paths)
+    monkeypatch.setattr(
+        runner_mod,
+        "build_l2b_full_coverage_shard_plan",
+        lambda **_kwargs: (bad_shard,),
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(ValueError, match="outside shard namespace"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n2_recovery_namespace_escape_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    recovery_cells = (
+        "task_agnostic__c_off__p_off,"
+        "task_agnostic__c_on__p_off,"
+        "task_agnostic__c_off__p_on,"
+        "task_agnostic__c_on__p_on"
+    )
+    config = parse_args(
+        _signed_l2b_selector_args(
+            "--l2b-recovery-cells",
+            recovery_cells,
+            "--l2b-shard-selector",
+            "reduction__fp16",
+            "--kernel-class",
+            "reduction",
+            "--dtypes",
+            "fp16",
+            token=runner_mod.L2B_N2_RECOVERY_MISSING28_SIGNED_AUTHORIZATION_PACKET_TOKEN,
+            overwrite=False,
+        )
+    )
+    shard = runner_mod.build_l2b_full_coverage_shard_plan(
+        stage_id=runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        shard_selector="reduction__fp16",
+        cell_selector=(
+            "task_agnostic__c_off__p_off",
+            "task_agnostic__c_on__p_off",
+            "task_agnostic__c_off__p_on",
+            "task_agnostic__c_on__p_on",
+        ),
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2b-authorization",
+    )[0]
+    output_paths = dict(shard.output_paths)
+    output_paths["result_files"] = (
+        "outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/"
+        "l2b_n2_recovery_missing28/reduction__fp16/escaped.jsonl",
+    )
+    bad_shard = replace(shard, output_paths=output_paths)
+    monkeypatch.setattr(
+        runner_mod,
+        "build_l2b_full_coverage_shard_plan",
+        lambda **_kwargs: (bad_shard,),
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(ValueError, match="output namespace does not match shard id"):
+        runner_mod._validate_l2b_runtime_authorization(config)
+
+
+def test_l2b_n2_slow_cell_budget_exceeded_stops_shard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = parse_args(_signed_l2b_selector_args())
+    shard = runner_mod.build_l2b_full_coverage_shard_plan(
+        stage_id=runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+        shard_selector="elementwise__fp32",
+        repair_history_policy="agentic_transcript_v1",
+        command_mode="executable",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2B_N2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2b-authorization",
+    )[0]
+    clock = iter((0.0, runner_mod.L2B_N2_SIGNED_WALL_CLOCK_SECONDS_PER_CELL + 1.0))
+
+    def fake_run(config: runner_mod.Cluster3RunnerConfig) -> runner_mod.Cluster3RunResult:
+        return runner_mod.Cluster3RunResult(
+            rows=tuple(object() for _ in range(config.n)),  # type: ignore[arg-type]
+            route_audit=(),
+            output=config.output,
+            write_mode=config.write_mode,
+        )
+
+    monkeypatch.setattr(runner_mod.time, "perf_counter", lambda: next(clock))
+    monkeypatch.setattr(runner_mod, "run_cluster3", fake_run)
+
+    with pytest.raises(RuntimeError, match="SLOW_CELL_BUDGET_EXCEEDED"):
+        runner_mod._run_signed_l2b_shard(config, shard)
+
+
+def test_l2b_stage_rejects_wrong_n() -> None:
+    with pytest.raises(ValueError, match="--n 2"):
+        parse_args(
+            [
+                "--condition",
+                runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+                "--l2b-stage",
+                runner_mod.L2B_N2_SELECTOR_PROFILE_ID,
+                "--scale-tier",
+                "development",
+                "--n",
+                "20",
+                "--dry-plan",
+            ]
+        )
+
+
+def test_l1a_12cell_selector_rejects_execution_without_dry_plan(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="signed-l1a-authorization"):
+        parse_args(
+            [
+                "--condition",
+                runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+                "--output",
+                str(tmp_path / "out.jsonl"),
+                "--overwrite",
+            ]
+        )
+
+
+def test_dry_plan_rejects_old_condition_selector() -> None:
+    with pytest.raises(SystemExit):
+        parse_args(["--condition", "P", "--dry-plan"])
+
+
+def test_grammar_mode_cell_rejects_non_dry_plan_selector(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="grammar-mode-cell"):
+        parse_args(
+            [
+                "--condition",
+                "P",
+                "--grammar-mode-cell",
+                "grammar_off__c_off__p_off",
+                "--output",
+                str(tmp_path / "out.jsonl"),
+                "--overwrite",
+            ]
+        )
+
+
+def test_l1a_12cell_dry_plan_main_does_not_run_or_write(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    planned = runner_mod.build_l1a_launcher_dry_plan(
+        repair_history_policy="agentic_transcript_v1",
+        repo_root=runner_mod.REPO_ROOT,
+    )
+    watched_paths = {
+        Path(cell.output_path) for cell in planned
+    } | {
+        Path(cell.content_hash_sidecar_path) for cell in planned
+    } | {
+        Path(cell.observability_event_path) for cell in planned
+    } | {
+        Path(cell.observability_summary_path) for cell in planned
+    } | {
+        Path(cell.observability_hash_path) for cell in planned
+    } | {Path("mlruns")}
+    before = {path: path.exists() for path in watched_paths}
+
+    def fail_run(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("dry-plan must not call run_cluster3")
+
+    monkeypatch.setattr(runner_mod, "run_cluster3", fail_run)
+
+    payload = runner_mod.main(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--dry-plan",
+        ]
+    )
+    printed = json.loads(capsys.readouterr().out)
+
+    assert json.loads(json.dumps(payload, sort_keys=True)) == printed
+    assert printed["cell_count"] == 12
+    assert printed["writes_outputs"] is False
+    assert printed["writes_artifacts"] is False
+    assert printed["writes_mlruns"] is False
+    assert before == {path: path.exists() for path in watched_paths}
+
+
+def test_l1a_12cell_execution_plan_main_does_not_run_or_write(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    planned = runner_mod.build_l1a_launcher_executable_plan(
+        repair_history_policy="agentic_transcript_v1",
+        repo_root=runner_mod.REPO_ROOT,
+    )
+    watched_paths = {
+        Path(cell.output_path) for cell in planned
+    } | {
+        Path(cell.content_hash_sidecar_path) for cell in planned
+    } | {
+        Path(cell.observability_event_path) for cell in planned
+    } | {
+        Path(cell.observability_summary_path) for cell in planned
+    } | {
+        Path(cell.observability_hash_path) for cell in planned
+    } | {Path("mlruns")}
+    before = {path: path.exists() for path in watched_paths}
+
+    def fail_run(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("execution-plan must not call run_cluster3")
+
+    monkeypatch.setattr(runner_mod, "run_cluster3", fail_run)
+
+    payload = runner_mod.main(
+        [
+            "--condition",
+            runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+            "--repair-history-policy",
+            "agentic_transcript_v1",
+            "--execution-plan",
+        ]
+    )
+    printed = json.loads(capsys.readouterr().out)
+
+    assert json.loads(json.dumps(payload, sort_keys=True)) == printed
+    assert printed["cell_count"] == 12
+    assert printed["execution_authorized"] is False
+    assert printed["writes_outputs"] is False
+    assert printed["writes_artifacts"] is False
+    assert printed["writes_mlruns"] is False
+    assert before == {path: path.exists() for path in watched_paths}
+
+
+def test_l1a_12cell_signed_selector_passes_prelaunch_guard_without_modal(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[runner_mod.Cluster3RunnerConfig] = []
+
+    def fake_run(config: runner_mod.Cluster3RunnerConfig) -> runner_mod.Cluster3RunResult:
+        calls.append(config)
+        return runner_mod.Cluster3RunResult(
+            rows=(),
+            route_audit=(),
+            output=config.output,
+            write_mode=config.write_mode,
+        )
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(runner_mod, "_signed_l1a_modal_app_context", nullcontext)
+    monkeypatch.setattr(runner_mod, "run_cluster3", fake_run)
+
+    result = runner_mod.main(_signed_l1a_selector_args())
+    printed = json.loads(capsys.readouterr().out)
+
+    assert isinstance(result, runner_mod.Cluster3RunResult)
+    assert len(calls) == 12
+    assert {call.condition for call in calls} == set(runner_mod.CLUSTER3_CONDITIONS)
+    assert {call.signed_l1a_authorization for call in calls} == {None}
+    assert printed["rows"] == 0
+    assert printed["output"] == runner_mod.L1A_OUTPUT_ROOT
+
+
+def test_modal_dns_preflight_fails_before_modal_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_getaddrinfo(*_args: object, **_kwargs: object) -> None:
+        raise socket.gaierror(8, "nodename nor servname provided, or not known")
+
+    monkeypatch.setattr(runner_mod.socket, "getaddrinfo", fail_getaddrinfo)
+
+    with pytest.raises(RuntimeError, match="Modal DNS preflight failed"):
+        runner_mod._require_modal_dns_preflight()
+
+
+def test_modal_dns_preflight_accepts_resolvable_modal_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[object, ...]] = []
+
+    def fake_getaddrinfo(*args: object, **_kwargs: object) -> list[tuple[object, ...]]:
+        calls.append(args)
+        return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", 443))]
+
+    monkeypatch.setattr(runner_mod.socket, "getaddrinfo", fake_getaddrinfo)
+
+    runner_mod._require_modal_dns_preflight()
+
+    assert calls == [("api.modal.com", 443)]
+
+
+def test_l1a_12cell_signed_selector_runs_all_cells_locally_with_fake_adapters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = parse_args(_signed_l1a_selector_args())
+    cells = runner_mod.build_l1a_launcher_executable_plan(
+        repair_history_policy="agentic_transcript_v1",
+        output_root=tmp_path / "outputs",
+        observability_root=tmp_path / "observability",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L1A_SIGNED_AUTHORIZATION_TOKEN,
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(*(_result(None) for _ in range(12)))
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    result = runner_mod._run_signed_l1a_selector(
+        config,
+        cells=cells,
+        dependencies=RunnerDependencies(
+            generation=generation,
+            correctness=correctness,
+        ),
+    )
+
+    assert len(result.rows) == 12
+    assert len(generation.calls) == 12
+    assert len(correctness.calls) == 12
+    assert {
+        (
+            row.grammar_mode,
+            "on" if row.condition in {"C", "G+C", "C+P", "G+C+P"} else "off",
+            "on" if row.condition in {"P", "G+P", "C+P", "G+C+P"} else "off",
+        )
+        for row in result.rows
+    } == {
+        (grammar_mode, c_state, p_state)
+        for grammar_mode in ("grammar_off", "template_upper_bound", "task_agnostic")
+        for c_state in ("off", "on")
+        for p_state in ("off", "on")
+    }
+    assert all(
+        row.p_repair_attempted is False
+        for row in result.rows
+        if "+P" not in row.condition and row.condition != "P"
+    )
+    for cell in cells:
+        output_path = Path(cell.output_path)
+        assert output_path.exists()
+        assert output_path.read_text(encoding="utf-8").count("\n") == 1
+        assert Path(cell.content_hash_sidecar_path).exists()
+        assert Path(cell.observability_event_path).exists()
+        assert Path(cell.observability_summary_path).exists()
+        assert Path(cell.observability_hash_path).exists()
+
+
+def test_l1b_12cell_signed_selector_runs_all_cells_n5_locally_with_fake_adapters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = parse_args(_signed_l1b_selector_args())
+    cells = runner_mod.build_l1a_launcher_executable_plan(
+        repair_history_policy="agentic_transcript_v1",
+        output_root=tmp_path / "outputs",
+        observability_root=tmp_path / "observability",
+        run_id_prefix=runner_mod.L1B_RUN_ID_PREFIX,
+        scale_tier="development",
+        n=5,
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L1B_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l1b-authorization",
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(*(_result(None) for _ in range(60)))
+
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    result = runner_mod._run_signed_l1a_selector(
+        config,
+        cells=cells,
+        dependencies=RunnerDependencies(
+            generation=generation,
+            correctness=correctness,
+        ),
+    )
+
+    assert len(result.rows) == 60
+    assert len(generation.calls) == 60
+    assert len(correctness.calls) == 60
+    assert result.output == (tmp_path / "outputs").as_posix()
+    assert {
+        (
+            row.grammar_mode,
+            "on" if row.condition in {"C", "G+C", "C+P", "G+C+P"} else "off",
+            "on" if row.condition in {"P", "G+P", "C+P", "G+C+P"} else "off",
+            row.base_seed,
+        )
+        for row in result.rows
+    } == {
+        (grammar_mode, c_state, p_state, base_seed)
+        for grammar_mode in ("grammar_off", "template_upper_bound", "task_agnostic")
+        for c_state in ("off", "on")
+        for p_state in ("off", "on")
+        for base_seed in range(5)
+    }
+    assert all(
+        row.p_repair_attempted is False
+        for row in result.rows
+        if "+P" not in row.condition and row.condition != "P"
+    )
+    for cell in cells:
+        output_path = Path(cell.output_path)
+        assert output_path.exists()
+        assert output_path.read_text(encoding="utf-8").count("\n") == 5
+        assert Path(cell.content_hash_sidecar_path).exists()
+        assert Path(cell.observability_event_path).exists()
+        assert Path(cell.observability_summary_path).exists()
+        assert Path(cell.observability_hash_path).exists()
+
+
+def test_l1a_12cell_selector_wrong_token_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l1a_selector_args(token="wrong-token"))
+
+    with pytest.raises(ValueError, match="signed selector authorization"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_without_signed_l2_token_fails_closed(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match="signed-l2-authorization"):
+        parse_args(
+            [
+                "--condition",
+                runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+                "--scale-tier",
+                "paper",
+                "--n",
+                "20",
+                "--dtypes",
+                "fp32",
+                "--output",
+                str(tmp_path / "out.jsonl"),
+                "--overwrite",
+            ]
+        )
+
+
+def test_l2_12cell_signed_selector_passes_prelaunch_guard_without_modal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(
+        runner_mod,
+        "_require_absent_target",
+        lambda *_args, **_kwargs: None,
+    )
+    config = parse_args(_signed_l2_selector_args())
+
+    cells = runner_mod._validate_l1a_runtime_authorization(config)
+
+    assert len(cells) == 12
+    assert runner_mod._planned_rows(config, cells) == 240
+    assert {cell.output_path for cell in cells} == {
+        f"{runner_mod.L2_OUTPUT_ROOT}/{cell.condition_id}.jsonl"
+        for cell in cells
+    }
+    assert {
+        cell.observability_event_path
+        for cell in cells
+    } == {
+        (
+            f"{runner_mod.L2_OBSERVABILITY_ROOT}/"
+            f"{cell.condition_id}.observability.jsonl"
+        )
+        for cell in cells
+    }
+    assert {cell.signed_authorization_placeholder for cell in cells} == {
+        runner_mod.L2_SIGNED_AUTHORIZATION_TOKEN
+    }
+
+
+def test_l2_12cell_selector_wrong_token_fails_prelaunch() -> None:
+    config = parse_args(_signed_l2_selector_args(token="wrong-token"))
+
+    with pytest.raises(ValueError, match="signed selector authorization"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+@pytest.mark.parametrize(
+    ("token", "expected"),
+    [
+        (runner_mod.L1A_SIGNED_AUTHORIZATION_TOKEN, "--scale-tier smoke"),
+        (runner_mod.L1B_SIGNED_AUTHORIZATION_TOKEN, "--scale-tier development"),
+    ],
+)
+def test_l2_12cell_selector_rejects_l1_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+    token: str,
+    expected: str,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2_selector_args(token=token))
+
+    with pytest.raises(ValueError, match=expected):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+@pytest.mark.parametrize(
+    ("args_factory", "expected"),
+    [
+        (_signed_l1a_selector_args, "--scale-tier paper"),
+        (_signed_l1b_selector_args, "--scale-tier paper"),
+    ],
+)
+def test_l1_selectors_reject_l2_token(
+    monkeypatch: pytest.MonkeyPatch,
+    args_factory: Any,
+    expected: str,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(args_factory(token=runner_mod.L2_SIGNED_AUTHORIZATION_TOKEN))
+
+    with pytest.raises(ValueError, match=expected):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l1a_12cell_selector_n5_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        _signed_l1a_selector_args(
+            "--n",
+            "5",
+        )
+    )
+
+    with pytest.raises(ValueError, match="--n 1"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_n_not_20_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        _signed_l2_selector_args(
+            "--n",
+            "19",
+        )
+    )
+
+    with pytest.raises(ValueError, match="--n 20"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_n1_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2_selector_args("--n", "1"))
+
+    with pytest.raises(ValueError, match="--n 20"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_n5_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2_selector_args("--n", "5"))
+
+    with pytest.raises(ValueError, match="--n 20"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_non_elementwise_kernel_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2_selector_args("--kernel-class", "reduction"))
+
+    with pytest.raises(ValueError, match="--kernel-class elementwise"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_non_fp32_dtype_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2_selector_args("--dtypes", "fp16"))
+
+    with pytest.raises(ValueError, match="--dtypes fp32"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_mlflow_enabled_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "1")
+    config = parse_args(_signed_l2_selector_args())
+
+    with pytest.raises(RuntimeError, match="TRITONGEN_MLFLOW=0"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_non_agentic_repair_history_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(
+        _signed_l2_selector_args(
+            "--repair-history-policy",
+            "last_attempt_only_v1",
+        )
+    )
+
+    with pytest.raises(ValueError, match="agentic_transcript_v1"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_resume_fails_closed() -> None:
+    args = _signed_l2_selector_args()
+    args[args.index("--overwrite")] = "--resume"
+
+    with pytest.raises(SystemExit):
+        parse_args(args)
+
+
+def test_l1b_12cell_selector_passes_prelaunch_guard_without_modal(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    output_root = (tmp_path / "outputs" / "l1b_n5").as_posix()
+    observability_root = (tmp_path / "observability" / "l1b_n5").as_posix()
+    profile = runner_mod._GrammarModeSelectorProfile(
+        profile_id="l1b_n5_grammar_mode_cp",
+        label="L1b n=5 development",
+        signed_authorization_token=runner_mod.L1B_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_placeholder=runner_mod.L1B_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l1b-authorization",
+        output_root=output_root,
+        observability_root=observability_root,
+        run_id_prefix=runner_mod.L1B_RUN_ID_PREFIX,
+        selector_placeholder_output=f"{output_root}/__selector__.jsonl",
+        scale_tier="development",
+        n=5,
+        expected_planned_rows=60,
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "SELECTOR_PROFILES",
+        (runner_mod.L1A_SELECTOR_PROFILE, profile),
+    )
+    config = parse_args(_signed_l1b_selector_args())
+
+    cells = runner_mod._validate_l1a_runtime_authorization(config)
+
+    assert len(cells) == 12
+    assert {cell.output_path for cell in cells} == {
+        f"{output_root}/{cell.condition_id}.jsonl"
+        for cell in cells
+    }
+    assert {
+        cell.observability_event_path
+        for cell in cells
+    } == {
+        (
+            f"{observability_root}/"
+            f"{cell.condition_id}.observability.jsonl"
+        )
+        for cell in cells
+    }
+
+
+@pytest.mark.parametrize("scale_tier", ["development", "paper"])
+def test_l1a_12cell_selector_non_smoke_scale_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+    scale_tier: str,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l1a_selector_args("--scale-tier", scale_tier))
+
+    with pytest.raises(ValueError, match="--scale-tier smoke"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l1a_12cell_selector_non_elementwise_kernel_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l1a_selector_args("--kernel-class", "reduction"))
+
+    with pytest.raises(ValueError, match="--kernel-class elementwise"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l1a_12cell_selector_mlflow_enabled_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "1")
+    config = parse_args(_signed_l1a_selector_args())
+
+    with pytest.raises(RuntimeError, match="TRITONGEN_MLFLOW=0"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l1a_12cell_selector_resume_fails_closed() -> None:
+    args = _signed_l1a_selector_args()
+    args[args.index("--overwrite")] = "--resume"
+
+    with pytest.raises(SystemExit):
+        parse_args(args)
+
+
+def test_l1a_12cell_selector_existing_target_path_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l1a_selector_args())
+    first_cell = runner_mod.build_l1a_launcher_executable_plan(
+        repair_history_policy="agentic_transcript_v1",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L1A_SIGNED_AUTHORIZATION_TOKEN,
+    )[0]
+    existing_target = runner_mod.REPO_ROOT / first_cell.output_path
+    original_exists = runner_mod.Path.exists
+
+    def fake_exists(path: Path) -> bool:
+        if path == existing_target:
+            return True
+        return original_exists(path)
+
+    monkeypatch.setattr(runner_mod.Path, "exists", fake_exists)
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_existing_target_path_fails_prelaunch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2_selector_args())
+    first_cell = runner_mod.build_l1a_launcher_executable_plan(
+        repair_history_policy="agentic_transcript_v1",
+        output_root=runner_mod.L2_OUTPUT_ROOT,
+        observability_root=runner_mod.L2_OBSERVABILITY_ROOT,
+        run_id_prefix=runner_mod.L2_RUN_ID_PREFIX,
+        scale_tier="paper",
+        n=20,
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2-authorization",
+    )[0]
+    existing_target = runner_mod.REPO_ROOT / first_cell.output_path
+    original_exists = runner_mod.Path.exists
+
+    def fake_exists(path: Path) -> bool:
+        if path == existing_target:
+            return True
+        return original_exists(path)
+
+    monkeypatch.setattr(runner_mod.Path, "exists", fake_exists)
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_requires_240_planned_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    monkeypatch.setattr(runner_mod, "_planned_rows", lambda *_args, **_kwargs: 239)
+    config = parse_args(_signed_l2_selector_args())
+
+    with pytest.raises(ValueError, match="240 planned rows"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_requires_exactly_12_planned_cells(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2_selector_args())
+    cells = runner_mod.build_l1a_launcher_executable_plan(
+        repair_history_policy="agentic_transcript_v1",
+        output_root=runner_mod.L2_OUTPUT_ROOT,
+        observability_root=runner_mod.L2_OBSERVABILITY_ROOT,
+        run_id_prefix=runner_mod.L2_RUN_ID_PREFIX,
+        scale_tier="paper",
+        n=20,
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2-authorization",
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "build_l1a_launcher_executable_plan",
+        lambda **_kwargs: cells[:11],
+    )
+
+    with pytest.raises(ValueError, match="12 planned cells"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l2_12cell_selector_rejects_output_namespace_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l2_selector_args())
+    cells = runner_mod.build_l1a_launcher_executable_plan(
+        repair_history_policy="agentic_transcript_v1",
+        output_root=runner_mod.L2_OUTPUT_ROOT,
+        observability_root=runner_mod.L2_OBSERVABILITY_ROOT,
+        run_id_prefix=runner_mod.L2_RUN_ID_PREFIX,
+        scale_tier="paper",
+        n=20,
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L2_SIGNED_AUTHORIZATION_TOKEN,
+        signed_authorization_option="--signed-l2-authorization",
+    )
+    bad_cell = replace(cells[0], output_path="outputs/cluster3/not_l2_n20/bad.jsonl")
+    monkeypatch.setattr(
+        runner_mod,
+        "build_l1a_launcher_executable_plan",
+        lambda **_kwargs: (bad_cell, *cells[1:]),
+    )
+
+    with pytest.raises(ValueError, match="output path does not match namespace"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l1a_12cell_selector_requires_exactly_12_planned_cells(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRITONGEN_MLFLOW", "0")
+    config = parse_args(_signed_l1a_selector_args())
+    cells = runner_mod.build_l1a_launcher_executable_plan(
+        repair_history_policy="agentic_transcript_v1",
+        repo_root=runner_mod.REPO_ROOT,
+        signed_authorization_placeholder=runner_mod.L1A_SIGNED_AUTHORIZATION_TOKEN,
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "build_l1a_launcher_executable_plan",
+        lambda **_kwargs: cells[:11],
+    )
+
+    with pytest.raises(ValueError, match="12 planned cells"):
+        runner_mod._validate_l1a_runtime_authorization(config)
+
+
+def test_l1a_12cell_dry_plan_rejects_output_argument(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "--condition",
+                runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+                "--output",
+                str(tmp_path / "ignored.jsonl"),
+                "--dry-plan",
+            ]
+        )
+
+
+def test_l1a_12cell_execution_plan_rejects_output_argument(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "--condition",
+                runner_mod.L1A_GRAMMAR_MODE_CP_SELECTOR,
+                "--output",
+                str(tmp_path / "ignored.jsonl"),
+                "--execution-plan",
+            ]
+        )
+
+
+def test_expand_condition_selector_all_remains_cluster3_conditions() -> None:
+    assert runner_mod.expand_condition_selector("all") == runner_mod.CLUSTER3_CONDITIONS
+
+
+def test_observability_cli_exposes_required_mode_choices() -> None:
+    parser = runner_mod.build_arg_parser()
+    action = next(
+        item for item in parser._actions if "--observability-mode" in item.option_strings
+    )
+
+    assert tuple(action.choices) == ("off", "best_effort", "required")
+
+
+def test_observability_cli_rejects_unknown_mode(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "--condition",
+                "P",
+                "--output",
+                str(tmp_path / "out.jsonl"),
+                "--model-revision",
+                REV_A,
+                "--tokenizer-revision",
+                REV_B,
+                "--observability-mode",
+                "enabled",
+                "--overwrite",
+            ]
+        )
+
+
+def test_observability_cli_parses_enabled_output(tmp_path: Path) -> None:
+    event_path = tmp_path / "events.jsonl"
+    config = parse_args(
+        [
+            "--condition",
+            "P",
+            "--output",
+            str(tmp_path / "out.jsonl"),
+            "--model-revision",
+            REV_A,
+            "--tokenizer-revision",
+            REV_B,
+            "--observability-mode",
+            "required",
+            "--observability-experiment-id",
+            "exp-1",
+            "--observability-run-id",
+            "run-1",
+            "--observability-output",
+            str(event_path),
+            "--overwrite",
+        ]
+    )
+
+    assert config.observability_mode == "required"
+    assert config.observability_experiment_id == "exp-1"
+    assert config.observability_run_id == "run-1"
+    assert config.observability_output == str(event_path)
+
+
+def test_observability_enabled_modes_require_ids(tmp_path: Path) -> None:
+    for mode in ("best_effort", "required"):
+        with pytest.raises(ValueError, match="observability_experiment_id"):
+            _config(
+                tmp_path,
+                observability_mode=mode,
+                observability_run_id="run-1",
+            )
+        with pytest.raises(ValueError, match="observability_run_id"):
+            _config(
+                tmp_path,
+                observability_mode=mode,
+                observability_experiment_id="exp-1",
+            )
+
+
+def test_observability_off_preserves_stable_run_id_and_writes_no_sidecar(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "ignored.observability.jsonl"
+    context_provider_called = False
+    token_counts_provider_called = False
+    cost_estimate_provider_called = False
+
+    def context_provider() -> dict[str, object]:
+        nonlocal context_provider_called
+        context_provider_called = True
+        return _safe_modal_context()
+
+    def token_counts_provider(context: dict[str, object]) -> dict[str, object]:
+        nonlocal token_counts_provider_called
+        token_counts_provider_called = True
+        return _safe_token_counts()
+
+    def cost_estimate_provider(context: dict[str, object]) -> dict[str, object]:
+        nonlocal cost_estimate_provider_called
+        cost_estimate_provider_called = True
+        return _safe_cost_estimate()
+
+    base = _config(tmp_path, "P")
+    explicit_off = _config(
+        tmp_path,
+        "P",
+        observability_mode="off",
+        observability_experiment_id="exp-1",
+        observability_run_id="run-1",
+        observability_output=str(event_path),
+    )
+
+    assert runner_mod._stable_run_id(base) == runner_mod._stable_run_id(explicit_off)
+    run_cluster3(
+        explicit_off,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+            modal_context_provider=context_provider,
+            token_counts_provider=token_counts_provider,
+            cost_estimate_provider=cost_estimate_provider,
+        ),
+    )
+
+    assert context_provider_called is False
+    assert token_counts_provider_called is False
+    assert cost_estimate_provider_called is False
+    assert not event_path.exists()
+    assert not default_observability_hash_path(event_path).exists()
+    assert not default_observability_summary_path(explicit_off.output).exists()
+
+
+def test_observability_required_writes_valid_sidecars_in_tmp_path(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "cluster3.events.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="cluster3-o1",
+        observability_run_id="run-required",
+        observability_output=str(event_path),
+    )
+
+    run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+        ),
+    )
+
+    events = load_observability_events(event_path)
+    event_types = [event.event_type for event in events]
+    assert [event.event_sequence for event in events] == list(range(len(events)))
+    assert event_types == [
+        "run_started",
+        "row_started",
+        "stage_started",
+        "stage_completed",
+        "stage_started",
+        "stage_completed",
+        "stage_started",
+        "stage_completed",
+        "row_completed",
+        "run_completed",
+    ]
+    assert {event.experiment_id for event in events} == {"cluster3-o1"}
+    assert {event.run_id for event in events} == {"run-required"}
+    assert events[1].row_identity.cluster == "cluster3"
+    assert events[1].row_identity.condition == "P"
+    assert events[8].row_identity.row_sha256 is not None
+    result_lines = Path(config.output).read_text(encoding="utf-8").splitlines()
+    assert events[8].row_identity.row_sha256 == _sha(result_lines[0])
+    assert [events[index].stage for index in (3, 5, 7)] == [
+        "generation",
+        "correctness_eval",
+        "row_append",
+    ]
+    assert events[3].duration_ns is not None
+    assert events[5].duration_ns is not None
+    assert events[7].duration_ns is not None
+    assert events[9].duration_ns is not None
+    assert {event.modal_context is not None for event in events} == {True}
+    assert {
+        event.modal_context.modal_context_available
+        for event in events
+        if event.modal_context is not None
+    } == {False}
+    assert {event.token_counts is not None for event in events} == {True}
+    assert {
+        event.token_counts.token_counts_available
+        for event in events
+        if event.token_counts is not None
+    } == {False}
+    assert {event.cost_estimate is not None for event in events} == {True}
+    assert {
+        event.cost_estimate.cost_estimate_available
+        for event in events
+        if event.cost_estimate is not None
+    } == {False}
+
+    payload = json.dumps(
+        [event.model_dump(mode="json") for event in events],
+        sort_keys=True,
+    ).lower()
+    for forbidden in (
+        "prompt_text",
+        "source_text",
+        "full_source",
+        "completion_text",
+        "generated_text",
+        "raw_output",
+        "raw_completion",
+        "raw_feedback",
+        "raw_compile_log",
+        "private_eval",
+        "private_feedback",
+        "hidden_prompt",
+        "hidden_eval",
+        "token_ids",
+        "input_ids",
+        "output_ids",
+        "tokenizer_dump",
+        "tokenizer_state",
+        "api_key",
+        "secret",
+        "credential",
+        "password",
+        "authorization",
+        "speedup",
+        "throughput",
+        "latency",
+        "kernel_timing",
+        "benchmark",
+        "profiler",
+        "actual_cost",
+        "actual_billing",
+        "invoice",
+        "account_charge",
+        "provider_bill",
+        "modal_bill",
+        "billing_api_response",
+        "pricing_api_response",
+        "billing_claim",
+        "cost_per_success",
+        "cost_per_pass",
+        "pass_at_k_cost",
+        "pass@k",
+        "roi",
+        "economic_lift",
+        "benchmark_cost_conclusion",
+        "lift",
+        "statistical",
+    ):
+        assert forbidden not in payload
+
+    summary_path = default_observability_summary_path(config.output)
+    summary = ObservabilitySummary.model_validate_json(
+        summary_path.read_text(encoding="utf-8")
+    )
+    assert summary.result_path == config.output
+    assert summary.observability_event_path == str(event_path)
+    assert summary.row_counts == {"total": 1}
+    assert summary.event_counts == {
+        "run_started": 1,
+        "row_started": 1,
+        "stage_started": 3,
+        "stage_completed": 3,
+        "row_completed": 1,
+        "run_completed": 1,
+    }
+    assert summary.stage_durations_ns["generation"] == events[3].duration_ns
+    assert summary.stage_durations_ns["correctness_eval"] == events[5].duration_ns
+    assert summary.stage_durations_ns["row_append"] == events[7].duration_ns
+    assert summary.token_totals == {
+        "token_count_status": "unavailable",
+        "events_with_token_counts": 10,
+        "events_with_available_token_counts": 0,
+        "prompt_tokens": 0,
+        "generated_tokens": 0,
+        "total_tokens": 0,
+        "token_count_sources": ["unavailable"],
+    }
+    assert summary.estimated_cost_summary == _unavailable_cost_summary()
+    assert summary.modal_context_summary == {
+        "context_status": "unavailable",
+        "events_with_modal_context": 10,
+        "events_with_available_context": 0,
+        "modal_context_sources": ["unavailable"],
+    }
+    assert summary.source_event_sha256 == file_sha256(event_path)
+    assert default_observability_hash_path(event_path).exists()
+
+
+def test_observability_stage_timing_omits_repair_stages_when_not_active(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "success-stage-timing.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="cluster3-stage-timing",
+        observability_run_id="run-success",
+        observability_output=str(event_path),
+    )
+
+    run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+        ),
+    )
+
+    assert _completed_stages(event_path) == [
+        "generation",
+        "correctness_eval",
+        "row_append",
+    ]
+
+
+def test_observability_stage_timing_records_p_repair_only_when_p_path_active(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "p-repair-stage-timing.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="cluster3-stage-timing",
+        observability_run_id="run-p-repair",
+        observability_output=str(event_path),
+    )
+
+    run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_f1_result(), _result(None)),
+        ),
+    )
+
+    assert _completed_stages(event_path) == [
+        "generation",
+        "correctness_eval",
+        "p_repair",
+        "row_append",
+    ]
+
+
+def test_observability_stage_timing_records_c_repair_only_when_c_path_active(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "c-repair-stage-timing.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "C+P",
+        observability_mode="required",
+        observability_experiment_id="cluster3-stage-timing",
+        observability_run_id="run-c-repair",
+        observability_output=str(event_path),
+    )
+
+    run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_f2_result()),
+            c_loop_runner=CLoopRecorder(),
+        ),
+    )
+
+    assert _completed_stages(event_path) == [
+        "generation",
+        "correctness_eval",
+        "c_repair",
+        "row_append",
+    ]
+
+
+def test_observability_stage_timing_omits_generation_for_diagnostic_seed(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "diagnostic-seed-stage-timing.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "G+P",
+        diagnostic_seed_source=F1_DIAGNOSTIC_FIXTURE,
+        diagnostic_expected_initial_failure="F1_COMPILE",
+        observability_mode="required",
+        observability_experiment_id="cluster3-stage-timing",
+        observability_run_id="run-diagnostic-seed",
+        observability_output=str(event_path),
+    )
+
+    run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_f1_result(), _result(None)),
+        ),
+    )
+
+    assert _completed_stages(event_path) == [
+        "correctness_eval",
+        "p_repair",
+        "row_append",
+    ]
+
+
+def test_observability_stage_timing_does_not_change_scientific_row_payload(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "stable-row.jsonl"
+    event_path = tmp_path / "stable-row.observability.jsonl"
+    base_config = _config(tmp_path, "P", output=str(output))
+
+    run_cluster3(
+        base_config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+        ),
+    )
+    row_without_observability = output.read_text(encoding="utf-8")
+
+    config_with_observability = replace(
+        base_config,
+        observability_mode="required",
+        observability_experiment_id="cluster3-stage-timing",
+        observability_run_id="run-row-stability",
+        observability_output=str(event_path),
+    )
+    run_cluster3(
+        config_with_observability,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+        ),
+    )
+
+    assert output.read_text(encoding="utf-8") == row_without_observability
+
+
+@pytest.mark.parametrize("mode", ["best_effort", "required"])
+def test_observability_enabled_modes_include_supplied_safe_modal_context(
+    tmp_path: Path,
+    mode: str,
+) -> None:
+    event_path = tmp_path / f"{mode}.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode=mode,
+        observability_experiment_id="cluster3-o2",
+        observability_run_id=f"run-{mode}",
+        observability_output=str(event_path),
+    )
+
+    run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+            modal_context_provider=_safe_modal_context,
+        ),
+    )
+
+    events = load_observability_events(event_path)
+    assert len(events) == 10
+    assert {
+        event.modal_context.function_call_id
+        for event in events
+        if event.modal_context is not None
+    } == {"fc-123"}
+    assert {
+        event.modal_context.modal_context_available
+        for event in events
+        if event.modal_context is not None
+    } == {True}
+
+    summary = ObservabilitySummary.model_validate_json(
+        default_observability_summary_path(config.output).read_text(encoding="utf-8")
+    )
+    assert summary.modal_context_summary == {
+        "context_status": "available",
+        "events_with_modal_context": 10,
+        "events_with_available_context": 10,
+        "modal_context_sources": ["runner_config"],
+    }
+
+
+@pytest.mark.parametrize("mode", ["best_effort", "required"])
+def test_observability_enabled_modes_include_supplied_safe_token_counts(
+    tmp_path: Path,
+    mode: str,
+) -> None:
+    event_path = tmp_path / f"{mode}-token-counts.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode=mode,
+        observability_experiment_id="cluster3-o3",
+        observability_run_id=f"run-{mode}-token-counts",
+        observability_output=str(event_path),
+    )
+    provider_contexts: list[dict[str, object]] = []
+
+    def token_counts_provider(context: dict[str, object]) -> dict[str, object] | None:
+        provider_contexts.append(dict(context))
+        if context["event_type"] == "row_completed":
+            return _safe_token_counts()
+        return None
+
+    run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+            token_counts_provider=token_counts_provider,
+        ),
+    )
+
+    events = load_observability_events(event_path)
+    assert len(events) == 10
+    assert len(provider_contexts) == 10
+    assert {tuple(sorted(context)) for context in provider_contexts} == {
+        ("condition", "event_sequence", "event_type", "stage", "status")
+    }
+    available = [
+        event.token_counts
+        for event in events
+        if event.token_counts is not None and event.token_counts.token_counts_available
+    ]
+    assert len(available) == 1
+    assert available[0].prompt_tokens == 2
+    assert available[0].generated_tokens == 3
+    assert available[0].total_tokens == 5
+
+    summary = ObservabilitySummary.model_validate_json(
+        default_observability_summary_path(config.output).read_text(encoding="utf-8")
+    )
+    assert summary.token_totals == {
+        "token_count_status": "available",
+        "events_with_token_counts": 10,
+        "events_with_available_token_counts": 1,
+        "prompt_tokens": 2,
+        "generated_tokens": 3,
+        "total_tokens": 5,
+        "token_count_sources": ["existing_generation_result", "unavailable"],
+    }
+
+
+@pytest.mark.parametrize("mode", ["best_effort", "required"])
+def test_observability_enabled_modes_include_supplied_safe_cost_estimates(
+    tmp_path: Path,
+    mode: str,
+) -> None:
+    event_path = tmp_path / f"{mode}-cost-estimates.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode=mode,
+        observability_experiment_id="cluster3-o4",
+        observability_run_id=f"run-{mode}-cost-estimates",
+        observability_output=str(event_path),
+    )
+    provider_contexts: list[dict[str, object]] = []
+
+    def cost_estimate_provider(context: dict[str, object]) -> dict[str, object] | None:
+        provider_contexts.append(dict(context))
+        if context["event_type"] == "row_completed":
+            return _safe_cost_estimate()
+        return None
+
+    run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+            cost_estimate_provider=cost_estimate_provider,
+        ),
+    )
+
+    events = load_observability_events(event_path)
+    assert len(events) == 10
+    assert len(provider_contexts) == 10
+    assert {tuple(sorted(context)) for context in provider_contexts} == {
+        ("condition", "event_sequence", "event_type", "stage", "status")
+    }
+    available = [
+        event.cost_estimate
+        for event in events
+        if event.cost_estimate is not None
+        and event.cost_estimate.cost_estimate_available
+    ]
+    assert len(available) == 1
+    assert available[0].estimated_total_cost == 0.15
+    assert available[0].pricing_source == "test_fixture"
+
+    summary = ObservabilitySummary.model_validate_json(
+        default_observability_summary_path(config.output).read_text(encoding="utf-8")
+    )
+    assert summary.estimated_cost_summary == {
+        "cost_estimate_available": True,
+        "estimated_input_cost": 0.12,
+        "estimated_output_cost": 0.03,
+        "estimated_total_cost": 0.15,
+        "currency": "USD",
+        "pricing_source": "test_fixture",
+        "pricing_source_version": "2026-06-03",
+        "cost_estimate_status": "estimated",
+        "cost_estimate_method": "test_fixture",
+    }
+
+
+def test_observability_best_effort_invalid_token_counts_degrades_safely(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "best-effort-invalid-token-counts.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="best_effort",
+        observability_experiment_id="cluster3-o3",
+        observability_run_id="run-best-effort-invalid-token-counts",
+        observability_output=str(event_path),
+    )
+
+    result = run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+            token_counts_provider=lambda _context: {
+                **_safe_token_counts(),
+                "prompt_tokens": -1,
+            },
+        ),
+    )
+
+    assert len(result.rows) == 1
+    assert event_path.exists()
+    assert event_path.read_text(encoding="utf-8") == ""
+    assert not default_observability_summary_path(config.output).exists()
+
+
+def test_observability_best_effort_invalid_cost_estimate_degrades_safely(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "best-effort-invalid-cost-estimate.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="best_effort",
+        observability_experiment_id="cluster3-o4",
+        observability_run_id="run-best-effort-invalid-cost-estimate",
+        observability_output=str(event_path),
+    )
+
+    result = run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+            cost_estimate_provider=lambda _context: {
+                **_safe_cost_estimate(),
+                "estimated_input_cost": -1.0,
+            },
+        ),
+    )
+
+    assert len(result.rows) == 1
+    assert event_path.exists()
+    assert event_path.read_text(encoding="utf-8") == ""
+    assert not default_observability_summary_path(config.output).exists()
+
+
+def test_observability_required_invalid_token_counts_fails_before_runner_work(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "required-invalid-token-counts.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="cluster3-o3",
+        observability_run_id="run-required-invalid-token-counts",
+        observability_output=str(event_path),
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(ValueError, match="prompt_tokens"):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                token_counts_provider=lambda _context: {
+                    **_safe_token_counts(),
+                    "prompt_tokens": -1,
+                },
+            ),
+        )
+
+    assert generation.calls == []
+    assert correctness.calls == []
+    assert not Path(config.output).exists()
+
+
+def test_observability_required_invalid_cost_estimate_fails_before_runner_work(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "required-invalid-cost-estimate.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="cluster3-o4",
+        observability_run_id="run-required-invalid-cost-estimate",
+        observability_output=str(event_path),
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(ValueError, match="estimated_input_cost"):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                cost_estimate_provider=lambda _context: {
+                    **_safe_cost_estimate(),
+                    "estimated_input_cost": -1.0,
+                },
+            ),
+        )
+
+    assert generation.calls == []
+    assert correctness.calls == []
+    assert not Path(config.output).exists()
+
+
+def test_observability_best_effort_context_failure_degrades_safely(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "best-effort-context-failure.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="best_effort",
+        observability_experiment_id="cluster3-o2",
+        observability_run_id="run-best-effort-context-failure",
+        observability_output=str(event_path),
+    )
+
+    def failing_context_provider() -> dict[str, object]:
+        raise RuntimeError("context unavailable")
+
+    result = run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+            modal_context_provider=failing_context_provider,
+        ),
+    )
+
+    events = load_observability_events(event_path)
+    assert len(result.rows) == 1
+    assert {
+        event.modal_context.modal_context_available
+        for event in events
+        if event.modal_context is not None
+    } == {False}
+
+
+def test_observability_required_forbidden_modal_context_fails_before_runner_work(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "required-forbidden-context.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="cluster3-o2",
+        observability_run_id="run-required-forbidden-context",
+        observability_output=str(event_path),
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(ValueError, match="non-allowlisted"):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                modal_context_provider=lambda: {"MODAL_IDENTITY_TOKEN": "secret"},
+            ),
+        )
+
+    assert generation.calls == []
+    assert correctness.calls == []
+    assert not event_path.exists()
+
+
+def test_observability_required_malformed_modal_context_fails_before_runner_work(
+    tmp_path: Path,
+) -> None:
+    event_path = tmp_path / "required-malformed-context.observability.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="cluster3-o2",
+        observability_run_id="run-required-malformed-context",
+        observability_output=str(event_path),
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(ValueError, match="unavailable Modal context"):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                modal_context_provider=lambda: {
+                    "modal_context_available": False,
+                    "function_call_id": "fc-123",
+                    "modal_context_source": "runner_config",
+                },
+            ),
+        )
+
+    assert generation.calls == []
+    assert correctness.calls == []
+    assert not event_path.exists()
+
+
+def test_observability_row_sha256_uses_exact_cluster3_row_json(
+    tmp_path: Path,
+) -> None:
+    run = run_cluster3(
+        _config(tmp_path, "P"),
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+        ),
+    )
+    row = run.rows[0]
+    assert row.generated_metadata is not None
+    non_ascii_row = replace(
+        row,
+        generated_metadata=replace(row.generated_metadata, model_id="modelo-é"),
+    )
+
+    identity = runner_mod._observability_row_identity_from_row(non_ascii_row)
+    non_exact_json = json.dumps(
+        non_ascii_row.to_dict(),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+
+    assert identity.row_sha256 == _sha(non_ascii_row.to_json())
+    assert identity.row_sha256 != _sha(non_exact_json)
+
+
+def test_observability_enabled_resume_rejected_until_resume_policy_exists(
+    tmp_path: Path,
+) -> None:
+    for mode in ("best_effort", "required"):
+        with pytest.raises(ValueError, match="observability resume"):
+            _config(
+                tmp_path,
+                "P",
+                write_mode="resume",
+                observability_mode=mode,
+                observability_experiment_id="exp-1",
+                observability_run_id=f"run-{mode}",
+            )
+
+
+def test_observability_required_path_collision_fails_before_runner_work(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "result.jsonl"
+    config = _config(
+        tmp_path,
+        "P",
+        output=str(output),
+        observability_mode="required",
+        observability_experiment_id="exp-1",
+        observability_run_id="run-1",
+        observability_output=str(output),
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(ValueError, match="collides"):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+            ),
+        )
+
+    assert generation.calls == []
+    assert correctness.calls == []
+    assert not output.exists()
+
+
+def test_observability_best_effort_logger_failure_preserves_runner_outcome(
+    tmp_path: Path,
+) -> None:
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="best_effort",
+        observability_experiment_id="exp-1",
+        observability_run_id="run-1",
+    )
+    run = run_cluster3(
+        config,
+        dependencies=RunnerDependencies(
+            generation=GenerationRecorder(),
+            correctness=CorrectnessRecorder(_result(None)),
+            observability_logger_factory=lambda *args, **kwargs: FailingObservabilityLogger(),
+        ),
+    )
+
+    assert len(run.rows) == 1
+
+
+def test_observability_required_logger_failure_fails_before_runner_work(
+    tmp_path: Path,
+) -> None:
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="exp-1",
+        observability_run_id="run-1",
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(RuntimeError, match="observability logger unavailable"):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                observability_logger_factory=(
+                    lambda *args, **kwargs: FailingObservabilityLogger()
+                ),
+            ),
+        )
+
+    assert generation.calls == []
+    assert correctness.calls == []
+
+
+def test_observability_required_first_event_failure_closes_logger(
+    tmp_path: Path,
+) -> None:
+    logger = ScriptedObservabilityLogger(
+        append_exc=RuntimeError("observability append unavailable")
+    )
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="required",
+        observability_experiment_id="exp-1",
+        observability_run_id="run-1",
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(RuntimeError, match="observability append unavailable"):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                observability_logger_factory=lambda *args, **kwargs: logger,
+            ),
+        )
+
+    assert logger.opened
+    assert logger.append_calls >= 1
+    assert logger.closed
+    assert generation.calls == []
+    assert correctness.calls == []
+
+
+def test_observability_best_effort_setup_interrupt_propagates(
+    tmp_path: Path,
+) -> None:
+    logger = ScriptedObservabilityLogger(open_exc=KeyboardInterrupt())
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="best_effort",
+        observability_experiment_id="exp-1",
+        observability_run_id="run-1",
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(KeyboardInterrupt):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                observability_logger_factory=lambda *args, **kwargs: logger,
+            ),
+        )
+
+    assert logger.opened
+    assert generation.calls == []
+    assert correctness.calls == []
+
+
+def test_observability_best_effort_first_event_interrupt_propagates_and_closes(
+    tmp_path: Path,
+) -> None:
+    logger = ScriptedObservabilityLogger(append_exc=KeyboardInterrupt())
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="best_effort",
+        observability_experiment_id="exp-1",
+        observability_run_id="run-1",
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(KeyboardInterrupt):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                observability_logger_factory=lambda *args, **kwargs: logger,
+            ),
+        )
+
+    assert logger.opened
+    assert logger.closed
+    assert generation.calls == []
+    assert correctness.calls == []
+
+
+def test_observability_best_effort_summary_interrupt_propagates_and_closes(
+    tmp_path: Path,
+) -> None:
+    loggers: list[SummaryInterruptingObservabilityLogger] = []
+
+    def logger_factory(*args: Any, **kwargs: Any) -> SummaryInterruptingObservabilityLogger:
+        logger = SummaryInterruptingObservabilityLogger(*args, **kwargs)
+        loggers.append(logger)
+        return logger
+
+    config = _config(
+        tmp_path,
+        "P",
+        observability_mode="best_effort",
+        observability_experiment_id="exp-1",
+        observability_run_id="run-1",
+    )
+    generation = GenerationRecorder()
+    correctness = CorrectnessRecorder(_result(None))
+
+    with pytest.raises(KeyboardInterrupt):
+        run_cluster3(
+            config,
+            dependencies=RunnerDependencies(
+                generation=generation,
+                correctness=correctness,
+                observability_logger_factory=logger_factory,
+            ),
+        )
+
+    assert len(loggers) == 1
+    logger = loggers[0]
+    assert logger.opened
+    assert logger.summary_calls == 1
+    assert logger.closed
+    assert len(generation.calls) == 1
+    assert len(correctness.calls) == 1
+
+
+def test_observability_does_not_mutate_cluster3_result_row_schema() -> None:
+    fields = set(Cluster3EvalRow.__dataclass_fields__)
+
+    assert not {
+        "observability_mode",
+        "observability_event_path",
+        "observability_summary_path",
+        "observability_run_id",
+        "observability_experiment_id",
+        "duration_ns",
+        "token_counts",
+        "estimated_cost",
+    } & fields
 
 
 def test_run_cluster3_cli_parses_diagnostic_seed_source(tmp_path: Path) -> None:

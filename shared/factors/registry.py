@@ -17,7 +17,7 @@ FACTOR_CONFIGS: dict[FactorCell, FactorConfig] = {
 _CLUSTER_ALLOWED_CELLS: dict[str, tuple[FactorCell, ...]] = {
     "cluster1": ("none", "G"),
     "cluster2": ("none", "G", "C", "G+C"),
-    "cluster3": ("P", "G+P", "C+P", "G+C+P"),
+    "cluster3": ("none", "G", "C", "G+C", "P", "G+P", "C+P", "G+C+P"),
 }
 
 

@@ -20,8 +20,8 @@ from cluster3.feedback.sanitizer import (
 from shared.eval.failure_taxonomy import FAILURE_CODES
 
 
-CONDITIONS = ("P", "G+P", "C+P", "G+C+P")
-C_ACTIVE_CONDITIONS = {"C+P", "G+C+P"}
+CONDITIONS = ("none", "G", "C", "G+C", "P", "G+P", "C+P", "G+C+P")
+C_ACTIVE_CONDITIONS = {"C", "G+C", "C+P", "G+C+P"}
 F0_CODES = tuple(sorted(code for code in FAILURE_CODES if code.startswith("F0_")))
 F2_CODES = tuple(sorted(code for code in FAILURE_CODES if code.startswith("F2_")))
 F3_CODES = tuple(sorted(code for code in FAILURE_CODES if code.startswith("F3_")))

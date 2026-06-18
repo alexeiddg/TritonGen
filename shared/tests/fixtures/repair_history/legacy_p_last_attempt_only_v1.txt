@@ -1,0 +1,18 @@
+Base task:
+Implement the relu kernel as a complete Triton Python module.
+
+Previous source:
+def relu_kernel(x): return x
+
+Failure code:
+F1_COMPILE
+
+Feedback:
+Compilation stopped before downstream validation. Failure code: F1_COMPILE. Compile error class: CompilationError. Full compile error sha256: 36753cb42f9818e6082d7db5212924234891a5e361b984d3009fe95224669023.
+
+Compile error:
+Full compile error sha256: 36753cb42f9818e6082d7db5212924234891a5e361b984d3009fe95224669023
+compiler failed
+
+Instruction:
+Produce a corrected complete Triton Python module.

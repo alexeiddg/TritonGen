@@ -13,14 +13,19 @@ from dataclasses import asdict, dataclass, fields
 from typing import Any, Literal
 
 from cluster2.constants import (
+    AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1,
     DTYPE_NAMES,
     GENERATED_SOURCE_CLASS,
     REPLAY_CONTROL_CONDITIONS,
+    REPAIR_HISTORY_POLICIES_V1,
 )
 from cluster2.feedback.trace import TraceSummary
 from cluster2.results.dataclass import Cluster2ReplayRowMetadata
 from cluster3.constants import (
+    CLUSTER3_C_ACTIVE_CONDITIONS,
     CLUSTER3_CONDITIONS,
+    CLUSTER3_G_ACTIVE_CONDITIONS,
+    CLUSTER3_P_ACTIVE_CONDITIONS,
     DEFAULT_P_REPAIR_BUDGET,
     P_FEEDBACK_FORMAT_V1,
     P_HISTORY_POLICY_V1,
@@ -47,13 +52,17 @@ from shared.generation_metadata import (
     is_stable_modal_image_identifier,
     modal_image_provenance_digest,
 )
+from shared.factors.grammar_modes import (
+    grammar_mode_from_active_variant,
+    validate_grammar_mode_binding,
+)
 
 
 CLUSTER3_RESULTS_SCHEMA_VERSION: int = 1
 
 TerminalSourceStage = Literal["initial", "p_attempt", "c_attempt"]
 
-_C_LOOP_CONDITIONS: frozenset[str] = frozenset({"C+P", "G+C+P"})
+_C_LOOP_CONDITIONS: frozenset[str] = frozenset(CLUSTER3_C_ACTIVE_CONDITIONS)
 _C_LOOP_SOURCES: frozenset[str] = frozenset({"none", "initial_f2", "post_p_f2"})
 _TERMINAL_SOURCE_STAGES: frozenset[str] = frozenset(
     {"initial", "p_attempt", "c_attempt"}
@@ -96,8 +105,37 @@ class Cluster3GeneratedRowMetadata:
     p_repair_attempted: bool | None = None
     p_compile_repair_succeeded: bool | None = None
     p_repair_attempt_count: int | None = None
+    p_history_policy: str = P_HISTORY_POLICY_V1
+    p_repair_prompt_template_version: str | None = None
+    p_repair_prompt_renderer_version: str | None = None
+    p_repair_anchor_attempt_index: int | None = None
+    p_repair_latest_attempt_index: int | None = None
+    p_repair_history_attempt_count: int | None = None
+    p_repair_prompt_sha256: str | None = None
+    p_repair_prompt_char_count: int | None = None
+    p_repair_max_prompt_chars: int | None = None
+    p_repair_include_latest_source: bool | None = None
+    p_repair_anchor_source_hash: str | None = None
+    p_repair_latest_source_hash: str | None = None
+    p_repair_history_summary_sha256: str | None = None
+    p_repair_history_error_code: str | None = None
+    c_history_policy: str | None = None
+    c_repair_prompt_template_version: str | None = None
+    c_repair_prompt_renderer_version: str | None = None
+    c_repair_anchor_attempt_index: int | None = None
+    c_repair_latest_attempt_index: int | None = None
+    c_repair_history_attempt_count: int | None = None
+    c_repair_prompt_sha256: str | None = None
+    c_repair_prompt_char_count: int | None = None
+    c_repair_max_prompt_chars: int | None = None
+    c_repair_include_latest_source: bool | None = None
+    c_repair_anchor_source_hash: str | None = None
+    c_repair_latest_source_hash: str | None = None
+    c_repair_history_summary_sha256: str | None = None
+    c_repair_history_error_code: str | None = None
     c_loop_fired: bool | None = None
     c_loop_source: CTraceSource | None = None
+    grammar_mode: str | None = None
     grammar_variant: str | None = None
     grammar_path: str | None = None
     grammar_sha: str | None = None
@@ -159,6 +197,50 @@ class Cluster3GeneratedRowMetadata:
         _validate_optional_non_negative_int(
             self.p_repair_attempt_count,
             "p_repair_attempt_count",
+        )
+        _validate_p_repair_history_metadata(
+            p_history_policy=self.p_history_policy,
+            p_repair_prompt_template_version=(
+                self.p_repair_prompt_template_version
+            ),
+            p_repair_prompt_renderer_version=(
+                self.p_repair_prompt_renderer_version
+            ),
+            p_repair_anchor_attempt_index=self.p_repair_anchor_attempt_index,
+            p_repair_latest_attempt_index=self.p_repair_latest_attempt_index,
+            p_repair_history_attempt_count=self.p_repair_history_attempt_count,
+            p_repair_prompt_sha256=self.p_repair_prompt_sha256,
+            p_repair_prompt_char_count=self.p_repair_prompt_char_count,
+            p_repair_max_prompt_chars=self.p_repair_max_prompt_chars,
+            p_repair_include_latest_source=self.p_repair_include_latest_source,
+            p_repair_anchor_source_hash=self.p_repair_anchor_source_hash,
+            p_repair_latest_source_hash=self.p_repair_latest_source_hash,
+            p_repair_history_summary_sha256=(
+                self.p_repair_history_summary_sha256
+            ),
+            p_repair_history_error_code=self.p_repair_history_error_code,
+        )
+        _validate_c_repair_history_metadata(
+            c_history_policy=self.c_history_policy,
+            c_repair_prompt_template_version=(
+                self.c_repair_prompt_template_version
+            ),
+            c_repair_prompt_renderer_version=(
+                self.c_repair_prompt_renderer_version
+            ),
+            c_repair_anchor_attempt_index=self.c_repair_anchor_attempt_index,
+            c_repair_latest_attempt_index=self.c_repair_latest_attempt_index,
+            c_repair_history_attempt_count=self.c_repair_history_attempt_count,
+            c_repair_prompt_sha256=self.c_repair_prompt_sha256,
+            c_repair_prompt_char_count=self.c_repair_prompt_char_count,
+            c_repair_max_prompt_chars=self.c_repair_max_prompt_chars,
+            c_repair_include_latest_source=self.c_repair_include_latest_source,
+            c_repair_anchor_source_hash=self.c_repair_anchor_source_hash,
+            c_repair_latest_source_hash=self.c_repair_latest_source_hash,
+            c_repair_history_summary_sha256=(
+                self.c_repair_history_summary_sha256
+            ),
+            c_repair_history_error_code=self.c_repair_history_error_code,
         )
         _validate_optional_bool(self.c_loop_fired, "c_loop_fired")
         if self.c_loop_source is not None and self.c_loop_source not in _C_LOOP_SOURCES:
@@ -267,12 +349,13 @@ class Cluster3EvalRow:
     terminal_prompt_hash: str | None
     terminal_prompt_hash_source: PromptHashSource
     terminal_source_matches_row_source: bool
+    grammar_mode: str | None = None
 
     def __post_init__(self) -> None:
         condition = normalize_cluster3_condition(self.condition)
         object.__setattr__(self, "condition", condition)
         self._validate_core_fields(condition)
-        self._validate_p_policy()
+        self._validate_p_policy(condition)
         self._validate_c_policy(condition)
         self._validate_row_failure_code_binding()
         self._validate_terminal_provenance()
@@ -323,11 +406,11 @@ class Cluster3EvalRow:
         )
         if self.functional_success and self.failure_code is not None:
             raise ValueError("failure_code must be None when functional_success is True")
-        expected_grammar_active = condition in {"G+P", "G+C+P"}
+        expected_grammar_active = condition in CLUSTER3_G_ACTIVE_CONDITIONS
         if self.grammar_active is not expected_grammar_active:
             raise ValueError("grammar_active must match Cluster 3 condition")
 
-    def _validate_p_policy(self) -> None:
+    def _validate_p_policy(self, condition: str) -> None:
         _require_bool(self.p_repair_attempted, "p_repair_attempted")
         _require_bool(
             self.p_compile_repair_succeeded,
@@ -366,13 +449,15 @@ class Cluster3EvalRow:
         )
         if self.p_feedback_format != P_FEEDBACK_FORMAT_V1:
             raise ValueError("p_feedback_format must equal P_FEEDBACK_FORMAT_V1")
-        if self.p_history_policy != P_HISTORY_POLICY_V1:
-            raise ValueError("p_history_policy must equal P_HISTORY_POLICY_V1")
+        if self.p_history_policy not in REPAIR_HISTORY_POLICIES_V1:
+            raise ValueError(f"unsupported p_history_policy {self.p_history_policy!r}")
 
         if not self.p_repair_attempted:
             self._validate_inactive_p_policy()
             return
 
+        if condition not in CLUSTER3_P_ACTIVE_CONDITIONS:
+            raise ValueError("active P rows require a P-active Cluster 3 condition")
         if self.p_initial_failure_code != "F1_COMPILE":
             raise ValueError("active P rows require p_initial_failure_code F1_COMPILE")
         if self.initial_failure_code != self.p_initial_failure_code:
@@ -510,7 +595,7 @@ class Cluster3EvalRow:
             return
 
         if condition not in _C_LOOP_CONDITIONS:
-            raise ValueError("c_loop_fired requires a C+P or G+C+P condition")
+            raise ValueError("c_loop_fired requires a C-active Cluster 3 condition")
         if self.c_loop_source not in {"initial_f2", "post_p_f2"}:
             raise ValueError("c_loop_fired requires initial_f2 or post_p_f2 source")
         if self.repair_trace is None:
@@ -723,7 +808,7 @@ class Cluster3EvalRow:
             Cluster3ReplayRowMetadata,
         ):
             raise TypeError("replay_metadata must be Cluster3ReplayRowMetadata or None")
-        if condition in {"G+P", "G+C+P"}:
+        if condition in CLUSTER3_G_ACTIVE_CONDITIONS:
             if (
                 self.generated_metadata.grammar_variant is None
                 or self.generated_metadata.grammar_path is None
@@ -742,7 +827,36 @@ class Cluster3EvalRow:
                 or self.generated_metadata.grammar_claim_scope is not None
             ):
                 raise ValueError("non-G Cluster 3 rows must remain grammar-free")
+        self._validate_grammar_mode_binding()
         self._validate_optional_metadata_binding()
+
+    def _validate_grammar_mode_binding(self) -> None:
+        metadata = self.generated_metadata
+        assert metadata is not None
+        derived_mode = grammar_mode_from_active_variant(
+            grammar_active=self.grammar_active,
+            grammar_variant=metadata.grammar_variant,
+        )
+        if self.grammar_mode is None:
+            object.__setattr__(self, "grammar_mode", derived_mode)
+        else:
+            validate_grammar_mode_binding(
+                grammar_mode=self.grammar_mode,
+                grammar_active=self.grammar_active,
+                grammar_variant=metadata.grammar_variant,
+                grammar_path=metadata.grammar_path,
+                grammar_claim_scope=metadata.grammar_claim_scope,
+            )
+        if metadata.grammar_mode is not None:
+            validate_grammar_mode_binding(
+                grammar_mode=metadata.grammar_mode,
+                grammar_active=self.grammar_active,
+                grammar_variant=metadata.grammar_variant,
+                grammar_path=metadata.grammar_path,
+                grammar_claim_scope=metadata.grammar_claim_scope,
+            )
+            if self.grammar_mode != metadata.grammar_mode:
+                raise ValueError("generated_metadata.grammar_mode must match row")
 
     def _validate_optional_metadata_binding(self) -> None:
         metadata = self.generated_metadata
@@ -756,6 +870,7 @@ class Cluster3EvalRow:
             ("p_repair_attempted", self.p_repair_attempted),
             ("p_compile_repair_succeeded", self.p_compile_repair_succeeded),
             ("p_repair_attempt_count", self.p_repair_attempt_count),
+            ("p_history_policy", self.p_history_policy),
             ("c_loop_fired", self.c_loop_fired),
             ("c_loop_source", self.c_loop_source),
         )
@@ -763,6 +878,11 @@ class Cluster3EvalRow:
             metadata_value = getattr(metadata, field_name)
             if metadata_value is not None and metadata_value != row_value:
                 raise ValueError(f"generated_metadata.{field_name} must match row")
+        _validate_agentic_p_repair_trace_metadata(
+            metadata=metadata,
+            p_repair_trace=self.p_repair_trace,
+            p_repair_attempt_count=self.p_repair_attempt_count,
+        )
 
     def _validate_trace_summary(self) -> None:
         if not isinstance(self.trace_summary, Cluster3TraceSummary):
@@ -1012,6 +1132,7 @@ def generated_row(
     trace_summary: Cluster3TraceSummary,
     c3_generation_hashes: dict[str, str],
     grammar_active: bool | None = None,
+    grammar_mode: str | None = None,
     compile_success: bool | None = None,
     repair_trace: Sequence[TraceSummary] | None = None,
     generation_seed: int | None = None,
@@ -1032,6 +1153,19 @@ def generated_row(
     p_repair_stop_reason: str = "p_not_applicable",
     p_feedback_format: str = P_FEEDBACK_FORMAT_V1,
     p_history_policy: str = P_HISTORY_POLICY_V1,
+    p_repair_prompt_template_version: str | None = None,
+    p_repair_prompt_renderer_version: str | None = None,
+    p_repair_anchor_attempt_index: int | None = None,
+    p_repair_latest_attempt_index: int | None = None,
+    p_repair_history_attempt_count: int | None = None,
+    p_repair_prompt_sha256: str | None = None,
+    p_repair_prompt_char_count: int | None = None,
+    p_repair_max_prompt_chars: int | None = None,
+    p_repair_include_latest_source: bool | None = None,
+    p_repair_anchor_source_hash: str | None = None,
+    p_repair_latest_source_hash: str | None = None,
+    p_repair_history_summary_sha256: str | None = None,
+    p_repair_history_error_code: str | None = None,
     p_repair_trace: Sequence[PRepairAttemptSummary] | None = None,
     terminal_prompt_hash: str | None,
     terminal_prompt_hash_source: PromptHashSource,
@@ -1047,7 +1181,7 @@ def generated_row(
 
     normalized = normalize_cluster3_condition(condition)
     resolved_grammar_active = (
-        normalized in {"G+P", "G+C+P"}
+        normalized in CLUSTER3_G_ACTIVE_CONDITIONS
         if grammar_active is None
         else grammar_active
     )
@@ -1064,6 +1198,16 @@ def generated_row(
         functional_success=functional_success,
         failure_code=failure_code,
     )
+    metadata_payload = dict(metadata_overrides)
+    metadata_payload.setdefault(
+        "grammar_mode",
+        grammar_mode_from_active_variant(
+            grammar_active=resolved_grammar_active,
+            grammar_variant=metadata_payload.get("grammar_variant"),
+        ),
+    )
+    if grammar_mode is not None and metadata_payload["grammar_mode"] != grammar_mode:
+        raise ValueError("grammar_mode must match metadata grammar_mode")
     return Cluster3EvalRow(
         condition=normalized,
         source_class=GENERATED_SOURCE_CLASS,
@@ -1093,9 +1237,23 @@ def generated_row(
             p_repair_attempted=p_repair_attempted,
             p_compile_repair_succeeded=p_compile_repair_succeeded,
             p_repair_attempt_count=p_repair_attempt_count,
+            p_history_policy=p_history_policy,
+            p_repair_prompt_template_version=p_repair_prompt_template_version,
+            p_repair_prompt_renderer_version=p_repair_prompt_renderer_version,
+            p_repair_anchor_attempt_index=p_repair_anchor_attempt_index,
+            p_repair_latest_attempt_index=p_repair_latest_attempt_index,
+            p_repair_history_attempt_count=p_repair_history_attempt_count,
+            p_repair_prompt_sha256=p_repair_prompt_sha256,
+            p_repair_prompt_char_count=p_repair_prompt_char_count,
+            p_repair_max_prompt_chars=p_repair_max_prompt_chars,
+            p_repair_include_latest_source=p_repair_include_latest_source,
+            p_repair_anchor_source_hash=p_repair_anchor_source_hash,
+            p_repair_latest_source_hash=p_repair_latest_source_hash,
+            p_repair_history_summary_sha256=p_repair_history_summary_sha256,
+            p_repair_history_error_code=p_repair_history_error_code,
             c_loop_fired=c_loop_fired,
             c_loop_source=c_loop_source,
-            **metadata_overrides,
+            **metadata_payload,
         ),
         repair_trace=None if repair_trace is None else tuple(repair_trace),
         initial_failure_code=initial_failure_code,
@@ -1123,6 +1281,7 @@ def generated_row(
         terminal_prompt_hash=terminal_prompt_hash,
         terminal_prompt_hash_source=terminal_prompt_hash_source,
         terminal_source_matches_row_source=terminal_source_matches_row_source,
+        grammar_mode=grammar_mode,
     )
 
 
@@ -1438,6 +1597,332 @@ def _validate_modal_image_provenance_components(
         raise ValueError(
             "modal_image_provenance_sha256 must equal the digest of "
             "modal_image_provenance_components"
+        )
+
+
+def _validate_p_repair_history_metadata(
+    *,
+    p_history_policy: str,
+    p_repair_prompt_template_version: str | None,
+    p_repair_prompt_renderer_version: str | None,
+    p_repair_anchor_attempt_index: int | None,
+    p_repair_latest_attempt_index: int | None,
+    p_repair_history_attempt_count: int | None,
+    p_repair_prompt_sha256: str | None,
+    p_repair_prompt_char_count: int | None,
+    p_repair_max_prompt_chars: int | None,
+    p_repair_include_latest_source: bool | None,
+    p_repair_anchor_source_hash: str | None,
+    p_repair_latest_source_hash: str | None,
+    p_repair_history_summary_sha256: str | None,
+    p_repair_history_error_code: str | None,
+) -> None:
+    if not isinstance(p_history_policy, str):
+        raise TypeError("p_history_policy must be a string")
+    if p_history_policy not in REPAIR_HISTORY_POLICIES_V1:
+        raise ValueError(f"unsupported p_history_policy {p_history_policy!r}")
+    _require_optional_non_empty_str(
+        p_repair_prompt_template_version,
+        "p_repair_prompt_template_version",
+    )
+    _require_optional_non_empty_str(
+        p_repair_prompt_renderer_version,
+        "p_repair_prompt_renderer_version",
+    )
+    _require_optional_non_empty_str(
+        p_repair_history_error_code,
+        "p_repair_history_error_code",
+    )
+    for field_name, value in (
+        ("p_repair_anchor_attempt_index", p_repair_anchor_attempt_index),
+        ("p_repair_latest_attempt_index", p_repair_latest_attempt_index),
+        ("p_repair_history_attempt_count", p_repair_history_attempt_count),
+    ):
+        if value is not None:
+            _require_non_negative_int(value, field_name)
+    for field_name, value in (
+        ("p_repair_prompt_char_count", p_repair_prompt_char_count),
+        ("p_repair_max_prompt_chars", p_repair_max_prompt_chars),
+    ):
+        if value is not None:
+            _require_positive_int(value, field_name)
+    if p_repair_include_latest_source is not None:
+        _require_bool(p_repair_include_latest_source, "p_repair_include_latest_source")
+    for field_name, value in (
+        ("p_repair_prompt_sha256", p_repair_prompt_sha256),
+        ("p_repair_anchor_source_hash", p_repair_anchor_source_hash),
+        ("p_repair_latest_source_hash", p_repair_latest_source_hash),
+        ("p_repair_history_summary_sha256", p_repair_history_summary_sha256),
+    ):
+        _validate_optional_sha256(value, field_name)
+    _validate_agentic_p_rendered_metadata(
+        p_history_policy=p_history_policy,
+        p_repair_prompt_template_version=p_repair_prompt_template_version,
+        p_repair_prompt_renderer_version=p_repair_prompt_renderer_version,
+        p_repair_anchor_attempt_index=p_repair_anchor_attempt_index,
+        p_repair_latest_attempt_index=p_repair_latest_attempt_index,
+        p_repair_history_attempt_count=p_repair_history_attempt_count,
+        p_repair_prompt_sha256=p_repair_prompt_sha256,
+        p_repair_prompt_char_count=p_repair_prompt_char_count,
+        p_repair_max_prompt_chars=p_repair_max_prompt_chars,
+        p_repair_include_latest_source=p_repair_include_latest_source,
+        p_repair_anchor_source_hash=p_repair_anchor_source_hash,
+        p_repair_latest_source_hash=p_repair_latest_source_hash,
+        p_repair_history_summary_sha256=p_repair_history_summary_sha256,
+    )
+
+
+def _validate_agentic_p_rendered_metadata(
+    *,
+    p_history_policy: str,
+    p_repair_prompt_template_version: str | None,
+    p_repair_prompt_renderer_version: str | None,
+    p_repair_anchor_attempt_index: int | None,
+    p_repair_latest_attempt_index: int | None,
+    p_repair_history_attempt_count: int | None,
+    p_repair_prompt_sha256: str | None,
+    p_repair_prompt_char_count: int | None,
+    p_repair_max_prompt_chars: int | None,
+    p_repair_include_latest_source: bool | None,
+    p_repair_anchor_source_hash: str | None,
+    p_repair_latest_source_hash: str | None,
+    p_repair_history_summary_sha256: str | None,
+) -> None:
+    if p_history_policy != AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1:
+        return
+    required_fields = {
+        "p_repair_prompt_template_version": p_repair_prompt_template_version,
+        "p_repair_prompt_renderer_version": p_repair_prompt_renderer_version,
+        "p_repair_anchor_attempt_index": p_repair_anchor_attempt_index,
+        "p_repair_latest_attempt_index": p_repair_latest_attempt_index,
+        "p_repair_history_attempt_count": p_repair_history_attempt_count,
+        "p_repair_prompt_sha256": p_repair_prompt_sha256,
+        "p_repair_prompt_char_count": p_repair_prompt_char_count,
+        "p_repair_max_prompt_chars": p_repair_max_prompt_chars,
+        "p_repair_include_latest_source": p_repair_include_latest_source,
+        "p_repair_anchor_source_hash": p_repair_anchor_source_hash,
+        "p_repair_latest_source_hash": p_repair_latest_source_hash,
+        "p_repair_history_summary_sha256": p_repair_history_summary_sha256,
+    }
+    if all(value is None for value in required_fields.values()):
+        return
+    missing = sorted(
+        field_name
+        for field_name, value in required_fields.items()
+        if value is None
+    )
+    if missing:
+        raise ValueError(
+            "agentic_transcript_v1 P metadata requires rendered prompt fields: "
+            + ", ".join(missing)
+        )
+    if (
+        p_repair_history_attempt_count is not None
+        and p_repair_history_attempt_count <= 0
+    ):
+        raise ValueError(
+            "p_repair_history_attempt_count must be positive for "
+            "agentic_transcript_v1 rendered P metadata"
+        )
+    if (
+        p_repair_latest_attempt_index is not None
+        and p_repair_history_attempt_count is not None
+        and p_repair_latest_attempt_index != p_repair_history_attempt_count - 1
+    ):
+        raise ValueError(
+            "p_repair_latest_attempt_index must equal "
+            "p_repair_history_attempt_count - 1 for "
+            "agentic_transcript_v1 rendered P metadata"
+        )
+    if (
+        p_repair_anchor_attempt_index is not None
+        and p_repair_history_attempt_count is not None
+        and p_repair_anchor_attempt_index >= p_repair_history_attempt_count
+    ):
+        raise ValueError(
+            "p_repair_anchor_attempt_index must be less than "
+            "p_repair_history_attempt_count for "
+            "agentic_transcript_v1 rendered P metadata"
+        )
+
+
+def _validate_c_repair_history_metadata(
+    *,
+    c_history_policy: str | None,
+    c_repair_prompt_template_version: str | None,
+    c_repair_prompt_renderer_version: str | None,
+    c_repair_anchor_attempt_index: int | None,
+    c_repair_latest_attempt_index: int | None,
+    c_repair_history_attempt_count: int | None,
+    c_repair_prompt_sha256: str | None,
+    c_repair_prompt_char_count: int | None,
+    c_repair_max_prompt_chars: int | None,
+    c_repair_include_latest_source: bool | None,
+    c_repair_anchor_source_hash: str | None,
+    c_repair_latest_source_hash: str | None,
+    c_repair_history_summary_sha256: str | None,
+    c_repair_history_error_code: str | None,
+) -> None:
+    rendered_fields = {
+        "c_repair_prompt_template_version": c_repair_prompt_template_version,
+        "c_repair_prompt_renderer_version": c_repair_prompt_renderer_version,
+        "c_repair_anchor_attempt_index": c_repair_anchor_attempt_index,
+        "c_repair_latest_attempt_index": c_repair_latest_attempt_index,
+        "c_repair_history_attempt_count": c_repair_history_attempt_count,
+        "c_repair_prompt_sha256": c_repair_prompt_sha256,
+        "c_repair_prompt_char_count": c_repair_prompt_char_count,
+        "c_repair_max_prompt_chars": c_repair_max_prompt_chars,
+        "c_repair_include_latest_source": c_repair_include_latest_source,
+        "c_repair_anchor_source_hash": c_repair_anchor_source_hash,
+        "c_repair_latest_source_hash": c_repair_latest_source_hash,
+        "c_repair_history_summary_sha256": c_repair_history_summary_sha256,
+    }
+    if c_history_policy is None and all(
+        value is None
+        for value in (*rendered_fields.values(), c_repair_history_error_code)
+    ):
+        return
+    if not isinstance(c_history_policy, str):
+        raise TypeError("c_history_policy must be a string")
+    if c_history_policy not in REPAIR_HISTORY_POLICIES_V1:
+        raise ValueError(f"unsupported c_history_policy {c_history_policy!r}")
+    _require_optional_non_empty_str(
+        c_repair_prompt_template_version,
+        "c_repair_prompt_template_version",
+    )
+    _require_optional_non_empty_str(
+        c_repair_prompt_renderer_version,
+        "c_repair_prompt_renderer_version",
+    )
+    _require_optional_non_empty_str(
+        c_repair_history_error_code,
+        "c_repair_history_error_code",
+    )
+    for field_name, value in (
+        ("c_repair_anchor_attempt_index", c_repair_anchor_attempt_index),
+        ("c_repair_latest_attempt_index", c_repair_latest_attempt_index),
+        ("c_repair_history_attempt_count", c_repair_history_attempt_count),
+    ):
+        if value is not None:
+            _require_non_negative_int(value, field_name)
+    for field_name, value in (
+        ("c_repair_prompt_char_count", c_repair_prompt_char_count),
+        ("c_repair_max_prompt_chars", c_repair_max_prompt_chars),
+    ):
+        if value is not None:
+            _require_positive_int(value, field_name)
+    if c_repair_include_latest_source is not None:
+        _require_bool(c_repair_include_latest_source, "c_repair_include_latest_source")
+    for field_name, value in (
+        ("c_repair_prompt_sha256", c_repair_prompt_sha256),
+        ("c_repair_anchor_source_hash", c_repair_anchor_source_hash),
+        ("c_repair_latest_source_hash", c_repair_latest_source_hash),
+        ("c_repair_history_summary_sha256", c_repair_history_summary_sha256),
+    ):
+        _validate_optional_sha256(value, field_name)
+    if c_history_policy != AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1:
+        return
+    if all(value is None for value in rendered_fields.values()):
+        return
+    missing = sorted(
+        field_name
+        for field_name, value in rendered_fields.items()
+        if value is None
+    )
+    if missing:
+        raise ValueError(
+            "agentic_transcript_v1 C metadata requires rendered prompt fields: "
+            + ", ".join(missing)
+        )
+    if (
+        c_repair_history_attempt_count is not None
+        and c_repair_history_attempt_count <= 0
+    ):
+        raise ValueError(
+            "c_repair_history_attempt_count must be positive for "
+            "agentic_transcript_v1 rendered C metadata"
+        )
+    if (
+        c_repair_latest_attempt_index is not None
+        and c_repair_history_attempt_count is not None
+        and c_repair_latest_attempt_index != c_repair_history_attempt_count - 1
+    ):
+        raise ValueError(
+            "c_repair_latest_attempt_index must equal "
+            "c_repair_history_attempt_count - 1 for "
+            "agentic_transcript_v1 rendered C metadata"
+        )
+    if (
+        c_repair_anchor_attempt_index is not None
+        and c_repair_history_attempt_count is not None
+        and c_repair_anchor_attempt_index >= c_repair_history_attempt_count
+    ):
+        raise ValueError(
+            "c_repair_anchor_attempt_index must be less than "
+            "c_repair_history_attempt_count for "
+            "agentic_transcript_v1 rendered C metadata"
+        )
+
+
+def _validate_agentic_p_repair_trace_metadata(
+    *,
+    metadata: Cluster3GeneratedRowMetadata,
+    p_repair_trace: tuple[PRepairAttemptSummary, ...] | None,
+    p_repair_attempt_count: int,
+) -> None:
+    if metadata.p_history_policy != AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1:
+        return
+    if metadata.p_repair_history_attempt_count is None:
+        if p_repair_attempt_count > 0:
+            raise ValueError(
+                "agentic_transcript_v1 P repair rows require rendered prompt metadata"
+            )
+        if p_repair_trace is not None and len(p_repair_trace) > 1:
+            raise ValueError(
+                "agentic_transcript_v1 multi-attempt P repair_trace requires "
+                "rendered prompt metadata"
+            )
+        return
+    if p_repair_trace is None:
+        return
+
+    history_count = metadata.p_repair_history_attempt_count
+    if p_repair_attempt_count != history_count:
+        raise ValueError(
+            "p_repair_attempt_count must equal p_repair_history_attempt_count "
+            "for agentic_transcript_v1 rendered P metadata"
+        )
+    expected_trace_length = history_count + 1
+    if len(p_repair_trace) != expected_trace_length:
+        raise ValueError(
+            "p_repair_trace length must equal p_repair_history_attempt_count + 1 "
+            "for agentic_transcript_v1 rendered P metadata"
+        )
+    traces_by_attempt: dict[int, PRepairAttemptSummary] = {}
+    for trace in p_repair_trace:
+        if trace.attempt_index in traces_by_attempt:
+            raise ValueError(
+                "p_repair_trace attempt indexes must be unique for "
+                "agentic_transcript_v1 rendered P metadata"
+            )
+        traces_by_attempt[trace.attempt_index] = trace
+    expected_attempt_indexes = set(range(expected_trace_length))
+    if set(traces_by_attempt) != expected_attempt_indexes:
+        raise ValueError(
+            "p_repair_trace attempt indexes must be contiguous and zero-based for "
+            "agentic_transcript_v1 rendered P metadata"
+        )
+    assert metadata.p_repair_anchor_attempt_index is not None
+    assert metadata.p_repair_latest_attempt_index is not None
+    anchor_trace = traces_by_attempt[metadata.p_repair_anchor_attempt_index]
+    latest_trace = traces_by_attempt[metadata.p_repair_latest_attempt_index]
+    if anchor_trace.source_hash != metadata.p_repair_anchor_source_hash:
+        raise ValueError(
+            "p_repair_anchor_source_hash must match p_repair_trace anchor source_hash"
+        )
+    if latest_trace.source_hash != metadata.p_repair_latest_source_hash:
+        raise ValueError(
+            "p_repair_latest_source_hash must match p_repair_trace latest source_hash"
         )
 
 

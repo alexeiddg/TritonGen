@@ -15,7 +15,7 @@ from cluster3.results.dataclass import (
 )
 
 
-Cluster3WriteMode = Literal["overwrite", "resume"]
+Cluster3WriteMode = Literal["overwrite", "resume", "create"]
 
 
 class Cluster3JsonlAppendLogger:
@@ -77,6 +77,22 @@ class Cluster3JsonlAppendLogger:
                 self.content_hash_sidecar,
                 fsync=self.fsync,
             )
+        elif self.mode == "create":
+            if self.output_path.exists():
+                raise FileExistsError("create mode requires an absent JSONL output")
+            if self.sidecar_path.exists():
+                raise FileExistsError(
+                    "create mode requires an absent content-hash sidecar"
+                )
+            with self.output_path.open("x", encoding="utf-8") as output:
+                output.flush()
+                if self.fsync:
+                    os.fsync(output.fileno())
+            _write_sidecar_atomic(
+                self.sidecar_path,
+                self.content_hash_sidecar,
+                fsync=self.fsync,
+            )
         else:
             if not self.output_path.exists():
                 raise FileNotFoundError("resume requires an existing JSONL output")
@@ -129,6 +145,12 @@ class Cluster3JsonlAppendLogger:
         if self.fsync:
             os.fsync(self._file.fileno())
         self._resume_index += 1
+        # Seam: mirror this newly-written row into the active MLflow run as c3.*
+        # metrics. Local import keeps this logger decoupled; the tracking client
+        # is the single safety boundary (no-op when disabled, never raises).
+        from shared import tracking
+
+        tracking.log_cluster3_eval_row(row)
         return True
 
 
@@ -194,8 +216,8 @@ def validate_content_hash_sidecar_for_rows(
 def _validate_mode(mode: str) -> None:
     if mode == "append":
         raise ValueError("append mode is not supported for Cluster 3 results")
-    if mode not in {"overwrite", "resume"}:
-        raise ValueError("mode must be 'overwrite' or 'resume'")
+    if mode not in {"overwrite", "resume", "create"}:
+        raise ValueError("mode must be 'overwrite', 'resume', or 'create'")
 
 
 def _write_sidecar_atomic(

@@ -613,6 +613,203 @@ def test_generated_current_schema_accepts_fallback_sha_as_modal_image_sha() -> N
     assert round_trip == row
 
 
+def test_generated_rows_default_to_legacy_repair_history_policy() -> None:
+    row = _generated_row()
+
+    assert row.generated_metadata is not None
+    assert row.generated_metadata.repair_history_policy == "last_attempt_only_v1"
+    assert row.generated_metadata.repair_prompt_sha256 is None
+    assert row.generated_metadata.repair_anchor_attempt_index is None
+
+
+def test_legacy_generated_rows_missing_repair_history_policy_load_as_last_attempt() -> None:
+    payload = _generated_row().to_dict()
+    assert payload["generated_metadata"].pop("repair_history_policy") == (
+        "last_attempt_only_v1"
+    )
+
+    row = Cluster2EvalRow.from_dict(payload)
+
+    assert row.generated_metadata is not None
+    assert row.generated_metadata.repair_history_policy == "last_attempt_only_v1"
+
+
+def test_generated_rows_round_trip_agentic_repair_history_metadata() -> None:
+    row = _generated_row(
+        condition="C",
+        attempt_index=2,
+        source_text=_AGENTIC_TERMINAL_SOURCE,
+        repair_trace=_agentic_repair_trace_for_attempt_2(),
+        **_agentic_rendered_metadata_for_attempt_2(),
+    )
+
+    payload = json.loads(row.to_json())
+    round_trip = Cluster2EvalRow.from_dict(payload)
+
+    assert payload["generated_metadata"]["repair_history_policy"] == (
+        "agentic_transcript_v1"
+    )
+    assert round_trip == row
+
+
+def test_generated_rows_reject_incomplete_agentic_repair_history_metadata() -> None:
+    with pytest.raises(ValueError, match="agentic_transcript_v1 metadata requires"):
+        _generated_row(
+            condition="C",
+            attempt_index=1,
+            repair_history_policy="agentic_transcript_v1",
+            repair_history_attempt_count=1,
+        )
+
+
+def test_generated_rows_reject_agentic_repair_row_without_prompt_metadata() -> None:
+    with pytest.raises(ValueError, match="require rendered prompt metadata"):
+        _generated_row(
+            condition="C",
+            attempt_index=1,
+            repair_history_policy="agentic_transcript_v1",
+        )
+
+
+def test_generated_rows_reject_agentic_multi_trace_without_prompt_metadata() -> None:
+    source_text = _AGENTIC_TERMINAL_SOURCE
+    terminal_trace = TraceSummary(
+        attempt_index=0,
+        failure_code=None,
+        public_failure_summary="Candidate passed Level 2.",
+        functional_success=True,
+        repair_set_success=True,
+        eval_set_success=True,
+        source_hash=_source_hash(source_text),
+    )
+    earlier_trace = TraceSummary(
+        attempt_index=99,
+        failure_code="F2_NUMERIC_LARGE",
+        public_failure_summary="Validation failed.",
+        functional_success=False,
+        repair_set_success=False,
+        eval_set_success=False,
+        source_hash="e" * 64,
+    )
+
+    with pytest.raises(ValueError, match="requires rendered prompt metadata"):
+        _generated_row(
+            condition="C",
+            attempt_index=0,
+            source_text=source_text,
+            repair_trace=(earlier_trace, terminal_trace),
+            repair_history_policy="agentic_transcript_v1",
+        )
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value", "match"),
+    (
+        (
+            "repair_latest_attempt_index",
+            0,
+            "repair_latest_attempt_index must equal",
+        ),
+        (
+            "repair_anchor_attempt_index",
+            2,
+            "repair_anchor_attempt_index must be less than",
+        ),
+    ),
+)
+def test_generated_rows_reject_impossible_agentic_repair_history_indexes(
+    field_name: str,
+    value: int,
+    match: str,
+) -> None:
+    agentic_metadata = {
+        "repair_history_policy": "agentic_transcript_v1",
+        "repair_prompt_template_version": "agentic_transcript_v1",
+        "repair_prompt_renderer_version": "agentic_transcript_v1",
+        "repair_anchor_attempt_index": 0,
+        "repair_latest_attempt_index": 1,
+        "repair_history_attempt_count": 2,
+        "repair_prompt_sha256": "a" * 64,
+        "repair_prompt_char_count": 512,
+        "repair_max_prompt_chars": 24000,
+        "repair_include_latest_source": False,
+        "repair_anchor_source_hash": "b" * 64,
+        "repair_latest_source_hash": "c" * 64,
+        "repair_history_summary_sha256": "d" * 64,
+    }
+    agentic_metadata[field_name] = value
+
+    with pytest.raises(ValueError, match=match):
+        _generated_row(
+            condition="C",
+            attempt_index=2,
+            source_text=_AGENTIC_TERMINAL_SOURCE,
+            repair_trace=_agentic_repair_trace_for_attempt_2(),
+            **agentic_metadata,
+        )
+
+
+def test_generated_rows_reject_agentic_repair_trace_length_mismatch() -> None:
+    with pytest.raises(ValueError, match="repair_trace length must equal"):
+        _generated_row(
+            condition="C",
+            attempt_index=2,
+            source_text=_AGENTIC_TERMINAL_SOURCE,
+            repair_trace=(_agentic_repair_trace_for_attempt_2()[-1],),
+            **_agentic_rendered_metadata_for_attempt_2(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value", "match"),
+    (
+        (
+            "repair_anchor_source_hash",
+            "e" * 64,
+            "repair_anchor_source_hash must match",
+        ),
+        (
+            "repair_latest_source_hash",
+            "f" * 64,
+            "repair_latest_source_hash must match",
+        ),
+    ),
+)
+def test_generated_rows_reject_agentic_repair_trace_source_hash_mismatch(
+    field_name: str,
+    value: str,
+    match: str,
+) -> None:
+    agentic_metadata = _agentic_rendered_metadata_for_attempt_2()
+    agentic_metadata[field_name] = value
+
+    with pytest.raises(ValueError, match=match):
+        _generated_row(
+            condition="C",
+            attempt_index=2,
+            source_text=_AGENTIC_TERMINAL_SOURCE,
+            repair_trace=_agentic_repair_trace_for_attempt_2(),
+            **agentic_metadata,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value", "match"),
+    (
+        ("repair_history_policy", "unknown_policy", "unsupported repair_history_policy"),
+        ("repair_prompt_sha256", "not-a-sha", "repair_prompt_sha256"),
+        ("repair_prompt_char_count", 0, "repair_prompt_char_count"),
+    ),
+)
+def test_generated_rows_reject_invalid_repair_history_metadata(
+    field_name: str,
+    value: object,
+    match: str,
+) -> None:
+    with pytest.raises((TypeError, ValueError), match=match):
+        _generated_row(**{field_name: value})
+
+
 def test_generated_current_schema_accepts_modal_image_object_id() -> None:
     row = _generated_row(
         condition="C",
@@ -1051,6 +1248,60 @@ def _external_pins() -> dict[str, str]:
 
 def _source_hash(source_text: str) -> str:
     return hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+
+
+_AGENTIC_TERMINAL_SOURCE = "import triton\n@triton.jit\ndef k(): pass"
+
+
+def _agentic_rendered_metadata_for_attempt_2() -> dict[str, Any]:
+    return {
+        "repair_history_policy": "agentic_transcript_v1",
+        "repair_prompt_template_version": "agentic_transcript_v1",
+        "repair_prompt_renderer_version": "agentic_transcript_v1",
+        "repair_anchor_attempt_index": 0,
+        "repair_latest_attempt_index": 1,
+        "repair_history_attempt_count": 2,
+        "repair_prompt_sha256": "a" * 64,
+        "repair_prompt_char_count": 512,
+        "repair_max_prompt_chars": 24000,
+        "repair_include_latest_source": False,
+        "repair_anchor_source_hash": "b" * 64,
+        "repair_latest_source_hash": "c" * 64,
+        "repair_history_summary_sha256": "d" * 64,
+        "repair_history_error_code": None,
+    }
+
+
+def _agentic_repair_trace_for_attempt_2() -> tuple[TraceSummary, ...]:
+    return (
+        TraceSummary(
+            attempt_index=0,
+            failure_code="F2_NUMERIC_LARGE",
+            public_failure_summary="Validation failed.",
+            functional_success=False,
+            repair_set_success=False,
+            eval_set_success=False,
+            source_hash="b" * 64,
+        ),
+        TraceSummary(
+            attempt_index=1,
+            failure_code="F2_NUMERIC_LARGE",
+            public_failure_summary="Validation failed.",
+            functional_success=False,
+            repair_set_success=False,
+            eval_set_success=False,
+            source_hash="c" * 64,
+        ),
+        TraceSummary(
+            attempt_index=2,
+            failure_code=None,
+            public_failure_summary="Candidate passed Level 2.",
+            functional_success=True,
+            repair_set_success=True,
+            eval_set_success=True,
+            source_hash=_source_hash(_AGENTIC_TERMINAL_SOURCE),
+        ),
+    )
 
 
 def _assert_jsonl_rows(path: Path, *, expected_count: int) -> None:

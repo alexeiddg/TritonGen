@@ -74,14 +74,36 @@ def test_cluster3_package_imports_cheap() -> None:
 
 
 def test_cluster3_constants_contract() -> None:
+    from cluster2.constants import (
+        AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1,
+        LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1,
+        REPAIR_HISTORY_POLICIES_V1,
+    )
     from cluster3 import constants
 
-    assert constants.CLUSTER3_CONDITIONS == ("P", "G+P", "C+P", "G+C+P")
-    assert constants.P_GENERATION_CONDITIONS == constants.CLUSTER3_CONDITIONS
+    assert constants.CLUSTER3_NO_P_CONTROL_CONDITIONS == ("none", "G", "C", "G+C")
+    assert constants.CLUSTER3_P_ACTIVE_CONDITIONS == ("P", "G+P", "C+P", "G+C+P")
+    assert constants.CLUSTER3_C_ACTIVE_CONDITIONS == ("C", "G+C", "C+P", "G+C+P")
+    assert constants.CLUSTER3_G_ACTIVE_CONDITIONS == ("G", "G+C", "G+P", "G+C+P")
+    assert constants.CLUSTER3_CONDITIONS == (
+        "none",
+        "G",
+        "C",
+        "G+C",
+        "P",
+        "G+P",
+        "C+P",
+        "G+C+P",
+    )
+    assert constants.P_GENERATION_CONDITIONS == constants.CLUSTER3_P_ACTIVE_CONDITIONS
     assert constants.DEFAULT_P_REPAIR_BUDGET == 5
     assert constants.P_ELIGIBLE_FAILURE_CODES == frozenset({"F1_COMPILE"})
     assert constants.P_FEEDBACK_FORMAT_V1 == "compile_error_template_v1"
+    assert constants.P_HISTORY_POLICY_V1 == LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1
     assert constants.P_HISTORY_POLICY_V1 == "last_attempt_only_v1"
+    assert constants.P_HISTORY_POLICY_V1 in REPAIR_HISTORY_POLICIES_V1
+    assert AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1 in REPAIR_HISTORY_POLICIES_V1
+    assert constants.P_HISTORY_POLICY_V1 != AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1
     assert constants.P_REPAIR_STOP_REASONS == frozenset(
         {
             "p_compile_repaired_then_success",
@@ -114,9 +136,21 @@ def test_generation_mode_for_cluster3_condition_matches_c2_after_translation() -
     from cluster2.constants import generation_mode_for_condition
     from cluster3.constants import generation_mode_for_cluster3_condition
 
+    assert generation_mode_for_cluster3_condition("none") == generation_mode_for_condition(
+        "C"
+    )
+    assert generation_mode_for_cluster3_condition("C") == generation_mode_for_condition(
+        "C"
+    )
     assert generation_mode_for_cluster3_condition("P") == generation_mode_for_condition("C")
     assert generation_mode_for_cluster3_condition("C+P") == generation_mode_for_condition(
         "C"
+    )
+    assert generation_mode_for_cluster3_condition("G") == generation_mode_for_condition(
+        "G+C"
+    )
+    assert generation_mode_for_cluster3_condition("G+C") == generation_mode_for_condition(
+        "G+C"
     )
     assert generation_mode_for_cluster3_condition("G+P") == generation_mode_for_condition(
         "G+C"
@@ -129,7 +163,7 @@ def test_generation_mode_for_cluster3_condition_matches_c2_after_translation() -
 def test_source_class_for_cluster3_condition_rejects_non_cluster3() -> None:
     from cluster3.constants import source_class_for_cluster3_condition
 
-    for condition in ("none", "G", "C", "G+C", "X"):
+    for condition in ("X",):
         with pytest.raises(ValueError):
             source_class_for_cluster3_condition(condition)
 

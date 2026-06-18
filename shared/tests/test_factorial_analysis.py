@@ -7,16 +7,24 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
 from shared.analysis.factorial import (
+    REQUIRED_METRIC_REGISTRY_KEYS,
     _expected_prompt_sha256,
+    _validate_metric_registry,
     analyze_factorial,
+    factorial_summary,
     load_result_paths,
+    load_results,
     normalize_result_rows,
     validate_paired_replay_dataframe,
 )
+
+
+FACTORIAL_FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "factorial"
 
 
 def test_factorial_cli_runs_when_invoked_by_file_path() -> None:
@@ -154,6 +162,316 @@ def test_analyze_factorial_emits_primary_four_cell_output() -> None:
     table_3_rows = result["paper_tables"]["table_3_factorial_terms"]
     assert {row["model_fit_status"] for row in table_3_rows} == {"fit"}
     assert {row["model_type"] for row in table_3_rows} == {"reduced_four_cell"}
+
+
+def test_analyze_factorial_emits_s1_metadata_without_top_level_shape_drift() -> None:
+    result = analyze_factorial(
+        _four_cell_rows(),
+        bootstrap_samples=200,
+        bootstrap_seed=17,
+    )
+
+    assert list(result) == [
+        "metadata",
+        "condition_rates",
+        "cell_summaries",
+        "paired_comparisons",
+        "factorial_model",
+        "diagnostics",
+        "paper_tables",
+    ]
+
+    metadata = result["metadata"]
+    assert metadata["outcome_family_schema_version"] == "outcome_family_v1"
+    assert list(metadata["outcome_families"]) == [
+        "structural_code_surface",
+        "task_functional",
+        "benchmarkable_performance",
+        "mixed_diagnostic",
+    ]
+    assert metadata["metric_registry_schema_version"] == "metric_registry_v1"
+    assert list(metadata["metric_registry"]) == list(REQUIRED_METRIC_REGISTRY_KEYS)
+    assert metadata["metric_aliases"]["functional_success_rate"] == (
+        "level2_functional_success_rate"
+    )
+    assert metadata["metric_aliases"]["compile_success_rate"] == (
+        "level1_compile_success_rate"
+    )
+    assert metadata["metric_registry"]["syntax_valid_rate"]["current_status"] == (
+        "planned_deferred"
+    )
+    assert metadata["metric_registry"]["benchmarkable_pass_at_k"]["current_status"] == (
+        "future_only"
+    )
+
+    primary_summary = next(
+        row
+        for row in result["cell_summaries"]
+        if row["metric_name"] == "level2_functional_success_rate"
+        and row["summary_level"] == "condition"
+    )
+    assert primary_summary["outcome_family"] == "task_functional"
+    assert primary_summary["level_gate"] == "level2_correctness"
+    assert primary_summary["metric_gate"] == "functional_success"
+    assert primary_summary["metric_reportability"] == "reportable_primary"
+
+    compile_summary = next(
+        row
+        for row in result["cell_summaries"]
+        if row["metric_name"] == "level1_compile_success_rate"
+        and row["summary_level"] == "condition"
+    )
+    assert compile_summary["outcome_family"] == "structural_code_surface"
+    assert compile_summary["level_gate"] == "level1_compile_launch"
+    assert compile_summary["metric_gate"] == "compile_success"
+    assert compile_summary["metric_reportability"] == "reportable_secondary"
+
+    paired = result["paired_comparisons"]
+    assert all("outcome_family" in row for row in paired)
+    assert {
+        row["outcome_family"]
+        for row in paired
+        if row["response_variable"] == "compile_success"
+    } == {"structural_code_surface"}
+
+
+def test_metric_registry_preserves_existing_2x2_output_contract() -> None:
+    result = analyze_factorial(
+        _four_cell_rows(),
+        bootstrap_samples=200,
+        bootstrap_seed=17,
+    )
+    repeated = analyze_factorial(
+        _four_cell_rows(),
+        bootstrap_samples=200,
+        bootstrap_seed=17,
+    )
+
+    assert {
+        "response_variable": result["metadata"]["response_variable"],
+        "analysis_scope": result["metadata"]["analysis_scope"],
+        "reportable": result["metadata"]["reportable"],
+        "scope_kind": result["metadata"]["scope_kind"],
+        "scale_tiers": result["metadata"]["scale_tiers"],
+        "cells_populated": result["metadata"]["cells_populated"],
+        "cells_missing": result["metadata"]["cells_missing"],
+    } == {
+        "response_variable": "functional_success",
+        "analysis_scope": "primary_functional",
+        "reportable": True,
+        "scope_kind": "temporary_2^2_subset",
+        "scale_tiers": ["paper"],
+        "cells_populated": ["none", "G", "C", "G+C"],
+        "cells_missing": ["P", "G+P", "C+P", "G+C+P"],
+    }
+    assert result["condition_rates"]["none"]["functional_success_rate"] == 0.25
+    assert result["condition_rates"]["G"]["functional_success_rate"] == 0.25
+    assert result["condition_rates"]["C"]["functional_success_rate"] == 0.5
+    assert result["condition_rates"]["G+C"]["functional_success_rate"] == 0.75
+    assert result["condition_rates"]["none"]["compile_success_rate"] == 1.0
+    assert result["condition_rates"]["G+C"]["compile_success_rate"] == 1.0
+
+    paired_snapshot = {
+        row["comparison"]: {
+            "response_variable": row["response_variable"],
+            "n_pairs": row["n_pairs"],
+            "success_rate_a": row["success_rate_a"],
+            "success_rate_b": row["success_rate_b"],
+            "absolute_lift": row["absolute_lift"],
+        }
+        for row in result["paired_comparisons"]
+    }
+    assert paired_snapshot == {
+        "C vs none": {
+            "response_variable": "functional_success",
+            "n_pairs": 4,
+            "success_rate_a": 0.25,
+            "success_rate_b": 0.5,
+            "absolute_lift": 0.25,
+        },
+        "G+C vs G": {
+            "response_variable": "functional_success",
+            "n_pairs": 4,
+            "success_rate_a": 0.25,
+            "success_rate_b": 0.75,
+            "absolute_lift": 0.5,
+        },
+        "G vs none": {
+            "response_variable": "compile_success",
+            "n_pairs": 4,
+            "success_rate_a": 1.0,
+            "success_rate_b": 1.0,
+            "absolute_lift": 0.0,
+        },
+        "G+C vs C": {
+            "response_variable": "compile_success",
+            "n_pairs": 4,
+            "success_rate_a": 1.0,
+            "success_rate_b": 1.0,
+            "absolute_lift": 0.0,
+        },
+    }
+    assert result["paper_tables"].keys() == repeated["paper_tables"].keys()
+    assert result["metadata"]["metric_registry"] == repeated["metadata"]["metric_registry"]
+    assert result["metadata"]["outcome_families"] == repeated["metadata"]["outcome_families"]
+    assert result["diagnostics"]["metric_availability"] == repeated["diagnostics"][
+        "metric_availability"
+    ]
+
+
+def test_metric_registry_validator_rejects_bad_entries() -> None:
+    registry = analyze_factorial(
+        _four_cell_rows(),
+        bootstrap_samples=50,
+    )["metadata"]["metric_registry"]
+
+    missing_field = json.loads(json.dumps(registry))
+    del missing_field["syntax_valid_rate"]["schema_version"]
+    with pytest.raises(ValueError, match="missing required fields"):
+        _validate_metric_registry(missing_field)
+
+    invalid_enum = json.loads(json.dumps(registry))
+    invalid_enum["syntax_valid_rate"]["current_status"] = "computed_later"
+    with pytest.raises(ValueError, match="invalid current_status"):
+        _validate_metric_registry(invalid_enum)
+
+    reportable_not_computed = json.loads(json.dumps(registry))
+    reportable_not_computed["level2_functional_success_rate"][
+        "current_status"
+    ] = "planned_deferred"
+    reportable_not_computed["level2_functional_success_rate"][
+        "evidence_policy"
+    ] = "not_computed"
+    with pytest.raises(ValueError, match="reportable metric"):
+        _validate_metric_registry(reportable_not_computed)
+
+    unknown_field = json.loads(json.dumps(registry))
+    unknown_field["syntax_valid_rate"]["unexpected"] = "not allowed"
+    with pytest.raises(ValueError, match="unknown fields"):
+        _validate_metric_registry(unknown_field)
+
+    duplicate_alias = json.loads(json.dumps(registry))
+    duplicate_alias["syntax_valid_rate"]["aliases"].append("compile_success_rate")
+    with pytest.raises(ValueError, match="alias collision"):
+        _validate_metric_registry(duplicate_alias)
+
+    canonical_alias = json.loads(json.dumps(registry))
+    canonical_alias["syntax_valid_rate"]["aliases"].append(
+        "level1_compile_success_rate"
+    )
+    with pytest.raises(ValueError, match="canonical metric name"):
+        _validate_metric_registry(canonical_alias)
+
+    bare_pass_alias = json.loads(json.dumps(registry))
+    bare_pass_alias["compile_pass_at_k"]["aliases"].append("pass" + "@k")
+    with pytest.raises(ValueError, match="bare pass-at-k alias"):
+        _validate_metric_registry(bare_pass_alias)
+
+
+def test_registry_provenance_uses_repo_relative_paths_and_document_versions() -> None:
+    source_path = (
+        Path(__file__).resolve().parents[2]
+        / "outputs"
+        / "analysis"
+        / "synthetic_factorial.jsonl"
+    )
+    df = normalize_result_rows(_four_cell_rows(), source_path=str(source_path))
+
+    result = analyze_factorial(df, bootstrap_samples=50)
+    provenance = result["metadata"]["registry_provenance"]
+
+    assert provenance["schema_version"] == "registry_provenance_v1"
+    assert provenance["generated_by_activity"] == "analyze_factorial"
+    assert provenance["software_entity"] == "shared/analysis/factorial.py"
+    assert provenance["source_artifact_paths"] == [
+        "outputs/analysis/synthetic_factorial.jsonl"
+    ]
+    assert provenance["source_doc_versions"] == {
+        "docs/14_structural_vs_task_outcome_reporting_plan.md": "0.1.1",
+        "docs/17_structural_task_analyzer_metadata_implementation_spec.md": "0.1.3",
+    }
+    assert provenance["row_count"] == len(df)
+    assert all(not path.startswith("/Users/") for path in provenance["source_artifact_paths"])
+
+
+def test_analyzer_metadata_is_strict_json_safe() -> None:
+    result = analyze_factorial(
+        _four_cell_rows(),
+        bootstrap_samples=50,
+    )
+
+    json.dumps(result, allow_nan=False, sort_keys=True)
+    _assert_no_numpy_or_pandas_values(result)
+
+
+def test_feedback_activation_level_reach_and_metric_availability_diagnostics() -> None:
+    rows = _four_cell_rows()
+    for row in rows:
+        if row["condition"] == "C":
+            row["failure_code"] = "F0_PARSE"
+            row["functional_success"] = False
+            row["compile_success"] = False
+
+    result = analyze_factorial(rows, bootstrap_samples=50)
+    diagnostics = result["diagnostics"]
+
+    assert [row["condition"] for row in diagnostics["level_reach_rates"]] == [
+        "none",
+        "G",
+        "C",
+        "G+C",
+    ]
+    c_activation = next(
+        row for row in diagnostics["feedback_activation"] if row["condition"] == "C"
+    )
+    assert c_activation["c_factor_active"] is True
+    assert c_activation["c_feedback_eligible_rows"] == 0
+    assert c_activation["c_feedback_eligibility_proxy_rows"] == 0
+    assert c_activation["c_feedback_loop_fired_rows"] == 0
+    assert c_activation["f0_rows"] == 4
+    assert "F0 rows are not C-feedback eligible." in c_activation["caveats"]
+
+    availability = diagnostics["metric_availability"]
+    assert availability["syntax_valid_rate"]["availability_status"] == (
+        "not_available_mixed_schema"
+    )
+    assert availability["syntax_valid_rate"]["computed_value_present"] is False
+    assert availability["benchmarkable_pass_at_k"]["availability_status"] == "future_only"
+    assert availability["benchmarkable_pass_at_k"]["computed_value_present"] is False
+    assert availability["level1_compile_success_rate"]["available"] is True
+
+
+def test_compile_only_partial_input_emits_structural_metadata_only() -> None:
+    rows = [
+        {
+            key: value
+            for key, value in row.items()
+            if key != "functional_success"
+        }
+        for row in _four_cell_rows()
+        if row["condition"] in {"none", "G"}
+    ]
+
+    result = analyze_factorial(
+        rows,
+        response_variable="compile_success",
+        bootstrap_samples=50,
+    )
+
+    assert result["metadata"]["analysis_scope"] == "secondary_compile_diagnostic"
+    assert result["metadata"]["reportable"] is False
+    assert result["metadata"]["scope_kind"] == "partial_factorial"
+    assert result["metadata"]["metric_registry"]["level1_compile_success_rate"][
+        "outcome_family"
+    ] == "structural_code_surface"
+    assert result["diagnostics"]["metric_availability"][
+        "level2_functional_success_rate"
+    ]["available"] is False
+    assert {
+        row["outcome_family"]
+        for row in result["cell_summaries"]
+        if row["metric_name"] == "level1_compile_success_rate"
+    } == {"structural_code_surface"}
 
 
 def test_primary_holm_adjustment_excludes_secondary_diagnostics() -> None:
@@ -295,6 +613,188 @@ def test_mixed_scale_tiers_remain_non_reportable_when_diagnostic_override_is_use
 
     assert result["metadata"]["scale_tiers"] == ["development", "paper"]
     assert result["metadata"]["reportable"] is False
+
+
+def test_missing_repair_history_policy_fixture_loads_as_known_legacy() -> None:
+    df = load_results(_factorial_fixture("missing_policy_legacy.jsonl"))
+
+    assert set(df["repair_history_policy"]) == {"last_attempt_only_v1"}
+    assert set(df["repair_history_policy_state"]) == {"known_legacy_missing_policy"}
+
+    summary = factorial_summary(df)
+    assert "repair_history_policy" in summary.columns
+    assert set(summary["repair_history_policy"]) == {"last_attempt_only_v1"}
+
+
+def test_missing_repair_history_policy_unknown_artifact_is_quarantined() -> None:
+    with pytest.raises(ValueError, match="unknown repair_history_policy"):
+        load_results(
+            _factorial_fixture("missing_policy_legacy.jsonl"),
+            missing_repair_history_policy_artifact_kind="unknown",
+        )
+
+
+def test_explicit_legacy_repair_history_policy_fixture_groups_as_legacy() -> None:
+    df = load_results(_factorial_fixture("explicit_legacy.jsonl"))
+
+    assert set(df["repair_history_policy"]) == {"last_attempt_only_v1"}
+    assert set(df["repair_history_policy_state"]) == {"explicit_last_attempt_only"}
+    summary = factorial_summary(df)
+    assert set(summary["repair_history_policy"]) == {"last_attempt_only_v1"}
+
+
+def test_explicit_agentic_repair_history_fixture_groups_with_prompt_metadata() -> None:
+    df = load_results(_factorial_fixture("explicit_agentic_complete.jsonl"))
+
+    assert set(df["repair_history_policy"]) == {"agentic_transcript_v1"}
+    assert set(df["repair_history_policy_state"]) == {"explicit_agentic_transcript"}
+    assert df["repair_history_missing_agentic_metadata"].map(len).eq(0).all()
+
+    summary = factorial_summary(df)
+    for column in (
+        "repair_history_policy",
+        "repair_prompt_template_version",
+        "repair_prompt_renderer_version",
+        "repair_max_prompt_chars",
+        "repair_include_latest_source",
+    ):
+        assert column in summary.columns
+    assert set(summary["repair_history_policy"]) == {"agentic_transcript_v1"}
+    assert set(summary["repair_prompt_template_version"]) == {
+        "agentic_transcript_v1"
+    }
+    assert set(summary["repair_prompt_renderer_version"]) == {
+        "agentic_transcript_v1"
+    }
+    assert set(summary["repair_max_prompt_chars"]) == {4096}
+    assert set(summary["repair_include_latest_source"]) == {False}
+
+
+def test_agentic_no_render_terminal_fixture_loads_without_prompt_metadata() -> None:
+    df = load_results(_factorial_fixture("agentic_no_render_terminal.jsonl"))
+
+    assert set(df["repair_history_policy"]) == {"agentic_transcript_v1"}
+    assert set(df["repair_history_policy_state"]) == {"explicit_agentic_transcript"}
+    assert df["repair_history_missing_agentic_metadata"].map(len).eq(0).all()
+    assert df["repair_prompt_template_version"].isna().all()
+
+    summary = factorial_summary(df)
+    assert set(summary["repair_history_policy"]) == {"agentic_transcript_v1"}
+    assert summary["repair_prompt_template_version"].isna().all()
+
+
+def test_agentic_repair_attempt_without_rendered_metadata_is_quarantined() -> None:
+    row = {
+        "condition": "C",
+        "kernel_class": "elementwise",
+        "kernel_id": "relu",
+        "kernel_name": "relu",
+        "dtype": "fp32",
+        "base_seed": 0,
+        "attempt_index": 1,
+        "compile_success": True,
+        "functional_success": True,
+        "scale_tier": "development",
+        "repair_history_policy": "agentic_transcript_v1",
+    }
+
+    with pytest.raises(ValueError, match="incomplete agentic_transcript_v1"):
+        normalize_result_rows([row])
+
+
+def test_single_policy_no_render_and_rendered_rows_share_analysis_group() -> None:
+    df = load_results(_factorial_fixture("legacy_no_render_and_rendered.jsonl"))
+
+    summary = factorial_summary(df)
+    assert len(summary) == 1
+    assert set(summary["repair_history_policy"]) == {"last_attempt_only_v1"}
+    assert set(summary["repair_prompt_template_version"]) == {
+        "last_attempt_only_v1"
+    }
+
+    rows = _four_cell_rows()
+    for row in rows:
+        row["repair_history_policy"] = "last_attempt_only_v1"
+        if row["condition"] in {"C", "G+C"} and row["base_seed"] % 2:
+            row["repair_prompt_template_version"] = "last_attempt_only_v1"
+            row["repair_prompt_renderer_version"] = "cluster2_feedback_prompt_v1"
+
+    result = analyze_factorial(rows, bootstrap_samples=100)
+    assert result["metadata"]["repair_history_groups"] == [
+        {
+            "repair_history_policy": "last_attempt_only_v1",
+            "repair_prompt_template_version": "last_attempt_only_v1",
+            "repair_prompt_renderer_version": "cluster2_feedback_prompt_v1",
+            "repair_max_prompt_chars": None,
+            "repair_include_latest_source": None,
+            "n_rows": len(rows),
+        }
+    ]
+
+
+def test_mixed_repair_history_groups_are_separated_or_quarantined() -> None:
+    df = pd.concat(
+        [
+            load_results(_factorial_fixture("explicit_legacy.jsonl")),
+            load_results(_factorial_fixture("explicit_agentic_complete.jsonl")),
+        ],
+        ignore_index=True,
+    )
+
+    summary = factorial_summary(df)
+    assert set(summary["repair_history_policy"]) == {
+        "last_attempt_only_v1",
+        "agentic_transcript_v1",
+    }
+
+    with pytest.raises(ValueError, match="mixed repair-history analysis groups"):
+        analyze_factorial(
+            df,
+            response_variable="compile_success",
+            analysis_scope="secondary_compile_diagnostic",
+            bootstrap_samples=10,
+        )
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "message"),
+    [
+        (
+            "mixed_missing_and_explicit_legacy.jsonl",
+            "mixed_policy_artifact",
+        ),
+        ("mixed_legacy_and_agentic.jsonl", "mixed_policy_artifact"),
+        ("unknown_policy.jsonl", "unknown repair_history_policy"),
+        ("agentic_missing_metadata.jsonl", "incomplete agentic_transcript_v1"),
+        ("inconsistent_template_version.jsonl", "repair_prompt_template_version"),
+        ("inconsistent_max_prompt_chars.jsonl", "repair_max_prompt_chars"),
+        ("inconsistent_include_latest_source.jsonl", "repair_include_latest_source"),
+    ],
+)
+def test_repair_history_policy_quarantine_fixtures(
+    fixture_name: str,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        load_results(_factorial_fixture(fixture_name))
+
+
+def test_legacy_four_cell_analysis_still_preserves_existing_pairing_behavior() -> None:
+    result = analyze_factorial(_four_cell_rows(), bootstrap_samples=100)
+
+    assert result["metadata"]["repair_history_policies"] == ["last_attempt_only_v1"]
+    assert result["metadata"]["repair_history_policy_states"] == [
+        "known_legacy_missing_policy"
+    ]
+    comparison = next(
+        row
+        for row in result["paired_comparisons"]
+        if row["response_variable"] == "functional_success"
+        and row["comparison"] == "C vs none"
+    )
+    assert comparison["n_pairs"] == 4
+    assert comparison["success_rate_a"] == 0.25
+    assert comparison["success_rate_b"] == 0.5
 
 
 def test_null_scale_tier_is_unspecified_for_direct_dataframe() -> None:
@@ -851,6 +1351,47 @@ def test_template_upper_bound_condition_label_is_reference() -> None:
     assert g_summary["condition_label"] == "template G reference"
 
 
+def test_analyzer_groups_explicit_grammar_mode_without_binary_collapse() -> None:
+    rows = _four_cell_rows()
+    for row in rows:
+        condition = row["condition"]
+        if condition in {"none", "C"}:
+            row["grammar_mode"] = "grammar_off"
+        elif condition == "G":
+            row["grammar_mode"] = "template_upper_bound"
+            row["grammar_variant"] = "template_upper_bound"
+            row["grammar_claim_scope"] = "diagnostic_non_primary"
+        elif condition == "G+C":
+            row["grammar_mode"] = "task_agnostic"
+            row["grammar_variant"] = "task_agnostic"
+            row["grammar_claim_scope"] = "primary"
+
+    result = analyze_factorial(rows, bootstrap_samples=100)
+    summary = result["diagnostics"]["grammar_mode_summary"]
+
+    assert summary["status"] == "explicit_grammar_mode"
+    assert summary["grouping_policy"] == (
+        "group_by_grammar_mode_without_binary_G_collapse"
+    )
+    groups = {row["grammar_mode"]: row for row in summary["groups"]}
+    assert set(groups) == {"grammar_off", "template_upper_bound", "task_agnostic"}
+    assert groups["grammar_off"]["conditions"] == ["C", "none"]
+    assert groups["template_upper_bound"]["conditions"] == ["G"]
+    assert groups["task_agnostic"]["conditions"] == ["G+C"]
+
+
+def test_analyzer_rejects_explicit_grammar_mode_condition_mismatch() -> None:
+    rows = _four_cell_rows()
+    for row in rows:
+        if row["condition"] == "G":
+            row["grammar_mode"] = "grammar_off"
+            row["grammar_variant"] = None
+            row["grammar_claim_scope"] = None
+
+    with pytest.raises(ValueError, match="grammar_mode|grammar_active"):
+        analyze_factorial(rows, bootstrap_samples=100)
+
+
 def test_missing_optional_interpretation_columns_do_not_crash() -> None:
     rows = _four_cell_rows()
     for row in rows:
@@ -1305,6 +1846,28 @@ def test_validate_paired_replay_dataframe_rejects_missing_generated_attempt_zero
         validate_paired_replay_dataframe(df, treatment_condition="C")
 
 
+def _assert_no_numpy_or_pandas_values(value: object) -> None:
+    if isinstance(
+        value,
+        (
+            np.generic,
+            pd.Timestamp,
+            pd.Series,
+            pd.Index,
+            pd.DataFrame,
+        ),
+    ):
+        pytest.fail(f"non-JSON-safe library object leaked: {type(value).__name__}")
+    if isinstance(value, float) and not np.isfinite(value):
+        pytest.fail("non-finite float leaked")
+    if isinstance(value, dict):
+        for item in value.values():
+            _assert_no_numpy_or_pandas_values(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            _assert_no_numpy_or_pandas_values(item)
+
+
 def _four_cell_rows(*, kernel_name: str = "relu") -> list[dict[str, object]]:
     patterns = {
         "none": (False, False, False, True),
@@ -1497,6 +2060,10 @@ def _jsonl_sample(path: Path, *, limit: int) -> list[dict[str, object]]:
         if len(rows) == limit:
             break
     return rows
+
+
+def _factorial_fixture(name: str) -> Path:
+    return FACTORIAL_FIXTURE_DIR / name
 
 
 def _expected_cluster2_compile_success(failure_code: object) -> bool:

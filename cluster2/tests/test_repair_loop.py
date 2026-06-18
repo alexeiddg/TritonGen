@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,6 +22,15 @@ from cluster2.feedback.repair_loop import (
     RepairGenerationInput,
     run_repair_loop,
     seed_for_attempt,
+)
+from shared.repair_history.errors import (
+    InvalidAttemptEvidenceError,
+    InvalidRepairHistoryConfigError,
+    PromptBudgetExceededError,
+)
+from shared.repair_history.policies import (
+    RepairHistoryConfig,
+    agentic_repair_history_config,
 )
 
 
@@ -408,6 +418,261 @@ def test_allowed_f2_failures_trigger_correctness_feedback(
     assert feedback_calls[0].signature_error is None
     assert feedback_calls[0].sanitizer_errors == ()
     assert "correctness_error:" in generation_calls[1].prompt
+
+
+def test_explicit_last_attempt_policy_preserves_legacy_prompt_bytes() -> None:
+    omitted_calls: list[RepairGenerationInput] = []
+    explicit_calls: list[RepairGenerationInput] = []
+
+    def generation(calls: list[RepairGenerationInput]):
+        def generate(request: RepairGenerationInput) -> str:
+            calls.append(request)
+            return _source(request.attempt_index)
+
+        return generate
+
+    def evaluation(request: RepairEvaluationInput) -> object:
+        if request.attempt_index == 1:
+            return _success()
+        return _failure(
+            request.attempt_index,
+            failure_code="F2_NUMERIC_LARGE",
+            level_reached=2,
+        )
+
+    run_repair_loop(
+        condition="C",
+        base_prompt=BASE_PROMPT,
+        base_seed=6,
+        generation=generation(omitted_calls),
+        evaluation=evaluation,
+        repair_budget=1,
+    )
+    explicit_result = run_repair_loop(
+        condition="C",
+        base_prompt=BASE_PROMPT,
+        base_seed=6,
+        generation=generation(explicit_calls),
+        evaluation=evaluation,
+        repair_budget=1,
+        repair_history_config=RepairHistoryConfig(
+            repair_history_policy="last_attempt_only_v1"
+        ),
+    )
+
+    assert omitted_calls[1].prompt == explicit_calls[1].prompt
+    assert explicit_result.terminal_prompt_metadata.repair_history_policy == (
+        "last_attempt_only_v1"
+    )
+    assert explicit_result.terminal_prompt_metadata.repair_anchor_attempt_index is None
+
+
+def test_agentic_transcript_policy_renders_structured_c_history() -> None:
+    generation_calls: list[RepairGenerationInput] = []
+
+    def generation(request: RepairGenerationInput) -> str:
+        generation_calls.append(request)
+        return _source(request.attempt_index)
+
+    def evaluation(request: RepairEvaluationInput) -> object:
+        if request.attempt_index == 1:
+            return _success()
+        return _failure(
+            request.attempt_index,
+            failure_code="F2_NUMERIC_LARGE",
+            summary="Repair shape failed at attempt 0",
+            level_reached=2,
+        )
+
+    result = run_repair_loop(
+        condition="C",
+        base_prompt=BASE_PROMPT,
+        base_seed=6,
+        generation=generation,
+        evaluation=evaluation,
+        repair_budget=1,
+        repair_history_config=agentic_repair_history_config(),
+    )
+
+    repair_prompt = generation_calls[1].prompt
+    assert "Attempt history:\nAttempt 0:" in repair_prompt
+    assert "Best previous source to repair from:" in repair_prompt
+    assert "BEGIN BEST PREVIOUS SOURCE" in repair_prompt
+    assert "Previous source:" not in repair_prompt
+    metadata = result.terminal_prompt_metadata
+    assert metadata.repair_history_policy == "agentic_transcript_v1"
+    assert metadata.repair_anchor_attempt_index == 0
+    assert metadata.repair_latest_attempt_index == 0
+    assert metadata.repair_history_attempt_count == 1
+    assert metadata.repair_prompt_sha256 == _sha256(repair_prompt)
+    assert metadata.repair_history_summary_sha256 is not None
+    assert result.attempts[0].prompt_hash == _sha256(BASE_PROMPT)
+
+
+def test_agentic_transcript_later_attempt_receives_all_prior_history() -> None:
+    generation_calls: list[RepairGenerationInput] = []
+
+    def generation(request: RepairGenerationInput) -> str:
+        generation_calls.append(request)
+        return _source(request.attempt_index)
+
+    def evaluation(request: RepairEvaluationInput) -> object:
+        if request.attempt_index == 2:
+            return _success()
+        return _failure(
+            request.attempt_index,
+            failure_code="F2_NUMERIC_LARGE",
+            summary=f"Repair shape failed at attempt {request.attempt_index}",
+            level_reached=2,
+        )
+
+    result = run_repair_loop(
+        condition="C",
+        base_prompt=BASE_PROMPT,
+        base_seed=6,
+        generation=generation,
+        evaluation=evaluation,
+        repair_budget=2,
+        repair_history_config=agentic_repair_history_config(),
+    )
+
+    repair_prompt = generation_calls[2].prompt
+    assert "Attempt history:\nAttempt 0:" in repair_prompt
+    assert "Attempt 1:" in repair_prompt
+    assert "summary=Repair shape failed at attempt 1" in repair_prompt
+    metadata = result.terminal_prompt_metadata
+    assert metadata.repair_history_policy == "agentic_transcript_v1"
+    assert metadata.repair_latest_attempt_index == 1
+    assert metadata.repair_history_attempt_count == 2
+    assert metadata.repair_prompt_sha256 == _sha256(repair_prompt)
+
+
+def test_agentic_transcript_attempt0_success_records_policy_only_metadata() -> None:
+    generation_calls: list[RepairGenerationInput] = []
+
+    def generation(request: RepairGenerationInput) -> str:
+        generation_calls.append(request)
+        return _source(request.attempt_index)
+
+    result = run_repair_loop(
+        condition="C",
+        base_prompt=BASE_PROMPT,
+        base_seed=6,
+        generation=generation,
+        evaluation=lambda request: _success(),
+        repair_budget=1,
+        repair_history_config=agentic_repair_history_config(),
+    )
+
+    assert [call.attempt_index for call in generation_calls] == [0]
+    assert result.status == REPAIR_LOOP_SUCCESS_STATUS
+    _assert_policy_only_prompt_metadata(
+        result.terminal_prompt_metadata,
+        policy="agentic_transcript_v1",
+    )
+
+
+def test_agentic_transcript_attempt0_nonrepairable_records_policy_only_metadata() -> None:
+    generation_calls: list[RepairGenerationInput] = []
+
+    def generation(request: RepairGenerationInput) -> str:
+        generation_calls.append(request)
+        return _source(request.attempt_index)
+
+    result = run_repair_loop(
+        condition="C",
+        base_prompt=BASE_PROMPT,
+        base_seed=6,
+        generation=generation,
+        evaluation=lambda request: _failure(
+            request.attempt_index,
+            failure_code="F1_COMPILE",
+            level_reached=1,
+        ),
+        repair_budget=1,
+        repair_history_config=agentic_repair_history_config(),
+    )
+
+    assert [call.attempt_index for call in generation_calls] == [0]
+    assert result.status == REPAIR_LOOP_TERMINATED_STATUS
+    _assert_policy_only_prompt_metadata(
+        result.terminal_prompt_metadata,
+        policy="agentic_transcript_v1",
+    )
+
+
+def test_agentic_transcript_invalid_budget_fails_without_hidden_fallback() -> None:
+    generation_calls: list[RepairGenerationInput] = []
+
+    def generation(request: RepairGenerationInput) -> str:
+        generation_calls.append(request)
+        return _source(request.attempt_index)
+
+    with pytest.raises(PromptBudgetExceededError):
+        run_repair_loop(
+            condition="C",
+            base_prompt=BASE_PROMPT,
+            base_seed=6,
+            generation=generation,
+            evaluation=lambda request: _failure(
+                request.attempt_index,
+                failure_code="F2_NUMERIC_LARGE",
+                level_reached=2,
+            ),
+            repair_budget=1,
+            repair_history_config=agentic_repair_history_config(max_prompt_chars=120),
+        )
+
+    assert [call.attempt_index for call in generation_calls] == [0]
+
+
+def test_agentic_transcript_missing_f2_level_fails_closed() -> None:
+    generation_calls: list[RepairGenerationInput] = []
+
+    def generation(request: RepairGenerationInput) -> str:
+        generation_calls.append(request)
+        return _source(request.attempt_index)
+
+    with pytest.raises(InvalidAttemptEvidenceError, match="F2 history requires"):
+        run_repair_loop(
+            condition="C",
+            base_prompt=BASE_PROMPT,
+            base_seed=6,
+            generation=generation,
+            evaluation=lambda request: _failure(
+                request.attempt_index,
+                failure_code="F2_NUMERIC_LARGE",
+            ),
+            repair_budget=1,
+            repair_history_config=agentic_repair_history_config(),
+        )
+
+    assert [call.attempt_index for call in generation_calls] == [0]
+
+
+def test_repair_history_config_must_be_typed_before_generation() -> None:
+    generation_calls: list[RepairGenerationInput] = []
+
+    with pytest.raises(
+        InvalidRepairHistoryConfigError,
+        match="repair_history_config must be",
+    ):
+        run_repair_loop(
+            condition="C",
+            base_prompt=BASE_PROMPT,
+            base_seed=6,
+            generation=lambda request: generation_calls.append(request)
+            or _source(request.attempt_index),
+            evaluation=lambda request: _failure(
+                request.attempt_index,
+                failure_code="F2_NUMERIC_LARGE",
+                level_reached=2,
+            ),
+            repair_budget=1,
+            repair_history_config=["agentic_transcript_v1"],  # type: ignore[arg-type]
+        )
+
+    assert generation_calls == []
 
 
 def test_repair_loop_rejects_repair_budget_above_phase9_maximum() -> None:
@@ -845,6 +1110,27 @@ def _assert_no_forbidden_terms(value: str) -> None:
     lowered = value.lower()
     for term in FORBIDDEN_FEEDBACK_TERMS:
         assert term.lower() not in lowered
+
+
+def _sha256(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _assert_policy_only_prompt_metadata(metadata: Any, *, policy: str) -> None:
+    assert metadata.repair_history_policy == policy
+    assert metadata.repair_prompt_template_version is None
+    assert metadata.repair_prompt_renderer_version is None
+    assert metadata.repair_anchor_attempt_index is None
+    assert metadata.repair_latest_attempt_index is None
+    assert metadata.repair_history_attempt_count is None
+    assert metadata.repair_prompt_sha256 is None
+    assert metadata.repair_prompt_char_count is None
+    assert metadata.repair_max_prompt_chars is None
+    assert metadata.repair_include_latest_source is None
+    assert metadata.repair_anchor_source_hash is None
+    assert metadata.repair_latest_source_hash is None
+    assert metadata.repair_history_summary_sha256 is None
+    assert metadata.repair_history_error_code is None
 
 
 def _all_keys(value: Any) -> set[str]:

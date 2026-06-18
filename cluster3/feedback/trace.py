@@ -61,6 +61,8 @@ class PRepairAttemptSummary:
     compile_error_class: str | None
     source_hash: str | None
     feedback_sha256: str | None
+    compile_error_excerpt_sha256: str | None = None
+    compile_error_changed_from_previous: bool | None = None
 
     def __post_init__(self) -> None:
         _require_non_negative_int(self.attempt_index, "attempt_index")
@@ -68,6 +70,14 @@ class PRepairAttemptSummary:
         _validate_optional_bool(self.compile_success, "compile_success")
         _validate_optional_failure_code(self.failure_code, "failure_code")
         _validate_optional_string(self.compile_error_class, "compile_error_class")
+        _validate_optional_sha256(
+            self.compile_error_excerpt_sha256,
+            "compile_error_excerpt_sha256",
+        )
+        _validate_optional_bool(
+            self.compile_error_changed_from_previous,
+            "compile_error_changed_from_previous",
+        )
         _validate_optional_sha256(self.source_hash, "source_hash")
         _validate_optional_sha256(self.feedback_sha256, "feedback_sha256")
 
@@ -212,6 +222,9 @@ def build_p_attempt_summary(
     compile_success: bool | None,
     failure_code: str | None,
     compile_error_class: str | None = None,
+    compile_error: str | None = None,
+    compile_error_excerpt_sha256: str | None = None,
+    compile_error_changed_from_previous: bool | None = None,
     source_hash: str | None = None,
     source: str | None = None,
     feedback_sha256: str | None = None,
@@ -223,12 +236,19 @@ def build_p_attempt_summary(
     resolved_feedback_sha256 = (
         feedback_sha256 if feedback_sha256 is not None else _sha256_or_none(feedback)
     )
+    resolved_compile_error_sha256 = (
+        compile_error_excerpt_sha256
+        if compile_error_excerpt_sha256 is not None
+        else _sha256_or_none(compile_error)
+    )
     return PRepairAttemptSummary(
         attempt_index=attempt_index,
         generation_seed=generation_seed,
         compile_success=compile_success,
         failure_code=failure_code,
         compile_error_class=compile_error_class,
+        compile_error_excerpt_sha256=resolved_compile_error_sha256,
+        compile_error_changed_from_previous=compile_error_changed_from_previous,
         source_hash=resolved_source_hash,
         feedback_sha256=resolved_feedback_sha256,
     )

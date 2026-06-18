@@ -1,0 +1,2 @@
+{"condition":"C","kernel_class":"elementwise","kernel_id":"relu","kernel_name":"relu","dtype":"fp32","base_seed":0,"attempt_index":0,"compile_success":true,"functional_success":true,"scale_tier":"development"}
+{"condition":"C","kernel_class":"elementwise","kernel_id":"relu","kernel_name":"relu","dtype":"fp32","base_seed":1,"attempt_index":0,"compile_success":false,"functional_success":false,"scale_tier":"development"}

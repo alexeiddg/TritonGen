@@ -14,11 +14,16 @@ from typing import Any
 import pytest
 
 from cluster2.constants import (
+    AGENTIC_TRANSCRIPT_MAX_PROMPT_CHARS_V1,
+    AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1,
     C_GENERATION_MODE,
+    DEFAULT_REPAIR_HISTORY_POLICY_V1,
     G_PLUS_C_GENERATION_MODE,
     GENERATED_SOURCE_CLASS,
+    LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1,
     REPLAY_CONTROL_GENERATION_MODE,
     REPLAY_CONTROL_SOURCE_CLASS,
+    REPAIR_HISTORY_POLICIES_V1,
     generation_allowed_for_condition,
 )
 from cluster2.experiments.run_cluster2_modal import (
@@ -54,6 +59,20 @@ PHASE_MINUS1_MANIFEST = REPO_ROOT / "cluster2/contracts/phase_minus1_manifest.js
 FROZEN_CLUSTER1_MANIFEST = (
     REPO_ROOT / "cluster2/contracts/frozen_cluster1_artifacts_manifest.json"
 )
+
+
+def test_repair_history_policy_constants_are_legacy_default_opt_in_v1() -> None:
+    assert LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1 == "last_attempt_only_v1"
+    assert AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1 == "agentic_transcript_v1"
+    assert REPAIR_HISTORY_POLICIES_V1 == frozenset(
+        {
+            LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1,
+            AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1,
+        }
+    )
+    assert DEFAULT_REPAIR_HISTORY_POLICY_V1 == LAST_ATTEMPT_ONLY_REPAIR_HISTORY_POLICY_V1
+    assert DEFAULT_REPAIR_HISTORY_POLICY_V1 != AGENTIC_TRANSCRIPT_REPAIR_HISTORY_POLICY_V1
+    assert AGENTIC_TRANSCRIPT_MAX_PROMPT_CHARS_V1 == 24000
 
 
 def _fallback_modal_image_components() -> dict[str, object]:

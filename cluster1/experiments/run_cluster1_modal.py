@@ -1330,6 +1330,33 @@ def _run(*, args) -> int:
         raise
 
 
+def _run_with_tracking(*, args) -> int:
+    """Run ``_run`` inside an optional MLflow run (Seam A for the Modal path).
+
+    Modal performs the GPU work and returns records to this local orchestrator;
+    ``_run`` then writes JSONL and — via the shared writer's Seam C — logs the
+    ``gen.*`` metrics. Tracking therefore happens entirely in this local
+    process; no MLflow runs inside the Modal container. No-op when tracking is
+    disabled, so ``_run`` behaves exactly as before.
+    """
+
+    from shared import tracking
+
+    tracking_run_config = {
+        "condition": args.condition,
+        "scale_tier": getattr(args, "scale_tier", "smoke"),
+        "model_id": args.model_id,
+        "source_class": "generated_row",
+    }
+    with tracking.run_context(
+        run_config=tracking_run_config,
+        cli_args=args,
+        backend="modal",
+        cluster="cluster1",
+    ):
+        return _run(args=args)
+
+
 # ---------------------------------------------------------------------------
 # Modal local entrypoint
 # ---------------------------------------------------------------------------
@@ -1380,5 +1407,5 @@ def main(
         append=append,
         resume=resume,
     )
-    rows = _run(args=args)
+    rows = _run_with_tracking(args=args)
     print(f"wrote {rows} rows to {output}", flush=True)

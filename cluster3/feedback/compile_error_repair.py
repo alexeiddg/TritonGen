@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import asdict, dataclass
 from typing import Any, Final
 
 from cluster3.constants import (
@@ -13,8 +13,20 @@ from cluster3.constants import (
     P_REPAIR_STOP_REASONS,
 )
 from cluster3.feedback.prompts import build_p_feedback_prompt
+from cluster3.feedback.sanitizer import sanitize_p_feedback_text
 from cluster3.feedback.trace import PRepairAttemptSummary, build_p_attempt_summary
 from shared.eval.failure_taxonomy import FAILURE_CODES, LEGACY_FAILURE_CODE_MAP
+from shared.repair_history.errors import InvalidRepairHistoryConfigError
+from shared.repair_history.evidence import (
+    RepairAttemptEvidence,
+    RepairSourceRecord,
+    sha256_text,
+)
+from shared.repair_history.policies import (
+    RepairHistoryConfig,
+    should_render_agentic_transcript,
+)
+from shared.repair_history.rendering import render_repair_history_prompt
 
 
 P_COMPILE_REPAIRED_THEN_SUCCESS = "compile_repaired_then_success"
@@ -62,6 +74,29 @@ class PRepairEvaluationInput:
     base_seed: int
     generation_seed: int
     source: str
+
+
+@dataclass(frozen=True)
+class PRepairPromptMetadata:
+    """Nullable/defaultable P repair-history prompt metadata."""
+
+    p_history_policy: str
+    p_repair_prompt_template_version: str | None
+    p_repair_prompt_renderer_version: str | None
+    p_repair_anchor_attempt_index: int | None
+    p_repair_latest_attempt_index: int | None
+    p_repair_history_attempt_count: int | None
+    p_repair_prompt_sha256: str | None
+    p_repair_prompt_char_count: int | None
+    p_repair_max_prompt_chars: int | None
+    p_repair_include_latest_source: bool | None
+    p_repair_anchor_source_hash: str | None
+    p_repair_latest_source_hash: str | None
+    p_repair_history_summary_sha256: str | None
+    p_repair_history_error_code: str | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
 
 
 @dataclass(frozen=True)
@@ -135,6 +170,7 @@ class PRepairLoopResult:
     terminal_source_hash: str
     terminal_compile_success: bool | None
     terminal_level_reached: int | None
+    terminal_prompt_metadata: PRepairPromptMetadata | None = None
 
     def __post_init__(self) -> None:
         if self.status not in P_REPAIR_STATUSES:
@@ -174,6 +210,13 @@ class PRepairLoopResult:
             self.terminal_level_reached,
             "terminal_level_reached",
         )
+        if self.terminal_prompt_metadata is not None and not isinstance(
+            self.terminal_prompt_metadata,
+            PRepairPromptMetadata,
+        ):
+            raise TypeError(
+                "terminal_prompt_metadata must be PRepairPromptMetadata or None"
+            )
 
 
 GenerationCallable = Callable[[PRepairGenerationInput], object]
@@ -237,6 +280,7 @@ def run_p_repair_loop(
     evaluation: EvaluationCallable,
     seed_attempt: PSeedAttempt,
     repair_budget: int = DEFAULT_P_REPAIR_BUDGET,
+    repair_history_config: RepairHistoryConfig | None = None,
 ) -> PRepairLoopResult:
     """Run the local P compile-error repair loop.
 
@@ -257,8 +301,21 @@ def run_p_repair_loop(
         raise ValueError("P repair loop seed_attempt must be F1_COMPILE")
     if seed_attempt.base_seed != base_seed:
         raise ValueError("base_seed must match seed_attempt.base_seed")
+    resolved_repair_history_config = _coerce_repair_history_config(
+        repair_history_config
+    )
 
     attempts: list[PRepairAttemptSummary] = []
+    source_records: list[RepairSourceRecord] = [
+        RepairSourceRecord(
+            attempt_index=0,
+            source_text=seed_attempt.source,
+            source_hash=seed_attempt.source_hash,
+        )
+    ]
+    prompt_metadata_by_attempt: dict[int, PRepairPromptMetadata] = {
+        0: _initial_p_prompt_metadata(resolved_repair_history_config),
+    }
     seed_view = _evaluation_view(seed_attempt.evaluation_result)
     attempts.append(
         build_p_attempt_summary(
@@ -268,6 +325,7 @@ def run_p_repair_loop(
             failure_code=seed_attempt.failure_code,
             compile_error_class=seed_attempt.compile_error_type
             or seed_view.compile_error_type,
+            compile_error=seed_attempt.compile_error or seed_view.compile_error,
             source_hash=seed_attempt.source_hash,
         )
     )
@@ -295,19 +353,35 @@ def run_p_repair_loop(
             terminal_attempt_index=terminal_attempt_index,
             terminal_generation_seed=terminal_generation_seed,
             terminal_view=terminal_view,
+            terminal_prompt_metadata=prompt_metadata_by_attempt[terminal_attempt_index],
         )
 
     for attempt_index in range(1, repair_budget + 1):
-        feedback_prompt = build_p_feedback_prompt(
-            base_prompt,
-            previous_source,
-            previous_failure_code,
-            previous_compile_error,
-            previous_compile_error_type,
-        )
-        if feedback_prompt is None:
-            raise ValueError("P feedback prompt builder returned None for F1_COMPILE")
+        if should_render_agentic_transcript(resolved_repair_history_config):
+            feedback_prompt, prompt_metadata = _build_agentic_p_feedback_prompt(
+                base_prompt=base_prompt,
+                seed_prompt_hash=seed_attempt.prompt_hash,
+                attempts=attempts,
+                source_records=source_records,
+                latest_compile_error=previous_compile_error,
+                latest_compile_error_type=previous_compile_error_type,
+                config=resolved_repair_history_config,
+            )
+        else:
+            feedback_prompt = build_p_feedback_prompt(
+                base_prompt,
+                previous_source,
+                previous_failure_code,
+                previous_compile_error,
+                previous_compile_error_type,
+            )
+            if feedback_prompt is None:
+                raise ValueError("P feedback prompt builder returned None for F1_COMPILE")
+            prompt_metadata = _legacy_p_prompt_metadata(
+                policy=resolved_repair_history_config.repair_history_policy,
+            )
         previous_feedback = feedback_prompt
+        prompt_metadata_by_attempt[attempt_index] = prompt_metadata
         generation_seed = seed_for_p_attempt(base_seed, attempt_index)
         generated_source = _coerce_generated_source(
             generation(
@@ -329,6 +403,12 @@ def run_p_repair_loop(
             )
         )
         public_result = _evaluation_view(evaluation_result)
+        source_records.append(
+            RepairSourceRecord(
+                attempt_index=attempt_index,
+                source_text=generated_source,
+            )
+        )
         attempts.append(
             build_p_attempt_summary(
                 attempt_index=attempt_index,
@@ -336,6 +416,13 @@ def run_p_repair_loop(
                 compile_success=public_result.compile_success,
                 failure_code=public_result.failure_code,
                 compile_error_class=public_result.compile_error_type,
+                compile_error=public_result.compile_error,
+                compile_error_changed_from_previous=_compile_error_changed(
+                    previous_compile_error_type,
+                    public_result.compile_error_type,
+                    previous_compile_error,
+                    public_result.compile_error,
+                ),
                 source=generated_source,
                 feedback=feedback_prompt,
             )
@@ -357,6 +444,7 @@ def run_p_repair_loop(
                 terminal_generation_seed=terminal_generation_seed,
                 terminal_view=terminal_view,
                 successful_attempt_index=attempt_index,
+                terminal_prompt_metadata=prompt_metadata_by_attempt[attempt_index],
             )
 
         failure_code = public_result.failure_code
@@ -371,6 +459,7 @@ def run_p_repair_loop(
                 terminal_attempt_index=terminal_attempt_index,
                 terminal_generation_seed=terminal_generation_seed,
                 terminal_view=terminal_view,
+                terminal_prompt_metadata=prompt_metadata_by_attempt[attempt_index],
             )
         if failure_code is not None and failure_code.startswith("F3_"):
             return _result(
@@ -383,6 +472,7 @@ def run_p_repair_loop(
                 terminal_attempt_index=terminal_attempt_index,
                 terminal_generation_seed=terminal_generation_seed,
                 terminal_view=terminal_view,
+                terminal_prompt_metadata=prompt_metadata_by_attempt[attempt_index],
             )
         if _is_non_repairable(failure_code):
             return _result(
@@ -395,6 +485,7 @@ def run_p_repair_loop(
                 terminal_attempt_index=terminal_attempt_index,
                 terminal_generation_seed=terminal_generation_seed,
                 terminal_view=terminal_view,
+                terminal_prompt_metadata=prompt_metadata_by_attempt[attempt_index],
             )
         if failure_code == "F1_COMPILE":
             previous_source = generated_source
@@ -413,6 +504,7 @@ def run_p_repair_loop(
                 terminal_attempt_index=terminal_attempt_index,
                 terminal_generation_seed=terminal_generation_seed,
                 terminal_view=terminal_view,
+                terminal_prompt_metadata=prompt_metadata_by_attempt[attempt_index],
             )
         raise ValueError(f"unsupported P repair terminal failure_code {failure_code!r}")
 
@@ -426,6 +518,7 @@ def run_p_repair_loop(
         terminal_attempt_index=terminal_attempt_index,
         terminal_generation_seed=terminal_generation_seed,
         terminal_view=terminal_view,
+        terminal_prompt_metadata=prompt_metadata_by_attempt[terminal_attempt_index],
     )
 
 
@@ -453,6 +546,7 @@ def _result(
     terminal_generation_seed: int,
     terminal_view: _PublicPEvaluationResult,
     successful_attempt_index: int | None = None,
+    terminal_prompt_metadata: PRepairPromptMetadata | None = None,
 ) -> PRepairLoopResult:
     stop_reason = stop_reason_for_status(
         status,
@@ -475,7 +569,206 @@ def _result(
         terminal_source_hash=_sha256(terminal_source),
         terminal_compile_success=terminal_view.compile_success,
         terminal_level_reached=terminal_view.level_reached,
+        terminal_prompt_metadata=terminal_prompt_metadata,
     )
+
+
+def _coerce_repair_history_config(
+    config: RepairHistoryConfig | None,
+) -> RepairHistoryConfig:
+    if config is None:
+        return RepairHistoryConfig()
+    if not isinstance(config, RepairHistoryConfig):
+        raise InvalidRepairHistoryConfigError(
+            "repair_history_config must be a RepairHistoryConfig"
+        )
+    return config
+
+
+def _build_agentic_p_feedback_prompt(
+    *,
+    base_prompt: str,
+    seed_prompt_hash: str,
+    attempts: Sequence[PRepairAttemptSummary],
+    source_records: Sequence[RepairSourceRecord],
+    latest_compile_error: str | None,
+    latest_compile_error_type: str | None,
+    config: RepairHistoryConfig,
+) -> tuple[str, PRepairPromptMetadata]:
+    rendered = render_repair_history_prompt(
+        base_task=base_prompt,
+        repair_objective=(
+            "Repair the latest Cluster 3 compile failure using only public "
+            "compile-error evidence."
+        ),
+        attempts=tuple(
+            _p_attempt_evidence(attempt, seed_prompt_hash=seed_prompt_hash)
+            for attempt in attempts
+        ),
+        source_records=source_records,
+        latest_failure_details=_latest_compile_failure_details(
+            latest_compile_error=latest_compile_error,
+            latest_compile_error_type=latest_compile_error_type,
+        ),
+        loop_kind="P",
+        config=config,
+    )
+    if rendered is None:
+        raise InvalidRepairHistoryConfigError(
+            "agentic_transcript_v1 did not render a P repair prompt"
+        )
+    sources_by_attempt = {record.attempt_index: record for record in source_records}
+    anchor_source_hash = sources_by_attempt[
+        rendered.anchor_attempt_index
+    ].source_hash
+    latest_source_hash = sources_by_attempt[
+        rendered.latest_attempt_index
+    ].source_hash
+    return rendered.text, PRepairPromptMetadata(
+        p_history_policy=rendered.repair_history_policy,
+        p_repair_prompt_template_version="agentic_transcript_v1",
+        p_repair_prompt_renderer_version="agentic_transcript_v1",
+        p_repair_anchor_attempt_index=rendered.anchor_attempt_index,
+        p_repair_latest_attempt_index=rendered.latest_attempt_index,
+        p_repair_history_attempt_count=len(attempts),
+        p_repair_prompt_sha256=rendered.repair_prompt_sha256,
+        p_repair_prompt_char_count=len(rendered.text),
+        p_repair_max_prompt_chars=rendered.max_prompt_chars,
+        p_repair_include_latest_source=rendered.include_latest_source,
+        p_repair_anchor_source_hash=anchor_source_hash,
+        p_repair_latest_source_hash=latest_source_hash,
+        p_repair_history_summary_sha256=rendered.repair_history_summary_sha256,
+    )
+
+
+def _p_attempt_evidence(
+    attempt: PRepairAttemptSummary,
+    *,
+    seed_prompt_hash: str,
+) -> RepairAttemptEvidence:
+    if attempt.source_hash is None:
+        raise InvalidRepairHistoryConfigError(
+            f"P attempt {attempt.attempt_index} is missing source_hash"
+        )
+    prompt_hash = seed_prompt_hash if attempt.attempt_index == 0 else attempt.feedback_sha256
+    return RepairAttemptEvidence(
+        attempt_index=attempt.attempt_index,
+        generation_seed=attempt.generation_seed,
+        failure_code=attempt.failure_code,
+        level_reached=_p_level_reached(attempt),
+        compile_success=attempt.compile_success,
+        functional_success=True if attempt.failure_code is None else False,
+        repair_set_success=None,
+        eval_set_success=None,
+        public_failure_summary=_p_public_failure_summary(attempt),
+        source_hash=attempt.source_hash,
+        prompt_hash=prompt_hash,
+        compile_error_type=attempt.compile_error_class,
+        compile_error_excerpt_sha256=attempt.compile_error_excerpt_sha256,
+        compile_error_changed_from_previous=(
+            attempt.compile_error_changed_from_previous
+        ),
+    )
+
+
+def _p_level_reached(attempt: PRepairAttemptSummary) -> int | None:
+    if attempt.failure_code == "F1_COMPILE":
+        return 1
+    if attempt.failure_code is None and attempt.compile_success is True:
+        return 2
+    if attempt.failure_code and attempt.failure_code.startswith("F0_"):
+        return 0
+    if attempt.failure_code and attempt.failure_code.startswith("F2_"):
+        return 2
+    return None
+
+
+def _p_public_failure_summary(attempt: PRepairAttemptSummary) -> str | None:
+    if attempt.failure_code is None:
+        return "Compilation and public validation succeeded."
+    if attempt.failure_code == "F1_COMPILE":
+        error_class = (
+            sanitize_p_feedback_text(attempt.compile_error_class, limit=120)
+            or "UnknownError"
+        )
+        summary = f"Compilation failed with {error_class}."
+        if attempt.compile_error_excerpt_sha256:
+            summary = (
+                f"{summary} Compile error excerpt sha256: "
+                f"{attempt.compile_error_excerpt_sha256}."
+            )
+        return summary
+    if attempt.failure_code.startswith("F0_"):
+        return f"Terminal non-repairable failure: {attempt.failure_code}."
+    return f"Terminal failure: {attempt.failure_code}."
+
+
+def _latest_compile_failure_details(
+    *,
+    latest_compile_error: str | None,
+    latest_compile_error_type: str | None,
+) -> str:
+    error_class = (
+        sanitize_p_feedback_text(latest_compile_error_type, limit=120)
+        or "UnknownError"
+    )
+    parts = [f"Failure code: F1_COMPILE.", f"Compile error class: {error_class}."]
+    excerpt = sanitize_p_feedback_text(latest_compile_error, limit=2000)
+    if excerpt:
+        parts.append(f"Compile error excerpt sha256: {sha256_text(excerpt)}.")
+        parts.append(f"Compile error excerpt: {excerpt}")
+    else:
+        parts.append("No compile error text was available.")
+    return " ".join(parts)
+
+
+def _initial_p_prompt_metadata(config: RepairHistoryConfig) -> PRepairPromptMetadata:
+    return PRepairPromptMetadata(
+        p_history_policy=config.repair_history_policy,
+        p_repair_prompt_template_version=None,
+        p_repair_prompt_renderer_version=None,
+        p_repair_anchor_attempt_index=None,
+        p_repair_latest_attempt_index=None,
+        p_repair_history_attempt_count=None,
+        p_repair_prompt_sha256=None,
+        p_repair_prompt_char_count=None,
+        p_repair_max_prompt_chars=None,
+        p_repair_include_latest_source=None,
+        p_repair_anchor_source_hash=None,
+        p_repair_latest_source_hash=None,
+        p_repair_history_summary_sha256=None,
+    )
+
+
+def _legacy_p_prompt_metadata(*, policy: str) -> PRepairPromptMetadata:
+    return PRepairPromptMetadata(
+        p_history_policy=policy,
+        p_repair_prompt_template_version=None,
+        p_repair_prompt_renderer_version=None,
+        p_repair_anchor_attempt_index=None,
+        p_repair_latest_attempt_index=None,
+        p_repair_history_attempt_count=None,
+        p_repair_prompt_sha256=None,
+        p_repair_prompt_char_count=None,
+        p_repair_max_prompt_chars=None,
+        p_repair_include_latest_source=None,
+        p_repair_anchor_source_hash=None,
+        p_repair_latest_source_hash=None,
+        p_repair_history_summary_sha256=None,
+    )
+
+
+def _compile_error_changed(
+    previous_type: str | None,
+    current_type: str | None,
+    previous_error: str | None,
+    current_error: str | None,
+) -> bool | None:
+    previous = (previous_type, previous_error)
+    current = (current_type, current_error)
+    if previous == (None, None) or current == (None, None):
+        return None
+    return previous != current
 
 
 def _evaluation_view(result: object) -> _PublicPEvaluationResult:

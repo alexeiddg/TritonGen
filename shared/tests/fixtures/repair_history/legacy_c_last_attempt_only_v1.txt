@@ -1,0 +1,17 @@
+Base task:
+Implement the relu kernel as a complete Triton Python module.
+
+Previous source:
+@triton.jit def relu_kernel(x, y, n:tl.constexpr): return
+
+Failure code:
+F2_NUMERIC_LARGE
+
+Feedback:
+The previous attempt produced incorrect numeric values on initial correctness shapes. Fix indexing, masks, strides, and arithmetic. Public details: Repair shape (2,) failed Level 2: max_abs_diff=1
+
+Public details:
+Repair shape (2,) failed Level 2: max_abs_diff=1
+
+Instruction:
+Produce a corrected complete Triton Python module.

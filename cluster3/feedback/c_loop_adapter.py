@@ -37,6 +37,7 @@ from cluster3.modal.result_extraction import (
 )
 from shared.eval.failure_taxonomy import FAILURE_CODES
 from shared.generation_metadata import UNKNOWN
+from shared.repair_history.policies import RepairHistoryConfig
 
 
 FeedbackCallable = Callable[[RepairFeedbackInput], str | None]
@@ -201,6 +202,7 @@ def run_cluster3_c_loop_from_f2(
     repair_budget: int,
     model_config: Mapping[str, Any],
     provenance_base: Mapping[str, Any],
+    repair_history_config: RepairHistoryConfig | None = None,
 ) -> Cluster3CLoopResult:
     """Run Cluster 2 C repair from an already-evaluated Cluster 3 F2 candidate."""
 
@@ -347,6 +349,7 @@ def run_cluster3_c_loop_from_f2(
         feedback_builder=wrapped_feedback_builder,
         repair_budget=repair_budget,
         seed_candidate_source=seed_candidate_source,
+        repair_history_config=repair_history_config,
     )
 
     terminal_index = _terminal_attempt_index(repair_result)

@@ -12,6 +12,11 @@ from cluster3.feedback.compile_error_repair import (
     stop_reason_for_status,
 )
 from cluster3.feedback.trace import build_p_attempt_summary
+from shared.repair_history.errors import PromptBudgetExceededError
+from shared.repair_history.policies import (
+    RepairHistoryConfig,
+    agentic_repair_history_config,
+)
 
 
 BASE_PROMPT = "Implement the relu kernel as a complete Triton Python module."
@@ -188,6 +193,219 @@ def test_p_loop_first_feedback_built_from_seed_attempt(monkeypatch) -> None:
     )
 
     assert calls[0][3] == "compiler failed"
+
+
+def test_omitted_and_explicit_legacy_p_policy_prompt_bytes_match() -> None:
+    omitted_generation = _GenerationRecorder()
+    explicit_generation = _GenerationRecorder()
+
+    run_p_repair_loop(
+        base_prompt=BASE_PROMPT,
+        base_seed=7,
+        generation=omitted_generation,
+        evaluation=_EvaluationRecorder(
+            _eval(None, level_reached=2, compile_success=True, functional_success=True)
+        ),
+        seed_attempt=_seed(),
+        repair_budget=1,
+    )
+    explicit_result = run_p_repair_loop(
+        base_prompt=BASE_PROMPT,
+        base_seed=7,
+        generation=explicit_generation,
+        evaluation=_EvaluationRecorder(
+            _eval(None, level_reached=2, compile_success=True, functional_success=True)
+        ),
+        seed_attempt=_seed(),
+        repair_budget=1,
+        repair_history_config=RepairHistoryConfig(
+            repair_history_policy="last_attempt_only_v1"
+        ),
+    )
+
+    assert omitted_generation.inputs[0].prompt == explicit_generation.inputs[0].prompt
+    assert explicit_generation.inputs[0].prompt == repair.build_p_feedback_prompt(
+        BASE_PROMPT,
+        SEED_SOURCE,
+        "F1_COMPILE",
+        "compiler failed",
+        "CompilationError",
+    )
+    _assert_policy_only_p_metadata(
+        explicit_result.terminal_prompt_metadata,
+        policy="last_attempt_only_v1",
+    )
+
+
+def test_agentic_transcript_policy_renders_structured_p_history() -> None:
+    generation = _GenerationRecorder()
+
+    result = run_p_repair_loop(
+        base_prompt=BASE_PROMPT,
+        base_seed=7,
+        generation=generation,
+        evaluation=_EvaluationRecorder(
+            _eval(None, level_reached=2, compile_success=True, functional_success=True)
+        ),
+        seed_attempt=_seed(),
+        repair_budget=1,
+        repair_history_config=agentic_repair_history_config(),
+    )
+
+    repair_prompt = generation.inputs[0].prompt
+    assert "Attempt history:\nAttempt 0:" in repair_prompt
+    assert "Best previous source to repair from:" in repair_prompt
+    assert "BEGIN BEST PREVIOUS SOURCE" in repair_prompt
+    assert "Previous source:" not in repair_prompt
+    assert "correctness" not in repair_prompt.lower()
+    assert "private" not in repair_prompt.lower()
+    metadata = result.terminal_prompt_metadata
+    assert metadata is not None
+    assert metadata.p_history_policy == "agentic_transcript_v1"
+    assert metadata.p_repair_anchor_attempt_index == 0
+    assert metadata.p_repair_latest_attempt_index == 0
+    assert metadata.p_repair_history_attempt_count == 1
+    assert metadata.p_repair_prompt_sha256 == _sha256(repair_prompt)
+    assert metadata.p_repair_max_prompt_chars == 24000
+    assert metadata.p_repair_include_latest_source is False
+    assert metadata.p_repair_anchor_source_hash == result.attempts[0].source_hash
+    assert metadata.p_repair_latest_source_hash == result.attempts[0].source_hash
+    assert result.attempts[0].compile_error_excerpt_sha256 == _sha256("compiler failed")
+
+
+def test_agentic_transcript_later_p_attempt_receives_all_prior_history() -> None:
+    generation = _GenerationRecorder()
+
+    result = run_p_repair_loop(
+        base_prompt=BASE_PROMPT,
+        base_seed=7,
+        generation=generation,
+        evaluation=_EvaluationRecorder(
+            _eval("F1_COMPILE", compile_error="attempt one failed"),
+            _eval(None, level_reached=2, compile_success=True, functional_success=True),
+        ),
+        seed_attempt=_seed(),
+        repair_budget=2,
+        repair_history_config=agentic_repair_history_config(),
+    )
+
+    repair_prompt = generation.inputs[1].prompt
+    assert "Attempt history:\nAttempt 0:" in repair_prompt
+    assert "Attempt 1:" in repair_prompt
+    assert "p_compile_error_changed=yes" in repair_prompt
+    metadata = result.terminal_prompt_metadata
+    assert metadata is not None
+    assert metadata.p_history_policy == "agentic_transcript_v1"
+    assert metadata.p_repair_latest_attempt_index == 1
+    assert metadata.p_repair_history_attempt_count == 2
+    assert metadata.p_repair_prompt_sha256 == _sha256(repair_prompt)
+
+
+def test_agentic_transcript_attempt0_budget_exhaustion_records_policy_only_metadata() -> None:
+    result = run_p_repair_loop(
+        base_prompt=BASE_PROMPT,
+        base_seed=7,
+        generation=_GenerationRecorder(),
+        evaluation=_EvaluationRecorder(),
+        seed_attempt=_seed(),
+        repair_budget=0,
+        repair_history_config=agentic_repair_history_config(),
+    )
+
+    _assert_policy_only_p_metadata(
+        result.terminal_prompt_metadata,
+        policy="agentic_transcript_v1",
+    )
+
+
+def test_agentic_transcript_prompt_budget_error_fails_before_generation() -> None:
+    generation = _GenerationRecorder()
+
+    with pytest.raises(PromptBudgetExceededError):
+        run_p_repair_loop(
+            base_prompt=BASE_PROMPT,
+            base_seed=7,
+            generation=generation,
+            evaluation=_EvaluationRecorder(),
+            seed_attempt=_seed(),
+            repair_budget=1,
+            repair_history_config=agentic_repair_history_config(max_prompt_chars=10),
+        )
+
+    assert generation.call_count == 0
+
+
+def test_agentic_transcript_forbidden_p_feedback_terms_fail_before_generation() -> None:
+    generation = _GenerationRecorder()
+
+    with pytest.raises(ValueError, match="forbidden term: token"):
+        run_p_repair_loop(
+            base_prompt=BASE_PROMPT,
+            base_seed=7,
+            generation=generation,
+            evaluation=_EvaluationRecorder(),
+            seed_attempt=_seed(
+                compile_error="compiler reported token budget details",
+                evaluation_result=_eval(
+                    "F1_COMPILE",
+                    generation_seed=7,
+                    base_seed=7,
+                    sample_index=0,
+                    kernel_class="elementwise",
+                    kernel_name="relu",
+                    dtype="fp32",
+                    source_hash=_sha256(SEED_SOURCE),
+                    prompt_hash=_sha256(BASE_PROMPT),
+                    compile_error="compiler reported token budget details",
+                ),
+            ),
+            repair_budget=1,
+            repair_history_config=agentic_repair_history_config(),
+        )
+
+    assert generation.call_count == 0
+
+
+def test_agentic_transcript_terminal_f1_runtime_does_not_render_next_prompt() -> None:
+    generation = _GenerationRecorder()
+
+    result = run_p_repair_loop(
+        base_prompt=BASE_PROMPT,
+        base_seed=7,
+        generation=generation,
+        evaluation=_EvaluationRecorder(
+            _eval("F1_RUNTIME", level_reached=1, compile_success=False)
+        ),
+        seed_attempt=_seed(),
+        repair_budget=2,
+        repair_history_config=agentic_repair_history_config(),
+    )
+
+    assert generation.call_count == 1
+    assert result.status == "terminated_unrecoverable"
+    assert result.final_failure_code == "F1_RUNTIME"
+    assert result.terminal_prompt_metadata is not None
+    assert result.terminal_prompt_metadata.p_repair_history_attempt_count == 1
+
+
+def test_agentic_transcript_terminal_f2_does_not_render_next_p_prompt() -> None:
+    generation = _GenerationRecorder()
+
+    result = run_p_repair_loop(
+        base_prompt=BASE_PROMPT,
+        base_seed=7,
+        generation=generation,
+        evaluation=_EvaluationRecorder(
+            _eval("F2_NUMERIC_LARGE", level_reached=2, compile_success=True)
+        ),
+        seed_attempt=_seed(),
+        repair_budget=2,
+        repair_history_config=agentic_repair_history_config(),
+    )
+
+    assert generation.call_count == 1
+    assert result.status == "compile_repaired_f2_observed"
+    assert result.final_failure_code == "F2_NUMERIC_LARGE"
 
 
 def test_p_loop_status_compile_repaired_then_success() -> None:
@@ -569,3 +787,24 @@ def test_p_loop_passes_previous_feedback_to_generation(monkeypatch) -> None:
 
     assert getattr(generation.inputs[0], "previous_feedback") == feedbacks[0]
     assert getattr(generation.inputs[1], "previous_feedback") == feedbacks[1]
+
+
+def _assert_policy_only_p_metadata(
+    metadata: object,
+    *,
+    policy: str,
+) -> None:
+    assert metadata is not None
+    assert getattr(metadata, "p_history_policy") == policy
+    assert getattr(metadata, "p_repair_prompt_template_version") is None
+    assert getattr(metadata, "p_repair_prompt_renderer_version") is None
+    assert getattr(metadata, "p_repair_anchor_attempt_index") is None
+    assert getattr(metadata, "p_repair_latest_attempt_index") is None
+    assert getattr(metadata, "p_repair_history_attempt_count") is None
+    assert getattr(metadata, "p_repair_prompt_sha256") is None
+    assert getattr(metadata, "p_repair_prompt_char_count") is None
+    assert getattr(metadata, "p_repair_max_prompt_chars") is None
+    assert getattr(metadata, "p_repair_include_latest_source") is None
+    assert getattr(metadata, "p_repair_anchor_source_hash") is None
+    assert getattr(metadata, "p_repair_latest_source_hash") is None
+    assert getattr(metadata, "p_repair_history_summary_sha256") is None

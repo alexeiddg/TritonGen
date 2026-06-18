@@ -21,6 +21,17 @@ from cluster2.feedback.prompts import (
 )
 from cluster2.feedback.trace import TraceSummary, build_trace_summary
 from shared.eval.failure_taxonomy import FAILURE_CODES, LEGACY_FAILURE_CODE_MAP
+from shared.repair_history.errors import InvalidRepairHistoryConfigError
+from shared.repair_history.evidence import (
+    RepairAttemptEvidence,
+    RepairSourceRecord,
+    sha256_text,
+)
+from shared.repair_history.policies import (
+    RepairHistoryConfig,
+    should_render_agentic_transcript,
+)
+from shared.repair_history.rendering import render_repair_history_prompt
 
 
 REPAIR_LOOP_SUCCESS_STATUS = "success"
@@ -79,6 +90,33 @@ class RepairAttemptSummary:
     failure_code: str | None
     public_failure_summary: str | None
     source_hash: str | None
+    prompt_hash: str | None = None
+    level_reached: int | None = None
+    repair_set_success: bool | None = None
+    eval_set_success: bool | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class RepairPromptMetadata:
+    """Nullable/defaultable repair-history prompt metadata for one attempt."""
+
+    repair_history_policy: str
+    repair_prompt_template_version: str | None
+    repair_prompt_renderer_version: str | None
+    repair_anchor_attempt_index: int | None
+    repair_latest_attempt_index: int | None
+    repair_history_attempt_count: int | None
+    repair_prompt_sha256: str | None
+    repair_prompt_char_count: int | None
+    repair_max_prompt_chars: int | None
+    repair_include_latest_source: bool | None
+    repair_anchor_source_hash: str | None
+    repair_latest_source_hash: str | None
+    repair_history_summary_sha256: str | None
+    repair_history_error_code: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -98,6 +136,7 @@ class RepairLoopResult:
     final_public_failure_summary: str | None
     attempts: tuple[RepairAttemptSummary, ...]
     trace_summaries: tuple[TraceSummary, ...]
+    terminal_prompt_metadata: RepairPromptMetadata
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -111,6 +150,7 @@ class RepairLoopResult:
             "final_public_failure_summary": self.final_public_failure_summary,
             "attempts": [attempt.to_dict() for attempt in self.attempts],
             "trace_summaries": [summary.to_dict() for summary in self.trace_summaries],
+            "terminal_prompt_metadata": self.terminal_prompt_metadata.to_dict(),
         }
 
     def to_json(self) -> str:
@@ -132,6 +172,7 @@ def run_repair_loop(
     feedback_builder: FeedbackCallable | None = None,
     repair_budget: int = DEFAULT_REPAIR_BUDGET,
     seed_candidate_source: str | None = None,
+    repair_history_config: RepairHistoryConfig | None = None,
 ) -> RepairLoopResult:
     """Run a deterministic sequential repair loop for ``C`` or ``G+C`` only."""
 
@@ -148,9 +189,16 @@ def run_repair_loop(
     )
     resolved_feedback_builder = feedback_builder or build_default_feedback_prompt
     _require_callable(resolved_feedback_builder, "feedback_builder")
+    resolved_repair_history_config = _coerce_repair_history_config(
+        repair_history_config
+    )
 
     attempts: list[RepairAttemptSummary] = []
     traces: list[TraceSummary] = []
+    source_records: list[RepairSourceRecord] = []
+    prompt_metadata_by_attempt: dict[int, RepairPromptMetadata] = {
+        0: _initial_prompt_metadata(resolved_repair_history_config),
+    }
     next_prompt = base_prompt
     previous_feedback: str | None = None
     final_failure_code: str | None = None
@@ -158,6 +206,7 @@ def run_repair_loop(
 
     for attempt_index in range(repair_budget + 1):
         generation_seed = seed_for_attempt(base_seed, attempt_index)
+        prompt_hash = sha256_text(next_prompt)
         if attempt_index == 0 and resolved_seed_candidate_source is not None:
             source = resolved_seed_candidate_source
         else:
@@ -180,6 +229,11 @@ def run_repair_loop(
             )
         )
         public_result = _public_result_view(evaluation_result)
+        source_record = RepairSourceRecord(
+            attempt_index=attempt_index,
+            source_text=source,
+        )
+        source_records.append(source_record)
         terminate_without_feedback = (
             False
             if public_result.functional_success is True
@@ -213,6 +267,10 @@ def run_repair_loop(
                 failure_code=public_result.failure_code,
                 public_failure_summary=trace.public_failure_summary,
                 source_hash=trace.source_hash,
+                prompt_hash=prompt_hash,
+                level_reached=public_result.level_reached,
+                repair_set_success=public_result.repair_set_success,
+                eval_set_success=public_result.eval_set_success,
             )
         )
         traces.append(trace)
@@ -229,6 +287,7 @@ def run_repair_loop(
                 final_public_failure_summary=None,
                 attempts=tuple(attempts),
                 trace_summaries=tuple(traces),
+                terminal_prompt_metadata=prompt_metadata_by_attempt[attempt_index],
             )
 
         if terminate_without_feedback:
@@ -243,6 +302,7 @@ def run_repair_loop(
                 final_public_failure_summary=final_public_failure_summary,
                 attempts=tuple(attempts),
                 trace_summaries=tuple(traces),
+                terminal_prompt_metadata=prompt_metadata_by_attempt[attempt_index],
             )
 
         if attempt_index == repair_budget:
@@ -262,11 +322,24 @@ def run_repair_loop(
             repair_set_success=public_result.repair_set_success,
             eval_set_success=public_result.eval_set_success,
         )
-        previous_feedback = _coerce_feedback(
-            resolved_feedback_builder(feedback_input),
-            attempt_index=attempt_index,
-            base_prompt=base_prompt,
-        )
+        if should_render_agentic_transcript(resolved_repair_history_config):
+            previous_feedback, prompt_metadata = _build_agentic_feedback_prompt(
+                base_prompt=base_prompt,
+                attempts=attempts,
+                source_records=source_records,
+                latest_failure_details=trace.public_failure_summary,
+                config=resolved_repair_history_config,
+            )
+        else:
+            previous_feedback = _coerce_feedback(
+                resolved_feedback_builder(feedback_input),
+                attempt_index=attempt_index,
+                base_prompt=base_prompt,
+            )
+            prompt_metadata = _legacy_prompt_metadata(
+                policy=resolved_repair_history_config.repair_history_policy,
+            )
+        prompt_metadata_by_attempt[attempt_index + 1] = prompt_metadata
         next_prompt = previous_feedback
 
     return RepairLoopResult(
@@ -280,6 +353,7 @@ def run_repair_loop(
         final_public_failure_summary=final_public_failure_summary,
         attempts=tuple(attempts),
         trace_summaries=tuple(traces),
+        terminal_prompt_metadata=prompt_metadata_by_attempt[attempts[-1].attempt_index],
     )
 
 
@@ -306,6 +380,122 @@ def build_default_feedback_prompt(inputs: RepairFeedbackInput) -> str | None:
         functional_success=inputs.functional_success,
         repair_set_success=inputs.repair_set_success,
         eval_set_success=inputs.eval_set_success,
+    )
+
+
+def _coerce_repair_history_config(
+    config: RepairHistoryConfig | None,
+) -> RepairHistoryConfig:
+    if config is None:
+        return RepairHistoryConfig()
+    if not isinstance(config, RepairHistoryConfig):
+        raise InvalidRepairHistoryConfigError(
+            "repair_history_config must be a RepairHistoryConfig"
+        )
+    return config
+
+
+def _build_agentic_feedback_prompt(
+    *,
+    base_prompt: str,
+    attempts: Sequence[RepairAttemptSummary],
+    source_records: Sequence[RepairSourceRecord],
+    latest_failure_details: str | None,
+    config: RepairHistoryConfig,
+) -> tuple[str, RepairPromptMetadata]:
+    rendered = render_repair_history_prompt(
+        base_task=base_prompt,
+        repair_objective=(
+            "Repair the latest Cluster 2 correctness attempt using only public "
+            "failure evidence."
+        ),
+        attempts=tuple(_attempt_evidence(attempt) for attempt in attempts),
+        source_records=source_records,
+        latest_failure_details=latest_failure_details,
+        loop_kind="C",
+        config=config,
+    )
+    if rendered is None:
+        raise InvalidRepairHistoryConfigError(
+            "agentic_transcript_v1 did not render a C repair prompt"
+        )
+    sources_by_attempt = {record.attempt_index: record for record in source_records}
+    anchor_source_hash = sources_by_attempt[
+        rendered.anchor_attempt_index
+    ].source_hash
+    latest_source_hash = sources_by_attempt[
+        rendered.latest_attempt_index
+    ].source_hash
+    return rendered.text, RepairPromptMetadata(
+        repair_history_policy=rendered.repair_history_policy,
+        repair_prompt_template_version="agentic_transcript_v1",
+        repair_prompt_renderer_version="agentic_transcript_v1",
+        repair_anchor_attempt_index=rendered.anchor_attempt_index,
+        repair_latest_attempt_index=rendered.latest_attempt_index,
+        repair_history_attempt_count=len(attempts),
+        repair_prompt_sha256=rendered.repair_prompt_sha256,
+        repair_prompt_char_count=len(rendered.text),
+        repair_max_prompt_chars=rendered.max_prompt_chars,
+        repair_include_latest_source=rendered.include_latest_source,
+        repair_anchor_source_hash=anchor_source_hash,
+        repair_latest_source_hash=latest_source_hash,
+        repair_history_summary_sha256=rendered.repair_history_summary_sha256,
+    )
+
+
+def _attempt_evidence(attempt: RepairAttemptSummary) -> RepairAttemptEvidence:
+    if attempt.source_hash is None:
+        raise ValueError(
+            f"attempt {attempt.attempt_index} is missing source_hash"
+        )
+    return RepairAttemptEvidence(
+        attempt_index=attempt.attempt_index,
+        generation_seed=attempt.generation_seed,
+        failure_code=attempt.failure_code,
+        level_reached=attempt.level_reached,
+        compile_success=None,
+        functional_success=attempt.functional_success,
+        repair_set_success=attempt.repair_set_success,
+        eval_set_success=attempt.eval_set_success,
+        public_failure_summary=attempt.public_failure_summary,
+        source_hash=attempt.source_hash,
+        prompt_hash=attempt.prompt_hash,
+    )
+
+
+def _initial_prompt_metadata(config: RepairHistoryConfig) -> RepairPromptMetadata:
+    return RepairPromptMetadata(
+        repair_history_policy=config.repair_history_policy,
+        repair_prompt_template_version=None,
+        repair_prompt_renderer_version=None,
+        repair_anchor_attempt_index=None,
+        repair_latest_attempt_index=None,
+        repair_history_attempt_count=None,
+        repair_prompt_sha256=None,
+        repair_prompt_char_count=None,
+        repair_max_prompt_chars=None,
+        repair_include_latest_source=None,
+        repair_anchor_source_hash=None,
+        repair_latest_source_hash=None,
+        repair_history_summary_sha256=None,
+    )
+
+
+def _legacy_prompt_metadata(*, policy: str) -> RepairPromptMetadata:
+    return RepairPromptMetadata(
+        repair_history_policy=policy,
+        repair_prompt_template_version="last_attempt_only_v1",
+        repair_prompt_renderer_version="cluster2_feedback_prompt_v1",
+        repair_anchor_attempt_index=None,
+        repair_latest_attempt_index=None,
+        repair_history_attempt_count=1,
+        repair_prompt_sha256=None,
+        repair_prompt_char_count=None,
+        repair_max_prompt_chars=None,
+        repair_include_latest_source=None,
+        repair_anchor_source_hash=None,
+        repair_latest_source_hash=None,
+        repair_history_summary_sha256=None,
     )
 
 

@@ -70,6 +70,7 @@ class EvalResult:
     failure_code: str | None
 
     grammar_active: bool | None = None
+    grammar_mode: str | None = None
     grammar_variant: str | None = None
     grammar_sha: str | None = None
     grammar_path: str | None = None
@@ -205,6 +206,13 @@ def append_result(path: str | Path, result: EvalResult) -> None:
     with output_path.open("a", encoding="utf-8") as f:
         f.write(result.to_json())
         f.write("\n")
+    # Seam B: mirror the record into the active MLflow run as stepped eval.*
+    # metrics. Imported locally to keep schema.py decoupled from tracking. The
+    # tracking client is the single safety boundary — it no-ops when disabled
+    # and never raises — so no extra guarding is needed here.
+    from shared import tracking
+
+    tracking.log_eval_result(result)
 
 
 LEVEL_2_TO_4_FIELDS: tuple[str, ...] = (

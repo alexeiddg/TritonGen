@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LOG_DIR="/tmp/tritongen_l2b_n20_attempt2_two_lane_rescue_logs"
+LANE_B_STAGE="l2b_n20_attempt2_wave3_parallel_full_coverage"
+LANE_B_OUTPUT_ROOT="outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n20_attempt2_wave3_parallel"
+LANE_B_OBSERVABILITY_ROOT="artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n20_attempt2_wave3_parallel"
+SOURCE_OUTPUT_ROOT="outputs/cluster3/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n20_attempt2"
+SOURCE_OBSERVABILITY_ROOT="artifacts/observability/full_pipeline_grammar_mode_cp_factorial_v1/l2b_n20_attempt2"
+
+LANE_B_COMMAND="TRITONGEN_MLFLOW=0 .venv/bin/python -m cluster3.experiments.run_cluster3_modal --condition grammar_mode_cp_12cell --l2b-stage l2b_n20_attempt2_wave3_parallel_full_coverage --l2b-shard-selector wave:7:2 --kernel-class all --scale-tier paper --n 20 --dtypes fp32,fp16,bf16 --repair-history-policy agentic_transcript_v1 --signed-l2b-authorization FULL_PIPELINE_GRAMMAR_MODE_CP_L2B_N20_ATTEMPT2_TWO_LANE_RESCUE_AUTHORIZATION_PACKET_V1"
+
+require_repo_root() {
+  test -d .git
+  test -x .venv/bin/python
+}
+
+require_mlflow_disabled() {
+  if [[ "${TRITONGEN_MLFLOW:-}" != "0" ]]; then
+    echo "TRITONGEN_MLFLOW=0 is required" >&2
+    exit 1
+  fi
+}
+
+require_clean_worktree() {
+  if [[ -n "$(git status --porcelain)" ]]; then
+    git status --short
+    exit 1
+  fi
+}
+
+require_origin_aligned() {
+  git fetch --quiet origin codex-track-handoff-context
+  local_head="$(git rev-parse HEAD)"
+  origin_head="$(git rev-parse origin/codex-track-handoff-context)"
+  if [[ "${local_head}" != "${origin_head}" ]]; then
+    echo "local HEAD is not aligned with origin/codex-track-handoff-context" >&2
+    exit 1
+  fi
+}
+
+require_source_attempt2_present() {
+  test -d "${SOURCE_OUTPUT_ROOT}"
+  test -d "${SOURCE_OBSERVABILITY_ROOT}"
+}
+
+require_target_absent() {
+  if [[ -e "${LANE_B_OUTPUT_ROOT}" || -e "${LANE_B_OBSERVABILITY_ROOT}" ]]; then
+    echo "Lane B target path already exists" >&2
+    exit 1
+  fi
+}
+
+run_logged() {
+  label="$1"
+  command="$2"
+  mkdir -p "${LOG_DIR}"
+  start_utc="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  echo "${label} start_utc=${start_utc}"
+  echo "${command}" > "${LOG_DIR}/${label}.command.txt"
+  bash -lc "${command}" > "${LOG_DIR}/${label}.stdout.log" 2> "${LOG_DIR}/${label}.stderr.log"
+  end_utc="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  echo "${label} end_utc=${end_utc}"
+}
+
+require_repo_root
+require_mlflow_disabled
+require_clean_worktree
+require_origin_aligned
+require_source_attempt2_present
+require_target_absent
+
+run_logged "lane_b_launch" "${LANE_B_COMMAND}"
+run_logged "lane_b_validation" ".venv/bin/python -m cluster3.analysis.validate_l2b_full_coverage --stage ${LANE_B_STAGE} --wave-id wave_3 --expected-rows 480 --require-content-hash-sidecars --require-observability-sidecars"

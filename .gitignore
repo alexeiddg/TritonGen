@@ -17,6 +17,9 @@ runs/
 experiments/results/
 outputs/
 
+# MLflow local tracking store (optional experiment tracking)
+mlruns/
+
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb_checkpoints/
@@ -31,15 +34,16 @@ outputs/
 .idea/
 .vscode/
 .claude
+
+# Contracts and handoff documents are tracked intentionally.
 .contracts/*
 !.contracts/README.md
 !.contracts/research/
 !.contracts/research/**
 !.contracts/agentic/
-.contracts/agentic/*
-!.contracts/agentic/cluster1_contract.md
-!.contracts/agentic/cluster2_contract.md
-.contracts/agentic/reference/*
+!.contracts/agentic/**
 _legacy
-docs
-audits
+
+# Generated report bundle assets. Keep the source markdown/script tracked.
+docs/preliminary_report/index*.html
+docs/preliminary_report/_report_data.json

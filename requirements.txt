@@ -34,3 +34,8 @@ pytest>=8.0
 # Optional offline grammar validation against fixtures
 # (used by tests; not required by the runtime pipeline)
 lark>=1.2
+
+# Optional experiment tracking (MLflow). NOT installed by default so a bare
+# `pip install -r requirements.txt` stays lean. Install explicitly with:
+#   pip install "tritongen[tracking]"   (or uncomment the line below)
+# mlflow>=2.10,<3.0

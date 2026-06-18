@@ -1,0 +1,26 @@
+[
+  {
+    "Object ID": "ap-5gVPhi6PlAnWBNnUed7zpT",
+    "Description": "tritongen-gpu-harness",
+    "Environment": "tritongen-dev",
+    "Interval Start": "2026-06-06T09:00:00",
+    "Cost": "0.52860911",
+    "Tags": "{}"
+  },
+  {
+    "Object ID": "ap-kolKKES2SqiluqW0PshncD",
+    "Description": "tritongen-gpu-harness",
+    "Environment": "tritongen-dev",
+    "Interval Start": "2026-06-06T09:00:00",
+    "Cost": "0.71283881",
+    "Tags": "{}"
+  },
+  {
+    "Object ID": "ap-ygXxQzUf34IJFYtrlUFl44",
+    "Description": "tritongen-gpu-harness",
+    "Environment": "tritongen-dev",
+    "Interval Start": "2026-06-06T18:00:00",
+    "Cost": "2.13879534",
+    "Tags": "{}"
+  }
+]
