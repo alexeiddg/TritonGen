@@ -2,118 +2,101 @@
 
 ## Purpose
 
-This documentation set is the citation-grade frame for the preliminary Cluster 1 + Cluster 2 technical handoff. It lets a new reader understand what was built, where the evidence lives, which claims are current, and which caveats must be preserved before report prose is drafted.
+This map orients a research committee reviewer to the current TritonGen
+repository. The current handoff is results-and-pipeline focused: include the
+evidence rows, the code that produced them, and concise docs that explain how to
+read the repository. Do not use agentic routing notes, execution packets, or
+spec-driven development plans as primary committee-facing documentation.
 
-This is not a research paper. The report-facing work is a traceable technical handoff that explains methodology, artifacts, decisions, and remaining risks.
+## Current Handoff Status
 
-## Current Documentation Status
+Current candidate inventory:
 
-The Phase 0-11 handoff-readiness documentation pipeline is complete.
+```text
+docs/results/research_committee_candidate_inventory.md
+```
 
-Current drafting status: `READY_WITH_RESULTS_PLACEHOLDER`.
+That inventory supersedes the older preliminary-report framing for current
+cut-list decisions. It records:
 
-Preliminary statistical-result prose may proceed only from the verified reportable analyzer output at `outputs/analysis/factorial_2x2_preliminary.json` and only with the coverage, F3, P-deferred, model-fit, and provenance caveats preserved.
+- tracked diff versus `main`,
+- untracked docs/audits,
+- ignored output directories,
+- row counts,
+- artifact sizes,
+- `git check-ignore` status,
+- recommended include/exclude lists for the final branch.
 
-Post-handoff agent maintenance now has a central routing and versioning layer:
+The older `docs/paper_draft/` and `paper_figures/` paths are excluded from the
+candidate handoff.
 
-- `docs/handoff/agentic_document_hub.md`
-- `docs/handoff/document_version_registry.md`
-- `docs/handoff/code_update_documentation_policy.md`
+## Current Result Scope
 
-README and the three core `.contracts/research/` files were aligned in Phase 8:
+| Stream | Scope | Committee interpretation |
+| --- | --- | --- |
+| Modal / Qwen2.5-Coder-7B-AWQ | 2,040 / 2,160 rows across `l2b_n20_attempt2*` | Primary Level-2 evidence for the Modal pipeline. Primary grammar-off plus task-agnostic rows are 1,360 / 1,440 and currently have 0 functional successes. |
+| Fireworks / MiniMax M2 | 2,160 / 2,160 rows in the combined validated JSONL | Separate full-coverage stream using a shallower 15-shape compile-and-run endpoint. Not directly comparable to Modal functional success. |
 
-- `README.md`
-- `.contracts/research/research_scope.md`
-- `.contracts/research/eval_metrics.md`
-- `.contracts/research/scale_policy.md`
+The canonical analyzer is blocked for both current streams by schema/metric
+gaps. Current row-count and outcome statements are direct JSONL aggregation with
+explicit response-variable caveats.
 
-Optional MLflow experiment tracking is governed by
-`.contracts/research/mlflow_tracking_policy.md`; team onboarding lives at
-`docs/tracking/README.md`.
+## Committee Navigation Map
 
-## Current Report Scope
-
-The current preliminary scope is the 2^2 subset over grammar guidance and correctness feedback:
-
-| Report condition | Short label | Current meaning | Methodology owner |
-|---|---|---|---|
-| No control | `none` | Baseline/replay condition without grammar guidance or correctness-feedback repair. | `docs/05_artifacts_and_results_registry.md` |
-| Grammar guidance | `G` | Cluster 1 task-agnostic grammar-guided decoding plus semantic post-validation. | `docs/02_methodology_cluster1.md` |
-| Correctness feedback | `C` | Cluster 2 correctness-feedback repair restricted to F2 numerical/correctness failures. | `docs/03_methodology_cluster2.md` |
-| Grammar plus correctness feedback | `G+C` | Task-agnostic G plus C. | `docs/03_methodology_cluster2.md` |
-
-Cluster 3 and the `P` factor are deferred. P-containing cells are not current preliminary results.
-
-## Navigation Map
-
-Current documentation locations:
+Use these files first:
 
 | Topic | Path | Status |
-|---|---|---|
-| Project map and trust policy | `docs/00_project_map.md` | Current |
-| Cluster 1 methodology | `docs/02_methodology_cluster1.md` | Current |
-| Cluster 2 methodology | `docs/03_methodology_cluster2.md` | Current |
-| Modal infrastructure | `docs/04_modal_infrastructure.md` | Current |
-| Artifact and result registry | `docs/05_artifacts_and_results_registry.md` | Current artifact source of truth |
-| Failure taxonomy and evaluation ladder | `docs/06_failure_taxonomy_and_eval_ladder.md` | Current |
-| Analysis and statistics | `docs/07_analysis_and_statistics.md` | Current, with reportable analyzer and caveats |
-| Decision log | `docs/08_decision_log.md` | Current |
-| Preliminary report outline | `docs/09_preliminary_report_outline.md` | Current scaffold; final result values blocked |
-| Cluster 3 drift-prevention plan | `docs/10_cluster3_drift_prevention_plan.md` | Current guardrails; no P implementation or results |
-| Frontier feedback-loop ablation plan | `docs/11_frontier_feedback_loop_ablation.md` | Proposal only; no API, Modal, artifact, or result claims |
-| Experiment observability plan | `docs/12_experiment_observability_plan.md` | Planning doc for sidecar-first cost, token, Modal context, and duration observability |
-| MLflow tracking onboarding | `docs/tracking/README.md` | Current operational onboarding for optional MLflow dashboard tracking; JSONL artifacts remain the source of truth |
-| Agentic repair memory strategy | `docs/13_agentic_repair_memory_strategy.md` | Strategy doc for future opt-in repair-history policy changes |
-| Structural vs task outcome reporting plan | `docs/14_structural_vs_task_outcome_reporting_plan.md` | Planning doc for separating structural/code-surface metrics from task/functional metrics |
-| Experiment change orchestration contract | `docs/15_experiment_change_orchestration_contract.md` | Active control-plane contract for docs 12-14 implementation sequencing, parallel work, and run gates |
-| Observability sidecar implementation spec | `docs/16_observability_sidecar_implementation_spec.md` | Implementation contract for O0-O4 sidecar schema, logger, privacy, token, Modal context, and estimated cost work |
-| Structural/task analyzer metadata implementation spec | `docs/17_structural_task_analyzer_metadata_implementation_spec.md` | Implementation contract for S0-S3 outcome-family metadata, metric registry, feedback activation diagnostics, report labels, and analyzer-output compatibility |
-| Agentic transcript implementation spec | `docs/18_agentic_transcript_v1_implementation_spec.md` | Implementation contract for opt-in `agentic_transcript_v1` C/P repair-history prompts, best-anchor selection, policy labels, and rollout gates |
-| Experiment change orchestration state | `docs/handoff/experiment_change_orchestration_state.md` | Live operational state for docs 12-14 parallel branches, leases, gates, and run packets |
-| Agentic document hub | `docs/handoff/agentic_document_hub.md` | Current agent routing index |
-| Document version registry | `docs/handoff/document_version_registry.md` | Current markdown version registry |
-| Code update documentation policy | `docs/handoff/code_update_documentation_policy.md` | Current code-to-doc maintenance policy |
-| Codebase handoff guide | `docs/handoff/codebase_handoff_guide.md` | Current handoff guide |
-| Stale-doc inventory | `docs/handoff/stale_docs_inventory.md` | Refreshed after Phase 11 |
+| --- | --- | --- |
+| Candidate inventory and cut-list | `docs/results/research_committee_candidate_inventory.md` | Current source of truth for branch selection |
+| Root overview | `README.md` | Current committee-facing entrypoint |
+| This map | `docs/00_project_map.md` | Current navigation and trust policy |
+| Cluster 3 G/C/P methodology | `docs/04_methodology_cluster3.md` | Current methodology owner for the full factorial pipeline |
+| Modal infrastructure and provenance | `docs/04_modal_infrastructure.md` | Current background for Modal execution/provenance |
+| Failure taxonomy and evaluation ladder | `docs/06_failure_taxonomy_and_eval_ladder.md` | Current outcome semantics |
+| Analyzer and statistics semantics | `docs/07_analysis_and_statistics.md` | Useful for analyzer behavior and caveats; older sections may describe the preliminary 2^2 state |
+| Codebase handoff guide | `docs/handoff/codebase_handoff_guide.md` | Developer navigation; not a result source |
+| Optional tracking notes | `docs/tracking/README.md` | Optional observability/tracking context |
+
+Research-facing contracts that may be useful:
+
+| Topic | Path |
+| --- | --- |
+| Research scope | `.contracts/research/research_scope.md` |
+| Evaluation metrics | `.contracts/research/eval_metrics.md` |
+| Scale policy | `.contracts/research/scale_policy.md` |
+| MLflow tracking policy | `.contracts/research/mlflow_tracking_policy.md` |
+
+## Internal Or Historical Material
+
+The following categories are not primary committee-facing docs:
+
+| Category | Examples | Handoff rule |
+| --- | --- | --- |
+| Agentic contracts | `.contracts/agentic/**` | Exclude unless a maintenance audit requires them. |
+| Execution packets | `docs/experiment_packets/**` | Exclude from committee docs; they are authorization history. |
+| Implementation/spec plans | `docs/implementation_plans/**`, `docs/12_*` through `docs/19_*` | Exclude unless a reviewer asks for development history. |
+| Agent routing/version files | `docs/handoff/agentic_*`, `docs/handoff/document_version_registry.md`, `docs/handoff/experiment_change_orchestration_state.md` | Internal maintenance context. |
+| Audits | `audits/*.md` | Evidence-grade history. Promote conclusions into `docs/` before using them as primary docs. |
+| Paper leftovers | `docs/paper_draft/`, `paper_figures/` | Exclude from final branch. |
 
 ## Source-Of-Truth Hierarchy
 
 When sources disagree, use this hierarchy:
 
-1. Current code and tests define actual behavior.
-2. Current output artifacts define observed results.
-3. `docs/` defines human-readable methodology once populated.
-4. `.contracts/research/` defines formal methodology constraints.
-5. `audits/` provides historical evidence and verification records.
-6. `.contracts/agentic/` provides agent working context only and is not citation-grade unless promoted.
+1. Current code and tests define implemented behavior.
+2. Current JSONL output artifacts define observed results.
+3. `docs/results/research_committee_candidate_inventory.md` defines the current
+   cut-list and inventory.
+4. Current methodology docs in `docs/` define human-readable interpretation.
+5. `.contracts/research/` defines research-facing policy constraints.
+6. `audits/` provides historical evidence and verification records.
+7. Agentic/internal documents provide maintenance context only.
 
-The hierarchy is a guardrail against drift. Audits, agent plans, and older summaries can be useful evidence, but they may be stale until their conclusions are promoted into `docs/` or `.contracts/research/`.
+## Remaining Work Before Final Branch
 
-## Citation Grade Vs Evidence Grade
-
-Citation-grade sources are intended to support report-facing claims after they are verified:
-
-- `README.md`
-- `docs/*.md`
-- `.contracts/research/*.md`
-- current artifact registry
-- final analyzer outputs when reportable
-
-Evidence-grade sources support reconstruction and traceability but should not be cited as the primary methodology source without promotion:
-
-- `audits/*.md`
-- git history
-- test outputs
-- ignored agent plans
-- intermediate smoke reports
-- old output summaries
-
-## Remaining Work
-
-- Draft preliminary result prose from the verified `metadata.reportable=true` analyzer JSON only, with all current caveats preserved.
-- Keep Cluster 3/P deferred until the gates in `docs/10_cluster3_drift_prevention_plan.md` are satisfied.
-- Continue treating n5, template-G, smoke, failed, and partial artifacts as non-authoritative unless promoted into `docs/05_artifacts_and_results_registry.md`.
-
-## Staleness Warning
-
-Audits and `.contracts/agentic/` files may contain correct historical observations, superseded blockers, or stale implementation assumptions. Treat them as evidence or context only until the relevant claim is verified against current code, tests, artifacts, and analyzer output.
+- Review and approve the include/exclude policy in
+  `docs/results/research_committee_candidate_inventory.md`.
+- Create a final branch from `main` only after the cut-list is accepted.
+- Selectively add ignored result evidence rather than broadly unignoring
+  `outputs/`.
+- Run only local verification unless explicit execution authorization is given.

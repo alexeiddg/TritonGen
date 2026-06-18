@@ -1,5 +1,12 @@
 # Artifact And Result Registry
 
+> Current committee-handoff note (2026-06-17): this registry preserves the
+> earlier preliminary artifact history and many historical caveats. For the
+> current research committee cut-list, including Modal/Qwen `l2b_n20_attempt2*`
+> row counts, Fireworks/MiniMax evidence, ignored-output status, and final
+> include/exclude recommendations, use
+> `docs/results/research_committee_candidate_inventory.md`.
+
 ## 1. Purpose
 
 This registry is the citation-grade source for current artifact identities in the preliminary Cluster 1 + Cluster 2 technical handoff. Raw outputs remain in `outputs/`; this file references those artifacts, summarizes verified counts and schema facts, and records caveats. It does not copy raw rows and does not rewrite any output.
