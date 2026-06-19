@@ -444,6 +444,71 @@ The L2b n=2 smoke is acceptable only if a post-run audit verifies:
 
 ## Fireworks GBNF n20 Operational Note
 
+### Functional correctness and C repair loop
+
+The Fireworks runner supports an optional Level-2 correctness path:
+
+```text
+--correctness-modal
+```
+
+When this flag is active, Fireworks rows are evaluated through the existing
+Modal Level-2 correctness surface instead of the shallower compile-only adapter.
+The output row records:
+
+```text
+functional_success
+repair_set_success
+eval_set_success
+correctness_error
+max_abs_diff
+max_rel_diff
+level_reached
+num_repair_shapes
+num_eval_shapes
+num_test_shapes
+```
+
+For C-active cells (`C`, `G+C`, `C+P`, `G+C+P`), the runner routes F2 failures
+through the existing Cluster 2 C repair loop. The loop only receives public
+correctness feedback and only repairs:
+
+```text
+F2_NUMERIC_LARGE
+F2_NUMERIC_NAN
+F2_SHAPE_MISMATCH
+```
+
+F0, F1, and F3 outcomes are recorded as terminal rows and do not receive C
+feedback. This preserves the original feedback-content boundary: G handles
+surface control, P handles F1_COMPILE when separately implemented, and C handles
+numerical correctness failures only.
+
+Minimal functional smoke command:
+
+```bash
+modal run -m cluster_fw.experiments.run_fireworks_modal \
+  --signed-fireworks-l2b-authorization FIREWORKS_API_MODAL_L2B_N2_AUTHORIZATION_PACKET_V1 \
+  --models FW-A \
+  --model-id-overrides FW-A=accounts/fireworks/models/<model-id> \
+  --provider-api chat_completions \
+  --condition-cell grammar_off__c_on__p_off \
+  --kernel-class elementwise \
+  --dtypes fp32 \
+  --n 1 \
+  --temperature 0 \
+  --max-output-tokens 4096 \
+  --correctness-modal \
+  --repair-budget 1 \
+  --output outputs/cluster_fw/fireworks_api_modal_v1/functional_smoke/fw_a_functional_c_loop.jsonl \
+  --overwrite
+```
+
+`--correctness-modal` supersedes `--compile-modal` for row outcome fields because
+the Level-2 evaluator already runs parse, signature, compile/launch, and
+correctness gates. Use `--compile-modal` only for the shallower compile-and-run
+stream.
+
 The later `fireworks_gbnf_n20` runner tier uses Fireworks Chat Completions with
 provider-side grammar response format. The local GBNF files are normalized
 before being sent to Fireworks because the provider expects a stricter line
@@ -478,11 +543,13 @@ audits/fireworks_gbnf_n20_wave1_provider_error_report.md
 
 This document does not claim:
 
-- Fireworks integration exists in code;
-- any Fireworks API call has succeeded;
-- L2b is reportable evidence;
+- any unsigned Fireworks API call is authorized by this document;
+- any newly added functional Fireworks smoke has succeeded;
+- L2b or functional smoke output is reportable evidence without a signed
+  execution packet and post-run audit;
 - n=2 smoke can support statistical conclusions;
 - frontier models improve compilation, correctness, C-loop success, P-loop
   success, or grammar-mode lift;
-- grammar-constrained decoding is available through Fireworks;
+- grammar-constrained decoding is universally available through Fireworks for
+  every grammar/model pair;
 - performance, speedup, or profiling evidence exists.

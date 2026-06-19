@@ -18,6 +18,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from cluster2.feedback.repair_loop import (
+    RepairEvaluationInput,
+    RepairGenerationInput,
+    run_repair_loop,
+)
 from cluster_fw.planning.l2b_smoke import (
     DTYPE_NAMES,
     FIREWORKS_L2B_RUN_TIER,
@@ -34,6 +39,7 @@ from cluster_fw.providers.fireworks import FireworksGenerationRequest
 
 GenerationAdapter = Any
 CompileAdapter = Any
+CorrectnessAdapter = Any
 FireworksGrammarMode = str
 
 
@@ -60,8 +66,10 @@ def run_fireworks_l2b(
     max_output_tokens: int = 1536,
     generation_adapter: GenerationAdapter | None = None,
     compile_adapter: CompileAdapter | None = None,
+    correctness_adapter: CorrectnessAdapter | None = None,
     model_id_overrides: Mapping[str, str] | None = None,
     resume: bool = False,
+    repair_budget: int = 5,
 ) -> FireworksRunResult:
     """Generate L2b rows and append/write JSONL output."""
 
@@ -80,6 +88,7 @@ def run_fireworks_l2b(
         provider_api=provider_api,
     )
     adapter = generation_adapter or _modal_fireworks_generation_adapter
+    correctness = correctness_adapter
     run_id = str(uuid.uuid4())
     existing = _existing_keys(output) if resume else set()
     mode = "a" if resume else "w"
@@ -111,8 +120,28 @@ def run_fireworks_l2b(
             )
             provider = _call_generation_adapter(adapter, request)
             compile_result = None
+            correctness_result = None
+            repair_result = None
             if provider.get("provider_error_type"):
                 compile_result = _provider_error_compile_result(provider)
+            elif correctness is not None:
+                (
+                    provider,
+                    correctness_result,
+                    repair_result,
+                ) = _evaluate_or_repair_functional_correctness(
+                    item,
+                    provider=provider,
+                    base_prompt=item.prompt,
+                    generation_adapter=adapter,
+                    correctness_adapter=correctness,
+                    run_id=run_id,
+                    provider_api=provider_api,
+                    temperature=temperature,
+                    max_output_tokens=max_output_tokens,
+                    fireworks_grammar_mode=fireworks_grammar_mode,
+                    repair_budget=repair_budget,
+                )
             elif compile_adapter is not None:
                 compile_result = compile_adapter(
                     source=provider.get("source", ""),
@@ -125,6 +154,8 @@ def run_fireworks_l2b(
                 item,
                 provider=provider,
                 compile_result=compile_result,
+                correctness_result=correctness_result,
+                repair_result=repair_result,
                 run_id=run_id,
             )
             handle.write(json.dumps(row, sort_keys=True) + "\n")
@@ -231,6 +262,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--execution-plan", action="store_true")
     parser.add_argument("--list-serverless-models", action="store_true")
     parser.add_argument("--compile-modal", action="store_true")
+    parser.add_argument("--correctness-modal", action="store_true")
+    parser.add_argument("--repair-budget", type=int, default=5)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--signed-fireworks-authorization", default=None)
@@ -281,8 +314,12 @@ def main(argv: list[str] | None = None) -> int:
         temperature=args.temperature,
         max_output_tokens=args.max_output_tokens,
         compile_adapter=_modal_compile_adapter if args.compile_modal else None,
+        correctness_adapter=(
+            _modal_correctness_adapter if args.correctness_modal else None
+        ),
         model_id_overrides=model_id_overrides,
         resume=args.resume and not args.overwrite,
+        repair_budget=args.repair_budget,
     )
     print(json.dumps(result.__dict__, indent=2, sort_keys=True))
     return 0
@@ -305,6 +342,8 @@ def modal_entrypoint(
     execution_plan: bool = False,
     list_serverless_models: bool = False,
     compile_modal: bool = False,
+    correctness_modal: bool = False,
+    repair_budget: int = 5,
     resume: bool = False,
     overwrite: bool = False,
     signed_fireworks_authorization: str = "",
@@ -329,6 +368,8 @@ def modal_entrypoint(
         str(temperature),
         "--max-output-tokens",
         str(max_output_tokens),
+        "--repair-budget",
+        str(repair_budget),
         "--models",
         *_split_csv(models),
         "--model-id-overrides",
@@ -346,6 +387,8 @@ def modal_entrypoint(
         argv.append("--list-serverless-models")
     if compile_modal:
         argv.append("--compile-modal")
+    if correctness_modal:
+        argv.append("--correctness-modal")
     if resume:
         argv.append("--resume")
     if overwrite:
@@ -376,6 +419,8 @@ def _register_modal_local_entrypoint_if_needed() -> None:
     from shared.modal_harness.app import app as _modal_app
     if _argv_requests_compile_modal(sys.argv):
         import shared.modal_harness.compile  # noqa: F401
+    if _argv_requests_correctness_modal(sys.argv):
+        import cluster2.modal.correctness  # noqa: F401
     import shared.modal_harness.fireworks_generation  # noqa: F401
 
     globals()["fireworks_l2b_modal_entrypoint"] = _modal_app.local_entrypoint(
@@ -386,6 +431,12 @@ def _register_modal_local_entrypoint_if_needed() -> None:
 def _argv_requests_compile_modal(argv: list[str]) -> bool:
     return "--compile-modal" in argv or any(
         value.startswith("--compile-modal=") for value in argv
+    )
+
+
+def _argv_requests_correctness_modal(argv: list[str]) -> bool:
+    return "--correctness-modal" in argv or any(
+        value.startswith("--correctness-modal=") for value in argv
     )
 
 
@@ -490,6 +541,171 @@ def _modal_compile_adapter(**kwargs: Any) -> dict[str, Any]:
     }
 
 
+def _modal_correctness_adapter(**kwargs: Any) -> dict[str, Any]:
+    from cluster2.constants import (
+        generation_mode_for_condition,
+        source_class_for_condition,
+    )
+    from cluster2.modal.correctness import remote_c2_correctness
+    from cluster2.modal.schemas import EvalIdentity, RemoteCorrectnessRequest
+
+    item = kwargs["item"]
+    condition = _c2_correctness_condition(item)
+    identity = EvalIdentity(
+        run_id=str(kwargs["run_id"]),
+        condition=condition,
+        source_class=source_class_for_condition(condition),
+        generation_mode=generation_mode_for_condition(condition),
+        kernel_class=item.kernel_class,
+        kernel_name=item.kernel_name,
+        dtype=item.dtype,
+        sample_index=int(item.seed),
+        base_seed=int(item.seed),
+        attempt_index=int(kwargs.get("attempt_index", 0)),
+    )
+    request = RemoteCorrectnessRequest(
+        identity=identity,
+        source=str(kwargs["source"]),
+    )
+    return remote_c2_correctness.remote(request.model_dump())
+
+
+def _evaluate_or_repair_functional_correctness(
+    item: Any,
+    *,
+    provider: dict[str, Any],
+    base_prompt: str,
+    generation_adapter: GenerationAdapter,
+    correctness_adapter: CorrectnessAdapter,
+    run_id: str,
+    provider_api: ProviderApi,
+    temperature: float,
+    max_output_tokens: int,
+    fireworks_grammar_mode: FireworksGrammarMode,
+    repair_budget: int,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None]:
+    initial_source = str(provider.get("source", ""))
+    if not item.correctness_feedback_active:
+        initial_result = _call_correctness_adapter(
+            correctness_adapter,
+            item=item,
+            source=initial_source,
+            run_id=run_id,
+            attempt_index=0,
+        )
+        return provider, initial_result, None
+
+    attempt_providers: dict[int, dict[str, Any]] = {0: provider}
+    attempt_sources: dict[int, str] = {0: initial_source}
+    attempt_results: dict[int, dict[str, Any]] = {}
+
+    def repair_generation(input_: RepairGenerationInput) -> str:
+        request = FireworksGenerationRequest(
+            model_slot=item.model_slot,
+            model_id=item.model_id,
+            prompt=input_.prompt,
+            provider_api=provider_api,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+            response_format_grammar=_response_format_grammar_for_item(
+                item,
+                fireworks_grammar_mode=fireworks_grammar_mode,
+            ),
+        )
+        generated = _call_generation_adapter(generation_adapter, request)
+        attempt_providers[input_.attempt_index] = generated
+        source = str(generated.get("source", ""))
+        attempt_sources[input_.attempt_index] = source
+        return source
+
+    def repair_evaluation(input_: RepairEvaluationInput) -> dict[str, Any]:
+        result = _call_correctness_adapter(
+            correctness_adapter,
+            item=item,
+            source=input_.source,
+            run_id=run_id,
+            attempt_index=input_.attempt_index,
+        )
+        attempt_results[input_.attempt_index] = result
+        return result
+
+    repair_loop = run_repair_loop(
+        condition=_c_repair_condition(item),
+        base_prompt=base_prompt,
+        base_seed=int(item.seed),
+        generation=repair_generation,
+        evaluation=repair_evaluation,
+        repair_budget=repair_budget,
+        seed_candidate_source=initial_source,
+    )
+    terminal_attempt = (
+        repair_loop.successful_attempt_index
+        if repair_loop.successful_attempt_index is not None
+        else repair_loop.attempts[-1].attempt_index
+    )
+    terminal_provider = attempt_providers.get(terminal_attempt, provider)
+    terminal_source = attempt_sources.get(terminal_attempt, initial_source)
+    if terminal_provider is not provider:
+        provider = terminal_provider
+    provider = dict(provider)
+    provider["source"] = terminal_source
+    provider["source_sha256"] = _sha256(terminal_source)
+    provider["raw_source_sha256"] = _sha256(terminal_source)
+
+    terminal_result = attempt_results[terminal_attempt]
+    return provider, terminal_result, repair_loop.to_dict()
+
+
+def _call_correctness_adapter(
+    adapter: CorrectnessAdapter,
+    *,
+    item: Any,
+    source: str,
+    run_id: str,
+    attempt_index: int,
+) -> dict[str, Any]:
+    payload = adapter(
+        item=item,
+        source=source,
+        run_id=run_id,
+        attempt_index=attempt_index,
+    )
+    return _extract_correctness_result(payload)
+
+
+def _extract_correctness_result(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise TypeError("correctness adapter must return a dict")
+    result = payload.get("correctness_result")
+    if isinstance(result, dict):
+        return dict(result)
+    infrastructure_failure = payload.get("infrastructure_failure")
+    if isinstance(infrastructure_failure, dict):
+        return {
+            "functional_success": False,
+            "repair_set_success": False,
+            "eval_set_success": False,
+            "failure_code": "F3_EVAL_PIPELINE",
+            "correctness_error": infrastructure_failure.get("error_msg"),
+            "feedback": None,
+            "max_abs_diff": None,
+            "max_rel_diff": None,
+            "level_reached": None,
+            "compile_success": False,
+            "compile_error": infrastructure_failure.get("error_msg"),
+            "compile_error_type": infrastructure_failure.get("error_type"),
+        }
+    return dict(payload)
+
+
+def _c_repair_condition(item: Any) -> str:
+    return "G+C" if item.grammar_active else "C"
+
+
+def _c2_correctness_condition(item: Any) -> str:
+    return "G+C" if item.grammar_active else "C"
+
+
 def _compile_harness_factor_cell(item: Any) -> str:
     """Map Fireworks factorial cells to Cluster 1 compile-only labels."""
 
@@ -539,8 +755,11 @@ def _validate_execution_authorization(args: argparse.Namespace) -> None:
                 f"{FIREWORKS_GBNF_N20_RUN_TIER} requires "
                 "--fireworks-grammar-mode gbnf"
             )
-        if not args.compile_modal:
-            raise SystemExit(f"{FIREWORKS_GBNF_N20_RUN_TIER} requires --compile-modal")
+        if not args.compile_modal and not args.correctness_modal:
+            raise SystemExit(
+                f"{FIREWORKS_GBNF_N20_RUN_TIER} requires "
+                "--compile-modal or --correctness-modal"
+            )
         _require_output_under_run_tier_root(args.output, run_tier=run_tier)
         return
     raise SystemExit(f"unsupported run_tier: {run_tier!r}")
@@ -604,9 +823,29 @@ def _build_output_row(
     *,
     provider: dict[str, Any],
     compile_result: dict[str, Any] | None,
+    correctness_result: dict[str, Any] | None,
+    repair_result: dict[str, Any] | None,
     run_id: str,
 ) -> dict[str, Any]:
     compile_result = compile_result or {}
+    correctness_result = correctness_result or {}
+    repair_result = repair_result or {}
+    compile_success = _first_not_none(
+        correctness_result.get("compile_success"),
+        compile_result.get("compile_success"),
+    )
+    failure_code = _first_not_none(
+        correctness_result.get("failure_code"),
+        compile_result.get("failure_code"),
+    )
+    compile_error_type = _first_not_none(
+        correctness_result.get("compile_error_type"),
+        compile_result.get("compile_error_type"),
+    )
+    compile_error_msg = _first_not_none(
+        correctness_result.get("compile_error"),
+        compile_result.get("compile_error_msg"),
+    )
     return {
         "experiment_id": item.experiment_id,
         "run_tier": item.run_tier,
@@ -625,12 +864,38 @@ def _build_output_row(
         "dtype": item.dtype,
         "generation_seed": item.seed,
         "source": provider.get("source", ""),
-        "compile_success": compile_result.get("compile_success"),
-        "failure_code": compile_result.get("failure_code"),
-        "compile_error_type": compile_result.get("compile_error_type"),
-        "compile_error_msg": compile_result.get("compile_error_msg"),
+        "compile_success": compile_success,
+        "failure_code": failure_code,
+        "compile_error_type": compile_error_type,
+        "compile_error_msg": compile_error_msg,
         "compile_results_by_dtype": compile_result.get("compile_results_by_dtype"),
         "n_shapes_tested": compile_result.get("n_shapes_tested"),
+        "functional_success": correctness_result.get("functional_success"),
+        "correctness_error": correctness_result.get("correctness_error"),
+        "repair_set_success": correctness_result.get("repair_set_success"),
+        "eval_set_success": correctness_result.get("eval_set_success"),
+        "max_abs_diff": correctness_result.get("max_abs_diff"),
+        "max_rel_diff": correctness_result.get("max_rel_diff"),
+        "level_reached": correctness_result.get("level_reached"),
+        "num_repair_shapes": correctness_result.get("num_repair_shapes"),
+        "num_eval_shapes": correctness_result.get("num_eval_shapes"),
+        "num_test_shapes": correctness_result.get("num_test_shapes"),
+        "shapes_passed": correctness_result.get("shapes_passed"),
+        "repair_shapes_passed": correctness_result.get("repair_shapes_passed"),
+        "eval_shapes_passed": correctness_result.get("eval_shapes_passed"),
+        "c_repair_status": repair_result.get("status"),
+        "c_repair_attempts_executed": repair_result.get("attempts_executed"),
+        "c_repair_successful_attempt_index": repair_result.get(
+            "successful_attempt_index"
+        ),
+        "c_repair_final_failure_code": repair_result.get("final_failure_code"),
+        "c_repair_final_public_failure_summary": repair_result.get(
+            "final_public_failure_summary"
+        ),
+        "c_repair_attempts": repair_result.get("attempts"),
+        "c_repair_terminal_prompt_metadata": repair_result.get(
+            "terminal_prompt_metadata"
+        ),
         "model_slot": item.model_slot,
         "model_name": item.model_id,
         "provider": provider.get("provider"),
@@ -660,6 +925,13 @@ def _build_output_row(
         "run_id": run_id,
         "timestamp_utc": datetime.now(UTC).isoformat(),
     }
+
+
+def _first_not_none(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
 
 
 def _existing_keys(output: Path) -> set[tuple[str, str, str, str, int]]:
