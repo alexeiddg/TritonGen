@@ -28,3 +28,14 @@ hf_secrets: list[modal.Secret] = (
     if os.environ.get("TRITONGEN_MODAL_HF_SECRET")
     else []
 )
+
+# Fireworks API generation uses a separate Modal Secret. This must resolve to
+# the same Modal object in the local CLI process and in the remote container;
+# otherwise Modal sees different function dependencies during hydration.
+FIREWORKS_MODAL_SECRET_NAME = os.environ.get(
+    "TRITONGEN_MODAL_FIREWORKS_SECRET",
+    "fireworks-api",
+)
+fireworks_secrets: list[modal.Secret] = [
+    modal.Secret.from_name(FIREWORKS_MODAL_SECRET_NAME)
+]

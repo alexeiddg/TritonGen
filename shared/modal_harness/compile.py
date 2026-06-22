@@ -27,7 +27,6 @@ from shared.modal_harness.app import app
 from shared.modal_harness.errors import truncate_output
 from shared.modal_harness.images import triton_compile_image
 from shared.modal_harness.runtime import current_modal_ids
-from shared.modal_harness.schemas import RemoteCompileRequest, RemoteCompileResult
 
 
 @app.function(
@@ -52,6 +51,8 @@ def remote_compile_only(req_dict: dict) -> dict:
 
 def _run_remote_compile(req_dict: dict) -> dict:
     """Pure-Python implementation of ``remote_compile_only`` for testability."""
+    from shared.modal_harness.schemas import RemoteCompileRequest, RemoteCompileResult
+
     req = RemoteCompileRequest(**req_dict)
     call_id, input_id = current_modal_ids()
 
